@@ -1,0 +1,1019 @@
+/**
+ * Action dispatch — the only way anything outside the engine mutates state.
+ * Every handler validates, mutates, and returns an ActionResult; the engine
+ * facade wraps this with cache-invalidation and subscriber notification.
+ */
+import { D, Decimal } from './decimal';
+import type { ModifierCache } from './modifiers';
+import { addCurrency, getCurrency, spendCurrency } from './resources';
+import { doSpiral, gridSlotCost, licenceCost, startChallenge, abandonChallenge } from './systems/spiral';
+import { GRID_CELLS } from './content/shell7/gridModules';
+import { equipRelic, fuseRelics, toggleRelicLock, RARITIES } from './systems/relics';
+import { donateToCase, claimExpedition, ROUTE_BY_ID , routeDurationMs } from './systems/museum';
+import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
+import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
+import { applyFieldSize, manualChip, sweep } from './systems/face';
+import { descend } from './systems/depthSys';
+import {
+  climb, extendRail, installCache, removeCache, depositCache, collectCache,
+  installLift, hasLift, railDepth, workExcavation,
+} from './systems/shaftSys';
+import { doCollapse } from './systems/collapseSys';
+import { applyOfflineProgress } from './systems/offline';
+import { coreNodeAvailable, coreNodeCost, coreNodeDef, coreNodeLevel } from './content/shell1/coreTree';
+import { skillNodeDef, skillRank, spentSkillPoints } from './content/shell1/skillTree';
+import {
+  buyLatticeRing,
+  placeMotif,
+  removeMotif,
+  upgradeMotif,
+} from './content/shell1/latticeSystem';
+import { hexKey, parseKey } from './systems/lattice/hex';
+import { allCraftSystems } from './craft';
+import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial } from './systems/forge';
+import { drillRepairCost } from './systems/drills';
+import { drillHead } from './content/drillParts';
+import { lightOverstoke } from './systems/kiln';
+import { kilnFuel } from './content/kilnFuel';
+import { crackGeode, startAssay } from './systems/drops';
+import { buyResonantMemory, doBreach } from './systems/breach';
+import { buyMagnet, toggleMagnet } from './systems/polarity';
+import { pourAlloy } from './content/shell2/crucibleSystem';
+import { buyFoundrySlot, installModule, uninstallModule } from './systems/foundry';
+import {
+  autoResolvePending,
+  combatTurn,
+  fightWarden,
+  fleePending,
+  startFight,
+} from './combat/combat';
+import { craftGear } from './combat/gear';
+import { buyStock, presentIds, sellMaterial, spendCharter } from './guild/guild';
+import { acceptContract, completeContract, rerollContract } from './guild/contracts';
+import { hire } from './guild/hirelings';
+import { markFragmentRead, translateFragment } from './guild/sable';
+import { equipTitle } from './guild/titles';
+import { caravanTrade } from './guild/caravan';
+import { setMirror } from './systems/refraction';
+import { collectObservation, startObservation } from './content/shell4/observatory';
+import { benchAttempt, equipLens } from './content/shell4/bench';
+import { warrenAnswer, warrenClaim, warrenEnter, warrenLeave } from './content/shell4/warrens';
+import { inscribe } from './content/shell4/runes';
+import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
+import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw } from './content/shell5/emberArray';
+import { refine, transmute } from './systems/refinery';
+import { salvageTool, bulkSalvage } from './systems/salvage';
+import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
+import { practiceRunes } from './content/shell4/runes';
+import { temperTool } from './systems/tempering';
+import type { PurityBand } from './materials';
+import { collectWell, commitToWell } from './content/shell5/wells';
+import { answerAnomaly } from './systems/anomalies';
+import { listen, rebuildCell } from './systems/absence';
+import { buyAxiom, doRecursion } from './systems/recursionSys';
+import { wardenOf } from './combat/species';
+import { lawFlag, sealed } from './laws';
+import { harvestPlot, plantSeed } from './content/shell3/greenhouse';
+import { feedMycelium, inoculate } from './content/shell3/mycelium';
+import { brewExperiment, drinkBrew } from './content/shell3/brews';
+import { commitWeave, setThread, spinThread } from './content/shell3/loomSystem';
+import { convCurrencyId, resolveCurrencyId } from './shells';
+import { MAX_DRILLS } from './systems/drills';
+import { grantXP } from './systems/xp';
+import { initialState } from './state';
+
+export interface DispatchDeps {
+  mods: ModifierCache;
+  ctx: EngineCtx;
+  /** Replace the whole state (hydrate / hard reset). */
+  replaceState: (next: GameState) => void;
+}
+
+export function handleAction(
+  state: GameState,
+  action: GameAction,
+  deps: DispatchDeps,
+): ActionResult {
+  const { mods, ctx } = deps;
+
+  switch (action.type) {
+    case 'chip': {
+      // THE UNATTENDED (challenge): your hands are not part of this run.
+      if (sealed(state, 'sealHand')) {
+        return { ok: false, reason: 'Not this run. The shaft works without you — that was the promise' };
+      }
+      const result = manualChip(state, mods, ctx, action.cell);
+      if (result.charge <= 0) return { ok: false, reason: 'Nothing to chip', data: result };
+      return { ok: true, data: result };
+    }
+
+    case 'sweep': {
+      // A sweep is active chipping, so The Unattended seals it like the tap.
+      if (sealed(state, 'sealHand')) return { ok: false, reason: 'Not this run' };
+      const r = sweep(state, mods, ctx, action.cells);
+      if (r.swept.length === 0) return { ok: false, reason: 'Nothing to sweep', data: r };
+      return { ok: true, data: r };
+    }
+
+    case 'buyUpgrade': {
+      const def = upgradeDef(action.id);
+      if (def.visible && !def.visible(state)) return { ok: false, reason: 'Locked' };
+      const level = upgradeLevel(state, action.id);
+      if (level >= def.maxLevel) return { ok: false, reason: 'Max level' };
+      // 'CHIP'/'CONV' costs resolve to the current shell's currencies.
+      const currencyId = resolveCurrencyId(def.currency, state);
+      let count: number;
+      if (action.count === 'max') {
+        count = maxAffordable(def, level, state.currencies[currencyId] ?? D(0));
+        if (count === 0) return { ok: false, reason: 'Cannot afford' };
+      } else {
+        count = Math.max(1, Math.min(action.count ?? 1, def.maxLevel - level));
+      }
+      const cost = costForLevels(def, level, count);
+      if (!spendCurrency(state, currencyId, cost)) {
+        return { ok: false, reason: 'Cannot afford' };
+      }
+      state.upgrades[action.id] = level + count;
+      state.stats.upgradesBought += count;
+      def.onPurchase?.(state, count);
+      ctx.dirty();
+      applyFieldSize(state, mods); // no-op unless 'expand' changed dims
+      grantXP(state, mods, ctx, D(2 * count));
+      ctx.emit({ type: 'purchase', id: action.id, levels: count });
+      return { ok: true, data: { levels: count, cost } };
+    }
+
+    case 'setKilnFeeding': {
+      if (!state.kiln.built) return { ok: false, reason: 'No kiln' };
+      state.kiln.feeding = action.feeding;
+      return { ok: true };
+    }
+
+    case 'setKilnFuel': {
+      if (!state.kiln.built) return { ok: false, reason: 'No kiln' };
+      if (action.fuelId !== null && !kilnFuel(action.fuelId)) return { ok: false, reason: 'No such fuel' };
+      state.kiln.fuel = action.fuelId;
+      state.kiln.fuelBurn = 0;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'overstoke': {
+      const r = lightOverstoke(state, mods);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'upgradeDrill': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      if (drill.level >= 25) return { ok: false, reason: 'Max level' };
+      // Per-drill Standard curve: 5 * 1.25^level in the shell's converted currency.
+      const cost = D(5).mul(Math.pow(1.25, drill.level));
+      if (!spendCurrency(state, convCurrencyId(state), cost)) return { ok: false, reason: 'Cannot afford' };
+      drill.level += 1;
+      ctx.dirty();
+      return { ok: true, data: { level: drill.level } };
+    }
+
+    case 'setDrillBehavior': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      drill.behavior = action.behavior;
+      return { ok: true };
+    }
+
+    case 'renameDrill': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      const name = action.name.trim().slice(0, 24);
+      drill.name = name || undefined;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'repairDrill': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      if ((drill.wear ?? 0) <= 0) return { ok: false, reason: 'Nothing to repair' };
+      const cost = D(drillRepairCost(drill));
+      if (!spendCurrency(state, convCurrencyId(state), cost)) return { ok: false, reason: 'Cannot afford' };
+      drill.wear = 0;
+      ctx.dirty();
+      return { ok: true, data: { cost } };
+    }
+
+    case 'fitDrillHead': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      if (action.head !== null && !drillHead(action.head)) return { ok: false, reason: 'No such head' };
+      drill.head = action.head ?? undefined;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'fitDrillBit': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      if (action.materialId === null) { drill.bit = undefined; ctx.dirty(); return { ok: true }; }
+      // A bit is cut from a material — fitting consumes one, reading its traits.
+      const purity = consumeMaterial(state, action.materialId, 1);
+      if (purity === null) return { ok: false, reason: 'None of that material to cut a bit from' };
+      drill.bit = { materialId: action.materialId, purity };
+      ctx.dirty();
+      return { ok: true, data: { purity } };
+    }
+
+    case 'descend':
+      return descend(state, mods, ctx);
+
+    case 'climb':
+      return climb(state, ctx, action.to);
+
+    case 'extendRail':
+      return extendRail(state, ctx);
+
+    case 'installCache':
+      return installCache(state, ctx);
+    case 'removeCache':
+      return removeCache(state, ctx, action.index);
+    case 'depositCache':
+      return depositCache(state, ctx, action.index, action.materialId, action.qty);
+    case 'collectCache':
+      return collectCache(state, ctx, action.index);
+    case 'installLift':
+      return installLift(state, ctx);
+    case 'workExcavation':
+      return workExcavation(state, ctx, action.id);
+
+    case 'rideLift': {
+      // The lift rides the RAIL and no further: it descends through cleared/
+      // railed rock in one action, paying every depth's (discounted) toll, and
+      // stops dead at the rail head. It never touches new ground, so the first
+      // descent is untouched — this is batched convenience, not a shortcut.
+      if (!hasLift(state)) return { ok: false, reason: 'No lift is fitted here.' };
+      const target = railDepth(state);
+      if (state.depth >= target) return { ok: false, reason: 'You are already at the rail head or below it.' };
+      let moved = 0;
+      while (state.depth < target) {
+        const r = descend(state, mods, ctx);
+        if (!r.ok) break; // ran out of coin, or hit a wall — stop where you are
+        moved++;
+      }
+      return moved > 0 ? { ok: true, data: { depth: state.depth } } : { ok: false, reason: 'Could not afford the ride.' };
+    }
+
+    case 'collapse':
+      // NO SECOND CHANCE (challenge): one run, all the way down.
+      if (sealed(state, 'sealCollapse')) {
+        return { ok: false, reason: 'This world does not fall. You go on from where you are.' };
+      }
+      return doCollapse(state, mods, ctx);
+
+    case 'placeMotif':
+      return placeMotif(state, mods, ctx, action.q, action.r, action.shape, action.rank);
+
+    case 'removeMotif':
+      return removeMotif(state, ctx, action.q, action.r);
+
+    case 'upgradeMotif':
+      return upgradeMotif(state, ctx, action.q, action.r);
+
+    case 'buyLatticeRing':
+      return buyLatticeRing(state, ctx);
+
+    case 'setLatticePress': {
+      if (!state.lattice.doors.press) return { ok: false, reason: 'The Press is not yet found' };
+      state.lattice.pressOn = action.on;
+      return { ok: true };
+    }
+
+    case 'craftTool':
+      return craftTool(state, mods, ctx, action.recipeId);
+
+    case 'craftFromParts':
+      return craftFromParts(state, mods, ctx, action.tier, action.head, action.haft, action.binding);
+
+    case 'replacePart':
+      return replacePart(state, ctx, action.toolId, action.slot, action.materialId);
+
+    case 'beginCraft':
+      return beginCraft(state, ctx, action.act, action.context);
+
+    case 'craftStage':
+      return craftStage(state, mods, ctx, action.execution, action.data);
+
+    case 'delegateCraft':
+      return delegateCraft(state, mods, ctx);
+
+    case 'abandonCraft':
+      return abandonCraft(state, ctx);
+
+    case 'equipTool': {
+      const idx = state.forge.tools.findIndex((t) => t.id === action.toolId);
+      if (idx < 0) return { ok: false, reason: 'No such tool' };
+      const changed = state.forge.equipped !== idx;
+      state.forge.equipped = idx;
+      if (changed) state.forge.equippedAt = state.stats.playTimeSec; // it starts settling in
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'socketGem':
+      return socketGem(state, ctx, action.toolId, action.slot, action.gemId);
+
+    case 'discardTool':
+      return discardTool(state, ctx, action.toolId);
+
+    case 'crackGeode':
+      return crackGeode(state, mods, ctx);
+
+    case 'startAssay':
+      return startAssay(state, mods);
+
+    case 'breach':
+      return doBreach(state, mods, ctx);
+
+    case 'buyResonantMemory':
+      return buyResonantMemory(state, ctx);
+
+    case 'buyMagnet':
+      return buyMagnet(state, ctx);
+
+    case 'toggleMagnet':
+      return toggleMagnet(state, action.col);
+
+    case 'pourAlloy':
+      return pourAlloy(state, mods, ctx, action.amounts, action.catalystId);
+
+    case 'socketAlloy':
+      return socketAlloy(state, ctx, action.toolId, action.slot, action.alloyId);
+
+    case 'buyFoundrySlot':
+      return buyFoundrySlot(state, ctx);
+
+    case 'installModule':
+      return installModule(state, ctx, action.id);
+
+    case 'uninstallModule':
+      return uninstallModule(state, ctx, action.id);
+
+    case 'combatEngage': {
+      const pending = state.combat.pending;
+      if (!pending) return { ok: false, reason: 'Nothing stirring' };
+      return startFight(state, ctx, pending.speciesId);
+    }
+
+    case 'combatAuto':
+      return autoResolvePending(state, mods, ctx);
+
+    case 'combatFlee':
+      // THE LOUD DARK (challenge): nothing lets you past.
+      if (sealed(state, 'sealFlee')) {
+        return { ok: false, reason: 'It is between you and the stair. There is no slipping away.' };
+      }
+      return fleePending(state, ctx);
+
+    case 'combatTurn':
+      return combatTurn(state, mods, ctx, { move: action.move, act: action.act, timing: action.timing });
+
+    case 'fightWarden':
+      return fightWarden(state, mods, ctx, action.auto);
+
+    case 'setAutoResolve':
+      state.combat.autoResolve = action.on;
+      return { ok: true };
+
+    case 'craftGear':
+      return craftGear(state, mods, ctx, action.gearId);
+
+    case 'buyStock':
+      return buyStock(state, mods, ctx, action.npcId, action.slot, action.stance);
+
+    case 'sellMaterial':
+      return sellMaterial(state, mods, ctx, action.materialId, action.count);
+
+    case 'acceptContract':
+      return acceptContract(state, action.slot);
+
+    case 'completeContract':
+      return completeContract(state, mods, ctx, action.slot, presentIds(state));
+
+    case 'rerollContract':
+      return rerollContract(state, action.slot, presentIds(state));
+
+    case 'hire':
+      return hire(state, ctx, action.npcId);
+
+    case 'translateFragment':
+      return translateFragment(state, ctx, action.fragmentId);
+
+    case 'markFragmentRead':
+      return markFragmentRead(state, action.fragmentId);
+
+    case 'equipTitle':
+      return equipTitle(state, ctx, action.titleId);
+
+    case 'caravanTrade':
+      return caravanTrade(state, mods, ctx, action.route, action.amount);
+
+    case 'spendCharter':
+      return spendCharter(state, ctx, action.sink);
+
+    case 'plantSeed':
+      return plantSeed(state, action.plot, action.speciesId);
+
+    case 'harvestPlot':
+      return harvestPlot(state, ctx, action.plot);
+
+    case 'inoculate':
+      return inoculate(state, ctx, action.siteId, action.nodeType);
+
+    case 'feedMycelium':
+      return feedMycelium(state, action.humus);
+
+    case 'brewExperiment':
+      return brewExperiment(state, ctx, action.sap, action.spore, action.resin);
+
+    case 'drinkBrew':
+      return drinkBrew(state, ctx, action.brewId);
+
+    case 'setThread':
+      return setThread(state, action.axis, action.index, action.threadId);
+
+    case 'commitWeave':
+      return commitWeave(state, ctx);
+
+    case 'spinThread':
+      return spinThread(state, ctx, action.threadId);
+
+    case 'setBeamRow': {
+      state.refraction.entryRow = Math.max(0, Math.min(state.face.h - 1, action.row));
+      state.refraction.pathDirty = true;
+      return { ok: true };
+    }
+
+    case 'setMirror':
+      return setMirror(state, action.cell, action.kind);
+
+    case 'buyMirror': {
+      const cost = D(40).mul(Decimal.pow(1.5, state.refraction.mirrorStock - 2));
+      if (!spendCurrency(state, 'silica', cost)) return { ok: false, reason: `${cost.toFixed(0)} Silica for the next mirror` };
+      state.refraction.mirrorStock += 1;
+      return { ok: true };
+    }
+
+    case 'startObservation':
+      return startObservation(state, action.tier);
+
+    case 'collectObservation':
+      return collectObservation(state, ctx);
+
+    case 'benchAttempt':
+      return benchAttempt(state, ctx, action.puzzleId, action.mirrors);
+
+    case 'equipLens':
+      return equipLens(state, action.puzzleId, action.slot ?? 1);
+
+    case 'warrenEnter':
+      return warrenEnter(state, action.id);
+
+    case 'warrenAnswer':
+      return warrenAnswer(state, ctx, action.id, action.answer);
+
+    case 'warrenClaim':
+      return warrenClaim(state, ctx);
+
+    case 'warrenLeave':
+      return warrenLeave(state);
+
+    case 'inscribe':
+      return inscribe(state, ctx, action.target, action.sequence as never);
+
+    case 'setChoke':
+      return setChoke(state, action.on);
+
+    case 'emergencyPurge':
+      return emergencyPurge(state, ctx);
+
+    case 'layPipe':
+      return layPipe(state, action.cell);
+
+    case 'recallCrew': {
+      state.guild.crewRecalled = true;
+      ctx.emit({ type: 'crewRecalled' });
+      return { ok: true };
+    }
+
+    case 'buyFuel':
+      return buyFuel(state, action.fuelId, action.count ?? 1);
+
+    case 'placeFuel':
+      return placeFuel(state, action.cell, action.fuelId);
+
+    case 'lightCell':
+      return lightCell(state, action.cell);
+
+    case 'setOverdrive':
+      return setOverdrive(state, action.on);
+
+    case 'setDraw':
+      return setDraw(state, action.on);
+
+    case 'refine':
+      return refine(state, ctx, action.materialId, action.band as PurityBand);
+
+    case 'transmute':
+      return transmute(state, ctx, action.a, action.b);
+
+    case 'salvageTool':
+      return salvageTool(state, ctx, action.toolId, action.extract);
+    case 'bulkSalvage':
+      return bulkSalvage(state, ctx, action.toolIds, action.extract);
+    case 'fuseGems':
+      return fuseGems(state, ctx, action.gemId);
+    case 'practiceRunes':
+      return practiceRunes(state, ctx, action.sequence);
+
+    case 'temperTool':
+      return temperTool(state, ctx, action.temperId);
+
+    case 'commitWell':
+      return commitToWell(state, action.wellId, D(action.amount));
+
+    case 'collectWell':
+      return collectWell(state, ctx, action.wellId);
+
+    case 'answerAnomaly':
+      return answerAnomaly(state, mods, ctx);
+
+    case 'listen':
+      return listen(state, mods, ctx);
+
+    case 'setListenAt': {
+      state.hollow.listenAt = Math.max(0, Math.min(100, action.stacks));
+      return { ok: true };
+    }
+
+    case 'rebuildCell':
+      return rebuildCell(state, ctx, action.cell);
+
+    case 'tapeRecord': {
+      if (action.on) {
+        state.chamber.running = false;
+        state.chamber.tape = [];
+        state.chamber.trace = [];
+        state.chamber.cursor = 0;
+      }
+      state.chamber.recording = action.on;
+      return { ok: true };
+    }
+
+    case 'tapeRun': {
+      if (state.chamber.tape.length === 0) return { ok: false, reason: 'The tape is blank' };
+      state.chamber.recording = false;
+      state.chamber.running = action.on;
+      state.chamber.cursor = 0;
+      state.chamber.stepTimer = 0;
+      return { ok: true };
+    }
+
+    case 'tapeClear': {
+      state.chamber.tape = [];
+      state.chamber.trace = [];
+      state.chamber.running = false;
+      state.chamber.recording = false;
+      state.chamber.cursor = 0;
+      return { ok: true };
+    }
+
+    case 'touchCore': {
+      if (state.shell.current !== 'aleph') return { ok: false, reason: 'The Core is at the bottom of everything, not here' };
+      if (state.depth < 40) return { ok: false, reason: 'Deeper. It is always deeper' };
+      const finalWarden = wardenOf('aleph');
+      if (finalWarden && !state.combat.wardens.includes('aleph') && !lawFlag(state, 'wardenOptional')) {
+        return { ok: false, reason: 'Something is standing between you and the first rock. It has been waiting the whole time' };
+      }
+      state.aleph.coreTouched = true;
+      ctx.emit({ type: 'coreTouched' });
+      return { ok: true };
+    }
+
+    case 'recurse':
+      return doRecursion(state, ctx, deps.replaceState);
+
+    case 'buyAxiom':
+      return buyAxiom(state, ctx, action.id);
+
+    // --- Phase 12: the long tail ------------------------------------------
+    case 'spiral':
+      return doSpiral(state, ctx, deps.replaceState);
+
+    case 'buyGridSlot': {
+      const cost = gridSlotCost(state.spiral.slots);
+      const held = getCurrency(state, 'spiral');
+      if (held.lt(cost)) return { ok: false, reason: `${cost} Spiral for the next slot` };
+      spendCurrency(state, 'spiral', D(cost));
+      state.spiral.slots += 1;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'buyLicence': {
+      const cost = licenceCost(state.spiral.licences);
+      const held = getCurrency(state, 'spiral');
+      if (held.lt(cost)) return { ok: false, reason: `${cost} Spiral for the next licence` };
+      spendCurrency(state, 'spiral', D(cost));
+      state.spiral.licences += 1;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'placeModule': {
+      if (!state.spiral.modules.includes(action.id)) return { ok: false, reason: 'That module is not unlocked' };
+      if (action.cell < 0 || action.cell >= GRID_CELLS) return { ok: false, reason: 'No such cell' };
+      const used = Object.keys(state.spiral.grid).length;
+      if (state.spiral.grid[action.cell] === undefined && used >= state.spiral.slots) {
+        return { ok: false, reason: 'No free slot — buy one with Spiral' };
+      }
+      for (const [cell, id] of Object.entries(state.spiral.grid)) {
+        if (id === action.id && Number(cell) !== action.cell) delete state.spiral.grid[Number(cell)];
+      }
+      state.spiral.grid[action.cell] = action.id;
+      ctx.dirty();
+      ctx.emit({ type: 'modulePlaced', id: action.id, cell: action.cell });
+      return { ok: true };
+    }
+
+    case 'clearModule': {
+      delete state.spiral.grid[action.cell];
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'startChallenge':
+      return startChallenge(state, ctx, action.id, deps.replaceState);
+
+    case 'abandonChallenge':
+      return abandonChallenge(state, ctx, deps.replaceState);
+
+    case 'licenseShell': {
+      if (state.spiral.shells.length >= state.spiral.licences) {
+        return { ok: false, reason: 'No licence free — buy one with Spiral' };
+      }
+      if (state.spiral.shells.some((s) => s.shellId === action.shellId)) {
+        return { ok: false, reason: 'That world already runs' };
+      }
+      state.spiral.shells.push({ shellId: action.shellId, depth: 0, policy: null, runSec: 0, collapses: 0 });
+      ctx.dirty();
+      ctx.emit({ type: 'shellLicensed', shellId: action.shellId });
+      return { ok: true };
+    }
+
+    case 'setShellPolicy': {
+      const sh = state.spiral.shells.find((s) => s.shellId === action.shellId);
+      if (!sh) return { ok: false, reason: 'That world does not run' };
+      sh.policy = action.policy;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'takeInHand': {
+      state.spiral.inHand = action.shellId;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'equipRelic': {
+      const r = equipRelic(state, action.uid, action.slot);
+      if (r.ok) ctx.dirty();
+      return r;
+    }
+
+    case 'unequipRelic': {
+      state.relics.equipped = state.relics.equipped.filter((_, i) => i !== action.slot);
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'fuseRelics': {
+      const r = fuseRelics(state, action.keepUid, action.feedUid);
+      if (r.ok) {
+        ctx.dirty();
+        const keep = state.relics.held.find((x) => x.uid === action.keepUid);
+        if (keep) ctx.emit({ type: 'relicFused', relicId: String(keep.uid), rarity: RARITIES[keep.rarity] ?? 'Common' });
+      }
+      return r;
+    }
+
+    case 'toggleRelicLock': {
+      const r = toggleRelicLock(state, action.uid);
+      if (r.ok) ctx.dirty();
+      return r;
+    }
+
+    case 'donateRelic':
+      return donateToCase(state, ctx, action.caseId, `relic:${action.uid}`, action.uid);
+
+    case 'donateItem':
+      return donateToCase(state, ctx, action.caseId, action.key);
+
+    case 'sendExpedition': {
+      const route = ROUTE_BY_ID.get(action.routeId);
+      if (!route) return { ok: false, reason: 'No such route' };
+      if (state.expeditions.active.some((e) => e.crewId === action.crewId)) {
+        return { ok: false, reason: 'That crew is already out' };
+      }
+      // A crew can set off from an installed point on the column — a cache — not
+      // only the surface. A deeper start reaches a deeper world (see museum.ts).
+      const fromDepth = action.fromDepth ?? 0;
+      if (fromDepth > 0 && !state.shaft.caches.some((c) => c.shell === state.shell.current && c.depth === fromDepth)) {
+        return { ok: false, reason: 'A crew departs the column only from a cache you have sunk.' };
+      }
+      state.expeditions.active.push({
+        crewId: action.crewId,
+        routeId: action.routeId,
+        startedMs: state.guild.clockMs,
+        durationMs: routeDurationMs(state, action.crewId, route),
+        fromDepth,
+      });
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'claimExpedition':
+      return claimExpedition(state, ctx, action.crewId);
+
+    case 'setKilnReverse': {
+      if (!lawFlag(state, 'kilnReverse')) return { ok: false, reason: 'The Kiln only runs one way. So far' };
+      state.kiln.reverse = action.on;
+      return { ok: true };
+    }
+
+    case 'buyCoreNode': {
+      const def = coreNodeDef(action.id);
+      if (!coreNodeAvailable(state, action.id)) {
+        return { ok: false, reason: 'The Echo-scarred ring answers only to those who have Breached' };
+      }
+      const level = coreNodeLevel(state, action.id);
+      if (level >= def.maxLevel) return { ok: false, reason: 'Max level' };
+      const cost = coreNodeCost(level);
+      if (!spendCurrency(state, 'core', cost)) return { ok: false, reason: 'Not enough Cores' };
+      state.collapse.nodes[action.id] = level + 1;
+      ctx.dirty();
+      return { ok: true, data: { level: level + 1 } };
+    }
+
+    case 'buySkillNode': {
+      const def = skillNodeDef(action.id);
+      if (def.stub) return { ok: false, reason: 'Sealed' };
+      const rank = skillRank(state, action.id);
+      if (rank >= def.maxRank) return { ok: false, reason: 'Max rank' };
+      if (state.delver.skillPoints < def.costPerRank) {
+        return { ok: false, reason: 'Not enough skill points' };
+      }
+      state.delver.skillPoints -= def.costPerRank;
+      state.delver.skills[action.id] = rank + 1;
+      ctx.dirty();
+      return { ok: true, data: { rank: rank + 1 } };
+    }
+
+    case 'respecSkills': {
+      const refund = spentSkillPoints(state);
+      state.delver.skills = {};
+      state.delver.skillPoints += refund;
+      ctx.dirty();
+      return { ok: true, data: { refund } };
+    }
+
+    case 'hydrate': {
+      deps.replaceState(action.state);
+      const next = action.state;
+      for (const cs of allCraftSystems()) cs.ensureState(next);
+      next.shell.coresEarnedThisBreach = D(next.shell.coresEarnedThisBreach ?? 0);
+      // Migrated wells totals arrive as plain numbers.
+      next.wells.totalCommitted = D(next.wells.totalCommitted ?? 0);
+      next.wells.totalReturned = D(next.wells.totalReturned ?? 0);
+      for (const w of next.wells.active) w.amount = D(w.amount ?? 0);
+      ctx.dirty();
+      const awaySec = Math.max(0, (action.nowMs - next.stats.lastSavedAt) / 1000);
+      if (awaySec > 60) {
+        next.offline = applyOfflineProgress(next, mods, ctx, awaySec);
+      }
+      next.stats.lastSavedAt = action.nowMs;
+      return { ok: true, data: { awaySec } };
+    }
+
+    case 'applyOffline': {
+      if (action.seconds <= 0) return { ok: false, reason: 'No time passed' };
+      state.offline = applyOfflineProgress(state, mods, ctx, action.seconds);
+      return { ok: true, data: state.offline };
+    }
+
+    case 'dismissOffline':
+      if (state.offline) {
+        state.stats.offlineClaimed = true;
+        state.stats.longestOfflineSec = Math.max(state.stats.longestOfflineSec, state.offline.seconds);
+      }
+      state.offline = null;
+      return { ok: true };
+
+    case 'markSaved':
+      state.stats.lastSavedAt = action.nowMs;
+      return { ok: true };
+
+    case 'markSystemsSeen': {
+      const set = new Set(state.seenSystems ?? []);
+      for (const id of action.ids) set.add(id);
+      state.seenSystems = [...set];
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'markExported':
+      state.stats.saveExported = true;
+      return { ok: true };
+
+    case 'hardReset': {
+      deps.replaceState(initialState(state.stats.lastSavedAt));
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'debug': {
+      if (action.op === 'grant') {
+        addCurrency(state, action.currency, D(action.amount));
+        ctx.dirty();
+        return { ok: true };
+      }
+      // 'warp' is handled by the engine facade (it drives tick).
+      return { ok: false, reason: 'Handled by engine' };
+    }
+
+    // -----------------------------------------------------------------------
+    // THE CONSIDERED HAND (Phase 21) — quality-of-life. None of these change a
+    // rate, a cost, or a yield; they remember choices the player already made.
+    // -----------------------------------------------------------------------
+    case 'undo':
+      // The window's snapshot lives in the engine facade closure; it intercepts
+      // 'undo' before this switch. Reached only if the facade is bypassed.
+      return { ok: false, reason: 'Handled by engine' };
+
+    case 'setConfirmSpendFrac': {
+      state.qol.confirmSpendFrac = Math.max(0, Math.min(1, action.frac));
+      return { ok: true };
+    }
+
+    case 'saveBlueprint': {
+      const id = nextQolId(state.qol.blueprints, 'bp');
+      state.qol.blueprints.push({
+        id,
+        name: action.name.trim() || `Design ${state.qol.blueprints.length + 1}`,
+        tier: action.tier,
+        head: action.head,
+        haft: action.haft,
+        binding: action.binding,
+      });
+      return { ok: true, data: { id } };
+    }
+
+    case 'deleteBlueprint': {
+      state.qol.blueprints = state.qol.blueprints.filter((b) => b.id !== action.id);
+      return { ok: true };
+    }
+
+    case 'saveLatticeLayout': {
+      const lat = state.lattice;
+      if (!lat.unlocked) return { ok: false, reason: 'The Lattice is still buried' };
+      const motifs = Object.entries(lat.cells).map(([key, m]) => {
+        const { q, r } = parseKey(key);
+        return { q, r, shape: m.shape, rank: m.rank };
+      });
+      if (motifs.length === 0) return { ok: false, reason: 'The board is empty — nothing to remember' };
+      const id = nextQolId(state.qol.latticeLayouts, 'll');
+      state.qol.latticeLayouts.push({
+        id,
+        name: action.name.trim() || `Layout ${state.qol.latticeLayouts.length + 1}`,
+        motifs,
+      });
+      return { ok: true, data: { id } };
+    }
+
+    case 'restoreLatticeLayout': {
+      const layout = state.qol.latticeLayouts.find((l) => l.id === action.id);
+      if (!layout) return { ok: false, reason: 'No such layout' };
+      const lat = state.lattice;
+      if (!lat.unlocked) return { ok: false, reason: 'The Lattice is still buried' };
+      // Fill empty sockets only; leave anything already placed alone. Placement
+      // pays the ordinary Motif cost through the normal path, so no free boards.
+      let placed = 0;
+      for (const m of layout.motifs) {
+        if (lat.cells[hexKey(m.q, m.r)]) continue;
+        const res = placeMotif(state, mods, ctx, m.q, m.r, m.shape, m.rank);
+        if (res.ok) placed++;
+        else if (res.reason?.includes('Motif')) break; // out of currency — stop here
+      }
+      return placed > 0
+        ? { ok: true, data: { placed } }
+        : { ok: false, reason: 'Nothing to place — the board is already set, or not enough Motifs' };
+    }
+
+    case 'deleteLatticeLayout': {
+      state.qol.latticeLayouts = state.qol.latticeLayouts.filter((l) => l.id !== action.id);
+      return { ok: true };
+    }
+
+    case 'toggleChordLock': {
+      const locked = state.qol.lockedChords;
+      const idx = locked.indexOf(action.id);
+      if (idx >= 0) locked.splice(idx, 1);
+      else locked.push(action.id);
+      return { ok: true };
+    }
+
+    case 'togglePin': {
+      const pins = state.qol.pins;
+      const idx = pins.indexOf(action.materialId);
+      if (idx >= 0) pins.splice(idx, 1);
+      else pins.push(action.materialId);
+      return { ok: true };
+    }
+
+    case 'setRefinePreset': {
+      const presets = state.qol.refinePresets;
+      const idx = presets.findIndex((p) => p.materialId === action.materialId);
+      if (action.toBand === null) {
+        if (idx >= 0) presets.splice(idx, 1);
+        return { ok: true };
+      }
+      const existing = presets[idx];
+      if (existing) {
+        existing.toBand = action.toBand;
+        existing.enabled = true;
+      } else {
+        presets.push({ materialId: action.materialId, toBand: action.toBand, enabled: true });
+      }
+      return { ok: true };
+    }
+
+    case 'toggleRefinePreset': {
+      const preset = state.qol.refinePresets.find((p) => p.materialId === action.materialId);
+      if (preset) preset.enabled = !preset.enabled;
+      return { ok: true };
+    }
+
+    case 'setAutoCollapseDepth': {
+      state.qol.autoCollapseDepth =
+        action.depth === null ? null : Math.max(1, Math.floor(action.depth));
+      return { ok: true };
+    }
+
+    case 'setCarryUpgrade': {
+      // Only a resetting face upgrade can be carried — carrying a structure or
+      // a survivor-of-collapse would be meaningless. null clears the mark.
+      if (action.upgradeId === null) {
+        state.qol.carryUpgradeId = null;
+        return { ok: true };
+      }
+      const def = allUpgrades().find((u) => u.id === action.upgradeId);
+      if (!def || !def.resetsOnCollapse) return { ok: false, reason: 'That cannot be carried' };
+      state.qol.carryUpgradeId = action.upgradeId;
+      return { ok: true };
+    }
+
+    case 'setBookmark': {
+      const bm = state.qol.bookmarks;
+      const has = bm.includes(action.entryId);
+      if (action.on && !has) bm.push(action.entryId);
+      else if (!action.on && has) state.qol.bookmarks = bm.filter((x) => x !== action.entryId);
+      return { ok: true };
+    }
+
+    case 'setNote': {
+      if (action.note.trim() === '') delete state.qol.notes[action.entryId];
+      else state.qol.notes[action.entryId] = action.note;
+      return { ok: true };
+    }
+
+    case 'markRead': {
+      // Store the UI-supplied signature of the entry as you saw it. "What changed
+      // since you last read this" is then: the entry's current signature exceeds
+      // the one on file (or there is none) — e.g. a page that has since unlocked.
+      state.qol.readAt[action.entryId] = action.sig;
+      return { ok: true };
+    }
+  }
+}
+
+/** Deterministic, collision-free id for a saved-item list: prefix + (max+1). */
+function nextQolId(items: { id: string }[], prefix: string): string {
+  let max = 0;
+  for (const it of items) {
+    const n = parseInt(it.id.slice(prefix.length), 10);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return `${prefix}${max + 1}`;
+}
+
+export { MAX_DRILLS };

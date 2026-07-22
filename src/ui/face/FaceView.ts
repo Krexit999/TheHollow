@@ -1,0 +1,1172 @@
+/**
+ * The Face — PixiJS renderer. Beveled procedural tiles, charge as warm light
+ * in the rock, cracks as cells deplete, shards + number pops + screen shake
+ * on chips, drills as readable geometric bots. No assets: everything is
+ * generated. Respects prefers-reduced-motion.
+ */
+import {
+  Application,
+  Container,
+  Graphics,
+  Text,
+  TextStyle,
+  Texture,
+  Sprite,
+} from 'pixi.js';
+import { cellCap, type ChipResult } from '../../engine/systems/face';
+import { figureHintCells } from '../../engine/systems/figures';
+import { ModifierCache } from '../../engine/modifiers';
+import type { DrillBehavior, Engine } from '../../engine';
+import { fmt } from '../../engine';
+import { useGame } from '../store';
+
+// Per-shell face themes. Loam: warm lamplight on stone. Ferrite: cold,
+// magnetic, industrial — charge as pale voltage in the metal.
+interface FaceTheme {
+  coldStone: number;
+  coldStoneEdge: number;
+  warmLow: number;
+  warmHigh: number;
+  glowCore: number;
+  tileEdgeDark: number;
+  crackColor: number;
+  shardHues: number[];
+  popFill: number;
+  lampInner: string;
+  backdrop: number;
+}
+
+const FACE_THEMES: Record<string, FaceTheme> = {
+  loam: {
+    coldStone: 0x23242c,
+    coldStoneEdge: 0x33343e,
+    warmLow: 0x4a3a24,
+    warmHigh: 0xc98e4a,
+    glowCore: 0xf3c678,
+    tileEdgeDark: 0x08070a,
+    crackColor: 0x0a0908,
+    shardHues: [0xd4a86a, 0xa97c42, 0x8a6a3f, 0xe8c98f],
+    popFill: 0xfcd34d,
+    lampInner: 'rgba(251,191,36,0.05)',
+    backdrop: 0x14110e,
+  },
+  ferrite: {
+    coldStone: 0x1e2126,
+    coldStoneEdge: 0x363c46,
+    warmLow: 0x2c3a46,
+    warmHigh: 0x7fa8c0,
+    glowCore: 0xd8eef8,
+    tileEdgeDark: 0x05070a,
+    crackColor: 0x060809,
+    shardHues: [0x9fb3c8, 0x7089ab, 0xb8ccd8, 0x5c6b7c],
+    popFill: 0xcfe8f5,
+    lampInner: 'rgba(160,210,235,0.055)',
+    backdrop: 0x0e1216,
+  },
+  // Glassmere: frozen light. Cold, still, clear — the beam is the event.
+  glassmere: {
+    coldStone: 0x232833,
+    coldStoneEdge: 0x3c4658,
+    warmLow: 0x35455c,
+    warmHigh: 0xa8c8e8,
+    glowCore: 0xeef8ff,
+    tileEdgeDark: 0x06080c,
+    crackColor: 0x080a0e,
+    shardHues: [0xbcd8ee, 0x8aa8c8, 0xe0f0fa, 0x6c88a8],
+    popFill: 0xe8f4ff,
+    lampInner: 'rgba(190,220,245,0.05)',
+    backdrop: 0x0c1016,
+  },
+  // Cinder: the loudest shell in a quiet game. Ember on near-black; ALL the
+  // boldness is spent on heat — everything that isn't burning stays quiet.
+  cinder: {
+    coldStone: 0x241d1a,
+    coldStoneEdge: 0x3d302a,
+    warmLow: 0x4a2418,
+    warmHigh: 0xd06438,
+    glowCore: 0xffb36a,
+    tileEdgeDark: 0x0a0605,
+    crackColor: 0x0c0605,
+    shardHues: [0xd08a5a, 0xa85434, 0xe8a05c, 0x7c4630],
+    popFill: 0xffc27a,
+    lampInner: 'rgba(255,140,70,0.05)',
+    backdrop: 0x120b08,
+  },
+  // Hollow: the absence of everything the game has been. Near-black on
+  // near-black; the carried signatures are the only things alive on screen,
+  // and a rebuilt cell is light returning — a faint warm ghost of rock.
+  hollow: {
+    coldStone: 0x0e0e14,
+    coldStoneEdge: 0x1a1a26,
+    warmLow: 0x2a2740,
+    warmHigh: 0x7a72a8,
+    glowCore: 0xc8bfe8,
+    tileEdgeDark: 0x060608,
+    crackColor: 0x050508,
+    shardHues: [0x8a82b0, 0x635a86, 0xa89ed0, 0x4a4468],
+    popFill: 0xc8bfe8,
+    lampInner: 'rgba(140,130,190,0.04)',
+    backdrop: 0x08080c,
+  },
+  // Aleph: everything at once. The first rock, warm gold — the arrival.
+  aleph: {
+    coldStone: 0x1a1710,
+    coldStoneEdge: 0x30291a,
+    warmLow: 0x4a3c1e,
+    warmHigh: 0xd9c25c,
+    glowCore: 0xf0e6a8,
+    tileEdgeDark: 0x0a0805,
+    crackColor: 0x0a0805,
+    shardHues: [0xd9c25c, 0xa8934a, 0xf0e6a8, 0x8a7838],
+    popFill: 0xf0e6a8,
+    lampInner: 'rgba(230,210,120,0.06)',
+    backdrop: 0x100d08,
+  },
+  // Verdance: humid, green, slightly too eager. The rock is ALIVE.
+  verdance: {
+    coldStone: 0x202a1d,
+    coldStoneEdge: 0x394a30,
+    warmLow: 0x2e4a22,
+    warmHigh: 0x8fbf5e,
+    glowCore: 0xe6f5aa,
+    tileEdgeDark: 0x070a06,
+    crackColor: 0x090c07,
+    shardHues: [0x9ccf7a, 0x6ba14e, 0xc9e694, 0x577f3f],
+    popFill: 0xdcf2a4,
+    lampInner: 'rgba(160,220,120,0.05)',
+    backdrop: 0x0d130c,
+  },
+};
+
+const BEHAVIOR_COLORS: Record<DrillBehavior, number> = {
+  fullest: 0xfbbf24, // amber — goes for the richest rock
+  sweep: 0x5eead4, // teal — methodical passes
+  random: 0xc4b5fd, // violet — chaos
+  chain: 0xfb7185, // rose — follows the seam
+};
+
+function lerpColor(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  return (
+    (Math.round(ar + (br - ar) * t) << 16) |
+    (Math.round(ag + (bg - ag) * t) << 8) |
+    Math.round(ab + (bb - ab) * t)
+  );
+}
+
+/** Deterministic per-cell rng for crack shapes. */
+function mulberry(seed: number): () => number {
+  let a = seed + 0x6d2b79f5;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+interface TileEntry {
+  g: Graphics;
+  band: number;
+  crackStage: number;
+  flash: number;
+  vine: number;
+  fruitBand: number;
+}
+
+interface Particle {
+  g: Graphics;
+  vx: number;
+  vy: number;
+  vr: number;
+  life: number;
+  maxLife: number;
+}
+
+interface Pop {
+  t: Text;
+  life: number;
+  maxLife: number;
+  vy: number;
+}
+
+interface DrillSprite {
+  root: Container;
+  body: Graphics;
+  beam: Graphics;
+  behavior: DrillBehavior;
+  pulse: number;
+}
+
+export class FaceView {
+  private app!: Application;
+  private world = new Container(); // shaken
+  private backdrop = new Graphics();
+  private tileLayer = new Container();
+  private drillLayer = new Container();
+  private fxLayer = new Container();
+  private popLayer = new Container();
+
+  private tiles: TileEntry[] = [];
+  private faceW = 0;
+  private faceH = 0;
+  private cellSize = 48;
+  private gridX = 0;
+  private gridY = 0;
+
+  private particles: Particle[] = [];
+  private particlePool: Graphics[] = [];
+  private pops: Pop[] = [];
+  private popPool: Text[] = [];
+  private drillSprites: DrillSprite[] = [];
+
+  private shakeAmp = 0;
+  private mods = new ModifierCache();
+  private lastFeedSeq = -1;
+  private shellId = 'loam';
+  private lampSprite: Sprite | null = null;
+  private chainArcs: { g: Graphics; life: number }[] = [];
+  private lastChainCell = -1;
+  private magnetLayer = new Graphics();
+  private beamLayer = new Graphics();
+  private heatLayer = new Graphics();
+  // THE FACE CLUSTER (v20): marks, sweep trail, and the pillar-5 figure hint.
+  private markLayer = new Graphics();
+  private lastPx = 0;
+  private lastPy = 0;
+  private sweepCells: number[] = [];
+  private hintPhase = 0;
+
+  private get theme(): FaceTheme {
+    return FACE_THEMES[this.shellId] ?? FACE_THEMES['loam']!;
+  }
+  private pointerDown = false;
+  private cellCooldown = new Map<number, number>();
+  private destroyed = false;
+  private resizeObserver!: ResizeObserver;
+
+  private constructor(
+    private host: HTMLElement,
+    private engine: Engine,
+    private reducedMotion: boolean,
+  ) {}
+
+  static async create(host: HTMLElement, engine: Engine, reducedMotion: boolean): Promise<FaceView> {
+    const view = new FaceView(host, engine, reducedMotion);
+    await view.init();
+    return view;
+  }
+
+  private async init(): Promise<void> {
+    this.app = new Application();
+    await this.app.init({
+      background: 0x0c0a09,
+      antialias: true,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      autoDensity: true,
+      resizeTo: this.host,
+      preserveDrawingBuffer: true,
+    });
+    if (this.destroyed) {
+      this.app.destroy(true);
+      return;
+    }
+    this.host.appendChild(this.app.canvas);
+    this.app.canvas.style.touchAction = 'none';
+
+    this.shellId = this.engine.getState().shell.current;
+    this.world.addChild(this.backdrop, this.tileLayer, this.heatLayer, this.beamLayer, this.markLayer, this.magnetLayer, this.drillLayer, this.fxLayer, this.popLayer);
+    this.app.stage.addChild(this.world);
+    this.lampSprite = this.makeLamplight();
+    this.app.stage.addChild(this.lampSprite);
+
+    this.app.stage.eventMode = 'static';
+    this.app.stage.hitArea = { contains: () => true };
+    this.app.stage.on('pointerdown', (e) => {
+      this.pointerDown = true;
+      this.lastPx = e.globalX; this.lastPy = e.globalY;
+      this.onPress(e.globalX, e.globalY);
+    });
+    this.app.stage.on('pointermove', (e) => {
+      this.lastPx = e.globalX; this.lastPy = e.globalY;
+      if (this.pointerDown) this.onDrag(e.globalX, e.globalY);
+    });
+    const up = () => {
+      if (this.pointerDown && useGame.getState().faceMode === 'sweep' && this.sweepCells.length > 0) {
+        this.engine.dispatch({ type: 'sweep', cells: this.sweepCells.slice() });
+      }
+      this.pointerDown = false;
+      this.sweepCells = [];
+    };
+    this.app.stage.on('pointerup', up);
+    this.app.stage.on('pointerupoutside', up);
+
+    this.resizeObserver = new ResizeObserver(() => this.layout());
+    this.resizeObserver.observe(this.host);
+
+    this.rebuildTiles();
+    this.app.ticker.add(() => this.frame(this.app.ticker.deltaMS / 1000));
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.resizeObserver?.disconnect();
+    if (this.app?.renderer) {
+      this.app.destroy(true, { children: true });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Layout + tiles
+  // -------------------------------------------------------------------------
+
+  private layout(): void {
+    if (!this.app?.renderer) return;
+    this.app.resize(); // re-measure the host before fitting the grid
+    const { width, height } = this.app.screen;
+    const pad = 18;
+    const size = Math.min(
+      (width - pad * 2) / this.faceW,
+      (height - pad * 2 - 14) / this.faceH,
+      72,
+    );
+    this.cellSize = Math.max(20, size);
+    this.gridX = (width - this.cellSize * this.faceW) / 2;
+    this.gridY = (height - this.cellSize * this.faceH) / 2 + 4;
+    this.tiles.forEach((tile, i) => {
+      const x = i % this.faceW;
+      const y = Math.floor(i / this.faceW);
+      tile.g.position.set(this.gridX + x * this.cellSize, this.gridY + y * this.cellSize);
+      tile.band = -1; // force redraw at new size
+    });
+    this.drawBackdrop();
+  }
+
+  /** The rock wall behind the tiles: a dark slab flecked with mineral dust. */
+  private drawBackdrop(): void {
+    const g = this.backdrop;
+    g.clear();
+    const pad = this.cellSize * 0.45;
+    const x = this.gridX - pad;
+    const y = this.gridY - pad;
+    const w = this.cellSize * this.faceW + pad * 2;
+    const h = this.cellSize * this.faceH + pad * 2;
+    g.roundRect(x, y, w, h, 14).fill({ color: this.theme.backdrop, alpha: 0.9 });
+    g.roundRect(x, y, w, h, 14).stroke({ width: 1, color: 0x35302a, alpha: 0.6 });
+    // Mineral speckle, denser toward the bottom — the dark presses in.
+    const rng = mulberry(this.faceW * 1000 + this.faceH);
+    const { width, height } = this.app.screen;
+    for (let i = 0; i < 130; i++) {
+      const sx = rng() * width;
+      const sy = rng() * height;
+      const warm = rng() > 0.7;
+      g.circle(sx, sy, rng() * 1.1 + 0.3).fill({
+        color: warm ? 0x8a6a3f : 0x3a3a44,
+        alpha: 0.05 + rng() * 0.07,
+      });
+    }
+  }
+
+  private rebuildTiles(): void {
+    const state = this.engine.getState();
+    this.faceW = state.face.w;
+    this.faceH = state.face.h;
+    this.tileLayer.removeChildren().forEach((c) => c.destroy());
+    this.tiles = state.face.cells.map(() => {
+      const g = new Graphics();
+      this.tileLayer.addChild(g);
+      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1 };
+    });
+    this.layout();
+  }
+
+  private drawTile(i: number, charge: number, cap: number): void {
+    const tile = this.tiles[i];
+    if (!tile) return;
+    const ratio = cap > 0 ? Math.min(1, charge / cap) : 0;
+    const band = Math.round(ratio * 14);
+    const crackStage = ratio > 0.66 ? 0 : ratio > 0.33 ? 1 : ratio > 0.05 ? 2 : 3;
+    // GROWTH: vine stage + fruit fullness participate in the redraw gate so
+    // the face visibly LIVES — it looks different every time you return.
+    const gstate = this.engine.getState();
+    const vine = gstate.growth.stage[i] ?? 0;
+    const cellCapPx = 8; // fruit banding only needs a coarse visual scale
+    const fruitBand = vine > 0 ? Math.min(4, Math.floor((gstate.growth.fruit[i] ?? 0) / (cellCapPx * 4))) : 0;
+    if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand && tile.flash <= 0) return;
+    tile.band = band;
+    tile.crackStage = crackStage;
+    tile.vine = vine;
+    tile.fruitBand = fruitBand;
+
+    const s = this.cellSize;
+    const m = Math.max(1.5, s * 0.05); // grout gap
+    const w = s - m * 2;
+    const r = Math.max(2, s * 0.14);
+    const g = tile.g;
+    g.clear();
+
+    const theme = this.theme;
+    // THE HOLLOW: there is no rock. A cell not yet reconstructed is ABSENCE —
+    // a faint dashed outline of where rock would be, nothing filled. Only a
+    // rebuilt cell draws as a real slab below (light returning, cell by cell).
+    if (gstate.shell.current === 'hollow' && !gstate.hollow.rebuilt.includes(i)) {
+      g.roundRect(m, m, w, w, r).stroke({ width: 1, color: 0x2a2740, alpha: 0.35 });
+      return;
+    }
+    // Seeded per-cell character: tone jitter + facet layout stay stable.
+    const rng = mulberry(i * 7919);
+    const jitter = 0.88 + rng() * 0.24;
+
+    // Base: cold stone that warms (or charges) as it fills.
+    const warm = lerpColor(theme.warmLow, theme.warmHigh, ratio);
+    const base = lerpColor(theme.coldStone, warm, Math.min(1, ratio * 1.15));
+    const jbase = lerpColor(theme.tileEdgeDark, base, jitter);
+    // Drop shadow foot, then the slab.
+    g.roundRect(m + 1, m + 2.5, w, w, r).fill({ color: 0x000000, alpha: 0.35 });
+    g.roundRect(m, m, w, w, r).fill(jbase);
+    // Bevel: bright crest top-left, dark foot bottom-right.
+    const crest = lerpColor(ratio > 0.3 ? theme.glowCore : theme.coldStoneEdge, 0xffffff, 0.08);
+    g.moveTo(m + r, m + 1)
+      .lineTo(m + w - r, m + 1)
+      .stroke({ width: 1.2, color: crest, alpha: 0.14 + ratio * 0.22 });
+    g.roundRect(m, m, w, w, r).stroke({ width: 1, color: ratio > 0.25 ? warm : theme.coldStoneEdge, alpha: 0.55 });
+    g.moveTo(m + r, m + w - 0.5)
+      .lineTo(m + w - r, m + w - 0.5)
+      .stroke({ width: 1.6, color: theme.tileEdgeDark, alpha: 0.8 });
+
+    // Charge = light held inside the rock: layered radial-ish glow.
+    if (ratio > 0.08) {
+      const cx = m + w / 2;
+      const cy = m + w / 2;
+      // The glow has to stay INSIDE the slab. At full charge the outer ring
+      // used to reach 0.693w from centre against a half-width of 0.5w, so a
+      // charged cell bulged ~19% of a tile past each edge and the grid read as
+      // overlapping circles rather than tiles — worst at full charge, which is
+      // exactly what a new player looks at first. Clamp the outer ring just
+      // inside the slab, clear of the corner radius; the growth curve at low
+      // charge is unchanged, only the top end is held.
+      const maxOuter = w * 0.46;
+      const gr = Math.min(w * (0.18 + 0.24 * ratio), maxOuter / 1.65);
+      g.circle(cx, cy, gr * 1.65).fill({ color: warm, alpha: 0.1 + 0.2 * ratio });
+      g.circle(cx, cy, gr).fill({ color: lerpColor(warm, theme.glowCore, 0.55), alpha: 0.12 + 0.3 * ratio });
+      g.circle(cx, cy, gr * 0.45).fill({ color: theme.glowCore, alpha: 0.18 + 0.4 * ratio });
+    }
+
+    // POLARITY: sign etched as SHAPE, not hue — a cross for +, a bar for −.
+    const state = this.engine.getState();
+    if (state.shell.current === 'ferrite' || state.shell.signatures.includes('polarity')) {
+      const sign = state.polarity.signs[i] ?? 1;
+      const px = m + w * 0.82;
+      const py = m + w * 0.18;
+      const sz = Math.max(2.5, w * 0.075);
+      const alpha = 0.5 + ratio * 0.3;
+      if (sign === 1) {
+        g.moveTo(px - sz, py).lineTo(px + sz, py).stroke({ width: 1.6, color: 0xe8f0f5, alpha });
+        g.moveTo(px, py - sz).lineTo(px, py + sz).stroke({ width: 1.6, color: 0xe8f0f5, alpha });
+      } else {
+        g.moveTo(px - sz, py).lineTo(px + sz, py).stroke({ width: 1.8, color: 0x9aa8b5, alpha });
+      }
+    }
+
+    // Facets: angular strata lines, brighter above the glow, darker below.
+    const facets = 2 + Math.floor(rng() * 2);
+    for (let f = 0; f < facets; f++) {
+      const y1 = m + w * (0.2 + rng() * 0.6);
+      const x1 = m + w * (0.08 + rng() * 0.25);
+      const midX = x1 + w * (0.2 + rng() * 0.3);
+      const drop = (rng() - 0.5) * w * 0.22;
+      g.moveTo(x1, y1)
+        .lineTo(midX, y1 + drop)
+        .lineTo(Math.min(m + w * 0.92, midX + w * (0.15 + rng() * 0.3)), y1 + drop * 0.4)
+        .stroke({ width: 1, color: rng() > 0.5 ? 0xffffff : 0x000000, alpha: 0.05 + ratio * 0.05 });
+    }
+
+    // Hairline cracks spread from the edges as the cell empties.
+    if (crackStage > 0) {
+      const crng = mulberry(i * 104729 + 7);
+      for (let c = 0; c < crackStage + 2; c++) {
+        // Start on a random edge, wander toward the middle.
+        const edge = Math.floor(crng() * 4);
+        let x = edge === 1 ? m + w : edge === 3 ? m : m + w * crng();
+        let y = edge === 0 ? m : edge === 2 ? m + w : m + w * crng();
+        const tx = m + w * (0.3 + crng() * 0.4);
+        const ty = m + w * (0.3 + crng() * 0.4);
+        g.moveTo(x, y);
+        const segs = 3 + Math.floor(crng() * 2);
+        for (let sgi = 1; sgi <= segs; sgi++) {
+          const t = sgi / segs;
+          x = x + (tx - x) * t + (crng() - 0.5) * w * 0.16;
+          y = y + (ty - y) * t + (crng() - 0.5) * w * 0.16;
+          g.lineTo(x, y);
+        }
+        g.stroke({ width: 0.8 + crackStage * 0.25, color: theme.crackColor, alpha: 0.28 + crackStage * 0.14 });
+      }
+    }
+
+    // GROWTH: vines drawn by AGE — a sprout curls in from a corner, a
+    // creeper walks two edges, a bloom flowers, a feral cell is swallowed.
+    // Stage is silhouette, fruit is berries: readable at a glance, no hue
+    // dependence (shape + density carry the information).
+    if (vine > 0) {
+      const vrng = mulberry(i * 31337 + vine * 101);
+      const young = 0x9ee07a;
+      const old = 0x3f6b32;
+      const vcol = lerpColor(young, old, (vine - 1) / 3);
+      const stroke = { width: Math.max(1.2, w * 0.035 + vine * 0.4), color: vcol, alpha: 0.85 };
+      const curl = (sx: number, sy: number, dx: number, dy: number, len: number) => {
+        g.moveTo(sx, sy);
+        let x = sx;
+        let y = sy;
+        for (let seg = 0; seg < 3; seg++) {
+          const wob = (vrng() - 0.5) * w * 0.18;
+          x += dx * len * 0.33 + -dy * wob;
+          y += dy * len * 0.33 + dx * wob;
+          g.lineTo(x, y);
+        }
+        g.stroke(stroke);
+        return [x, y] as const;
+      };
+      // Stage 1+: a tendril from the bottom-left. 2+: along the top. 3+: the
+      // right wall. 4: it owns the border.
+      curl(m + w * 0.08, m + w * 0.95, 1, -0.5, w * (0.3 + 0.15 * vine));
+      if (vine >= 2) curl(m + w * 0.9, m + w * 0.08, -1, 0.4, w * 0.5);
+      if (vine >= 3) curl(m + w * 0.95, m + w * 0.9, -0.4, -1, w * 0.5);
+      if (vine >= 4) {
+        g.roundRect(m + 1, m + 1, w - 2, w - 2, r).stroke({ width: Math.max(2, w * 0.07), color: old, alpha: 0.75 });
+        curl(m + w * 0.06, m + w * 0.1, 1, 0.6, w * 0.55);
+      }
+      // Berries: banked fruit as bright drupelets — what it's WORTH.
+      const berries = fruitBand + (vine >= 3 ? 1 : 0);
+      for (let b = 0; b < berries; b++) {
+        const bx = m + w * (0.15 + vrng() * 0.7);
+        const by = m + w * (0.15 + vrng() * 0.7);
+        g.circle(bx, by, Math.max(1.5, w * 0.045)).fill({ color: 0xd9f2a0, alpha: 0.95 });
+        g.circle(bx, by, Math.max(0.8, w * 0.02)).fill({ color: 0xf6ffd8, alpha: 0.9 });
+      }
+      // Blooms at stage 3: five-petal marks.
+      if (vine === 3) {
+        const bx = m + w * 0.5;
+        const by = m + w * 0.42;
+        for (let p = 0; p < 5; p++) {
+          const a = (p / 5) * Math.PI * 2;
+          g.circle(bx + Math.cos(a) * w * 0.06, by + Math.sin(a) * w * 0.06, w * 0.035).fill({ color: 0xeaf7c0, alpha: 0.8 });
+        }
+      }
+    }
+
+    // Chip flash.
+    if (tile.flash > 0) {
+      g.roundRect(m, m, w, w, r).fill({ color: theme.popFill, alpha: tile.flash * 0.45 });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Input
+  // -------------------------------------------------------------------------
+
+  private cellAt(px: number, py: number): number {
+    const x = Math.floor((px - this.gridX) / this.cellSize);
+    const y = Math.floor((py - this.gridY) / this.cellSize);
+    if (x < 0 || x >= this.faceW || y < 0 || y >= this.faceH) return -1;
+    return y * this.faceW + x;
+  }
+
+  /** PRESSURE: heat is FELT before it is read. An ember wash climbs the face
+   * from below as the gauge rises, and the grid takes a burning border by
+   * band. Every state is a static color — reduced-motion loses nothing but
+   * a slow breathing on the border; the danger reads identically without it. */
+  private heatPhase = 0;
+  private drawHeat(state: Readonly<ReturnType<Engine['getState']>>, dt: number): void {
+    const g = this.heatLayer;
+    g.clear();
+    const native = state.shell.current === 'cinder';
+    const carried = state.shell.signatures.includes('pressure');
+    if (!native && !carried) return;
+    const heat = state.pressure.heat;
+    if (heat <= 1) return;
+    const s = this.cellSize;
+    const gw = this.faceW * s;
+    const gh = this.faceH * s;
+    const dim = native ? 1 : 0.5;
+    // The wash: magma light climbing from the floor of the face.
+    const rise = gh * Math.min(1, heat / 100) * 0.9;
+    const bands = 6;
+    for (let i = 0; i < bands; i++) {
+      const h = (rise / bands) * (i + 1);
+      g.rect(this.gridX, this.gridY + gh - h, gw, rise / bands)
+        .fill({ color: i < 2 ? 0xff9a4a : 0xe05a28, alpha: (0.05 + 0.022 * (bands - i)) * (heat / 100) * dim });
+    }
+    // The floor of the face glows like a hearth-mouth from 40 heat up.
+    if (heat >= 40) {
+      g.rect(this.gridX, this.gridY + gh - 4, gw, 4)
+        .fill({ color: 0xff7a3a, alpha: 0.25 * (heat / 100) * dim + 0.1 });
+    }
+    // The border: amber past 70, burning past 85, full klaxon in overpressure.
+    if (heat >= 70) {
+      const hot = heat >= 85;
+      const klaxon = state.pressure.overpressureAtSec !== null;
+      this.heatPhase += dt;
+      const breathe = this.reducedMotion ? 1 : 0.75 + 0.25 * Math.sin(this.heatPhase * (klaxon ? 6 : 2));
+      const col = klaxon ? 0xff4a2a : hot ? 0xf07038 : 0xc98a4a;
+      const width = klaxon ? 6 : hot ? 4 : 2;
+      g.rect(this.gridX - width, this.gridY - width, gw + width * 2, gh + width * 2)
+        .stroke({ width, color: col, alpha: (klaxon ? 0.95 : hot ? 0.7 : 0.45) * breathe * dim });
+    }
+  }
+
+  /** REFRACTION: the beam is the centerpiece — a bright polyline walking
+   * the traced path, colored per wavelength segment, with mirror glyphs and
+   * amplifier sparkles. Hierarchy over effects: one line, one glow. */
+  private static WAVE_COLORS = [0xeef8ff, 0xff9a8a, 0xffc878, 0x9ee07a, 0x7fd4e0, 0xc0a8f0];
+  private drawBeam(state: Readonly<ReturnType<Engine['getState']>>): void {
+    const g = this.beamLayer;
+    g.clear();
+    const isGlass = state.shell.current === 'glassmere';
+    const carried = state.shell.signatures.includes('refraction');
+    if (!isGlass && !carried) return;
+    const path = state.refraction.path;
+    if (path.length === 0) return;
+    const s = this.cellSize;
+    const cx = (cell: number) => this.gridX + (cell % this.faceW) * s + s / 2;
+    const cy = (cell: number) => this.gridY + Math.floor(cell / this.faceW) * s + s / 2;
+    const dim = carried && !isGlass ? 0.45 : 1;
+    // Entry stub from the left edge.
+    g.moveTo(this.gridX - s * 0.4, cy(path[0]!.cell))
+      .lineTo(cx(path[0]!.cell), cy(path[0]!.cell))
+      .stroke({ width: 3, color: FaceView.WAVE_COLORS[path[0]!.color]!, alpha: 0.9 * dim });
+    for (let i = 0; i + 1 < path.length; i++) {
+      const a = path[i]!;
+      const b = path[i + 1]!;
+      const col = FaceView.WAVE_COLORS[a.color] ?? 0xeef8ff;
+      g.moveTo(cx(a.cell), cy(a.cell)).lineTo(cx(b.cell), cy(b.cell))
+        .stroke({ width: a.amplified ? 4.5 : 3, color: col, alpha: (a.amplified ? 0.95 : 0.8) * dim });
+      g.moveTo(cx(a.cell), cy(a.cell)).lineTo(cx(b.cell), cy(b.cell))
+        .stroke({ width: a.amplified ? 10 : 7, color: col, alpha: 0.18 * dim });
+    }
+    // Mirrors: crisp diagonal strokes in a socket.
+    for (const [cellStr, kind] of Object.entries(state.refraction.mirrors)) {
+      const cell = Number(cellStr);
+      const x = cx(cell);
+      const y = cy(cell);
+      const r = s * 0.26;
+      g.circle(x, y, r + 3).stroke({ width: 1.5, color: 0x8aa8c8, alpha: 0.8 });
+      if (kind === '/') g.moveTo(x - r, y + r).lineTo(x + r, y - r).stroke({ width: 3, color: 0xe8f4ff, alpha: 0.95 });
+      else g.moveTo(x - r, y - r).lineTo(x + r, y + r).stroke({ width: 3, color: 0xe8f4ff, alpha: 0.95 });
+    }
+    // Amplifier sparkle at full lenses on the path.
+    for (const b of path) {
+      if (!b.amplified) continue;
+      const x = cx(b.cell);
+      const y = cy(b.cell);
+      g.moveTo(x - 3, y).lineTo(x + 3, y).stroke({ width: 1.2, color: 0xffffff, alpha: 0.85 });
+      g.moveTo(x, y - 3).lineTo(x, y + 3).stroke({ width: 1.2, color: 0xffffff, alpha: 0.85 });
+    }
+  }
+
+  /** Magnet strip above the grid: + / − / ○ glyphs per rigged column. */
+  private drawMagnets(state: Readonly<ReturnType<Engine['getState']>>): void {
+    const g = this.magnetLayer;
+    g.clear();
+    if (state.shell.current !== 'ferrite' || state.polarity.magnetCount === 0) return;
+    const y = this.gridY - Math.max(12, this.cellSize * 0.28);
+    for (let col = 0; col < state.polarity.magnetCount; col++) {
+      const x = this.gridX + col * this.cellSize + this.cellSize / 2;
+      const pole = state.polarity.magnets[col] ?? 0;
+      const r = Math.max(5, this.cellSize * 0.14);
+      g.circle(x, y, r).fill({ color: 0x10141a, alpha: 0.9 });
+      g.circle(x, y, r).stroke({ width: 1.4, color: pole === 0 ? 0x4a5560 : 0x9fc4dd, alpha: 0.9 });
+      const sz = r * 0.55;
+      if (pole === 1) {
+        g.moveTo(x - sz, y).lineTo(x + sz, y).stroke({ width: 1.8, color: 0xe8f0f5 });
+        g.moveTo(x, y - sz).lineTo(x, y + sz).stroke({ width: 1.8, color: 0xe8f0f5 });
+      } else if (pole === -1) {
+        g.moveTo(x - sz, y).lineTo(x + sz, y).stroke({ width: 2, color: 0x9aa8b5 });
+      }
+    }
+  }
+
+  /** A press begins: what it does depends on the face mode. */
+  private onPress(px: number, py: number): void {
+    const mode = useGame.getState().faceMode;
+    if (mode === 'sweep') { this.sweepCells = []; this.addSweep(px, py); return; }
+    this.chipAt(px, py);
+  }
+
+  /** A drag continues in the current mode. */
+  private onDrag(px: number, py: number): void {
+    const mode = useGame.getState().faceMode;
+    if (mode === 'sweep') { this.addSweep(px, py); return; }
+    this.chipAt(px, py);
+  }
+
+  private addSweep(px: number, py: number): void {
+    const cell = this.cellAt(px, py);
+    if (cell < 0 || this.sweepCells.includes(cell)) return;
+    this.sweepCells.push(cell);
+  }
+
+  /** The sweep trail and the pillar-5 figure hint — on one layer. */
+  private drawFaceOverlay(state: Readonly<ReturnType<Engine['getState']>>, dt: number): void {
+    const g = this.markLayer;
+    g.clear();
+    const s = this.cellSize;
+    const mode = useGame.getState().faceMode;
+    const n = this.faceW * this.faceH;
+
+    // The sweep swathe under the finger.
+    if (mode === 'sweep' && this.pointerDown) {
+      for (const cell of this.sweepCells) {
+        if (cell < 0 || cell >= n) continue;
+        const { x, y } = this.cellCenter(cell);
+        const half = s * 0.42;
+        g.roundRect(x - half, y - half, half * 2, half * 2, s * 0.12)
+          .fill({ color: 0xffd98a, alpha: 0.18 }).stroke({ width: 1.5, color: 0xffd98a, alpha: 0.6 });
+      }
+    }
+
+    // FIGURE HINT (pillar 5): a faint glow at cells one chip from completing a
+    // figure. A POSITION, never a shape name. Static under reduced motion.
+    if (mode === 'chip') {
+      const hints = figureHintCells(state);
+      if (hints.length > 0) {
+        this.hintPhase += dt;
+        const pulse = this.reducedMotion ? 0.5 : 0.4 + 0.25 * Math.sin(this.hintPhase * 4);
+        for (const cell of hints) {
+          const { x, y } = this.cellCenter(cell);
+          g.circle(x, y, s * 0.2).stroke({ width: 2, color: this.theme.glowCore, alpha: 0.35 * pulse + 0.12 });
+        }
+      }
+    }
+  }
+
+  private chipAt(px: number, py: number): void {
+    const state = this.engine.getState();
+    // Optics mode (Glassmere): taps cycle a mirror ( / then \ then clear ).
+    if (useGame.getState().opticsMode) {
+      const cell = this.cellAt(px, py);
+      if (cell >= 0) {
+        const kind = state.refraction.mirrors[cell];
+        this.engine.dispatch({
+          type: 'setMirror',
+          cell,
+          kind: kind === '/' ? '\\' : kind === '\\' ? null : '/',
+        });
+      }
+      this.pointerDown = false;
+      return;
+    }
+    // Taps on the magnet strip cycle poles instead of chipping.
+    if (state.shell.current === 'ferrite' && state.polarity.magnetCount > 0) {
+      const stripY = this.gridY - Math.max(12, this.cellSize * 0.28);
+      if (Math.abs(py - stripY) < Math.max(8, this.cellSize * 0.2)) {
+        const col = Math.floor((px - this.gridX) / this.cellSize);
+        if (col >= 0 && col < state.polarity.magnetCount) {
+          this.engine.dispatch({ type: 'toggleMagnet', col });
+          this.pointerDown = false;
+          return;
+        }
+      }
+    }
+    const cell = this.cellAt(px, py);
+    if (cell < 0) return;
+    const now = performance.now();
+    const until = this.cellCooldown.get(cell) ?? 0;
+    if (now < until) return;
+    this.cellCooldown.set(cell, now + 170);
+    const result = this.engine.dispatch({ type: 'chip', cell });
+    const data = result.data as ChipResult | undefined;
+    if (!result.ok || !data || data.charge <= 0) return;
+    this.onChip(cell, data);
+  }
+
+  private onChip(cell: number, data: ChipResult): void {
+    const tile = this.tiles[cell];
+    if (tile) tile.flash = 1;
+    const { x, y } = this.cellCenter(cell);
+    const intensity = Math.min(1, data.charge / 8);
+    this.spawnShards(x, y, data.crit ? 12 : 5 + Math.round(intensity * 4), data.crit);
+    this.spawnPop(x, y, `+${fmt(data.dust)}`, data.crit);
+    for (const f of data.fractured) {
+      const c = this.cellCenter(f);
+      this.spawnShards(c.x, c.y, 3, false);
+      const ft = this.tiles[f];
+      if (ft) ft.flash = 0.7;
+    }
+    this.addShake(data.crit ? 7 : 1.5 + intensity * 3 + data.fractured.length);
+  }
+
+  private cellCenter(cell: number): { x: number; y: number } {
+    return {
+      x: this.gridX + (cell % this.faceW) * this.cellSize + this.cellSize / 2,
+      y: this.gridY + Math.floor(cell / this.faceW) * this.cellSize + this.cellSize / 2,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Juice
+  // -------------------------------------------------------------------------
+
+  private makeLamplight(): Sprite {
+    const c = document.createElement('canvas');
+    c.width = 512;
+    c.height = 512;
+    const ctx = c.getContext('2d')!;
+    const grad = ctx.createRadialGradient(256, 190, 60, 256, 256, 340);
+    grad.addColorStop(0, this.theme.lampInner);
+    grad.addColorStop(0.55, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(5,3,2,0.42)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 512, 512);
+    const sprite = new Sprite(Texture.from(c));
+    sprite.eventMode = 'none';
+    const fit = () => {
+      // The lamp is remade on shell change; stale handlers must self-remove.
+      if (sprite.destroyed) {
+        this.app.renderer.off('resize', fit);
+        return;
+      }
+      sprite.width = this.app.screen.width;
+      sprite.height = this.app.screen.height;
+    };
+    fit();
+    this.app.renderer.on('resize', fit);
+    return sprite;
+  }
+
+  private spawnShards(x: number, y: number, count: number, crit: boolean): void {
+    if (this.reducedMotion) return;
+    if (this.particles.length > 220) return;
+    for (let i = 0; i < count; i++) {
+      const g = this.particlePool.pop() ?? this.makeShard();
+      g.visible = true;
+      g.position.set(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 10);
+      g.rotation = Math.random() * Math.PI * 2;
+      g.scale.set(crit ? 1 + Math.random() : 0.5 + Math.random() * 0.7);
+      g.alpha = 1;
+      this.fxLayer.addChild(g);
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 90 + Math.random() * (crit ? 260 : 160);
+      this.particles.push({
+        g,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 110,
+        vr: (Math.random() - 0.5) * 10,
+        life: 0,
+        maxLife: 0.5 + Math.random() * 0.4,
+      });
+    }
+  }
+
+  private makeShard(): Graphics {
+    const g = new Graphics();
+    const hues = this.theme.shardHues;
+    const color = hues[Math.floor(Math.random() * hues.length)]!;
+    const r = 2.6;
+    g.moveTo(r, 0);
+    const sides = 3 + Math.floor(Math.random() * 2);
+    for (let i = 1; i <= sides; i++) {
+      const a = (i / sides) * Math.PI * 2;
+      g.lineTo(Math.cos(a) * r * (0.6 + Math.random() * 0.7), Math.sin(a) * r * (0.6 + Math.random() * 0.7));
+    }
+    g.fill(color);
+    return g;
+  }
+
+  private spawnPop(x: number, y: number, text: string, crit: boolean): void {
+    if (this.pops.length > 24) return;
+    const t = this.popPool.pop() ?? this.makePop();
+    t.text = crit ? `${text}!` : text;
+    t.style.fontSize = crit ? 17 : 12;
+    t.style.fill = crit ? 0xfb923c : this.theme.popFill;
+    t.visible = true;
+    t.alpha = 1;
+    t.position.set(x + (Math.random() - 0.5) * 12, y - 6);
+    t.anchor.set(0.5);
+    this.popLayer.addChild(t);
+    this.pops.push({ t, life: 0, maxLife: this.reducedMotion ? 0.45 : 0.8, vy: this.reducedMotion ? 0 : -52 });
+  }
+
+  private makePop(): Text {
+    return new Text({
+      text: '',
+      style: new TextStyle({
+        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+        fontWeight: '700',
+        fontSize: 12,
+        fill: 0xfcd34d,
+        stroke: { color: 0x0c0a09, width: 3 },
+      }),
+    });
+  }
+
+  private addShake(amount: number): void {
+    if (this.reducedMotion) return;
+    this.shakeAmp = Math.min(10, this.shakeAmp + amount * 0.55);
+  }
+
+  // -------------------------------------------------------------------------
+  // Drills
+  // -------------------------------------------------------------------------
+
+  private makeDrillSprite(behavior: DrillBehavior): DrillSprite {
+    const root = new Container();
+    const beam = new Graphics();
+    const body = new Graphics();
+    this.drawDrillBody(body, behavior);
+    root.addChild(beam, body);
+    this.drillLayer.addChild(root);
+    return { root, body, beam, behavior, pulse: 0 };
+  }
+
+  private drawDrillBody(g: Graphics, behavior: DrillBehavior): void {
+    g.clear();
+    const color = BEHAVIOR_COLORS[behavior];
+    const r = Math.max(6, this.cellSize * 0.17);
+    // Hex chassis
+    for (let i = 0; i <= 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      const x = Math.cos(a) * r;
+      const y = Math.sin(a) * r;
+      if (i === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+    g.fill(0x1c1815).stroke({ width: 1.5, color, alpha: 0.9 });
+    // Behavior glyph — readable at a glance.
+    const gr = r * 0.45;
+    switch (behavior) {
+      case 'fullest': // diamond: seeks the richest
+        g.moveTo(0, -gr).lineTo(gr, 0).lineTo(0, gr).lineTo(-gr, 0).closePath().fill(color);
+        break;
+      case 'sweep': // arrow: marching order
+        g.moveTo(-gr, -gr * 0.8).lineTo(gr, 0).lineTo(-gr, gr * 0.8).closePath().fill(color);
+        break;
+      case 'random': // scatter dots
+        g.circle(-gr * 0.6, -gr * 0.4, 1.6).fill(color);
+        g.circle(gr * 0.5, -gr * 0.1, 1.6).fill(color);
+        g.circle(-gr * 0.1, gr * 0.6, 1.6).fill(color);
+        break;
+      case 'chain': // two links
+        g.circle(-gr * 0.45, 0, gr * 0.5).stroke({ width: 1.5, color });
+        g.circle(gr * 0.45, 0, gr * 0.5).stroke({ width: 1.5, color });
+        break;
+    }
+  }
+
+  private syncDrills(): void {
+    const units = this.engine.getState().drills.units;
+    while (this.drillSprites.length < units.length) {
+      const unit = units[this.drillSprites.length]!;
+      const sprite = this.makeDrillSprite(unit.behavior);
+      const at = this.cellCenter(unit.lastCell);
+      sprite.root.position.set(at.x, at.y - this.cellSize * 0.18);
+      this.drillSprites.push(sprite);
+    }
+    while (this.drillSprites.length > units.length) {
+      const sprite = this.drillSprites.pop()!;
+      sprite.root.destroy({ children: true });
+    }
+    for (let i = 0; i < units.length; i++) {
+      const unit = units[i]!;
+      const sprite = this.drillSprites[i]!;
+      if (sprite.behavior !== unit.behavior) {
+        sprite.behavior = unit.behavior;
+        this.drawDrillBody(sprite.body, unit.behavior);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Frame
+  // -------------------------------------------------------------------------
+
+  private frame(dt: number): void {
+    if (this.destroyed) return;
+    const state = this.engine.getState();
+
+    // A Breach happened: new shell, new physics, new palette.
+    if (state.shell.current !== this.shellId) {
+      this.shellId = state.shell.current;
+      if (this.lampSprite) {
+        this.app.stage.removeChild(this.lampSprite);
+        this.lampSprite.destroy(true);
+      }
+      this.lampSprite = this.makeLamplight();
+      this.app.stage.addChild(this.lampSprite);
+      this.rebuildTiles();
+    }
+
+    // Face dimensions changed (expansion / collapse) — rebuild.
+    if (state.face.w !== this.faceW || state.face.h !== this.faceH || state.face.cells.length !== this.tiles.length) {
+      this.rebuildTiles();
+    }
+
+    // Tiles.
+    this.mods.invalidate();
+    const cap = cellCap(state, this.mods);
+    for (let i = 0; i < state.face.cells.length; i++) {
+      const tile = this.tiles[i]!;
+      if (tile.flash > 0) tile.flash = Math.max(0, tile.flash - dt * 5);
+      this.drawTile(i, state.face.cells[i]!, cap);
+    }
+
+    // Feed events -> drill strikes, fractures, collapse thunder.
+    for (const entry of state.feed) {
+      if (entry.seq <= this.lastFeedSeq) continue;
+      this.lastFeedSeq = entry.seq;
+      const ev = entry.event;
+      if (ev.type === 'drillStrike') {
+        const sprite = this.drillSprites[ev.drill];
+        const at = this.cellCenter(ev.cell);
+        if (sprite) {
+          sprite.pulse = 1;
+          if (!this.reducedMotion && Math.random() < 0.5) this.spawnShards(at.x, at.y, 2, false);
+          if (Math.random() < 0.12) this.spawnPop(at.x, at.y, `+${fmt(ev.dust)}`, false);
+        }
+        const tile = this.tiles[ev.cell];
+        if (tile) tile.flash = Math.max(tile.flash, 0.4);
+      } else if (ev.type === 'collapse') {
+        this.addShake(10);
+      } else if (ev.type === 'breach') {
+        this.addShake(14);
+        this.lastChainCell = -1;
+      } else if (ev.type === 'descend') {
+        this.addShake(4);
+        this.lastChainCell = -1;
+        if (!this.reducedMotion) this.tileLayer.position.y = -14;
+      } else if (ev.type === 'chainChip') {
+        // The chain draws itself as the player routes a path.
+        const at = this.cellCenter(ev.cell);
+        if (ev.chain > 1 && this.lastChainCell >= 0 && !this.reducedMotion) {
+          const from = this.cellCenter(this.lastChainCell);
+          const arc = new Graphics();
+          arc.moveTo(from.x, from.y)
+            .lineTo(at.x, at.y)
+            .stroke({ width: 2.5, color: this.theme.glowCore, alpha: 0.85 });
+          arc.circle(at.x, at.y, 3).fill({ color: this.theme.glowCore, alpha: 0.9 });
+          this.fxLayer.addChild(arc);
+          this.chainArcs.push({ g: arc, life: 0 });
+        }
+        if (ev.chain >= 2) this.spawnPop(at.x, at.y - this.cellSize * 0.3, `×${ev.chain}`, ev.chain >= 6);
+        this.lastChainCell = ev.cell;
+      } else if (ev.type === 'chainBroken') {
+        const at = this.cellCenter(ev.at);
+        this.spawnPop(at.x, at.y - this.cellSize * 0.3, 'snap', false);
+        this.lastChainCell = -1;
+      }
+    }
+
+    // Chain arcs fade fast — the route is a trace, not a decoration.
+    for (let i = this.chainArcs.length - 1; i >= 0; i--) {
+      const arc = this.chainArcs[i]!;
+      arc.life += dt;
+      if (arc.life > 0.7) {
+        this.fxLayer.removeChild(arc.g);
+        arc.g.destroy();
+        this.chainArcs.splice(i, 1);
+      } else {
+        arc.g.alpha = 1 - arc.life / 0.7;
+      }
+    }
+
+    // HOLD-TO-CHIP: while the finger is down in chip mode, keep chipping the cell
+    // under it. The per-cell 170ms cooldown paces it — holding is continuous but
+    // regen-bound (pillar 2), it just spares the tapping.
+    if (this.pointerDown && useGame.getState().faceMode === 'chip') {
+      this.chipAt(this.lastPx, this.lastPy);
+    }
+
+    this.drawMagnets(state);
+    this.drawBeam(state);
+    this.drawHeat(state, dt);
+    this.drawFaceOverlay(state, dt);
+
+    // Drills chase their targets.
+    this.syncDrills();
+    const units = state.drills.units;
+    for (let i = 0; i < this.drillSprites.length; i++) {
+      const sprite = this.drillSprites[i]!;
+      const unit = units[i];
+      if (!unit) continue;
+      const at = this.cellCenter(unit.lastCell);
+      // Per-drill orbital offset so drills sharing a target don't stack.
+      const oa = (i * 2.4) % (Math.PI * 2);
+      at.x += Math.cos(oa) * this.cellSize * 0.16;
+      at.y += Math.sin(oa) * this.cellSize * 0.1;
+      const targetY = at.y - this.cellSize * 0.18;
+      const k = Math.min(1, dt * 7);
+      sprite.root.position.x += (at.x - sprite.root.position.x) * k;
+      sprite.root.position.y += (targetY - sprite.root.position.y) * k;
+      if (sprite.pulse > 0) {
+        sprite.pulse = Math.max(0, sprite.pulse - dt * 4);
+        const sc = 1 + sprite.pulse * 0.35;
+        sprite.body.scale.set(sc);
+        sprite.beam.clear();
+        if (!this.reducedMotion) {
+          sprite.beam
+            .moveTo(0, 0)
+            .lineTo(0, this.cellSize * 0.34)
+            .stroke({ width: 2, color: BEHAVIOR_COLORS[sprite.behavior], alpha: sprite.pulse * 0.8 });
+        }
+      } else {
+        sprite.body.scale.set(1);
+        sprite.beam.clear();
+        // Idle bob so the bay feels alive.
+        if (!this.reducedMotion) {
+          sprite.root.position.y += Math.sin(performance.now() / 400 + i) * 0.15;
+        }
+      }
+    }
+
+    // Tile layer descend slide-back.
+    if (this.tileLayer.position.y < 0) {
+      this.tileLayer.position.y = Math.min(0, this.tileLayer.position.y + dt * 60);
+    }
+
+    // Particles.
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i]!;
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.g.visible = false;
+        this.fxLayer.removeChild(p.g);
+        this.particlePool.push(p.g);
+        this.particles.splice(i, 1);
+        continue;
+      }
+      p.vy += 620 * dt;
+      p.g.position.x += p.vx * dt;
+      p.g.position.y += p.vy * dt;
+      p.g.rotation += p.vr * dt;
+      p.g.alpha = 1 - p.life / p.maxLife;
+    }
+
+    // Pops.
+    for (let i = this.pops.length - 1; i >= 0; i--) {
+      const p = this.pops[i]!;
+      p.life += dt;
+      if (p.life >= p.maxLife) {
+        p.t.visible = false;
+        this.popLayer.removeChild(p.t);
+        this.popPool.push(p.t);
+        this.pops.splice(i, 1);
+        continue;
+      }
+      p.t.position.y += p.vy * dt;
+      p.t.alpha = 1 - (p.life / p.maxLife) ** 2;
+    }
+
+    // Screen shake.
+    if (this.shakeAmp > 0.05) {
+      this.world.position.set(
+        (Math.random() - 0.5) * this.shakeAmp,
+        (Math.random() - 0.5) * this.shakeAmp,
+      );
+      this.shakeAmp *= Math.exp(-dt * 7);
+    } else {
+      this.world.position.set(0, 0);
+    }
+  }
+
+}

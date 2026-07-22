@@ -1,0 +1,157 @@
+/**
+ * Zustand bridge. The engine is the source of truth; React reads a snapshot
+ * refreshed at ~12Hz (the Pixi face reads the engine directly every frame).
+ */
+import { create } from 'zustand';
+import type { Engine, GameState, GameAction, NumberFormat } from '../engine';
+import { setNumberFormat as applyNumberFormat } from '../engine';
+import type { PersistenceController } from '../platform/persistence';
+
+/** A spend held for confirmation (confirm-on-big-spend). */
+export interface PendingSpend {
+  action: GameAction;
+  /** e.g. "Buy ×34 Finer Chisels" */
+  title: string;
+  /** e.g. "12.4K Dust — 82% of your Dust" */
+  detail: string;
+}
+
+export type TabId =
+  // The Face
+  | 'dig' | 'shaft' | 'kiln' | 'drills' | 'vents' | 'hollow'
+  // The Craft
+  | 'lattice' | 'crucible' | 'foundry' | 'greenhouse' | 'mycelium'
+  | 'loom' | 'bench' | 'array' | 'chamber' | 'automation'
+  // The Hold
+  | 'hold' | 'forge' | 'refinery' | 'runes' | 'brew' | 'relics' | 'museum'
+  // The World
+  | 'guild' | 'bestiary' | 'warrens' | 'observatory' | 'journal'
+  | 'wells' | 'expeditions'
+  // Progress
+  | 'delver' | 'collapse' | 'rewrite' | 'parallel' | 'spiral'
+  | 'grid' | 'vault';
+
+export type BulkMode = 1 | 10 | 'max';
+
+const BULK_KEY = 'hollow.bulkMode';
+function loadBulk(): BulkMode {
+  if (typeof localStorage === 'undefined') return 1;
+  const v = localStorage.getItem(BULK_KEY);
+  return v === '10' ? 10 : v === 'max' ? 'max' : 1;
+}
+
+// Number format is a device preference (not player data): localStorage, and a
+// module-level flag every `fmt` call reads — so switching applies everywhere.
+const NUMFMT_KEY = 'hollow.numberFormat';
+function loadNumberFormat(): NumberFormat {
+  if (typeof localStorage === 'undefined') return 'suffix';
+  const v = localStorage.getItem(NUMFMT_KEY);
+  return v === 'scientific' || v === 'engineering' ? v : 'suffix';
+}
+
+interface UIStore {
+  engine: Engine | null;
+  persistence: PersistenceController | null;
+  /** Monotonic counter bumped on every snapshot — cheap re-render trigger. */
+  rev: number;
+  state: Readonly<GameState> | null;
+  tab: TabId;
+  /** Tabs the player has never opened since they appeared (glow hint). */
+  freshTabs: TabId[];
+  reducedMotion: boolean;
+  /** Glassmere: while true, tapping the face cycles a mirror instead of chipping. */
+  opticsMode: boolean;
+  /** THE FACE CLUSTER (v20): what a press on the face does — chip (default),
+   *  tag a cell for drills to skip, or drag a stamina-costed sweep. UI-only. */
+  faceMode: 'chip' | 'sweep';
+  /** The bulk-buy multiplier, persisted across sessions (localStorage). */
+  bulkMode: BulkMode;
+  /** Number display format — device preference (localStorage), not in the save. */
+  numberFormat: NumberFormat;
+  /** The Compendium overlay — UI state only, deliberately not in the save. */
+  compendiumOpen: boolean;
+  compendiumEntry: string | null;
+  /** A big spend awaiting the player's nod (confirm-on-big-spend). */
+  pendingSpend: PendingSpend | null;
+  setTab: (tab: TabId) => void;
+  markFresh: (tab: TabId) => void;
+  setOpticsMode: (on: boolean) => void;
+  setFaceMode: (m: 'chip' | 'sweep') => void;
+  setBulkMode: (m: BulkMode) => void;
+  setNumberFormat: (m: NumberFormat) => void;
+  openCompendium: (entryId: string | null) => void;
+  closeCompendium: () => void;
+  /** Route a spend through the confirm gate, or straight to the engine. */
+  askSpend: (pending: PendingSpend) => void;
+  resolveSpend: (go: boolean) => void;
+}
+
+export const useGame = create<UIStore>((set, get) => ({
+  engine: null,
+  persistence: null,
+  rev: 0,
+  state: null,
+  tab: 'dig',
+  freshTabs: [],
+  reducedMotion:
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  opticsMode: false,
+  faceMode: 'chip',
+  bulkMode: loadBulk(),
+  numberFormat: loadNumberFormat(),
+  setTab: (tab) =>
+    set((s) => ({ tab, freshTabs: s.freshTabs.filter((t) => t !== tab) })),
+  setOpticsMode: (on) => set({ opticsMode: on }),
+  setFaceMode: (m) => set({ faceMode: m }),
+  setBulkMode: (m) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(BULK_KEY, String(m));
+    set({ bulkMode: m });
+  },
+  setNumberFormat: (m) => {
+    applyNumberFormat(m); // the module flag every fmt() reads
+    if (typeof localStorage !== 'undefined') localStorage.setItem(NUMFMT_KEY, m);
+    // Bump rev so every formatted label re-renders against the new mode.
+    set((s) => ({ numberFormat: m, rev: s.rev + 1 }));
+  },
+  markFresh: (tab) => {
+    const s = get();
+    if (!s.freshTabs.includes(tab)) set({ freshTabs: [...s.freshTabs, tab] });
+  },
+  compendiumOpen: false,
+  compendiumEntry: null,
+  // Opening from a room lands on that room's page — contextual entry.
+  openCompendium: (entryId) => set({ compendiumOpen: true, compendiumEntry: entryId }),
+  closeCompendium: () => set({ compendiumOpen: false }),
+  pendingSpend: null,
+  askSpend: (pending) => set({ pendingSpend: pending }),
+  resolveSpend: (go) => {
+    const p = get().pendingSpend;
+    set({ pendingSpend: null });
+    if (go && p) dispatch(p.action);
+  },
+}));
+
+/** Wire an engine into the store; call once at boot. */
+export function bindEngine(engine: Engine, persistence: PersistenceController): void {
+  // Apply the saved number-format preference to the module flag before first paint.
+  applyNumberFormat(useGame.getState().numberFormat);
+  useGame.setState({ engine, state: engine.getState(), rev: 1 });
+  let pending = false;
+  engine.subscribe((state) => {
+    if (pending) return;
+    pending = true;
+    setTimeout(() => {
+      pending = false;
+      useGame.setState((s) => ({ state, rev: s.rev + 1 }));
+    }, 80);
+  });
+  useGame.setState({ persistence });
+}
+
+/** Convenience dispatch that tolerates being called before boot. */
+export function dispatch(action: Parameters<Engine['dispatch']>[0]): ReturnType<Engine['dispatch']> {
+  const engine = useGame.getState().engine;
+  if (!engine) return { ok: false, reason: 'Engine not ready' };
+  return engine.dispatch(action);
+}

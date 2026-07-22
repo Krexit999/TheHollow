@@ -1,0 +1,133 @@
+/**
+ * THE INFORMATION ARCHITECTURE (Phase 11). Twenty-eight systems grouped into
+ * FIVE fixed clusters — a count that can never overflow, on any viewport, at
+ * any progression state. The face lives in THE FACE cluster and is the hero;
+ * everything else is a room you walk into.
+ *
+ * A system's visibility predicate lives here (moved out of App.tsx). A cluster
+ * shows when any of its systems is visible; a cluster's default system is its
+ * first visible one.
+ */
+import type { GameState } from '../engine';
+import { sealed } from '../engine/laws';
+import { refineryUnlocked } from '../engine/systems/refinery';
+import type { TabId } from './store';
+
+export interface SystemDef {
+  id: TabId;
+  label: string;
+  visible: (s: GameState) => boolean;
+}
+
+export interface ClusterDef {
+  id: string;
+  label: string;
+  /** A restrained glyph — no emoji clutter against the lamplight palette. */
+  glyph: string;
+  systems: SystemDef[];
+}
+
+const always = () => true;
+const rec = (s: GameState, shell: string, d: number) => (s.depthRecords[shell] ?? 0) >= d;
+
+export const CLUSTERS: ClusterDef[] = [
+  {
+    id: 'face',
+    label: 'The Face',
+    glyph: '⛏',
+    systems: [
+      { id: 'dig', label: 'Dig', visible: always },
+      { id: 'shaft', label: 'Shaft', visible: (s) => s.maxDepthRecord >= 10 || s.shaft.reached >= 10 },
+      { id: 'kiln', label: 'Kiln', visible: (s) => s.kiln.built },
+      { id: 'drills', label: 'Drills', visible: (s) => s.kiln.built && (s.maxDepthRecord >= 55 || s.drills.bayBuilt) },
+      { id: 'vents', label: 'Vents', visible: (s) => rec(s, 'cinder', 10) },
+      { id: 'hollow', label: 'Silence', visible: (s) => s.shell.breachCount >= 5 || (s.depthRecords['hollow'] ?? 0) > 0 },
+    ],
+  },
+  {
+    id: 'craft',
+    label: 'The Craft',
+    glyph: '⚒',
+    systems: [
+      { id: 'lattice', label: 'Lattice', visible: (s) => s.lattice.unlocked },
+      { id: 'crucible', label: 'Crucible', visible: (s) => s.shell.breachCount >= 1 },
+      { id: 'foundry', label: 'Foundry', visible: (s) => s.shell.breachCount >= 1 },
+      { id: 'greenhouse', label: 'Greenhouse', visible: (s) => rec(s, 'verdance', 20) },
+      { id: 'mycelium', label: 'Mycelium', visible: (s) => rec(s, 'verdance', 30) },
+      { id: 'loom', label: 'Loom', visible: (s) => rec(s, 'verdance', 40) },
+      { id: 'bench', label: 'Bench', visible: (s) => rec(s, 'glassmere', 40) },
+      { id: 'array', label: 'Array', visible: (s) => rec(s, 'cinder', 30) },
+      { id: 'chamber', label: 'Chamber', visible: (s) => rec(s, 'hollow', 20) },
+      { id: 'automation', label: 'Automation', visible: (s) => s.spiral.count >= 1 },
+    ],
+  },
+  {
+    id: 'hold',
+    label: 'The Hold',
+    glyph: '▤',
+    systems: [
+      { id: 'hold', label: 'Materials', visible: (s) => s.materials.totalDrops > 0 },
+      { id: 'forge', label: 'Forge', visible: (s) => s.forge.built },
+      { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
+      { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
+      { id: 'brew', label: 'Still', visible: (s) => rec(s, 'verdance', 60) },
+      { id: 'relics', label: 'Relics', visible: (s) => s.relics.found > 0 },
+      { id: 'museum', label: 'Museum', visible: (s) => s.relics.found > 0 || s.museum.completed.length > 0 },
+    ],
+  },
+  {
+    id: 'world',
+    label: 'The World',
+    glyph: '◍',
+    systems: [
+      { id: 'guild', label: 'Guild', visible: (s) => s.guild.discovered },
+      { id: 'bestiary', label: 'Bestiary', visible: (s) => s.combat.seen.length > 0 },
+      { id: 'warrens', label: 'Warrens', visible: (s) => s.maxDepthRecord >= 35 && (s.shell.breachCount >= 3 || Object.keys(s.warrens.cleared).length > 0 || !!s.warrens.active) },
+      { id: 'observatory', label: 'Stars', visible: (s) => rec(s, 'glassmere', 20) },
+      { id: 'journal', label: 'Journal', visible: (s) => s.guild.sable.found.length > 0 },
+      { id: 'wells', label: 'Wells', visible: (s) => rec(s, 'cinder', 60) },
+      { id: 'expeditions', label: 'Expeditions', visible: (s) => Object.keys(s.guild.hirelings).length > 0 },
+    ],
+  },
+  {
+    id: 'progress',
+    label: 'Progress',
+    glyph: '▲',
+    systems: [
+      { id: 'delver', label: 'Delver', visible: always },
+      { id: 'collapse', label: 'Collapse', visible: (s) => s.maxDepthRecord >= 15 || s.collapse.count > 0 },
+      { id: 'rewrite', label: 'Rewrite', visible: (s) => s.shell.breachCount >= 6 || s.recursion.count >= 1 || s.recursion.axioms.length > 0 },
+      { id: 'parallel', label: 'All Worlds', visible: (s) => s.recursion.count >= 1 || s.shell.current === 'aleph' },
+      { id: 'spiral', label: 'The Spiral', visible: (s) => s.recursion.count >= 1 },
+      { id: 'grid', label: 'Achievements', visible: always },
+      { id: 'vault', label: 'Vault', visible: always },
+    ],
+  },
+];
+
+/** All systems flat — for id lookups and the disclosure gate. */
+export const ALL_SYSTEMS: SystemDef[] = CLUSTERS.flatMap((c) => c.systems);
+
+export function clusterOf(tab: TabId): ClusterDef {
+  return CLUSTERS.find((c) => c.systems.some((sys) => sys.id === tab)) ?? CLUSTERS[0]!;
+}
+
+export function systemDef(tab: TabId): SystemDef | undefined {
+  return ALL_SYSTEMS.find((s) => s.id === tab);
+}
+
+/** A cluster is reachable when any of its systems is visible.
+ *
+ * SABLE'S WALK (challenge): only the Face. She had a lamp, a pick and a hole —
+ * no Lamphouse, no boards, no ledgers — and the run exists to show that the
+ * core loop stands up without any of it. The seal lives here because "which
+ * rooms exist" is a navigation question, not an engine one. */
+export function clusterVisible(c: ClusterDef, s: GameState): boolean {
+  if (sealed(s, 'sealRooms') && c.id !== 'face') return false;
+  return c.systems.some((sys) => sys.visible(s));
+}
+
+/** The first visible system in a cluster — its default destination. */
+export function defaultSystem(c: ClusterDef, s: GameState): TabId | null {
+  return c.systems.find((sys) => sys.visible(s))?.id ?? null;
+}

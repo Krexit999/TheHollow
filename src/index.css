@@ -1,0 +1,362 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-cave-950: #0c0a09;
+  --color-cave-900: #151210;
+  --color-cave-850: #1c1815;
+  --color-cave-800: #241f1b;
+  --color-cave-700: #35302a;
+  --color-cave-600: #4a4239;
+  --color-cave-400: #8a7f70;
+  --color-cave-300: #b0a494;
+  --color-cave-200: #d4c9b8;
+  --color-lamp-500: #f59e0b;
+  --color-lamp-400: #fbbf24;
+  --color-lamp-300: #fcd34d;
+  --color-dust: #d4a86a;
+  --color-brick: #c96f4a;
+  --color-core: #8be9fd;
+  --color-moss: #9ab87a;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--color-cave-950);
+  color: var(--color-cave-200);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Warm lamplight against cold stone: the app-wide vignette. */
+.lamplight {
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 30%, rgba(245, 158, 11, 0.05), transparent 60%),
+    radial-gradient(ellipse 120% 100% at 50% 110%, rgba(12, 10, 9, 0.9), transparent 50%),
+    var(--color-cave-950);
+}
+
+.panel {
+  background: linear-gradient(180deg, var(--color-cave-850), var(--color-cave-900));
+  border: 1px solid var(--color-cave-700);
+  border-radius: 0.75rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.btn {
+  @apply rounded-md border border-cave-600 bg-cave-800 px-3 py-1.5 text-sm font-medium text-cave-200 transition-colors;
+}
+.btn:hover:not(:disabled) {
+  @apply border-lamp-500/60 bg-cave-700 text-lamp-300;
+}
+.btn:disabled {
+  @apply cursor-not-allowed opacity-40;
+}
+.btn-warm {
+  @apply border-lamp-500/50 bg-gradient-to-b from-amber-900/60 to-cave-800 text-lamp-300;
+}
+.btn-warm:hover:not(:disabled) {
+  @apply from-amber-800/60;
+}
+
+/* Number tabular alignment for currency readouts. Also the cure for controls
+   whose label is live data: without it, "1.1K" and "9.8K" are different widths
+   and the control resizes under the cursor every tick. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* TOUCH TARGETS. On a coarse pointer the standard controls get a 44px hit box.
+   Deliberately NOT applied to the craft boards' grid cells: those are dense
+   adjacency grids (the Lattice hexes, the vent pipes, the Ember Array, the
+   achievement grid) where a cell growing past its neighbour would steal the
+   tap next to it. Those cells size themselves and never use .btn; the small
+   fixed-size .btn steppers and pads opt out with .btn-cell. */
+@media (pointer: coarse) {
+  .btn:not(.btn-cell),
+  [role='tab'],
+  nav button {
+    min-height: 44px;
+  }
+}
+
+/* Keyboard focus: a visible warm ring for anyone navigating without a mouse.
+   Pointer focus stays quiet (:focus-visible only). */
+:focus-visible {
+  outline: 2px solid var(--color-lamp-400);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.toast-in {
+  animation: toast-in 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+/* JUST BECAME AFFORDABLE. Fires on the false->true edge only — not on every
+   tick a thing happens to be affordable, and not when a MAX-buy count ticks
+   up. A thing you could not have a second ago, you can have now. */
+@keyframes just-affordable {
+  0% {
+    box-shadow: 0 0 0 rgba(245, 158, 11, 0);
+    border-color: var(--color-lamp-500);
+  }
+  35% {
+    box-shadow: 0 0 16px rgba(245, 158, 11, 0.6);
+    border-color: var(--color-lamp-300);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+.just-affordable {
+  animation: just-affordable 1.6s ease-out 2;
+}
+
+@keyframes tab-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(245, 158, 11, 0);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.55);
+  }
+}
+.tab-new {
+  animation: tab-glow 1.6s ease-in-out infinite;
+}
+
+@keyframes kiln-glow {
+  0%,
+  100% {
+    opacity: 0.75;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.kiln-fire {
+  animation: kiln-glow 1.8s ease-in-out infinite;
+}
+
+@keyframes ember-rise {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: translateY(-46px) scale(0.4);
+    opacity: 0;
+  }
+}
+.ember {
+  animation: ember-rise 1.4s ease-out infinite;
+}
+
+@keyframes aberrant-shift {
+  0%,
+  100% {
+    filter: hue-rotate(0deg) drop-shadow(0 0 5px rgba(198, 159, 216, 0.6));
+  }
+  50% {
+    filter: hue-rotate(40deg) drop-shadow(0 0 6px rgba(159, 198, 216, 0.6));
+  }
+}
+.aberrant-shift {
+  animation: aberrant-shift 3.5s ease-in-out infinite;
+}
+
+/* THE BREACH — the moment the game changes. */
+@keyframes breach-quake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(-6px, 3px); }
+  20% { transform: translate(5px, -4px); }
+  30% { transform: translate(-7px, -2px); }
+  40% { transform: translate(6px, 5px); }
+  50% { transform: translate(-4px, 6px); }
+  60% { transform: translate(7px, -3px); }
+  70% { transform: translate(-5px, -5px); }
+  80% { transform: translate(4px, 4px); }
+  90% { transform: translate(-3px, 2px); }
+}
+.breach-quake {
+  animation: breach-quake 0.28s linear infinite;
+}
+.breach-cracks {
+  background:
+    linear-gradient(104deg, transparent 49.55%, rgba(255,255,255,0.85) 49.9%, transparent 50.25%),
+    linear-gradient(23deg, transparent 49.6%, rgba(255,255,255,0.6) 49.9%, transparent 50.2%),
+    linear-gradient(161deg, transparent 49.5%, rgba(255,255,255,0.7) 49.9%, transparent 50.3%),
+    linear-gradient(78deg, transparent 49.65%, rgba(255,255,255,0.5) 49.9%, transparent 50.15%);
+  animation: breach-crack-in 1.4s ease-in forwards;
+}
+@keyframes breach-crack-in {
+  from { opacity: 0; transform: scale(1.06); }
+  60% { opacity: 1; }
+  to { opacity: 1; transform: scale(1); }
+}
+.breach-motes {
+  background-image:
+    radial-gradient(2px 2px at 12% 20%, #9fc4dd88, transparent),
+    radial-gradient(1.5px 1.5px at 34% 60%, #9fc4dd66, transparent),
+    radial-gradient(2.5px 2.5px at 58% 35%, #cfe8f588, transparent),
+    radial-gradient(1.5px 1.5px at 71% 75%, #9fc4dd77, transparent),
+    radial-gradient(2px 2px at 88% 15%, #cfe8f566, transparent),
+    radial-gradient(1.5px 1.5px at 45% 90%, #9fc4dd55, transparent);
+  background-size: 100% 100%;
+  animation: breach-fall 1.7s linear forwards;
+}
+@keyframes breach-fall {
+  from { background-position: 0 -60vh; opacity: 0.4; }
+  30% { opacity: 1; }
+  to { background-position: 0 90vh; opacity: 0.9; }
+}
+.breach-title {
+  animation: breach-title-in 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes breach-title-in {
+  from { opacity: 0; letter-spacing: 0.6em; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* THE LAMPHOUSE — the one warm room in a cold game. Wood and lamp-oil
+   against the cave palette; nothing else in the app uses these ambers. */
+.guild-warm {
+  background:
+    radial-gradient(ellipse 120% 90% at 50% -10%, rgba(224, 176, 84, 0.10), transparent 55%),
+    linear-gradient(180deg, #221a12, #1a140e);
+  border-color: #4a3b28;
+}
+
+/* SABLE'S HAND — a written page, degrading with depth. */
+.sable-page {
+  background:
+    linear-gradient(100deg, transparent 0 96%, rgba(0, 0, 0, 0.25) 100%),
+    linear-gradient(180deg, #d8cbae, #cbbd9c);
+  border-color: #8a7a58;
+  color: #3a3226;
+}
+.sable-hand {
+  font-family: 'Segoe Script', 'Bradley Hand', 'Comic Sans MS', cursive;
+  color: #443a2a;
+}
+.sable-stained {
+  color: #57503f;
+  text-shadow: 0 0 3px rgba(87, 80, 63, 0.35);
+  letter-spacing: 0.02em;
+}
+.sable-deep {
+  color: #4a4638;
+  letter-spacing: 0.04em;
+  word-spacing: 0.1em;
+  text-shadow: 0.5px 0 0 rgba(74, 70, 56, 0.4);
+}
+.sable-cipher {
+  color: #6a5f48;
+  opacity: 0.85;
+  letter-spacing: 0.06em;
+}
+
+/* THE LOOM — a knot is texture, not just color. */
+.knot-lit {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(230, 245, 170, 0.9) 0 22%, transparent 40%),
+    repeating-linear-gradient(90deg, rgba(184, 208, 154, 0.5) 0 2px, rgba(28, 24, 21, 0.9) 2px 5px);
+}
+
+/* COMBAT — silhouettes idle, threats hatch. Pattern first, color second:
+   a hatched lane reads as danger in grayscale. */
+@keyframes sil-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.sil-idle {
+  animation: sil-bob 2.6s ease-in-out infinite;
+}
+@keyframes sil-flit {
+  0%, 100% { transform: translate(0, 0); }
+  33% { transform: translate(2px, -2px); }
+  66% { transform: translate(-2px, 1px); }
+}
+.sil-flit {
+  animation: sil-flit 1.9s ease-in-out infinite;
+}
+@keyframes sil-wingbeat {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.82); }
+}
+.sil-wing,
+.sil-wing2 {
+  transform-origin: 48px 30px;
+  animation: sil-wingbeat 1.6s ease-in-out infinite;
+}
+.sil-wing2 {
+  animation-delay: 0.8s;
+}
+.hatch-danger {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(245, 158, 11, 0.28) 0 6px,
+    rgba(12, 10, 9, 0.85) 6px 12px
+  );
+}
+.hatch-windup {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(245, 158, 11, 0.12) 0 6px,
+    rgba(12, 10, 9, 0.9) 6px 14px
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-in,
+  .tab-new,
+  .just-affordable,
+  .kiln-fire,
+  .ember,
+  .aberrant-shift,
+  .sil-idle,
+  .sil-flit,
+  .sil-wing,
+  .sil-wing2,
+  .breach-quake,
+  .breach-cracks,
+  .breach-motes {
+    animation: none;
+  }
+  .breach-title {
+    animation: none;
+    opacity: 1;
+  }
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Slim scrollbars for the panel column. */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-cave-600) transparent;
+}

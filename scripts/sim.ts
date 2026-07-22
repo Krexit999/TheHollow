@@ -1,0 +1,1707 @@
+/**
+ * Headless sim harness — fast-forwards N simulated hours with a scripted play
+ * policy and dumps a CSV of currency/depth/level over time. Used to check
+ * pacing against the pacing map in DESIGN.md.
+ *
+ *   npm run sim -- --hours 2 --policy balanced --log 1 --out sim-out/run.csv
+ *
+ *   --hours N     simulated hours (default 2)
+ *   --policy P    active | idle | balanced (default balanced)
+ *                 active:   chips 2/sec forever, buys greedily
+ *                 idle:     never chips after the first minute, buys greedily
+ *                 balanced: chips 2/sec for the first 20 min, then idles
+ *   --log N       CSV row every N simulated minutes (default 1)
+ *   --out FILE    write CSV there (default: print to stdout)
+ *   --quiet       suppress the event log (collapses, unlocks)
+ *
+ * Note: crits/fractures/random drill targeting use Math.random, so runs vary
+ * by a few percent. Trends, not decimals.
+ */
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { createEngine, fmt, type Decimal, type Engine, type GameState, type MotifShape } from '../src/engine';
+import { D } from '../src/engine/decimal';
+import { CORE_NODES, coreNodeCost, coreNodeLevel } from '../src/engine/content/shell1/coreTree';
+import { currentDescendCost } from '../src/engine/systems/depthSys';
+import { coresForDepth } from '../src/engine/prestigeMath';
+import { ModifierCache } from '../src/engine/modifiers';
+import { allUpgrades, upgradeLevel, nextCost } from '../src/engine/upgrades';
+import { boardCells, hexKey, inBoard, isSealed, LINE_AXES, neighborsOf, type Axial } from '../src/engine/systems/lattice/hex';
+import { boardResonance } from '../src/engine/systems/lattice/latticeCore';
+import { ringCost, MAX_RINGS } from '../src/engine/content/shell1/latticeSystem';
+import { addMaterial, equippedTool, materialCount, requiredTier } from '../src/engine/systems/forge';
+import { materialDef } from '../src/engine/materials';
+import { assayUnlocked } from '../src/engine/systems/drops';
+import { currentShell, chipCurrencyId, convCurrencyId } from '../src/engine/shells';
+import { canBreach } from '../src/engine/systems/breach';
+import { magnetArrayUnlocked } from '../src/engine/systems/polarity';
+import { crucibleUnlocked } from '../src/engine/content/shell2/crucibleSystem';
+import { matchAlloy } from '../src/engine/content/shell2/alloys';
+import { foundryUnlocked, FOUNDRY_MODULES } from '../src/engine/systems/foundry';
+import { GEAR_DEFS } from '../src/engine/combat/gear';
+import { COMPETENT_SKILL, resolveFight } from '../src/engine/combat/combat';
+import { speciesDef } from '../src/engine/combat/species';
+import { rollSpecies } from '../src/engine/combat/species';
+import { contractProgress, contractSatisfied } from '../src/engine/guild/contracts';
+import { strainDef } from '../src/engine/content/shell3/greenhouse';
+import { currentWeather } from '../src/engine/systems/weather';
+import { AUTHORED_PUZZLES } from '../src/engine/content/shell4/bench';
+import { WARRENS, puzzleData, warrenAvailable } from '../src/engine/content/shell4/warrens';
+import { translationFee, FRAGMENTS } from '../src/engine/guild/sable';
+import { CARAVAN_ROUTES, drift } from '../src/engine/guild/caravan';
+import { TITLE_BY_ID } from '../src/engine/guild/titles';
+import { hiredCount } from '../src/engine/guild/hirelings';
+import { dpsMax } from '../src/engine/systems/face';
+import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
+import { arrayUnlocked } from '../src/engine/content/shell5/emberArray';
+import { WELLS, wellProgress, wellsUnlocked } from '../src/engine/content/shell5/wells';
+
+interface Args {
+  hours: number;
+  policy: 'active' | 'idle' | 'balanced';
+  combat: 'auto' | 'competent' | 'optimal';
+  growth: 'clear' | 'cultivate';
+  logMin: number;
+  out: string | null;
+  quiet: boolean;
+  heat: 'safe' | 'balanced' | 'greedy';
+}
+
+function parseArgs(): Args {
+  const argv = process.argv.slice(2);
+  const get = (flag: string): string | undefined => {
+    const i = argv.indexOf(`--${flag}`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const policy = (get('policy') ?? 'balanced') as Args['policy'];
+  if (!['active', 'idle', 'balanced'].includes(policy)) {
+    throw new Error(`Unknown policy: ${policy}`);
+  }
+  const combat = (get('combat') ?? 'competent') as Args['combat'];
+  if (!['auto', 'competent', 'optimal'].includes(combat)) {
+    throw new Error(`Unknown combat policy: ${combat}`);
+  }
+  const growth = (get('growth') ?? 'clear') as 'clear' | 'cultivate';
+  const heat = (get('heat') ?? 'balanced') as 'safe' | 'balanced' | 'greedy';
+  if (!['safe', 'balanced', 'greedy'].includes(heat)) {
+    throw new Error(`Unknown heat stance: ${heat}`);
+  }
+  return {
+    hours: Number(get('hours') ?? 2),
+    policy,
+    combat,
+    growth,
+    heat,
+    logMin: Number(get('log') ?? 1),
+    out: get('out') ?? null,
+    quiet: argv.includes('--quiet'),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Combat play — a little turn AI at two skill levels (auto uses the engine's
+// own resolver via setAutoResolve/combatAuto).
+// ---------------------------------------------------------------------------
+
+let combatPolicy: Args['combat'] = 'competent';
+
+function fightManually(engine: Engine, s: GameState): void {
+  const optimal = combatPolicy === 'optimal';
+  let guardCt = 400;
+  while (s.combat.active && guardCt-- > 0) {
+    const fight = s.combat.active;
+    const tg = fight.telegraph;
+    let move: -1 | 0 | 1 = 0;
+    let act: 'strike' | 'guard' = 'strike';
+    const answers = Math.random() < (optimal ? 0.97 : 0.85);
+    if (tg && tg.windup === 0 && answers) {
+      // Score every step: safety beats flanking beats standing still.
+      let bestScore = -Infinity;
+      let safeExists = false;
+      for (const m of [-1, 0, 1] as const) {
+        const lane = Math.max(0, Math.min(4, fight.playerLane + m));
+        const safe = !tg.lanes.includes(lane);
+        const flank = Math.abs(lane - fight.enemyLane) === 1 ? 1 : 0;
+        const score = (safe ? 10 : 0) + flank + (m === 0 ? 0.1 : 0);
+        if (safe) safeExists = true;
+        if (score > bestScore) {
+          bestScore = score;
+          move = m;
+        }
+      }
+      // Sweeps/crosses/all-buts can't be sidestepped in one beat: BRACE.
+      if (!safeExists) act = 'guard';
+    } else if (!tg || tg.windup > 0) {
+      // Free beat (charge winding up, or between telegraphs): work the flank.
+      const d = fight.enemyLane - fight.playerLane;
+      move = d > 1 ? 1 : d < -1 ? -1 : Math.abs(d) === 1 ? 0 : fight.playerLane > 0 ? -1 : 1;
+    }
+    const timing = optimal ? 1.5 : Math.random() < 0.6 ? 1.5 : 1;
+    engine.dispatch({ type: 'combatTurn', move, act, timing });
+  }
+}
+
+function combatPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  // Encounters: auto policy lets the engine resolve; manual policies engage.
+  if (s.combat.pending && combatPolicy !== 'auto') {
+    // A competent player draws the fighting iron before sizing the fight up,
+    // and slips away from a hopeless one (5% toll) rather than donating 10%.
+    const sp = speciesDef(s.combat.pending.speciesId);
+    const chipper = s.forge.tools.reduce((a, b) => (b.chipPower > a.chipPower ? b : a));
+    const striker = s.forge.tools.reduce((a, b) => (b.strikePower > a.strikePower ? b : a));
+    engine.dispatch({ type: 'equipTool', toolId: striker.id });
+    mods.invalidate();
+    spawnMix.total += 1;
+    if (!resolveFight(s, mods, sp, COMPETENT_SKILL).win) {
+      engine.dispatch({ type: 'combatFlee' });
+    } else {
+      spawnMix.engageable += 1;
+      engine.dispatch({ type: 'combatEngage' });
+      fightManually(engine, s);
+    }
+    engine.dispatch({ type: 'equipTool', toolId: chipper.id });
+    mods.invalidate();
+  }
+  // The Warden, at the floor: always attempted on AUTO in the sim — the
+  // worst case, which the spec requires to work with appropriate gear.
+  const shell = currentShell(s);
+  if (
+    s.depth >= shell.floorDepth &&
+    !s.combat.wardens.includes(shell.id) &&
+    s.stats.playTimeSec - lastWardenTry > 120
+  ) {
+    lastWardenTry = s.stats.playTimeSec;
+    // Bring a WEAPON to a warden: forge the strike-heavy pattern first.
+    const weapon =
+      shell.id === 'hollow' || shell.id === 'aleph' ? 'cinderMaul' // ladder ends at XV
+      : shell.id === 'cinder' ? 'cinderMaul'
+      : shell.id === 'glassmere' ? 'meridianEdge'
+      : shell.id === 'verdance' ? 'wildstarFalx'
+      : shell.id === 'ferrite' ? 'stormcaller' : 'wardenbreaker';
+    // A brew is exactly for this moment (spikes, not sustains).
+    if ((s.brewing.doses['ironblood'] ?? 0) > 0 && !s.brewing.active) {
+      engine.dispatch({ type: 'drinkBrew', brewId: 'ironblood' });
+    }
+    // The Unblinking demands SIGHT: craft and wear a reveal lantern first
+    // (the Phase-8 run lost 1,314 blind attempts for want of this line).
+    if (shell.id === 'glassmere' && !s.forge.gear.lantern) {
+      for (const lantern of ['unblinkingMonocle', 'orchardkeepersHood', 'verdantLoop']) {
+        if (engine.dispatch({ type: 'craftGear', gearId: lantern }).ok) break;
+      }
+    }
+    // The Smolder demands RESTRAINT: vent to the safe line before her stair.
+    if (shell.id === 'cinder' && s.pressure.heat > 35) {
+      engine.dispatch({ type: 'setChoke', on: false });
+      engine.dispatch({ type: 'setOverdrive', on: false });
+      if (s.pressure.heat > 45) engine.dispatch({ type: 'emergencyPurge' });
+    }
+    // The Unattended demands its OPPOSITE: presence grows it — put the reveal
+    // lantern AWAY (the Quiet Shroud reveals nothing, on purpose).
+    if (shell.id === 'hollow') {
+      if (engine.dispatch({ type: 'craftGear', gearId: 'quietshroud' }).ok) void 0;
+      else s.forge.gear.lantern = null; // fight it half-blind, honestly
+    }
+    engine.dispatch({ type: 'craftTool', recipeId: weapon }); // no-op if short
+    // Equip the hardest striker for the fight.
+    const striker = s.forge.tools.reduce((a, b) => (b.strikePower > a.strikePower ? b : a));
+    engine.dispatch({ type: 'equipTool', toolId: striker.id });
+    // THE FINAL TWO WARDENS are boss fights, not floor guards: a player who
+    // reached the Core is a skilled endgame hand, not an idler. Fight them
+    // through the REAL turn engine (the spec: "treat it as such"). Everyone
+    // else stays on the worst-case AUTO floor guarantee.
+    const boss = shell.id === 'hollow' || shell.id === 'aleph';
+    const result = engine.dispatch({ type: 'fightWarden', auto: !boss });
+    if (boss && s.combat.active) fightManually(engine, s);
+    const felled = s.combat.wardens.includes(shell.id);
+    if (result.ok && felled) log(`*** WARDEN FELLED (${boss ? 'manual' : 'auto'}): ${shell.id} ***`);
+    else if (result.ok && s.stats.playTimeSec - lastWardenWhine > 1800) {
+      lastWardenWhine = s.stats.playTimeSec;
+      const craft = engine.dispatch({ type: 'craftTool', recipeId: weapon });
+      const t = equippedTool(s);
+      log(
+        `warden attempt failed (auto) at ${shell.id} — tool ${t.name} T${t.tier} strike ${t.strikePower} | ` +
+          `${weapon}: ${craft.ok ? 'crafted!' : craft.reason} | gear ${[s.forge.gear.offhand?.defId, s.forge.gear.harness?.defId].join('/')} | ` +
+          `swing ${s.delver.skills['twoHandedSwing'] ?? 0} grip ${s.delver.skills['deepGrip'] ?? 0}`,
+      );
+    }
+    // Back to the best chipper for the mining between attempts.
+    const chipper = s.forge.tools.reduce((a, b) => (b.chipPower > a.chipPower ? b : a));
+    engine.dispatch({ type: 'equipTool', toolId: chipper.id });
+  }
+}
+let lastWardenWhine = -1e9;
+let lastWardenTry = -1e9;
+/** Step-Zero metric: what share of spawns are winnable at COMPETENT.
+ * Live counts are chaotic (spawn timing dominates), so the reported number
+ * comes from CONTROLLED sampling: every 30 sim-minutes, draw 200 spawns at
+ * the current depth with the striker in hand and resolve them. */
+const spawnMix = { total: 0, engageable: 0, sampled: 0, sampledWins: 0 };
+
+function sampleSpawnMix(engine: Engine, s: GameState): void {
+  if (s.depth < 5 || s.forge.tools.length === 0) return;
+  const prevEquipped = s.forge.equipped;
+  const striker = s.forge.tools.reduce((a, b) => (b.strikePower > a.strikePower ? b : a));
+  s.forge.equipped = s.forge.tools.findIndex((t) => t.id === striker.id);
+  mods.invalidate();
+  const shellId = currentShell(s).id;
+  for (let i = 0; i < 200; i++) {
+    const sp = rollSpecies(shellId, s.depth, Math.random, striker.tier);
+    if (!sp) continue;
+    spawnMix.sampled += 1;
+    if (resolveFight(s, mods, sp, COMPETENT_SKILL).win) spawnMix.sampledWins += 1;
+  }
+  s.forge.equipped = prevEquipped;
+  mods.invalidate();
+  void engine;
+}
+
+// ---------------------------------------------------------------------------
+// Guild play — take every job (they're generated to stack with the dig),
+// hire the crew, read the pages, ride the road when the drift favors it.
+// ---------------------------------------------------------------------------
+
+const GUILD_HIRE_ORDER = ['sef', 'tally', 'pell', 'fenn', 'grist', 'brakka', 'hob', 'moth', 'ruta', 'jib'];
+const guildMetrics = { contractsDone: 0, contractScrip: 0, trades: 0, pillar2Max: 0, pillar2Samples: 0, pillar2Over: 0, rerolls: 0 };
+let lastCaravanAt = -1e9;
+/** Per-slot stall watch: reroll a job that hasn't moved in 40 minutes. */
+const contractWatch = new Map<number, { have: number; sinceSec: number }>();
+
+// ---------------------------------------------------------------------------
+// Verdance play — the garden, the threads, the still, the network.
+// ---------------------------------------------------------------------------
+
+let growthPolicy: Args['growth'] = 'clear';
+const verdMetrics = { brewActiveSec: 0, brewSamples: 0, farmHarvests: 0 };
+let lastFarmSweep = -1e9;
+let brewTrialIdx = 0;
+/** Honest experimentation: sweep the small-ratio space in order. */
+const BREW_TRIALS: Array<[number, number, number]> = [];
+for (let a = 0; a <= 4; a++) for (let b = 0; b <= 4; b++) for (let c = 0; c <= 3; c++) {
+  if (a + b + c >= 2 && a + b + c <= 7) BREW_TRIALS.push([a, b, c]);
+}
+
+/** Two quadrants (top-left, bottom-right) go feral under the cultivate policy. */
+function isFarmCell(s: GameState, cell: number): boolean {
+  if (growthPolicy !== 'cultivate') return false;
+  if (currentShell(s).id !== 'verdance') return false;
+  const { w, h } = s.face;
+  const x = cell % w;
+  const y = Math.floor(cell / w);
+  const tl = x < Math.floor(w / 2) && y < Math.floor(h / 2);
+  const br = x >= Math.floor(w / 2) && y >= Math.floor(h / 2);
+  return tl || br;
+}
+
+function verdancePlay(engine: Engine, s: GameState, wallBlocked: boolean): void {
+  // Brew uptime sample (every policy pass ~2s).
+  if (s.shell.breachCount >= 2 || currentShell(s).id === 'verdance') {
+    verdMetrics.brewSamples += 1;
+    if (s.brewing.active) verdMetrics.brewActiveSec += 2;
+  }
+  // The farm sweep: harvest bloom+ vines in the farmed quadrants.
+  if (growthPolicy === 'cultivate' && currentShell(s).id === 'verdance' &&
+      s.stats.playTimeSec - lastFarmSweep > 120) {
+    lastFarmSweep = s.stats.playTimeSec;
+    for (let i = 0; i < s.face.cells.length; i++) {
+      // A patient farmer harvests FERAL — the young stages clip the bank.
+      if (isFarmCell(s, i) && (s.growth.stage[i] ?? 0) >= 4) {
+        engine.dispatch({ type: 'chip', cell: i });
+        verdMetrics.farmHarvests += 1;
+      }
+    }
+  }
+  // The Mycelium: feed it, seed it.
+  if (Object.keys(s.mycelium.nodes).length < 20) {
+    if ((s.currencies['humus']?.toNumber() ?? 0) > 120) {
+      engine.dispatch({ type: 'feedMycelium', humus: 60 });
+      const types = ['marrowcap', 'dewthread', 'lanterngill', 'burrowlace', 'sporefather'];
+      const owned = Object.keys(s.mycelium.nodes).length;
+      // Next site: walk rows shallow-to-deep, lanes left-to-right.
+      outer: for (let r = 0; r < 14; r++) {
+        for (let l = 0; l < 3; l++) {
+          const id = `${r}-${l}`;
+          if (!s.mycelium.nodes[id]) {
+            engine.dispatch({ type: 'inoculate', siteId: id, nodeType: types[owned % types.length]! });
+            break outer;
+          }
+        }
+      }
+    }
+  }
+  // The Greenhouse: plant differing base strains side by side (breeding),
+  // harvest ripe non-hybrids, let two mature cultivars stand.
+  const gh = s.greenhouse;
+  const baseSeeds = Object.entries(gh.seeds).filter(([id, n]) => n > 0 && !id.startsWith('hy.'));
+  for (let plot = 0; plot < gh.plots.length; plot++) {
+    if (!gh.plots[plot] && baseSeeds.length > 0) {
+      const neighborId = gh.plots[plot - 1]?.speciesId;
+      const pick = baseSeeds.find(([id]) => id !== neighborId) ?? baseSeeds[0]!;
+      engine.dispatch({ type: 'plantSeed', plot, speciesId: pick[0] });
+      break;
+    }
+  }
+  let standing = 0;
+  for (let plot = 0; plot < gh.plots.length; plot++) {
+    const p = gh.plots[plot];
+    if (!p) continue;
+    const mature = (() => {
+      try { return p.progressMs >= strainDef(p.speciesId).growMs; } catch { return false; }
+    })();
+    if (!mature) continue;
+    if (p.speciesId.startsWith('hy.') && standing < 2) {
+      standing += 1; // cultivars work while they stand
+      continue;
+    }
+    engine.dispatch({ type: 'harvestPlot', plot });
+  }
+  // The still: experiment when flush (skip resin trials until the deep pays).
+  // Never siphon Sap the forge is hoarding for a wall.
+  if (!wallBlocked && (s.currencies['sap']?.toNumber() ?? 0) > 250 && (s.currencies['spore']?.toNumber() ?? 0) > 800) {
+    const resin = s.currencies['resin']?.toNumber() ?? 0;
+    for (let tries = 0; tries < BREW_TRIALS.length; tries++) {
+      const trial = BREW_TRIALS[brewTrialIdx % BREW_TRIALS.length]!;
+      brewTrialIdx += 1;
+      if (trial[2] * 5 > resin) continue; // can't afford the resin leg yet
+      engine.dispatch({ type: 'brewExperiment', sap: trial[0], spore: trial[1], resin: trial[2] });
+      break;
+    }
+  }
+  if (!s.brewing.active && (s.brewing.doses['longlight'] ?? 0) > 1 && Math.random() < 0.02) {
+    engine.dispatch({ type: 'drinkBrew', brewId: 'longlight' });
+  }
+  // The Loom: spin what the fights dropped, then keep the I-weave set.
+  if (!wallBlocked && s.loom.weaves === 0) {
+    for (const t of ['silkS', 'rootZ', 'rootS'] as const) {
+      engine.dispatch({ type: 'spinThread', threadId: t });
+    }
+    if ((s.loom.threads['silkS'] ?? 0) >= 1 && (s.loom.threads['rootZ'] ?? 0) >= 9 && (s.loom.threads['rootS'] ?? 0) >= 2) {
+      for (let i = 0; i < 6; i++) {
+        engine.dispatch({ type: 'setThread', axis: 'warp', index: i, threadId: i === 0 ? 'silkS' : 'rootZ' });
+        engine.dispatch({ type: 'setThread', axis: 'weft', index: i, threadId: i < 4 ? 'rootZ' : 'rootS' });
+      }
+      engine.dispatch({ type: 'commitWeave' });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Glassmere play — optics, skies, the bench, detours, runes.
+// ---------------------------------------------------------------------------
+
+let lastWarrenAt = -1e9;
+let lastBenchAt = -1e9;
+const glassMetrics = { warrensRun: 0, lensesGround: 0, observationsIdle: 0 };
+
+function glassmerePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  // The Observatory: always exposing (pure AFK — the idle payoff).
+  if (masteryLevelOf(s, 'glassmere') >= 2) {
+    if (!s.observatory.active) {
+      engine.dispatch({ type: 'startObservation', tier: 1 });
+    } else if (engine.dispatch({ type: 'collectObservation' }).ok) {
+      glassMetrics.observationsIdle += 1;
+    }
+  }
+  if (currentShell(s).id === 'glassmere') {
+    // Optics: keep a simple L-path lit (mirrors survive descends).
+    if (Object.keys(s.refraction.mirrors).length === 0) {
+      engine.dispatch({ type: 'setBeamRow', row: 2 });
+      const w = s.face.w;
+      engine.dispatch({ type: 'setMirror', cell: 2 * w + (w - 2), kind: '\\' });
+      engine.dispatch({ type: 'setMirror', cell: (s.face.h - 2) * w + (w - 2), kind: '/' });
+    }
+    if (s.refraction.mirrorStock < 4 && (s.currencies['silica']?.toNumber() ?? 0) > 300) {
+      engine.dispatch({ type: 'buyMirror' });
+    }
+    // The Bench: one honest solve per stretch; wear the best lens.
+    if (s.stats.playTimeSec - lastBenchAt > 600 && (s.currencies['silica']?.toNumber() ?? 0) > 60) {
+      lastBenchAt = s.stats.playTimeSec;
+      const next = AUTHORED_PUZZLES.find((p) => !s.bench.solved.includes(p.id));
+      if (next) {
+        const r = engine.dispatch({ type: 'benchAttempt', puzzleId: next.id, mirrors: next.solution });
+        if (r.ok && (r.data as { solved: boolean }).solved) {
+          glassMetrics.lensesGround += 1;
+          engine.dispatch({ type: 'equipLens', puzzleId: next.id });
+        }
+      }
+    }
+  }
+  // The Warrens: a detour every half hour, wherever one is open.
+  if (!s.warrens.active && !s.combat.active && s.stats.playTimeSec - lastWarrenAt > 1800) {
+    const open = WARRENS.find((w) => warrenAvailable(s, w) && !(s.warrens.cleared[w.id] && s.warrens.uniques.includes(w.id) && Math.random() < 0.8));
+    if (open) {
+      lastWarrenAt = s.stats.playTimeSec;
+      if (engine.dispatch({ type: 'warrenEnter', id: open.id }).ok) {
+        const data = puzzleData(open);
+        let answer: number[] = [];
+        if (open.puzzle.kind === 'echo') answer = data.sequence!;
+        else if (open.puzzle.kind === 'weights') {
+          const ws = data.weights!;
+          outer: for (let mask = 1; mask < 1 << ws.length; mask++) {
+            if (ws.reduce((a, x, i) => a + ((mask >> i) & 1) * x, 0) === data.target) {
+              answer = ws.map((_, i) => i).filter((i) => (mask >> i) & 1);
+              break outer;
+            }
+          }
+        } else {
+          const lit = new Set<number>();
+          for (const g of data.gates!) for (const l of g.on) lit.add(l);
+          for (const g of data.gates!) for (const l of g.off) lit.delete(l);
+          answer = [...lit];
+        }
+        engine.dispatch({ type: 'warrenAnswer', id: open.id, answer });
+        if (s.combat.active) fightManually(engine, s);
+        if (engine.dispatch({ type: 'warrenClaim' }).ok) {
+          glassMetrics.warrensRun += 1;
+          if (glassMetrics.warrensRun <= 4) log(`warren cleared: ${open.name}`);
+        } else {
+          engine.dispatch({ type: 'warrenLeave' });
+        }
+      }
+    }
+  }
+  // Runes: etch the good grammar as finds allow.
+  const seqs: Array<[('tool' | 'offhand' | 'harness'), (string | null)[]]> = [
+    ['tool', ['kel', 'thur', 'kel']],
+    ['offhand', ['sen', 'vey', null]],
+    ['harness', ['ash', 'mol', null]],
+  ];
+  for (const [target, seq] of seqs) {
+    const cur = s.runes.inscriptions[target] ?? [];
+    if (cur[0]) continue;
+    const need: Record<string, number> = {};
+    for (const r of seq) if (r) need[r] = (need[r] ?? 0) + 1;
+    if (Object.entries(need).every(([r, n]) => (s.runes.found[r] ?? 0) >= n)) {
+      engine.dispatch({ type: 'inscribe', target, sequence: seq });
+    }
+  }
+}
+
+function masteryLevelOf(s: GameState, shellId: string): number {
+  return Math.min(50, Math.floor((s.depthRecords[shellId] ?? 0) / 10));
+}
+
+// ---------------------------------------------------------------------------
+// Cinder play — three heat stances audit the failure state's charter:
+//   safe    never chokes, never wells; the Damper's line must stay VIABLE.
+//   balanced chokes during active bursts, purges at 97, small wells.
+//   greedy  rides 90+ choked with overdrive, purges at 99 — hot, never dead.
+// ---------------------------------------------------------------------------
+
+let heatStance: Args['heat'] = 'balanced';
+const cinderMetrics = {
+  heatSum: 0, heatSamples: 0, purges: 0, wellsNet: 0, wellsCommitted: 0,
+  fuelLit: 0, anomaliesAnswered: 0,
+};
+let lastArrayTend = -1e9;
+
+function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  // Anomalies: every stance answers them — they are pure upside by charter.
+  if (s.anomalies.active) {
+    if (engine.dispatch({ type: 'answerAnomaly' }).ok) {
+      cinderMetrics.anomaliesAnswered += 1;
+      if (s.combat.active) fightManually(engine, s);
+    }
+  }
+  if (currentShell(s).id !== 'cinder') return;
+  const p = s.pressure;
+  cinderMetrics.heatSum += p.heat;
+  cinderMetrics.heatSamples += 1;
+
+  // The Vent Network: every stance plumbs — headroom is never the wrong buy.
+  if ((s.currencies['obsidian']?.toNumber() ?? 0) > nextPipeCost(s) * 3) {
+    const route = [
+      VENT_SHAFT_CELL, VENT_SHAFT_CELL + 1, VENT_SHAFT_CELL + 2, VENT_SHAFT_CELL + 3,
+      VENT_SHAFT_CELL + 4, VENT_SHAFT_CELL + 5, VENT_SHAFT_CELL + 6, // right-mid outlet
+      3, 10, 17, // spur up to the top-mid outlet
+      31, 24, // spur down to the bottom-mid outlet
+    ];
+    const next = route.find((c) => s.pressure.pipes[c] !== 1);
+    if (next !== undefined) engine.dispatch({ type: 'layPipe', cell: next });
+  }
+
+  // The choke — the voluntary line, stance by stance.
+  const active = s.stats.playTimeSec - p.lastStokeSec < 30;
+  if (heatStance === 'safe') {
+    if (p.choke) engine.dispatch({ type: 'setChoke', on: false });
+  } else if (heatStance === 'balanced') {
+    const want = active && p.heat < 85;
+    if (p.choke !== want) engine.dispatch({ type: 'setChoke', on: want });
+    // Purge only inside a real klaxon — the quarter is an emergency price.
+    if (p.overpressureAtSec !== null && s.stats.playTimeSec - p.overpressureAtSec > 20) {
+      if (engine.dispatch({ type: 'emergencyPurge' }).ok) cinderMetrics.purges += 1;
+    }
+  } else {
+    // Greedy rides the low-90s on the choke itself: choke below 96, crack
+    // the valve above it (the relief sheds ~3/s), re-choke under 92. The
+    // purge is a true emergency (a countdown half run out), not a rhythm —
+    // a competent pusher pays the quarter almost never.
+    const want = active && p.heat < (p.choke ? 96 : 92);
+    if (p.choke !== want) engine.dispatch({ type: 'setChoke', on: want });
+    if (p.overpressureAtSec !== null && s.stats.playTimeSec - p.overpressureAtSec > 25) {
+      if (engine.dispatch({ type: 'emergencyPurge' }).ok) cinderMetrics.purges += 1;
+    }
+    if (s.ember.overdrive && (!active || p.heat >= 96)) engine.dispatch({ type: 'setOverdrive', on: false });
+  }
+
+  // Crew safety: a competent player recalls at the red line, always.
+  if (p.heat >= 90 && !s.guild.crewRecalled && Object.keys(s.guild.hirelings).length > 0) {
+    engine.dispatch({ type: 'recallCrew' });
+  }
+
+  // The Ember Array: tend a billet block every few minutes.
+  if (arrayUnlocked(s) && s.stats.playTimeSec - lastArrayTend > 240) {
+    lastArrayTend = s.stats.playTimeSec;
+    if ((s.currencies['ember']?.toNumber() ?? 0) > 200) {
+      engine.dispatch({ type: 'buyFuel', fuelId: 'emberbillet', count: 4 });
+      const cold = [14, 15, 20, 21].filter((c) => !s.ember.grid[c] && s.ember.burn[c]! <= 0);
+      for (const c of cold) engine.dispatch({ type: 'placeFuel', cell: c, fuelId: 'emberbillet' });
+      if (s.ember.temp < 5 && s.ember.grid[14]) {
+        if (engine.dispatch({ type: 'lightCell', cell: 14 }).ok) cinderMetrics.fuelLit += 1;
+        engine.dispatch({ type: 'lightCell', cell: 21 });
+      }
+    }
+  }
+
+  // Magma Wells: balanced dips a toe; greedy commits the cap; safe abstains.
+  if (heatStance !== 'safe' && wellsUnlocked(s)) {
+    for (const well of WELLS) {
+      const progress = wellProgress(s, well.id);
+      if (progress >= 1) {
+        const before = s.currencies[well.currencyId]?.toNumber() ?? 0;
+        const r = engine.dispatch({ type: 'collectWell', wellId: well.id });
+        if (r.ok) {
+          const after = s.currencies[well.currencyId]?.toNumber() ?? 0;
+          cinderMetrics.wellsNet += after - before;
+        }
+      } else if (progress === 0) {
+        const held = s.currencies[well.currencyId]?.toNumber() ?? 0;
+        const commit = heatStance === 'greedy' ? Math.floor(held * 0.1) : well.minCommit;
+        if (held > well.minCommit * 12 && commit >= well.minCommit) {
+          if (engine.dispatch({ type: 'commitWell', wellId: well.id, amount: commit }).ok) {
+            cinderMetrics.wellsCommitted += commit;
+          }
+        }
+      }
+    }
+  }
+  void log;
+}
+
+// ---------------------------------------------------------------------------
+// Hollow + Aleph play (Phase 10): farm the Silence, rebuild the face, run a
+// tape, touch the Core, recurse, write an Axiom. The endgame loop.
+// ---------------------------------------------------------------------------
+
+const p10Metrics = {
+  silenceHarvests: 0, cellsRebuilt: 0, tapeLoops: 0, recursions: 0,
+  axiomsBought: [] as string[], coreTouches: 0,
+};
+let tapeArmed = false;
+
+function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  const shell = currentShell(s).id;
+  if (shell !== 'hollow' && shell !== 'aleph') return;
+
+  if (shell === 'hollow') {
+    // The auto-listener holds the idle floor; set it once, high.
+    if (s.hollow.listenAt === 0) engine.dispatch({ type: 'setListenAt', stacks: 70 });
+    // An active player also harvests manually when the quiet is loud.
+    if (s.hollow.silence >= 55) {
+      if (engine.dispatch({ type: 'listen' }).ok) p10Metrics.silenceHarvests += 1;
+    }
+    // Reconstruction: buy the next cell whenever Void allows and depth permits.
+    const rebuiltCount = s.hollow.rebuilt.length;
+    if (rebuiltCount < s.face.cells.length) {
+      const nextCell = s.face.cells.findIndex((_, i) => !s.hollow.rebuilt.includes(i));
+      if (nextCell >= 0) {
+        const r = engine.dispatch({ type: 'rebuildCell', cell: nextCell });
+        if (r.ok) {
+          p10Metrics.cellsRebuilt += 1;
+          if (p10Metrics.cellsRebuilt <= 3 || p10Metrics.cellsRebuilt % 8 === 0) {
+            log(`rebuilt cell ${p10Metrics.cellsRebuilt}/${s.face.cells.length} at hollow depth ${s.depth}`);
+          }
+        }
+      }
+    }
+    // The Echo Chamber: record a two-chip loop once, run it forever.
+    if (masteryLevelOf(s, 'hollow') >= 2 && !tapeArmed && s.hollow.rebuilt.length >= 2) {
+      tapeArmed = true;
+      engine.dispatch({ type: 'tapeRecord', on: true });
+      const lit = s.hollow.rebuilt.slice(0, 2);
+      for (const c of lit) engine.dispatch({ type: 'chip', cell: c });
+      engine.dispatch({ type: 'tapeRun', on: true });
+      log(`echo chamber: recorded a ${s.chamber.tape.length}-step loop`);
+    }
+    p10Metrics.tapeLoops = s.chamber.loops;
+  }
+
+  if (shell === 'aleph') {
+    // At the Core: touch it, then recurse, then write one Axiom.
+    if (s.depth >= 40 && !s.aleph.coreTouched) {
+      if (engine.dispatch({ type: 'touchCore' }).ok) {
+        p10Metrics.coreTouches += 1;
+        log(`*** THE CORE TOUCHED (recursion ${s.recursion.count} pending) ***`);
+      }
+    }
+    if (s.aleph.coreTouched) {
+      const r = engine.dispatch({ type: 'recurse' });
+      if (r.ok) {
+        const d = r.data as { count: number; axiomsGained: number };
+        p10Metrics.recursions += 1;
+        log(`*** RECURSION ${d.count} | +${d.axiomsGained} Axioms (total held ${fmt(s.currencies['axiom'] ?? 0)}) ***`);
+        // Write an Axiom if any are banked (a veteran's opening move).
+        const wishlist = ['firstWord', 'earlyDoor', 'twoHands', 'unemptying', 'insomniac', 'heresy'];
+        for (const id of wishlist) {
+          if (!s.recursion.axioms.includes(id) && engine.dispatch({ type: 'buyAxiom', id }).ok) {
+            p10Metrics.axiomsBought.push(id);
+            log(`  wrote Axiom: ${id}`);
+            break;
+          }
+        }
+        tapeArmed = false;
+      }
+    }
+  }
+}
+
+function guildPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  if (!s.guild.discovered) return;
+
+  // The board: accept everything, turn in anything finished, and forget a
+  // job that hasn't moved in 40 minutes (the player owns the tempo).
+  for (let i = 0; i < s.guild.contracts.slots; i++) {
+    const c = s.guild.contracts.board[i];
+    if (!c) continue;
+    if (!c.accepted) {
+      engine.dispatch({ type: 'acceptContract', slot: i });
+      continue;
+    }
+    if (contractSatisfied(s, c)) {
+      const r = engine.dispatch({ type: 'completeContract', slot: i });
+      if (r.ok) {
+        contractWatch.delete(i);
+        const scrip = (r.data as { scrip: number }).scrip;
+        guildMetrics.contractsDone += 1;
+        guildMetrics.contractScrip += scrip;
+        if (guildMetrics.contractsDone <= 3 || guildMetrics.contractsDone % 20 === 0) {
+          log(`contract #${guildMetrics.contractsDone}: "${c.desc}" (+${scrip} scrip)`);
+        }
+      }
+      continue;
+    }
+    const { have } = contractProgress(s, c);
+    const watch = contractWatch.get(i);
+    if (!watch || watch.have !== have) {
+      contractWatch.set(i, { have, sinceSec: s.stats.playTimeSec });
+    } else if (s.stats.playTimeSec - watch.sinceSec > 2400) {
+      if (engine.dispatch({ type: 'rerollContract', slot: i }).ok) {
+        guildMetrics.rerolls += 1;
+        contractWatch.delete(i);
+      }
+    }
+  }
+
+  // The crew, one signing per pass; charters go to berths first, then pegs.
+  for (const id of GUILD_HIRE_ORDER) {
+    if (s.guild.hirelings[id]) continue;
+    if (engine.dispatch({ type: 'hire', npcId: id }).ok) log(`hired ${id} (crew ${hiredCount(s)}/${s.guild.berths})`);
+    break;
+  }
+  if ((s.currencies['charter']?.toNumber() ?? 0) >= 1) {
+    const sink = (s.guild.charterSpent['berth'] ?? 0) < 3 ? 'berth' : 'boardSlot';
+    if (engine.dispatch({ type: 'spendCharter', sink }).ok) log(`charter spent on ${sink}`);
+  }
+
+  // The archive: read what's found; pay Quill when flush.
+  for (const id of s.guild.sable.found) {
+    if (!s.guild.sable.read.includes(id) && s.guild.sable.translated.includes(id)) {
+      engine.dispatch({ type: 'markFragmentRead', fragmentId: id });
+    }
+  }
+  for (const id of s.guild.sable.found) {
+    if (s.guild.sable.translated.includes(id)) continue;
+    if ((s.currencies['scrip']?.toNumber() ?? 0) < translationFee(s, id) + 80) break;
+    if (engine.dispatch({ type: 'translateFragment', fragmentId: id }).ok) {
+      engine.dispatch({ type: 'markFragmentRead', fragmentId: id });
+      log(`quill translated ${id}`);
+    }
+  }
+
+  // A name of your own: the best chip-yield title on the shelf.
+  if (s.guild.titles.earned.length > 0) {
+    const best = s.guild.titles.earned
+      .map((id) => TITLE_BY_ID.get(id)!)
+      .sort((a, b) => (b.bucket === 'dustYield' ? b.value : 0) - (a.bucket === 'dustYield' ? a.value : 0))[0]!;
+    if (s.guild.titles.equipped !== best.id) engine.dispatch({ type: 'equipTitle', titleId: best.id });
+  }
+
+  // The road: sell byproduct crates when the drift is high, and swap a slice
+  // of conv stock back to chip when the return leg pays.
+  if (s.shell.breachCount >= 1 && s.stats.playTimeSec - lastCaravanAt > 1500) {
+    for (const route of CARAVAN_ROUTES) {
+      if (route.flatScripPer !== undefined) {
+        if (drift(s, route) < 1.05) continue;
+      } else if (route.id !== 'conv-chip' || drift(s, route) < 1.08) {
+        continue; // conversions only on a favorable return leg
+      }
+      if (engine.dispatch({ type: 'caravanTrade', route: route.id, amount: 0.2 }).ok) {
+        lastCaravanAt = s.stats.playTimeSec;
+        guildMetrics.trades += 1;
+        break;
+      }
+    }
+  }
+}
+
+// A standalone cache for policy cost reads (the engine keeps its own).
+const mods = new ModifierCache();
+
+/**
+ * Chip `count` times. Polarity-aware: when a signature chain is live, prefer
+ * the fullest cell of the SAME sign; break deliberately only when nothing
+ * same-signed holds meaningful charge. Without polarity it's plain greedy.
+ */
+function chipFullest(engine: Engine, count: number): void {
+  const s = engine.getState();
+  const usePolarity = currentShell(s).signatureId === 'polarity' || s.shell.signatures.includes('polarity');
+  for (let k = 0; k < count; k++) {
+    let best = -1;
+    let bestCharge = 0;
+    if (usePolarity && s.polarity.chain > 0) {
+      for (let i = 0; i < s.face.cells.length; i++) {
+        if (isFarmCell(s as GameState, i)) continue; // the garden is off-limits
+        if ((s.polarity.signs[i] ?? 1) !== s.polarity.lastSign) continue;
+        const c = s.face.cells[i]!;
+        if (c > bestCharge) {
+          bestCharge = c;
+          best = i;
+        }
+      }
+      // Nothing same-signed worth chipping? Take the greedy break.
+      if (bestCharge < 1.5) best = -1;
+    }
+    if (best < 0) {
+      bestCharge = 0;
+      for (let i = 0; i < s.face.cells.length; i++) {
+        if (isFarmCell(s as GameState, i)) continue;
+        const c = s.face.cells[i]!;
+        if (c > bestCharge) {
+          bestCharge = c;
+          best = i;
+        }
+      }
+    }
+    if (best < 0 || bestCharge < 1) break; // not worth the stroke
+    engine.dispatch({ type: 'chip', cell: best });
+  }
+}
+
+const CORE_PRIORITY = [
+  'grit', 'deepGrit', 'ballast', 'momentum', 'wellspring', 'resonantCore',
+  'emberMemory', 'persistence', 'overseer', 'millstone', 'keenEye', 'farsight', 'secondWind', 'faultLines',
+];
+const SKILL_PRIORITY = [
+  'sharpenedEdge', 'scholar', 'twoHandedSwing', 'splinterSense', 'assayersHunch',
+  'deepGrip', 'marginalia', 'drillLogic', 'stoker', 'cartographer', 'patternGhost', 'heavyHands',
+];
+
+/** Forge play: keep the tool ahead of the hardness walls, crack what drops.
+ * Returns true while HARD-blocked by a wall — the shop then hoards the
+ * converter currency for the tool instead of spending it. */
+function forgePlay(engine: Engine, s: GameState, log: (msg: string) => void): boolean {
+  if (!s.forge.built) return false;
+  const tier = equippedTool(s).tier;
+  const shell = currentShell(s);
+  const hardBlocked = requiredTier(s, s.depth + 1) > tier;
+  // Craft the next pick when the wall is near (or already blocking).
+  const wallSoon = requiredTier(s, Math.min(s.depth + 8, shell.floorDepth)) > tier;
+  const ladder: Array<[number, string]> = [
+    [2, 'loamironPick'], [3, 'deepcutter'],
+    [4, 'lodestoneRake'], [5, 'rimefang'], [6, 'stormcaller'],
+    [7, 'verdantScythe'], [8, 'bloomsteelMattock'], [9, 'wildstarFalx'],
+    [10, 'prismpick'], [11, 'lightwright'], [12, 'meridianEdge'],
+    [13, 'slagbreaker'], [14, 'pyreheartPick'], [15, 'cinderMaul'],
+  ];
+  for (const [t, recipeId] of ladder) {
+    // Craft the next tier the moment it is affordable — a wall never has to
+    // be touching you to justify a better pick.
+    if (t === tier + 1) {
+      const result = engine.dispatch({ type: 'craftTool', recipeId });
+      if (result.ok) {
+        log(`forged ${recipeId} (tier ${t}) at ${shell.id} depth ${s.depth}`);
+      } else if (hardBlocked && s.stats.playTimeSec - lastCraftWhine > 1800) {
+        lastCraftWhine = s.stats.playTimeSec;
+        log(`wall-blocked at ${shell.id} ${s.depth}: ${recipeId} — ${result.reason}`);
+      }
+    }
+  }
+  void wallSoon;
+  while (s.materials.geodes > 0) {
+    if (!engine.dispatch({ type: 'crackGeode' }).ok) break;
+  }
+  // Gear: craft the best AFFORDABLE piece per slot from ANY shell, highest
+  // tier first. (The macro pass made shell arcs fast enough that current-
+  // shell combat drops lag a shell behind — insisting on local gear starved
+  // the kit and left the Unblinking unfaceable for 44 hours. A human wears
+  // what the bank can pay for, wherever it was tanned.) Reveal lanterns get
+  // priority within the slot — sight is a capability, not a stat.
+  const bySlot = new Map<string, typeof GEAR_DEFS>();
+  for (const def of [...GEAR_DEFS].sort((a, b) => (b.tier + (b.combat.reveal ? 0.5 : 0)) - (a.tier + (a.combat.reveal ? 0.5 : 0)))) {
+    if (!bySlot.has(def.slot)) bySlot.set(def.slot, []);
+    bySlot.get(def.slot)!.push(def);
+  }
+  for (const [slot, defs] of bySlot) {
+    const worn = s.forge.gear[slot as 'offhand'];
+    for (const def of defs) {
+      const wornDef = worn ? GEAR_DEFS.find((g) => g.id === worn.defId) : null;
+      if (wornDef && wornDef.tier >= def.tier) break; // already better
+      if (engine.dispatch({ type: 'craftGear', gearId: def.id }).ok) {
+        log(`geared: ${def.id} (T${def.tier})`);
+        break;
+      }
+    }
+  }
+  // Socket any gem into any open socket of the equipped tool.
+  const tool = equippedTool(s);
+  const openSlot = tool.sockets.findIndex((g) => g === null);
+  if (openSlot >= 0) {
+    for (const [gemId, count] of Object.entries(s.materials.gems)) {
+      if (count > 0) {
+        engine.dispatch({ type: 'socketGem', toolId: tool.id, slot: openSlot, gemId });
+        break;
+      }
+    }
+  }
+  if (assayUnlocked(s) && !s.assay.active && s.assay.boostChips === 0) {
+    engine.dispatch({ type: 'startAssay' });
+  }
+  return hardBlocked;
+}
+
+let lastCraftWhine = -1e9;
+
+/** Known-good pours the sim attempts when metals allow (economy check, not
+ * discovery play — a human hunts; the sim audits). */
+const POUR_PLAN: Array<{ amounts: number[]; log: string }> = [
+  { amounts: [2, 1, 0, 0, 0], log: 'Greysteel' },
+  { amounts: [3, 1, 0, 0, 0], log: 'Bloom Steel' },
+  { amounts: [1, 0, 0, 2, 0], log: 'Poleiron' },
+  { amounts: [1, 1, 0, 3, 0], log: 'Veinmetal' },
+  { amounts: [3, 1, 2, 0, 0], log: 'Marrowsteel' },
+  { amounts: [2, 1, 1, 1, 1], log: "Sable's Steel" },
+];
+
+/** Ferrite-era play: magnets, pours, foundry, resonant memory. */
+function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  if (s.shell.breachCount === 0) return;
+  // Magnets: buy when Scale allows; poles all + for long corridors.
+  if (magnetArrayUnlocked(s)) {
+    if (engine.dispatch({ type: 'buyMagnet' }).ok) log(`magnet ${s.polarity.magnetCount} rigged`);
+    for (let c = 0; c < s.polarity.magnetCount; c++) {
+      if ((s.polarity.magnets[c] ?? 0) !== 1) engine.dispatch({ type: 'toggleMagnet', col: c });
+    }
+  }
+  // Crucible: pour the next planned alloy when metals + a catalyst exist.
+  if (crucibleUnlocked(s)) {
+    const catalyst = Object.keys(s.materials.stacks).find(
+      (id) => materialDef(id).shellId === 'ferrite' && materialCount(s, id) > 0,
+    );
+    if (catalyst) {
+      const next = POUR_PLAN.find((p) => {
+        const match = matchAlloy(p.amounts);
+        return match !== null && !s.crucible.discovered.includes(match.id);
+      });
+      if (next) {
+        const affordable = next.amounts.every(
+          (n, i) => n === 0 || s.currencies[['ingot', 'flux', 'scale', 'lodestone', 'rime'][i]!]!.gte(n * 20 * 3),
+        );
+        if (affordable) {
+          const result = engine.dispatch({ type: 'pourAlloy', amounts: next.amounts, catalystId: catalyst });
+          if (result.ok && (result.data as { result: string }).result !== 'slag') log(`poured ${next.log}`);
+        }
+      }
+    }
+  }
+  // Foundry: slots then modules.
+  if (foundryUnlocked(s)) {
+    if (s.foundry.installed.length >= s.foundry.slots) engine.dispatch({ type: 'buyFoundrySlot' });
+    for (const mod of FOUNDRY_MODULES) {
+      if (engine.dispatch({ type: 'installModule', id: mod.id }).ok) {
+        log(`foundry: ${mod.name}`);
+        break;
+      }
+    }
+  }
+  engine.dispatch({ type: 'buyResonantMemory' });
+}
+
+// ---------------------------------------------------------------------------
+// Lattice play: a queue of "projects" a curious player would try — build a
+// clear line, attach a context motif, upgrade one member to break uniformity.
+// ---------------------------------------------------------------------------
+
+interface LatticeProject {
+  shape: MotifShape;
+  /** Motif to place beside the line's middle after it forms. */
+  attach?: MotifShape;
+  /** Upgrade one line member afterward (uniform -> mixed variant). */
+  upgradeAfter?: boolean;
+  /** Stone rank (door hunts need rank 3 — combined rank 9 opens seals). */
+  rank?: number;
+}
+
+const LATTICE_PROJECTS: LatticeProject[] = [
+  { shape: 'triangle', upgradeAfter: true }, // isolated uniform + mixed
+  { shape: 'triangle', attach: 'triangle' }, // -> supported
+  { shape: 'square', upgradeAfter: true },
+  { shape: 'square', attach: 'square', upgradeAfter: true }, // supported.mixed = The Press
+  { shape: 'circle', attach: 'square', upgradeAfter: true }, // flowing -> The Grammar
+  { shape: 'hex' }, // isolated uniform = The Keystone (discovery only at rank 1)
+  { shape: 'hex', attach: 'circle', upgradeAfter: true }, // flowing pair
+  { shape: 'circle', upgradeAfter: true },
+  { shape: 'triangle', attach: 'circle' }, // opposed
+  { shape: 'square', attach: 'hex' }, // opposed
+  // Door hunts — heavy stones to break the rank-9 seals (needs Chisels).
+  { shape: 'hex', rank: 3 }, // Keystone opens
+  { shape: 'circle', attach: 'square', upgradeAfter: true, rank: 3 }, // Grammar opens
+  { shape: 'square', attach: 'square', upgradeAfter: true, rank: 3 }, // Press opens
+];
+
+interface LatticePlan {
+  project: number;
+  stage: 'line' | 'attach' | 'upgrade';
+  line: Axial[];
+  placedInLine: number;
+  /** No clear line fits AND a ring is actually buyable — hoard Brick for it. */
+  blockedForSpace: boolean;
+  /** Cells placed per finished project — oldest gets recycled when cramped. */
+  history: Axial[][];
+  current: Axial[];
+}
+
+const plan: LatticePlan = {
+  project: 0,
+  stage: 'line',
+  line: [],
+  placedInLine: 0,
+  blockedForSpace: false,
+  history: [],
+  current: [],
+};
+
+/** A 3-cell line whose cells and entire neighbourhood are empty (and none
+ * of it the sealed Navel). */
+function findClearLine(s: GameState): Axial[] | null {
+  const lat = s.lattice;
+  for (const start of boardCells(lat.rings)) {
+    for (const axis of LINE_AXES) {
+      const cells = [0, 1, 2].map((i) => ({ q: start.q + axis.q * i, r: start.r + axis.r * i }));
+      if (!cells.every((c) => inBoard(c.q, c.r, lat.rings) && !isSealed(c.q, c.r) && !lat.cells[hexKey(c.q, c.r)])) continue;
+      const lineKeys = new Set(cells.map((c) => hexKey(c.q, c.r)));
+      const clear = cells.every((c) =>
+        neighborsOf(c.q, c.r).every((n) => lineKeys.has(hexKey(n.q, n.r)) || !lat.cells[hexKey(n.q, n.r)]),
+      );
+      if (clear) return cells;
+    }
+  }
+  return null;
+}
+
+function latticePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  const lat = s.lattice;
+  if (!lat.unlocked) return;
+
+  // Rings the moment they're affordable — permanent beats temporary.
+  if (lat.rings < MAX_RINGS && (lat.rings < MAX_RINGS - 1 || lat.doors.ring4)) {
+    if (s.currencies['brick']!.gte(ringCost(lat.rings).mul(1.15))) {
+      if (engine.dispatch({ type: 'buyLatticeRing' }).ok) log(`lattice ring -> ${lat.rings}`);
+    }
+  }
+  if (lat.doors.press && !lat.pressOn) engine.dispatch({ type: 'setLatticePress', on: true });
+
+  const project = LATTICE_PROJECTS[plan.project];
+  if (!project) return;
+
+  if (plan.stage === 'line') {
+    if (plan.line.length === 0) {
+      const line = findClearLine(s);
+      if (!line) {
+        // Cramped. Recycle the oldest finished experiment (discoveries are
+        // permanent; the 60% refund is the cost of the hunt) — else hoard
+        // Brick for the next ring, if one can actually be bought.
+        const canBuyRing = lat.rings < MAX_RINGS - 1 || (lat.rings < MAX_RINGS && lat.doors.ring4);
+        if (plan.history.length > 1) {
+          const old = plan.history.shift()!;
+          for (const c of old) engine.dispatch({ type: 'removeMotif', q: c.q, r: c.r });
+          log('lattice: recycled an old experiment for space');
+        }
+        plan.blockedForSpace = canBuyRing;
+        return;
+      }
+      plan.blockedForSpace = false;
+      plan.line = line;
+      plan.placedInLine = 0;
+    }
+    const target = plan.line[plan.placedInLine];
+    if (!target) return;
+    if (engine.dispatch({ type: 'placeMotif', q: target.q, r: target.r, shape: project.shape, rank: project.rank ?? 1 }).ok) {
+      plan.current.push(target);
+      plan.placedInLine++;
+      if (plan.placedInLine >= 3) {
+        plan.stage = project.attach ? 'attach' : project.upgradeAfter ? 'upgrade' : 'line';
+        if (plan.stage === 'line') advanceProject(log, s);
+      }
+    }
+    return;
+  }
+
+  if (plan.stage === 'attach') {
+    const mid = plan.line[1]!;
+    const lineKeys = new Set(plan.line.map((c) => hexKey(c.q, c.r)));
+    const spot = neighborsOf(mid.q, mid.r).find(
+      (n) =>
+        inBoard(n.q, n.r, lat.rings) &&
+        !isSealed(n.q, n.r) &&
+        !lineKeys.has(hexKey(n.q, n.r)) &&
+        !lat.cells[hexKey(n.q, n.r)],
+    );
+    if (!spot) {
+      plan.stage = 'upgrade';
+      return;
+    }
+    if (engine.dispatch({ type: 'placeMotif', q: spot.q, r: spot.r, shape: project.attach!, rank: project.rank ?? 1 }).ok) {
+      plan.current.push(spot);
+      plan.stage = project.upgradeAfter ? 'upgrade' : 'line';
+      if (plan.stage === 'line') advanceProject(log, s);
+    }
+    return;
+  }
+
+  // upgrade: break uniformity on the line's first cell.
+  const first = plan.line[0]!;
+  if (engine.dispatch({ type: 'upgradeMotif', q: first.q, r: first.r }).ok) {
+    advanceProject(log, s);
+    plan.stage = 'line';
+  }
+}
+
+function advanceProject(log: (msg: string) => void, s: GameState): void {
+  plan.project++;
+  plan.line = [];
+  plan.placedInLine = 0;
+  plan.history.push(plan.current);
+  plan.current = [];
+  log(
+    `lattice project ${plan.project} done — ${s.lattice.discovered.length} chords, ` +
+      `${s.lattice.discoveredProgressions.length} progressions known`,
+  );
+}
+
+/** Greedy shopping trip — mirrors how a competent player spends. */
+function shop(engine: Engine, log: (msg: string) => void): void {
+  const s = engine.getState() as GameState;
+  mods.invalidate();
+
+  // Structures first — they are the unlocks.
+  for (const id of ['kilnBuild', 'bayBuild', 'latticeUncover', 'forgeBuild']) {
+    const def = allUpgrades().find((u) => u.id === id)!;
+    if (upgradeLevel(s, id) === 0 && (!def.visible || def.visible(s))) {
+      if (engine.dispatch({ type: 'buyUpgrade', id }).ok) log(`built ${id}`);
+    }
+  }
+
+  // Chip/conv upgrades: spend if a level costs under a slice of the bank.
+  // Currency resolves per shell — the same policy plays Loam and Ferrite.
+  const dust = () => s.currencies[chipCurrencyId(s)]!;
+  const brick = () => s.currencies[convCurrencyId(s)]!;
+  const buyIfUnder = (id: string, bank: () => Decimal, slice: number) => {
+    const def = allUpgrades().find((u) => u.id === id)!;
+    if (def.visible && !def.visible(s)) return;
+    const level = upgradeLevel(s, id);
+    if (level >= def.maxLevel) return;
+    const cost = nextCost(def, level);
+    if (bank().mul(slice).gte(cost)) engine.dispatch({ type: 'buyUpgrade', id });
+  };
+  buyIfUnder('blade', dust, 0.35);
+  buyIfUnder('soil', dust, 0.35);
+  buyIfUnder('roots', dust, 0.2);
+  buyIfUnder('lantern', dust, 0.1);
+  // The Breach: fall through once the shell has paid out (~500+ cores this
+  // breach -> 3 Echoes; DESIGN expects ~800 earned across Shell I).
+  if (canBreach(s) && s.shell.coresEarnedThisBreach.gte(500)) {
+    const result = engine.dispatch({ type: 'breach' });
+    if (result.ok) {
+      log(`*** BREACH -> ${s.shell.current.toUpperCase()} | echoes ${fmt(s.currencies['echo']!)} ***`);
+    }
+  }
+
+  // The Forge outranks everything when a wall is in the way — hoard for it.
+  const wallBlocked = forgePlay(engine, s, log);
+  combatPlay(engine, s, log);
+  latticePlay(engine, s, log);
+  ferritePlay(engine, s, log);
+  guildPlay(engine, s, log);
+  verdancePlay(engine, s, wallBlocked);
+  glassmerePlay(engine, s, log);
+  cinderPlay(engine, s, log);
+  hollowPlay(engine, s, log);
+  if (!plan.blockedForSpace && !wallBlocked) {
+    buyIfUnder('expand', brick, 0.5);
+    buyIfUnder('bellows', brick, 0.35);
+    buyIfUnder('firebrick', brick, 0.35);
+    buyIfUnder('drillCount', brick, 0.5);
+    buyIfUnder('chisels', brick, 0.5); // door hunts need rank-3 stones
+  }
+
+  // Cheapest drill upgrade, if it's pocket change (keep a conv buffer).
+  if (s.drills.bayBuilt && s.drills.units.length > 0 && !wallBlocked && brick().gte(40)) {
+    let cheapest = 0;
+    for (let i = 1; i < s.drills.units.length; i++) {
+      if (s.drills.units[i]!.level < s.drills.units[cheapest]!.level) cheapest = i;
+    }
+    engine.dispatch({ type: 'upgradeDrill', index: cheapest });
+  }
+
+  // The kiln must not starve the descent fund: bank the fire when the chip
+  // bank is thin (an idle player's seep trickle otherwise vanishes into it).
+  if (s.kiln.built) {
+    const thin = dust().lt(currentDescendCost(s, mods).mul(2));
+    if (thin && s.kiln.feeding && brick().gte(60)) {
+      engine.dispatch({ type: 'setKilnFeeding', feeding: false });
+    } else if (!s.kiln.feeding && (!thin || brick().lt(60))) {
+      engine.dispatch({ type: 'setKilnFeeding', feeding: true });
+    }
+  }
+
+  // Descend with a buffer — keep some bank for the shopping trips. Until the
+  // converter exists, only take the cheap early depths (save for the unlock).
+  while (
+    dust().gte(currentDescendCost(s, mods).mul(1.5)) &&
+    (s.kiln.built || currentDescendCost(s, mods).lt(100))
+  ) {
+    mods.invalidate();
+    if (!engine.dispatch({ type: 'descend' }).ok) break;
+  }
+
+  // Collapse when the yield is worth the reset — the bar rises with lifetime
+  // earnings, capped below the best a floor-depth run can pay (14 at d150),
+  // so late Shell I keeps cycling toward its ~800-core total. Once the
+  // breach bank is full, stop collapsing and push for the floor instead.
+  const gain = coresForDepth(s.depth).toNumber();
+  const earned = s.totals['core']?.toNumber() ?? 0;
+  // THE MACRO-TUNING FIX (diagnosis #1): the old latch stopped collapsing
+  // forever once 500 cores were banked, freezing the ladder for 30+ hours.
+  // A human pushes for the floor only while the frontier is actually within
+  // reach (~2 minutes of ceiling income); otherwise they keep cycling.
+  const frontierReachable = currentDescendCost(s, mods).lte(dpsMax(s, mods).mul(120));
+  const pushingForFloor = s.shell.coresEarnedThisBreach.gte(500) && frontierReachable;
+  if (!pushingForFloor && gain >= Math.max(2, Math.min(12, earned * 0.25))) {
+    if (engine.dispatch({ type: 'collapse' }).ok) {
+      log(`COLLAPSE #${s.collapse.count} at depth -> +${gain} cores (bank ${fmt(s.currencies['core']!)})`);
+    }
+  }
+
+  // Core tree: round-robin the priority list.
+  for (const id of CORE_PRIORITY) {
+    const node = CORE_NODES.find((n) => n.id === id)!;
+    const level = coreNodeLevel(s, id);
+    if (level >= node.maxLevel) continue;
+    if (s.currencies['core']!.gte(coreNodeCost(level))) {
+      if (engine.dispatch({ type: 'buyCoreNode', id }).ok) log(`core node ${id} -> ${level + 1}`);
+      break;
+    }
+  }
+
+  // Skill points.
+  for (const id of SKILL_PRIORITY) {
+    if (s.delver.skillPoints <= 0) break;
+    engine.dispatch({ type: 'buySkillNode', id });
+  }
+}
+
+function main(): void {
+  const args = parseArgs();
+  const engine = createEngine({ nowMs: 0 });
+  const totalSec = Math.round(args.hours * 3600);
+  const logEverySec = Math.max(1, Math.round(args.logMin * 60));
+
+  const events: string[] = [];
+  const log = (msg: string) => {
+    const s = engine.getState();
+    const t = Math.round(s.stats.playTimeSec);
+    events.push(`[${String(Math.floor(t / 60)).padStart(4)}m${String(t % 60).padStart(2, '0')}s] ${msg}`);
+  };
+
+  const rows: string[] = [
+    'min,dust,total_dust,brick,cores,depth,max_depth,collapses,level,skill_pts,drills,kiln_heat,motifs,chords,progs,passive_rank,resonance,drops,geodes_cracked,tools,tool_tier',
+  ];
+  const snapshot = () => {
+    const s = engine.getState();
+    rows.push(
+      [
+        (s.stats.playTimeSec / 60).toFixed(1),
+        s.currencies['dust']!.toString(),
+        s.totals['dust']?.toString() ?? '0',
+        s.currencies['brick']!.toString(),
+        s.currencies['core']!.toString(),
+        s.depth,
+        s.maxDepthRecord,
+        s.collapse.count,
+        s.delver.level,
+        s.delver.skillPoints,
+        s.drills.units.length,
+        s.kiln.heat.toFixed(2),
+        s.currencies['motif']!.toFixed(1),
+        s.lattice.discovered.length,
+        s.lattice.discoveredProgressions.length,
+        s.lattice.passiveRank,
+        boardResonance(s.lattice).toFixed(1),
+        s.materials.totalDrops,
+        s.materials.geodesCracked,
+        s.stats.toolsForged,
+        equippedTool(s).tier,
+      ].join(','),
+    );
+  };
+
+  // --scenario wardens: begin AT the Loam floor with the kit an idle player
+  // accumulates on the way — verifies the pillar-1 claim that the wardens
+  // (the one mandatory fight) never block an auto-only player.
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'wardens') {
+    const s = engine.getState() as GameState;
+    s.depth = 150;
+    s.depthRecords['loam'] = 150;
+    s.maxDepthRecord = 150;
+    s.shell.coresEarnedThisBreach = s.currencies['dust']!.add(800).sub(s.currencies['dust']!); // D(800)
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.forge.tools.push({
+      id: 99, recipeId: 'deepcutter', name: 'Deepcutter', tier: 3, purity: 65,
+      chipPower: 2.1, strikePower: 7.8, sockets: [null, null], alloys: [],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    s.forge.gear.offhand = { defId: 'marlshield', purity: 55 };
+    s.forge.gear.harness = { defId: 'rootweave', purity: 55 };
+    s.forge.gear.lantern = { defId: 'gravelight', purity: 55 };
+    s.delver.skills['twoHandedSwing'] = 2;
+    s.delver.skills['deepGrip'] = 1;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 50000 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'brick', amount: 300 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 200 });
+    // The material bank a full Loam arc accumulates (cf. the fresh idle run:
+    // ~2.5K drops incl. geode-boosted flawless).
+    const bank: Array<[string, number, number]> = [
+      ['marl', 55, 60], ['ochre', 52, 30], ['bonechalk', 50, 30], ['graveclay', 48, 20],
+      ['loamiron', 55, 30], ['rootglass', 55, 15], ['duskflint', 55, 20],
+      ['umberjade', 60, 12], ['wormsteel', 60, 12], ['hollowamber', 62, 10],
+      ['chthonite', 58, 6], ['palegold', 55, 4], ['starmarl', 62, 3], ['sablequartz', 60, 2],
+      ['chitinshard', 55, 12], ['wormsilk', 55, 8], ['gravemote', 52, 8], ['burrowertooth', 55, 6],
+    ];
+    for (const [id, purity, count] of bank) addMaterial(s, id, purity, count);
+  }
+
+  // --scenario verdance: begin in the green shell with a period kit — the
+  // stage for the clear-vs-cultivate convergence measurement (--growth).
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'verdance') {
+    const s = engine.getState() as GameState;
+    s.shell.current = 'verdance';
+    s.shell.breachCount = 2;
+    s.shell.signatures = ['seepage', 'polarity'];
+    s.combat.wardens.push('loam', 'ferrite');
+    s.depthRecords['loam'] = 150;
+    s.depthRecords['ferrite'] = 250;
+    s.depthRecords['verdance'] = 60;
+    s.depth = 60;
+    s.maxDepthRecord = 60;
+    s.collapse.count = 30;
+    s.guild.discovered = true;
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.forge.tools.push({
+      id: 98, recipeId: 'verdantScythe', name: 'Verdant Scythe', tier: 7, purity: 65,
+      chipPower: 5.5, strikePower: 45, sockets: ['bloodgarnet', null, null], alloys: [null, null],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    s.forge.gear.offhand = { defId: 'plentyshell', purity: 60 };
+    s.forge.gear.harness = { defId: 'canopyweave', purity: 60 };
+    s.forge.gear.lantern = { defId: 'stormglassLantern', purity: 60 };
+    s.delver.skills['twoHandedSwing'] = 5;
+    s.delver.skills['deepGrip'] = 3;
+    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'spore', amount: 30000 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'sap', amount: 400 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 300 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'humus', amount: 200 });
+    const bank3: Array<[string, number, number]> = [
+      ['sporewood', 55, 40], ['mosscoal', 52, 30], ['sapstone', 55, 30], ['barkiron', 50, 25],
+      ['chlorite', 58, 15], ['resinpearl', 55, 12], ['humusgold', 55, 10],
+      ['verdantine', 60, 12], ['bloomsteel', 60, 14], ['feralglass', 60, 10],
+      ['heartwood', 62, 10], ['springvein', 62, 8], ['wildstar', 62, 3],
+      ['throatroot', 55, 10], ['mothspool', 55, 10], ['wireweed', 55, 8], ['palefiber', 55, 6],
+    ];
+    for (const [id, purity, count] of bank3) addMaterial(s, id, purity, count);
+  }
+
+  // --scenario cinder: begin in the burnt shell with a period kit — the stage
+  // for the three heat stances (--heat safe|balanced|greedy) and the 16h
+  // idle-never-floods proof (--policy idle --heat safe).
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'cinder') {
+    const s = engine.getState() as GameState;
+    s.shell.current = 'cinder';
+    s.shell.breachCount = 4;
+    s.shell.signatures = ['seepage', 'polarity', 'growth', 'refraction'];
+    s.combat.wardens.push('loam', 'ferrite', 'verdance', 'glassmere');
+    s.depthRecords['loam'] = 150;
+    s.depthRecords['ferrite'] = 250;
+    s.depthRecords['verdance'] = 290;
+    s.depthRecords['glassmere'] = 380;
+    s.depthRecords['cinder'] = 70;
+    s.depth = 70;
+    s.maxDepthRecord = 70;
+    s.collapse.count = 60;
+    s.guild.discovered = true;
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.drills.bayBuilt = true;
+    for (let i = 0; i < 8; i++) s.drills.units.push({ level: 8, behavior: 'fullest', timer: 0, lastCell: 0 });
+    s.forge.tools.push({
+      id: 97, recipeId: 'slagbreaker', name: 'Slagbreaker', tier: 13, purity: 65,
+      chipPower: 34, strikePower: 420, sockets: ['cinderquartz', null, null], alloys: [null, null],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    s.forge.gear.offhand = { defId: 'slagward', purity: 60 };
+    s.forge.gear.harness = { defId: 'emberweave', purity: 60 };
+    s.forge.gear.lantern = { defId: 'unblinkingMonocle', purity: 60 };
+    s.delver.skills['twoHandedSwing'] = 5;
+    s.delver.skills['deepGrip'] = 3;
+    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'slag', amount: 80000 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'ember', amount: 1200 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'obsidian', amount: 600 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 400 });
+    const bank5: Array<[string, number, number]> = [
+      ['slagrock', 55, 40], ['ashgrit', 52, 30], ['charstone', 52, 25], ['emberflake', 55, 25],
+      ['pyroclast', 58, 16], ['obsidianheart', 58, 12], ['brimshard', 55, 12],
+      ['magmajade', 60, 10], ['cindersteel', 60, 12], ['pyrite', 60, 10],
+      ['heartflame', 62, 8], ['ventglass', 62, 6], ['coronaite', 62, 2],
+      ['emberplate', 55, 10], ['charsinew', 55, 10], ['magmaduct', 55, 8], ['pyregland', 58, 6],
+    ];
+    for (const [id, purity, count] of bank5) addMaterial(s, id, purity, count);
+  }
+
+  // --scenario hollow: begin in the void. --carry minimal strips investment
+  // to the floor (zero Echoes, low masteries) — the softlock check.
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'hollow') {
+    const s = engine.getState() as GameState;
+    const minimal = process.argv.includes('--carry') && process.argv[process.argv.indexOf('--carry') + 1] === 'minimal';
+    s.shell.current = 'hollow';
+    s.shell.breachCount = 5;
+    s.shell.signatures = ['seepage', 'polarity', 'growth', 'refraction', 'pressure'];
+    s.shell.resonantMemory = minimal ? 0 : 8;
+    s.combat.wardens.push('loam', 'ferrite', 'verdance', 'glassmere', 'cinder');
+    s.depthRecords['loam'] = 150;
+    s.depthRecords['ferrite'] = 250;
+    s.depthRecords['verdance'] = 290;
+    s.depthRecords['glassmere'] = minimal ? 60 : 380;
+    s.depthRecords['cinder'] = minimal ? 60 : 470;
+    s.depthRecords['hollow'] = 30;
+    s.depth = 5;
+    s.maxDepthRecord = minimal ? 150 : 470;
+    s.collapse.count = minimal ? 20 : 120;
+    s.guild.discovered = true;
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.polarity.bestChain = minimal ? 4 : 12;
+    s.refraction.mirrorStock = minimal ? 2 : 6;
+    // The T15 pick that got you through Cinder — you breach into Hollow with
+    // it (recursion, and heirlooms, come LATER, at the Core). Minimal carry
+    // is low INVESTMENT (zero Resonant Memory, low masteries), not no tool.
+    s.forge.tools.push({
+      id: 90, recipeId: 'cinderMaul', name: 'Cinder Maul', tier: 15,
+      purity: minimal ? 60 : 85, chipPower: minimal ? 40 : 66, strikePower: minimal ? 600 : 1400,
+      sockets: ['cinderquartz', null], alloys: [null, null],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: minimal ? 40 : 400 });
+  }
+
+  // --scenario recursion: at the Core, primed to reach and fall through it,
+  // then run a second descent (the cadence + second-descent-differs check).
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'recursion') {
+    const s = engine.getState() as GameState;
+    s.shell.current = 'aleph';
+    s.shell.breachCount = 6;
+    s.shell.signatures = ['seepage', 'polarity', 'growth', 'refraction', 'pressure', 'absence'];
+    s.combat.wardens.push('loam', 'ferrite', 'verdance', 'glassmere', 'cinder', 'hollow');
+    for (const [sh, d] of [['loam', 150], ['ferrite', 250], ['verdance', 290], ['glassmere', 380], ['cinder', 470], ['hollow', 560]] as const) {
+      s.depthRecords[sh] = d;
+    }
+    s.depth = 38;
+    s.maxDepthRecord = 560;
+    s.collapse.count = 150;
+    s.guild.discovered = true;
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.totals['echo'] = D(120); // floor((120/25)^0.8) = 3 Axioms this recursion
+    s.forge.tools.push({
+      id: 91, recipeId: 'cinderMaul', name: 'Cinder Maul', tier: 15,
+      purity: 88, chipPower: 66, strikePower: 1500, sockets: ['bloodgarnet', 'cinderquartz'], alloys: ['greysteel'],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    // The endgame kit a Core-reaching player has assembled: best gear, maxed
+    // combat skills, warren uniques unlocked, a lived-in achievement grid.
+    s.forge.gear.offhand = { defId: 'authorsRule', purity: 70 };
+    s.forge.gear.harness = { defId: 'emberweave', purity: 70 };
+    s.forge.gear.lantern = { defId: 'unblinkingMonocle', purity: 70 };
+    s.forge.gear.boots = { defId: 'stokersGauntlet', purity: 70 };
+    s.warrens.gearUnlocked.push('authorsRule', 'quietshroud', 'unblinkingMonocle', 'stokersGauntlet');
+    s.delver.skills['twoHandedSwing'] = 5;
+    s.delver.skills['deepGrip'] = 5;
+    s.delver.skills['heavyHands'] = 3;
+    s.delver.level = 200;
+    for (const id of ['firstKill', 'wardenLoam', 'kills25', 'wardenGlassmere', 'wardenCinder']) s.achievements.unlocked[id] = true;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'fragment', amount: 5000 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 400 });
+    const bank7: Array<[string, number, number]> = [
+      ['firstiron', 60, 30], ['protolith', 58, 20], ['axiomite2', 60, 12], ['alephite', 62, 6],
+      ['authorsInk', 62, 6], ['quietsinew', 55, 10], ['hollowplate', 55, 8], ['unheart', 60, 4],
+      ['pyregland', 60, 10], ['emberplate', 55, 12], ['magmaduct', 55, 8],
+    ];
+    for (const [id, purity, count] of bank7) addMaterial(s, id, purity, count);
+  }
+
+  const started = Date.now();
+  combatPolicy = args.combat;
+  growthPolicy = args.growth;
+  heatStance = args.heat;
+  if (args.combat === 'auto' || args.policy === 'idle') {
+    engine.dispatch({ type: 'setAutoResolve', on: true });
+  }
+  snapshot();
+  const beats = { tLoamFloor: 0, tBreach: 0, tFerrite150: 0, tGuild: 0, tBreach2: 0, tVerd150: 0, tBreach3: 0, tGlass150: 0, tBreach4: 0, tCinder150: 0, tBreach5: 0, tBreach6: 0, tRecursion1: 0, tFaceWhole: 0 };
+  // Pillar-2 audit: sampled chip income vs the W·H·regen·Y ceiling over
+  // windows with NO manual chips — stored-charge harvesting rides above by
+  // design; sustained idle production must not.
+  let p2PrevTotal = 0;
+  let p2PrevChip = '';
+  let p2PrevManual = 0;
+  let p2CeilingIntegral = 0;
+  let p2PrevCeiling = 0;
+  // Hourly-diag deltas (realized income + the green ledger).
+  let diagPrevTotal = 0;
+  let diagPrevCeiling = 0;
+  let diagPrevHarvest = 0;
+  let diagPrevDrip = 0;
+  for (let sec = 1; sec <= totalSec; sec++) {
+    const s = engine.getState();
+    // balanced: fully active for the first hour AND for 45 min after a
+    // Breach (the biggest beat — nobody idles through it), else 5-min
+    // check-in bursts.
+    const active =
+      args.policy === 'active' ||
+      (args.policy === 'balanced' &&
+        (sec <= 60 * 60 || (beats.tBreach > 0 && sec - beats.tBreach <= 45 * 60))) ||
+      (args.policy === 'idle' && sec <= 120); // idle still has to bootstrap
+    if (active) chipFullest(engine, 2);
+    else if (args.policy === 'balanced' && sec % 300 === 0) chipFullest(engine, 40);
+    engine.tick(1);
+    if (sec % 2 === 0) shop(engine, args.quiet ? () => {} : log);
+    if (sec % logEverySec === 0) snapshot();
+    if (!beats.tLoamFloor && s.shell.current === 'loam' && s.depth >= 150) beats.tLoamFloor = sec;
+    if (!beats.tBreach && s.shell.breachCount > 0) beats.tBreach = sec;
+    if (!beats.tFerrite150 && s.shell.current === 'ferrite' && s.depth >= 150) beats.tFerrite150 = sec;
+    if (!beats.tGuild && s.guild.discovered) beats.tGuild = sec;
+    // Hourly diagnosis: where does the time go? Income vs the descend curve,
+    // and whether the Collapse ladder (core tree) has saturated.
+    if (sec % 3600 === 0 && !args.quiet) {
+      mods.invalidate();
+      const income = dpsMax(s, mods).toNumber();
+      const nextCost = currentDescendCost(s, mods).toNumber();
+      const nodes = Object.entries(s.collapse.nodes);
+      const maxed = nodes.filter(([id, lv]) => {
+        const def = CORE_NODES.find((n) => n.id === id);
+        return def && lv >= def.maxLevel;
+      }).length;
+      const bladeLv = s.upgrades['blade'] ?? 0;
+      // Realized vs ceiling over the past hour (the sag detector), plus the
+      // green ledger while in Verdance: how much of the face is vined, and
+      // which route (harvest vs drip) the fruit actually left by.
+      const chipNow = s.totals[chipCurrencyId(s)]?.toNumber() ?? 0;
+      const hourEarned = p2PrevChip === chipCurrencyId(s) ? chipNow - diagPrevTotal : NaN;
+      const hourCeiling = p2CeilingIntegral - diagPrevCeiling;
+      const realized = hourCeiling > 0 && Number.isFinite(hourEarned) ? hourEarned / hourCeiling : NaN;
+      let green = '';
+      if (s.shell.current === 'verdance' || s.shell.signatures.includes('growth')) {
+        const vined = s.growth.stage.filter((x: number) => x > 0).length;
+        const feral = s.growth.stage.filter((x: number) => x >= 4).length;
+        green =
+          ` | vined ${vined}/${s.growth.stage.length} (feral ${feral})` +
+          ` | fruit harvested Δ${fmt(s.growth.fruitHarvested - diagPrevHarvest)}` +
+          ` dripped Δ${fmt(s.growth.autoDropped - diagPrevDrip)}`;
+      }
+      diagPrevTotal = chipNow;
+      diagPrevCeiling = p2CeilingIntegral;
+      diagPrevHarvest = s.growth.fruitHarvested;
+      diagPrevDrip = s.growth.autoDropped;
+      log(
+        `diag h${sec / 3600}: ${s.shell.current} d${s.depth} (rec ${s.maxDepthRecord}) | ` +
+          `ceiling ${income.toExponential(1)}/s | realized ${(realized * 100).toFixed(0)}% | ` +
+          `next descend ${nextCost.toExponential(1)} ` +
+          `(${(nextCost / Math.max(income, 1e-9)).toFixed(0)}s at ceiling) | ` +
+          `core nodes maxed ${maxed}/${CORE_NODES.length} | blade L${bladeLv} | ` +
+          `cores banked ${fmt(s.currencies['core'] ?? 0)}${green}`,
+      );
+    }
+    if (!beats.tBreach2 && s.shell.breachCount >= 2) beats.tBreach2 = sec;
+    if (!beats.tVerd150 && s.shell.current === 'verdance' && s.depth >= 150) beats.tVerd150 = sec;
+    if (!beats.tBreach3 && s.shell.breachCount >= 3) beats.tBreach3 = sec;
+    if (!beats.tGlass150 && s.shell.current === 'glassmere' && s.depth >= 150) beats.tGlass150 = sec;
+    if (!beats.tBreach4 && s.shell.breachCount >= 4) beats.tBreach4 = sec;
+    if (!beats.tCinder150 && s.shell.current === 'cinder' && s.depth >= 150) beats.tCinder150 = sec;
+    if (!beats.tBreach5 && s.shell.breachCount >= 5) beats.tBreach5 = sec;
+    if (!beats.tBreach6 && s.shell.breachCount >= 6) beats.tBreach6 = sec;
+    if (!beats.tFaceWhole && s.shell.current === 'hollow' && s.hollow.rebuilt.length >= s.face.cells.length) beats.tFaceWhole = sec;
+    if (!beats.tRecursion1 && s.recursion.count >= 1) beats.tRecursion1 = sec;
+    if (sec % 1800 === 0) sampleSpawnMix(engine, s as GameState);
+    // Pillar-2: integrate the ceiling every second (depth and buckets move —
+    // collapses inside a window must not fake a violation), then compare
+    // earned vs ∫ceiling over untouched 10-min windows.
+    p2CeilingIntegral += dpsMax(s, mods).toNumber();
+    if (sec % 600 === 0) {
+      const chipId = chipCurrencyId(s);
+      const total = s.totals[chipId]?.toNumber() ?? 0;
+      const untouched = s.stats.manualChips === p2PrevManual;
+      const ceilingWindow = p2CeilingIntegral - p2PrevCeiling;
+      if (untouched && p2PrevChip === chipId && p2PrevTotal > 0 && ceilingWindow > 0) {
+        const ratio = (total - p2PrevTotal) / ceilingWindow;
+        guildMetrics.pillar2Max = Math.max(guildMetrics.pillar2Max, ratio);
+        if (ratio > 1) guildMetrics.pillar2Over += 1;
+        guildMetrics.pillar2Samples += 1;
+      }
+      p2PrevTotal = total;
+      p2PrevChip = chipId;
+      p2PrevManual = s.stats.manualChips;
+      p2PrevCeiling = p2CeilingIntegral;
+    }
+  }
+  const wallMs = Date.now() - started;
+
+  const csv = rows.join('\n');
+  if (args.out) {
+    mkdirSync(dirname(args.out), { recursive: true });
+    writeFileSync(args.out, csv);
+  } else {
+    console.log(csv);
+  }
+
+  const s = engine.getState();
+  console.error('');
+  console.error(`— sim: ${args.hours}h ${args.policy} in ${(wallMs / 1000).toFixed(2)}s wall —`);
+  if (!args.quiet) for (const e of events) console.error(e);
+  console.error(
+    `final: dust ${fmt(s.currencies['dust']!)} | brick ${fmt(s.currencies['brick']!)} | ` +
+      `cores ${fmt(s.currencies['core']!)} | depth ${s.depth} (max ${s.maxDepthRecord}) | ` +
+      `collapses ${s.collapse.count} | delver L${s.delver.level} | drills ${s.drills.units.length}`,
+  );
+  console.error(
+    `lattice: ${s.lattice.discovered.length}/40 chords | ` +
+      `${s.lattice.discoveredProgressions.length}/8 progressions | rings ${s.lattice.rings} | ` +
+      `passive rank ${s.lattice.passiveRank} | resonance ${boardResonance(s.lattice).toFixed(1)} | ` +
+      `doors: ${Object.entries(s.lattice.doors).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none'}`,
+  );
+  const gemCount = Object.values(s.materials.gems).reduce((a, b) => a + b, 0);
+  console.error(
+    `materials: ${s.materials.totalDrops} drops | geodes cracked ${s.materials.geodesCracked} | ` +
+      `gems ${gemCount} | tools forged ${s.stats.toolsForged} (equipped tier ${equippedTool(s).tier}, ` +
+      `${equippedTool(s).name} ${equippedTool(s).purity}%) | assays ${s.assay.surveysDone}`,
+  );
+  console.error(
+    `shell: ${s.shell.current} | breaches ${s.shell.breachCount} | echoes ${fmt(s.currencies['echo'] ?? 0)} | ` +
+      `best chain ${s.polarity.bestChain} | magnets ${s.polarity.magnetCount} | ` +
+      `alloys ${s.crucible.discovered.length}/60 | foundry ${s.foundry.installed.length}/${s.foundry.slots} | ` +
+      `loam record ${s.depthRecords['loam'] ?? 0} | ferrite record ${s.depthRecords['ferrite'] ?? 0}`,
+  );
+  const cs = s.combat.stats;
+  console.error(
+    `combat[${args.combat}]: encounters ${cs.encounters} (${(cs.interruptions / args.hours).toFixed(1)}/hr) | ` +
+      `wins ${cs.wins} (auto ${cs.autoWins}) | losses ${cs.losses} | flees ${cs.flees} | ` +
+      `species seen ${s.combat.seen.length}/32 | wardens: ${s.combat.wardens.join(', ') || 'none'}` +
+      (spawnMix.sampled > 0
+        ? ` | engageable mix ${((100 * spawnMix.sampledWins) / spawnMix.sampled).toFixed(0)}% sampled` +
+          ` (live ${spawnMix.total > 0 ? ((100 * spawnMix.engageable) / spawnMix.total).toFixed(0) : '—'}%, target 60-70)`
+        : ''),
+  );
+  const sefXp = s.guild.hirelings['sef']?.xp ?? 0;
+  console.error(
+    `guild: opened ${beats.tGuild ? (beats.tGuild / 60).toFixed(1) + 'm' : '—'} | ` +
+      `contracts ${guildMetrics.contractsDone} (${(guildMetrics.contractsDone / args.hours).toFixed(1)}/hr, ${guildMetrics.contractScrip} scrip) | ` +
+      `renown ${fmt(s.totals['renown'] ?? 0)} | scrip ${fmt(s.currencies['scrip'] ?? 0)}/${fmt(s.totals['scrip'] ?? 0)} total | ` +
+      `crew ${Object.keys(s.guild.hirelings).length}/${s.guild.berths} [${Object.keys(s.guild.hirelings).join(',') || '—'}] | ` +
+      `hawker passes ~${Math.round(sefXp / 6)} | pages ${s.guild.sable.found.length}/${FRAGMENTS.length} ` +
+      `(${s.guild.sable.translated.length} legible) | titles ${s.guild.titles.earned.length} ` +
+      `(wearing ${s.guild.titles.equipped ?? 'none'}) | road trades ${guildMetrics.trades} | ` +
+      `quests ${Object.values(s.guild.npcs).reduce((a, n) => a + n.questStep, 0)} steps | rerolls ${guildMetrics.rerolls} | ` +
+      (guildMetrics.pillar2Samples > 0
+        ? `PILLAR 2 idle income/ceiling: max ${(guildMetrics.pillar2Max * 100).toFixed(0)}%, ` +
+          `${guildMetrics.pillar2Over}/${guildMetrics.pillar2Samples} windows >100% ` +
+          `(storage drains after collapse ride above; SUSTAINED must not)`
+        : 'PILLAR 2: no untouched windows this policy — see the idle run'),
+  );
+  console.error(
+    `verdance[${args.growth}]: spore ${fmt(s.totals['spore'] ?? 0)} total | sap ${fmt(s.totals['sap'] ?? 0)} | ` +
+      `chlorophyll ${fmt(s.totals['chlorophyll'] ?? 0)} | vines now ${s.growth.stage.filter((x) => x > 0).length} ` +
+      `(feral ${s.growth.stage.filter((x) => x >= 4).length}) | fruit harvested ${Math.round(s.growth.fruitHarvested)} ` +
+      `(+${Math.round(s.growth.autoDropped)} self-dropped) | farm sweeps ${verdMetrics.farmHarvests} | ` +
+      `greenhouse ${s.greenhouse.codex.length}/78 strains (${s.greenhouse.harvests} harvests) | ` +
+      `mycelium ${Object.keys(s.mycelium.nodes).length} nodes | loom shapes ${s.loom.discoveredShapes.join('') || '—'} | ` +
+      `brews ${s.brewing.discovered.length}/12 (${s.brewing.drunk} drunk, uptime ${
+        verdMetrics.brewSamples > 0 ? ((100 * verdMetrics.brewActiveSec) / (verdMetrics.brewSamples * 2)).toFixed(1) : '0'
+      }%) | weather now ${currentWeather(s as GameState).name}`,
+  );
+  const min = (x: number) => (x / 60).toFixed(1) + 'm';
+  console.error(
+    `beats: loam floor ${beats.tLoamFloor ? min(beats.tLoamFloor) : '—'} | ` +
+      `BREACH ${beats.tBreach ? min(beats.tBreach) : '—'} | ` +
+      `ferrite d150 ${beats.tFerrite150 ? min(beats.tFerrite150) : '—'}` +
+      (beats.tLoamFloor && beats.tFerrite150 && beats.tBreach
+        ? ` | PILLAR 6 return-to-peak: ${(((beats.tFerrite150 - beats.tBreach) / beats.tLoamFloor) * 100).toFixed(1)}% (target <=25%)`
+        : '') +
+      ` | BREACH 2 ${beats.tBreach2 ? min(beats.tBreach2) : '—'} | verdance d150 ${beats.tVerd150 ? min(beats.tVerd150) : '—'}` +
+      ` | BREACH 3 ${beats.tBreach3 ? min(beats.tBreach3) : '—'} | glassmere d150 ${beats.tGlass150 ? min(beats.tGlass150) : '—'}` +
+      ` | BREACH 4 ${beats.tBreach4 ? min(beats.tBreach4) : '—'} | cinder d150 ${beats.tCinder150 ? min(beats.tCinder150) : '—'}`,
+  );
+  console.error(
+    `glassmere: mirrors ${Object.keys(s.refraction.mirrors).length}/${s.refraction.mirrorStock} | beam harvests ${s.refraction.beamHarvests} | ` +
+      `observations ${s.observatory.completed} (spectrum ${fmt(s.totals['spectrum'] ?? 0)}, constellations ${s.observatory.constellations.length}/8) | ` +
+      `lenses ${s.bench.solved.length} (wearing ${s.bench.equippedLens ?? 'none'}) | warrens ${Object.keys(s.warrens.cleared).length}/16 cleared ` +
+      `(${s.warrens.uniques.length} uniques) | runes ${Object.entries(s.runes.found).map(([r, n]) => `${r}:${n}`).join(' ') || '—'} | ` +
+      `pairs known ${s.runes.pairsSeen.length}/14`,
+  );
+  const avgHeat = cinderMetrics.heatSamples > 0 ? cinderMetrics.heatSum / cinderMetrics.heatSamples : 0;
+  console.error(
+    `cinder[${heatStance}]: slag ${fmt(s.totals['slag'] ?? 0)} total | heat now ${s.pressure.heat.toFixed(0)} ` +
+      `(avg ${avgHeat.toFixed(0)}, peak ${s.pressure.peakHeat.toFixed(0)}) | FLOODS ${s.pressure.floods} | ` +
+      `overpressures ${s.pressure.overpressures} (purges ${cinderMetrics.purges}) | ` +
+      `pipes ${s.pressure.pipes.filter((p: number) => p > 0).length} (vented ${fmt(s.pressure.ventedTotal)}) | ` +
+      `array best ${Math.floor(s.ember.bestSustainSec / 60)}m${Math.floor(s.ember.bestSustainSec % 60)}s (rank ${s.ember.passiveRank}) | ` +
+      `wells ${s.wells.rolls} rolls ${s.wells.wins}W/${s.wells.losses}L (net ${fmt(cinderMetrics.wellsNet)}) | ` +
+      `anomalies seen ${s.anomalies.seen} answered ${cinderMetrics.anomaliesAnswered} (merchant ${s.anomalies.merchantMeets}) | ` +
+      `crew ${s.guild.crewRecalled ? 'RECALLED' : 'stationed'}, fallen ${Object.values(s.guild.hirelings).filter((h) => h.status === 'fallen').length}`,
+  );
+  console.error(
+    `hollow/aleph: void ${fmt(s.totals['void'] ?? 0)} total | silence now ${s.hollow.silence.toFixed(0)} ` +
+      `(harvested ${p10Metrics.silenceHarvests}, lifetime stacks ${fmt(s.hollow.silenceHarvested)}) | ` +
+      `rebuilt ${s.hollow.rebuilt.length}/${s.face.cells.length} cells (void spent ${fmt(D(s.hollow.voidSpent))}) | ` +
+      `chamber loops ${s.chamber.loops} (best eff ${s.chamber.bestEfficiency.toExponential(1)}, rank ${s.chamber.passiveRank}) | ` +
+      `RECURSIONS ${s.recursion.count} | axioms held ${s.recursion.axioms.length} [${s.recursion.axioms.join(',') || '—'}] | ` +
+      `core touched ${s.aleph.coreTouched} | heirlooms ${s.forge.tools.filter((t) => t.heirloom).length}`,
+  );
+  console.error(
+    `beats(late): BREACH 4 ${beats.tBreach4 ? min(beats.tBreach4) : '—'} | BREACH 5 ${beats.tBreach5 ? min(beats.tBreach5) : '—'} | ` +
+      `face whole ${beats.tFaceWhole ? min(beats.tFaceWhole) : '—'} | BREACH 6 ${beats.tBreach6 ? min(beats.tBreach6) : '—'} | ` +
+      `RECURSION 1 ${beats.tRecursion1 ? min(beats.tRecursion1) : '—'}`,
+  );
+  if (args.out) console.error(`csv -> ${args.out}`);
+}
+
+main();
