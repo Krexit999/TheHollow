@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { FaceView } from '../face/FaceView';
-import { useGame } from '../store';
+import { dispatch, useGame } from '../store';
 import { SWEEP_COST_PER_CELL } from '../../engine/systems/face';
+import { availableTechniques } from '../../engine/techniques';
+import type { GameState } from '../../engine';
 
 export function FaceCanvas({ active = true }: { active?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -59,6 +61,8 @@ export function FaceCanvas({ active = true }: { active?: boolean }) {
 function FaceTools() {
   const mode = useGame((s) => s.faceMode);
   const setFaceMode = useGame((s) => s.setFaceMode);
+  const armedTechnique = useGame((s) => s.armedTechnique);
+  const armTechnique = useGame((s) => s.armTechnique);
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
   if (!state) return null;
@@ -72,6 +76,10 @@ function FaceTools() {
     { id: 'chip', label: 'Chip', hint: 'Press and hold to keep chipping' },
     { id: 'sweep', label: 'Sweep', hint: 'Drag to clear a swathe, for stamina' },
   ];
+
+  // SIGNATURE TECHNIQUES (Part B) — the verb the rock grants. Nothing renders
+  // for shells whose signature has no technique yet (pillar 5: no locked list).
+  const techniques = availableTechniques(state as GameState);
 
   return (
     /* Phone: centred along the bottom of the face. Desktop: pinned to the
@@ -104,6 +112,41 @@ function FaceTools() {
             {m.label}
           </button>
         ))}
+        {techniques.map((t) => {
+          const cooling = t.readyInSec > 0;
+          if (!t.def.targeted) {
+            // A global verb (Skim): one press performs it.
+            const pool = t.def.id === 'skim' ? state.face.seepPool : 0;
+            return (
+              <button
+                key={t.def.id}
+                className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
+                  pool >= 1 ? 'text-[#9fd8c0] hover:bg-cave-800' : 'text-cave-500'
+                }`}
+                title={t.def.describe(state as GameState, t.strength)}
+                disabled={cooling}
+                onClick={() => dispatch({ type: 'useTechnique', id: t.def.id })}
+              >
+                {t.def.name}{t.def.id === 'skim' && pool >= 1 ? ` ${Math.floor(pool)}` : ''}
+              </button>
+            );
+          }
+          // A targeted verb (Poleshift): arm it, then tap the cell.
+          const armed = armedTechnique === t.def.id && mode === 'technique';
+          return (
+            <button
+              key={t.def.id}
+              className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
+                armed ? 'bg-lamp-500/25 text-lamp-200' : cooling ? 'text-cave-500' : 'text-cave-300 hover:bg-cave-800'
+              }`}
+              title={t.def.describe(state as GameState, t.strength)}
+              aria-pressed={armed}
+              onClick={() => armTechnique(armed ? null : t.def.id)}
+            >
+              {cooling ? `${t.def.name} ${Math.ceil(t.readyInSec)}s` : t.def.name}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

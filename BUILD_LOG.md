@@ -3823,3 +3823,99 @@ the 10h active run reads return-to-peak **15.4%** — squarely in the 10–25% b
 (pre-gate readings: 8.6 / 5.9 / 6.6%). Noted for the record: single-run RTP swings
 ~±5pp with seed (pre-B3 baselines read 9.1 and 13.2%), so band verdicts on future
 rebalances should state the seed variance, not a single number.
+
+## A.40 PROGRESSION AND DIFFERENTIATION — Part B: the framework, proved on Ferrite
+
+Part A ruled: all six SIGNATURE TECHNIQUES (verb-per-signature is the core fix),
+KEYSTONES with an idle-reachable leg on every gate (pillar 1 does not bend), ~15
+upgrades/shell through the spine, Verdance first for the escalation work. Part B held
+scope to the FRAMEWORK plus Ferrite as the reference implementation — shells III–VII
+stubbed for the creative pass, three ledger rows marking exactly what waits.
+
+### The technique framework (`src/engine/techniques.ts`)
+A registry beside the signature registry: each signature MAY grant one TechniqueDef —
+a verb with no currency cost (the cooldown is the cost), native at full speed, carried
+at cooldown/strength (a 0.4 carry waits 2.5×). `availableTechniques` composes off
+`activeSignatures`, so the verb travels exactly where its mechanic does and a shell
+with no technique shows NOTHING (pillar 5). One action (`useTechnique`), sealed by The
+Unattended like the hand it is. UI: the face-mode bar grew the verbs — global ones
+(Skim) perform on press; targeted ones (Poleshift) ARM, and the next canvas tap lands
+them (`faceMode: 'technique'`).
+
+- **SKIM (Loam/seepage, reference #1):** overflow now ALSO banks a pool — half the
+  leak's rate again, capped at a tenth of the face's storage — that only the hand
+  collects. The idle leak is byte-for-byte untouched; progression.test asserts the
+  50-second idle income against the documented 10% formula AND the pool on top.
+- **POLESHIFT (Ferrite/polarity, reference #2):** flip one cell's sign on demand, 8s
+  native. The route becomes something you LAY, not find — the exact "manual play is
+  the puzzle" identity Part A said Ferrite loses halfway.
+
+### Keystones (`src/engine/systems/keystones.ts`)
+`canBreach` gained one clause: the floor must be SHORED. A KeystoneDef names two legs —
+CRAFT (consumes the shell's headline output: Loam, 60 Brick from the Kiln; Ferrite,
+1 Steel Casting + 40 Scale from the Crucible) and BUY (the Guild hauls one up for chip
+currency alone, priced at 3× the floor's descend step). The ruled correction is
+structural: audit-recipes LAW 6 fails any keystone without an idle leg, and the price
+BASIS makes the leg affordable by construction — a player who paid the descend curve
+to the floor (cumulative ≈ 12× the last step) is asked for a quarter of it again, at
+the income that just paid it. A placed keystone is remembered FOREVER (collapse,
+breach, recursion) — the gate makes each shell's system load-bearing once, so pillar
+6's re-peak clock never meets it. No def = no gate: stubs cannot softlock.
+
+### The expanded upgrade system + THE FERRITE BAND
+`UpgradeDef` gained `materialCosts` (spine prices; the buy path and UpgradeRow both
+clamp by the Hold and name what's short) and `band: 'shell'` (rows render in the Dig
+panel's FITTINGS section). The reference band: 15 rows, every one discovery-gated by a
+DEED (felt a chain break at 3/5/10, rigged a magnet, used the verb, held the ore) —
+never a locked list. A third are BEHAVIORAL, read by polarity.ts as functions of
+stat(): Induction Coil (+0.75s timeout), Keeper Magnets (break ×0.5→×0.65), The Long
+Route (cap 12→15), Wound Cores (bias 85→95%), Pole Dampers (Poleshift −1s). The rest
+pay named buckets, priced in scale/lodestone/flux and bluesteel/rimeiron/magnetile/
+voltglass/lodeframe. Fittings persist through Collapse (material wealth is never
+burned by the 4–12-minute loop) and wash away at Breach.
+
+**The orphan collision, caught by the suite:** the band's first pricing used
+ironbloom/scalechip/greyflux/rustmarrow — all four are transmutation-chain inputs, and
+refinery.test's "every chain consumes at least one material nothing else wanted"
+failed exactly as designed. Repriced onto non-chain materials; the chains keep their
+reach claims.
+
+### Verification
+804 tests green (788 + 14 progression + adjusted breach-gate neighbors); tsc clean;
+build clean; compendium coverage clean (+2 concept pages: techniques, keystones);
+copy coverage unchanged (no new rooms — the verbs live in existing ones); curriculum
+audit exit-0 with Law 6; 0px overflow at 380px. Live click-proofs
+(scripts/shot-progression.ts): Skim paid its pool on a real click; the keystone craft
+leg ate 60 Brick and flipped the breach button from "unshored" to ready; Poleshift
+armed from the bar and a canvas-tap spray flipped EXACTLY ONE sign (the cooldown
+limiting the spray is the proof the cost works). One harness lesson recorded: the
+first "0 flips" readout compared against an unprimed (empty) sign array — the fix was
+in the instrument, the game was never broken. Breach.ts's stale "Loam has no
+signature" header corrected (the registry is the truth).
+
+### Sim gates (the numbers)
+Active 12h ×3 seeds: return-to-peak **7.2% / 8.1% / 26.2%** — mean 13.8%, the locked
+≤25% pillar holds on the mean; the single-seed spread matches the variance A.39
+documented (state the spread, never one number). Beats: loam floor 441.7–465.0m across
+seeds (pre-phase family: 437.7–495.4m) — the keystone does not move the floor beat.
+All three seeds crossed both keystones and breached on schedule.
+
+**THE RATIO CHECK (the close-out ruling):** pass/fail was the wrong question; the
+ruled bar is the idle-to-active RATIO per gate.
+- **Loam: ratio ≈ 1, empirical.** The 12h idle run banked 2,565 Brick against the
+  craft leg's 60 — idle crosses the same leg active does, instantly at floor-arrival.
+- **Ferrite at 3×: ratio 6–12×, a wall in spirit.** The pure-idle player (craft leg
+  closed — pouring is engagement) paid 3 descend-steps ≈ 30–60 min at era-idle income
+  vs ~0–5 min active. LOOSENED: idlePriceMult 3 → 1 (the last step again, ≈8% of the
+  cumulative descent just paid) → ratio ~2–4×. Slower, never walled — pillar 1 as
+  ruled. Law 6 still enforces that every keystone HAS an idle leg; the mult comment
+  now records the ratio reasoning so III–VII inherit it.
+
+**Idle pacing itself — flagged and ledgered.** 12h idle: depth 44 (parked at the d45
+tier-2 wall), tool tier 1, 0 tools forged despite 346 drops. Independent of the gate;
+the pillar-1 idle-forging path is not crossing walls at pace. Own pass, ledgered with
+the policy-vs-game diagnosis order.
+
+Both coverage checkers clean, curriculum audit exit-0 (Law 6), 804 tests, tsc + build
+clean, 0px @380px. Techniques III–VII remain stubbed per ruling — nothing here
+pre-empts the creative pass.

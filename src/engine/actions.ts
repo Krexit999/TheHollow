@@ -53,6 +53,8 @@ import { buyStock, presentIds, sellMaterial, spendCharter } from './guild/guild'
 import { acceptContract, completeContract, rerollContract } from './guild/contracts';
 import { hire } from './guild/hirelings';
 import { markFragmentRead, translateFragment } from './guild/sable';
+import { useTechnique } from './techniques';
+import { placeKeystone } from './systems/keystones';
 import { equipTitle } from './guild/titles';
 import { caravanTrade } from './guild/caravan';
 import { setMirror } from './systems/refraction';
@@ -69,6 +71,7 @@ import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from '.
 import { practiceRunes } from './content/shell4/runes';
 import { temperTool } from './systems/tempering';
 import type { PurityBand } from './materials';
+import { materialDef } from './materials';
 import { collectWell, commitToWell } from './content/shell5/wells';
 import { answerAnomaly } from './systems/anomalies';
 import { listen, rebuildCell } from './systems/absence';
@@ -131,10 +134,19 @@ export function handleAction(
       } else {
         count = Math.max(1, Math.min(action.count ?? 1, def.maxLevel - level));
       }
+      // Spine-priced rows: material stock caps the buy alongside the currency.
+      for (const m of def.materialCosts ?? []) {
+        count = Math.min(count, Math.floor(materialCount(state, m.id) / m.count));
+      }
+      if (count === 0) {
+        const short = (def.materialCosts ?? []).map((m) => `${m.count} ${materialDef(m.id).name}`).join(' + ');
+        return { ok: false, reason: `Wants ${short} per level` };
+      }
       const cost = costForLevels(def, level, count);
       if (!spendCurrency(state, currencyId, cost)) {
         return { ok: false, reason: 'Cannot afford' };
       }
+      for (const m of def.materialCosts ?? []) consumeMaterial(state, m.id, m.count * count);
       state.upgrades[action.id] = level + count;
       state.stats.upgradesBought += count;
       def.onPurchase?.(state, count);
@@ -357,6 +369,14 @@ export function handleAction(
 
     case 'toggleMagnet':
       return toggleMagnet(state, action.col);
+
+    case 'useTechnique':
+      // A technique is active play — The Unattended seals it like the hand.
+      if (sealed(state, 'sealHand')) return { ok: false, reason: 'Not this run' };
+      return useTechnique(state, mods, ctx, action.id, action.cell);
+
+    case 'placeKeystone':
+      return placeKeystone(state, ctx, action.leg);
 
     case 'pourAlloy':
       return pourAlloy(state, mods, ctx, action.amounts, action.catalystId);

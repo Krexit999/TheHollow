@@ -33,9 +33,10 @@ import { addMaterial, equippedTool, materialCount, requiredTier } from '../src/e
 import { materialDef } from '../src/engine/materials';
 import { assayUnlocked } from '../src/engine/systems/drops';
 import { currentShell, chipCurrencyId, convCurrencyId } from '../src/engine/shells';
+import { keystoneFor, keystoneIdlePrice, keystonePlaced } from '../src/engine/systems/keystones';
 import { canBreach } from '../src/engine/systems/breach';
 import { magnetArrayUnlocked } from '../src/engine/systems/polarity';
-import { crucibleUnlocked } from '../src/engine/content/shell2/crucibleSystem';
+import { castingForAlloy, crucibleUnlocked } from '../src/engine/content/shell2/crucibleSystem';
 import { matchAlloy } from '../src/engine/content/shell2/alloys';
 import { foundryUnlocked, FOUNDRY_MODULES } from '../src/engine/systems/foundry';
 import { GEAR_DEFS } from '../src/engine/combat/gear';
@@ -1005,6 +1006,18 @@ function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): 
       }
     }
   }
+  // THE KEYSTONE's craft leg (Part B): in Ferrite, cast the anchor's
+  // steelcasting from the first ingot-dominant alloy discovered.
+  if (
+    currentShell(s).id === 'ferrite' &&
+    keystoneFor('ferrite') && !keystonePlaced(s, 'ferrite') &&
+    materialCount(s, 'steelcasting') === 0
+  ) {
+    const steelAlloy = s.crucible.discovered.find((id) => castingForAlloy(id) === 'steelcasting');
+    if (steelAlloy && engine.dispatch({ type: 'castBinding', alloyId: steelAlloy }).ok) {
+      log('cast a steelcasting for the anchor');
+    }
+  }
   // THE ATTENDED MARGIN (B3): the best Echo deals on the board, so a
   // competent player RESERVES for the next slot — the cheaper sinks (foundry,
   // resonant memory) otherwise drain every purse before a 4-Echo slot fills.
@@ -1258,6 +1271,27 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   buyIfUnder('soil', dust, 0.35);
   buyIfUnder('roots', dust, 0.2);
   buyIfUnder('lantern', dust, 0.1);
+  // THE KEYSTONE (Part B): shore the floor before the breach check. Craft leg
+  // first (the shell's system pays it); the buy leg when the bank can carry
+  // the Guild's haul — this is the idle path the ruling requires, and the
+  // idle-policy run is its proof.
+  const shell = currentShell(s);
+  if (
+    keystoneFor(shell.id) &&
+    !keystonePlaced(s, shell.id) &&
+    s.depth >= shell.floorDepth - 30
+  ) {
+    const crafted = engine.dispatch({ type: 'placeKeystone', leg: 'craft' });
+    if (crafted.ok) log(`keystone set (craft) — ${shell.id}`);
+    else {
+      const price = keystoneIdlePrice(s, keystoneFor(shell.id)!);
+      if (dust().gte(price.mul(1.5))) {
+        if (engine.dispatch({ type: 'placeKeystone', leg: 'buy' }).ok) {
+          log(`keystone set (bought) — ${shell.id}`);
+        }
+      }
+    }
+  }
   // The Breach: fall through once the shell has paid out (~500+ cores this
   // breach -> 3 Echoes; DESIGN expects ~800 earned across Shell I).
   if (canBreach(s) && s.shell.coresEarnedThisBreach.gte(500)) {

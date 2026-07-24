@@ -720,8 +720,22 @@ export class FaceView {
 
   /** A press begins: what it does depends on the face mode. */
   private onPress(px: number, py: number): void {
-    const mode = useGame.getState().faceMode;
-    if (mode === 'sweep') { this.sweepCells = []; this.addSweep(px, py); return; }
+    const ui = useGame.getState();
+    if (ui.faceMode === 'sweep') { this.sweepCells = []; this.addSweep(px, py); return; }
+    // TECHNIQUE (Part B): the armed signature verb lands on the tapped cell.
+    if (ui.faceMode === 'technique' && ui.armedTechnique) {
+      const cell = this.cellAt(px, py);
+      if (cell < 0) return;
+      const r = this.engine.dispatch({ type: 'useTechnique', id: ui.armedTechnique, cell });
+      if (r.ok) {
+        const { x, y } = this.cellCenter(cell);
+        this.spawnShards(x, y, 6, false);
+        const tile = this.tiles[cell];
+        if (tile) tile.flash = 0.8;
+      }
+      this.pointerDown = false;
+      return;
+    }
     this.chipAt(px, py);
   }
 
@@ -729,6 +743,7 @@ export class FaceView {
   private onDrag(px: number, py: number): void {
     const mode = useGame.getState().faceMode;
     if (mode === 'sweep') { this.addSweep(px, py); return; }
+    if (mode === 'technique') return; // a verb is a tap, never a drag
     this.chipAt(px, py);
   }
 

@@ -22,6 +22,7 @@ import { equippedTool } from './forge';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
+import { registerTechnique } from '../techniques';
 import { masteryLevel } from './mastery';
 import { lawNum, sealed, challengeNum } from '../laws';
 
@@ -68,6 +69,20 @@ export function dpsMax(state: GameState, mods: ModifierCache): Decimal {
  */
 export const SEEP_EFFICIENCY = 0.1;
 
+/**
+ * SKIM — Loam's TECHNIQUE (the verb-per-signature layer). While seepage runs,
+ * a pool banks EXTRA seep — half the leak's rate again — up to a tenth of the
+ * face's full storage. Skimming collects the pool by hand. The idle leak is
+ * UNTOUCHED: a player who never skims earns exactly what they always did
+ * (folds.test asserts this equivalence); the pool cap self-paces the verb.
+ */
+export const SKIM_POOL_RATIO = 0.5;
+export const SKIM_POOL_CAP_FRACTION = 0.1;
+
+export function skimPoolCap(state: GameState, mods: ModifierCache): number {
+  return state.face.w * state.face.h * cellCap(state, mods) * SKIM_POOL_CAP_FRACTION;
+}
+
 /** The current seep strength: native 1, carried 0.4×memory, else 0. */
 export function seepStrength(state: GameState): number {
   for (const sig of activeSignatures(state)) {
@@ -110,6 +125,11 @@ export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
       // hardness walls instead of deadlocking at them (pillar 1).
       rollForDrop(state, mods, ctx, collected, 1);
       rollForEncounter(state, ctx, collected, 0.5);
+      // SKIM's pool banks on top — the leak above is byte-for-byte unchanged.
+      state.face.seepPool = Math.min(
+        skimPoolCap(state, mods),
+        state.face.seepPool + collected * SKIM_POOL_RATIO,
+      );
     }
   }
 
@@ -132,6 +152,30 @@ export function registerSeepage(): void {
       // In the Hollow: the loam always gives a little. Even here. This is
       // the floor every minimal-carry run stands on.
       voidTick: (s, _m, _dt, strength) => 0.5 * strength * (1 + 0.08 * masteryLevel(s, 'loam')),
+    },
+  });
+  registerTechnique({
+    id: 'skim',
+    signatureId: 'seepage',
+    name: 'Skim',
+    verb: 'Skim the pool',
+    flavor: 'The loam gives more than the channels catch. Cup your hands.',
+    describe: (_s, strength) => {
+      const pct = Math.round(SKIM_POOL_RATIO * 100);
+      return `Seepage banks an extra ${pct}% of its leak into a pool (at ×${strength.toFixed(2)} strength). Skimming collects it by hand — the idle leak itself is never touched.`;
+    },
+    cooldownSec: 0, // the pool cap self-paces the verb
+    targeted: false,
+    perform: (state, mods, ctx, _strength) => {
+      const pool = state.face.seepPool;
+      if (pool < 1) return { ok: false, reason: 'Nothing worth cupping yet' };
+      state.face.seepPool = 0;
+      const paid = chipYield(state, mods).mul(pool);
+      addCurrency(state, chipCurrencyId(state), paid);
+      // A skim is harvest, like the leak it rides on.
+      rollForDrop(state, mods, ctx, pool, 1);
+      ctx.emit({ type: 'skimmed', charge: pool, paid });
+      return { ok: true, data: { charge: pool, paid } };
     },
   });
 }

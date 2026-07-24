@@ -716,6 +716,22 @@ export interface GameState {
     /** Recent manual chips (cell + play-seconds), the trail FIGURES read. Tiny,
      *  self-expiring; a stale trail from a reloaded save just doesn't match. */
     recentChips: { cell: number; at: number }[];
+    /** SKIM (Loam's technique): extra seep the pool banks for the hand, in
+     *  charge units. Strictly ON TOP of the idle leak — an untouched pool
+     *  changes nothing an idle player earns (tested, not promised). */
+    seepPool: number;
+  };
+
+  /** Signature techniques — per-technique last-used play-seconds. */
+  techniques: {
+    lastUsed: Record<string, number>;
+  };
+
+  /** Keystones — the Breach gates (Progression phase). A placed keystone is
+   *  remembered FOREVER (breach, collapse, recursion): the gate exists to
+   *  make a shell's headline system load-bearing once, not every lap. */
+  keystones: {
+    placed: string[];
   };
 
   kiln: {
@@ -1070,6 +1086,10 @@ export type GameEvent =
   | { type: 'caseCompleted'; caseId: string }
   | { type: 'confluenceFound'; id: string; name: string }
   | { type: 'journalReveal'; kind: 'confluenceHint' | 'cure'; a: string; b: string }
+  | { type: 'techniqueUsed'; id: string; cell?: number }
+  | { type: 'skimmed'; charge: number; paid: Decimal }
+  | { type: 'poleShifted'; cell: number; sign: number }
+  | { type: 'keystonePlaced'; shellId: string; leg: 'craft' | 'buy' }
   | { type: 'refined'; materialId: string; from: number; to: number; band: string }
   | { type: 'chainFound'; chainId: string; name: string }
   | { type: 'salvaged'; toolName: string; units: number }
@@ -1134,6 +1154,8 @@ export type GameAction =
   | { type: 'confluenceBuyRank'; slot: number }
   | { type: 'buyMagnet' }
   | { type: 'toggleMagnet'; col: number }
+  | { type: 'useTechnique'; id: string; cell?: number }
+  | { type: 'placeKeystone'; leg: 'craft' | 'buy' }
   | { type: 'pourAlloy'; amounts: number[]; catalystId: string }
   | { type: 'socketAlloy'; toolId: number; slot: number; alloyId: string }
   | { type: 'castBinding'; alloyId: string }

@@ -15,6 +15,8 @@ import {
   resonantMemoryCost,
 } from '../../engine';
 import { CARRY_BASE } from '../../engine/signatures';
+import { keystoneFor, keystoneIdlePrice, keystonePlaced, keystoneSatisfied } from '../../engine/systems/keystones';
+import { chipCurrencyId } from '../../engine/shells';
 import type { GameState } from '../../engine';
 import { materialsOfShell } from '../../engine/materials';
 import { materialCount, equippedTool, alloySlotsUsable } from '../../engine/systems/forge';
@@ -77,6 +79,7 @@ export function BreachCard() {
         Breaching yields <span className="tnum font-bold text-[#d8ccf0]">{fmt(echoes)} Echoes</span>
         <span className="block text-[10px] opacity-80">⌊3 · (Cores earned this breach / 500)^0.6⌋ — collapse more first to raise it.</span>
       </div>
+      <KeystoneCard />
       <HoldButton
         onConfirm={() => {
           window.dispatchEvent(new CustomEvent('hollow:breach'));
@@ -89,8 +92,58 @@ export function BreachCard() {
           ? 'HOLD — AND LET GO OF EVERYTHING'
           : state.depth >= shell.floorDepth && !state.combat.wardens.includes(shell.id)
             ? 'The Warden holds the floor'
-            : 'Reach the floor first'}
+            : state.depth >= shell.floorDepth && !keystoneSatisfied(state)
+              ? 'The floor is open but unshored'
+              : 'Reach the floor first'}
       </HoldButton>
+    </div>
+  );
+}
+
+/**
+ * THE KEYSTONE (Part B) — the Breach gate, said plainly where the Breach
+ * lives. Two legs, both printed: craft it from the shell's own system, or
+ * pay the Guild's slow haul in chip currency. Shells with no keystone
+ * (III–VII until the creative pass) render nothing.
+ */
+function KeystoneCard() {
+  const state = useGame((s) => s.state);
+  useGame((s) => s.rev);
+  if (!state) return null;
+  const shell = currentShell(state);
+  const def = keystoneFor(shell.id);
+  if (!def) return null;
+  const placed = keystonePlaced(state, shell.id);
+  if (placed) {
+    return (
+      <div className="mt-2 rounded-md border border-[#8be9fd]/20 p-2 text-[11px] text-cave-400">
+        <span className="text-[#9fd8c0]">✓ {def.name} is set.</span> The floor is shored, this lap and every lap after.
+      </div>
+    );
+  }
+  const price = keystoneIdlePrice(state, def);
+  const craftBits = [
+    ...(def.craft.materials ?? []).map((m) => `${m.count} ${materialDef(m.id).name}`),
+    ...(def.craft.currencies ?? []).map((c) => `${c.amount} ${c.id}`),
+  ].join(' + ');
+  return (
+    <div className="mt-2 rounded-md border border-[#8be9fd]/20 p-2 text-left">
+      <div className="text-[10px] font-semibold uppercase tracking-widest text-cave-300">{def.name}</div>
+      <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{def.flavor}</div>
+      <div className="mt-1.5 flex flex-col gap-1">
+        <button
+          className="btn min-h-[40px] w-full text-xs"
+          onClick={() => dispatch({ type: 'placeKeystone', leg: 'craft' })}
+        >
+          Set it — {craftBits} <span className="text-cave-500">({def.craft.source})</span>
+        </button>
+        <button
+          className="btn min-h-[40px] w-full text-xs text-cave-300"
+          onClick={() => dispatch({ type: 'placeKeystone', leg: 'buy' })}
+        >
+          Or the Guild hauls one up — <Amount value={price} color="#8be9fd" /> {chipCurrencyId(state)}
+        </button>
+      </div>
     </div>
   );
 }

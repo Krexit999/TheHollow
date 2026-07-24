@@ -24,6 +24,17 @@ export interface UpgradeDef {
   visible?: (state: GameState) => boolean;
   /** Called after levels are added (e.g. drill count spawns drill units). */
   onPurchase?: (state: GameState, levelsBought: number) => void;
+  /**
+   * THE SPINE PRICE (Part B): materials consumed PER LEVEL on top of the
+   * currency curve. This is what ties the expanded tree into what the
+   * systems produce — an upgrade that eats Ironbloom exists because you dug
+   * Ironbloom. Rows with material costs are FITTINGS: they persist through
+   * Collapse (set resetsOnCollapse: false) so the 4–12-minute loop never
+   * burns persistent wealth.
+   */
+  materialCosts?: Array<{ id: string; count: number }>;
+  /** 'shell' rows render in the Dig panel's shell-band section (Part B). */
+  band?: 'shell';
 }
 
 const registry = new Map<string, UpgradeDef>();

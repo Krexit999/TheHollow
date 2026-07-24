@@ -10,6 +10,9 @@ import { clearChains } from '../systems/refinery';
 import { clearCraftSystems } from '../craft';
 import { clearShells } from '../shells';
 import { clearSignatures } from '../signatures';
+import { clearTechniques } from '../techniques';
+import { clearKeystones, registerReferenceKeystones } from '../systems/keystones';
+import { registerShell2Upgrades, registerShell2UpgradeModifiers } from './shell2/upgrades';
 import { registerShellContent, registerFerriteCurrencies, registerVerdanceCurrencies, registerGlassmereShell, registerCinderShell, registerHollowShell, registerAlephShell } from './shells';
 import { registerPressure } from '../systems/pressure';
 import { registerEmberArray } from './shell5/emberArray';
@@ -137,6 +140,9 @@ export function ensureContentLoaded(): void {
   registerConfluenceModifiers();
   registerChains();
   registerTemperModifiers();
+  registerReferenceKeystones();
+  registerShell2Upgrades();
+  registerShell2UpgradeModifiers();
 
   // Every registrar has run. Fail loudly NOW if anything registered into a
   // bucket no system reads — a silent no-op is the failure this whole phase
@@ -152,6 +158,8 @@ export function reloadContent(): void {
   clearCraftSystems();
   clearShells();
   clearSignatures();
+  clearTechniques();
+  clearKeystones();
   clearLaws();
   clearChains();
   loaded = false;

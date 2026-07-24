@@ -27,3 +27,14 @@
 - Delegate heavy reads to a Haiku subagent and take only its summary into the main
   context. Applies to: sim outputs, error logs, coverage reports, graph queries, and
   any file over ~500 lines. Never read those directly.
+
+## Model and effort routing
+- Fable, max thinking: framework/architecture, new abstractions, reset-layer or economy
+  changes, hard diagnosis, Part A audits — anything six shells inherit and you can't
+  cheaply undo.
+- Opus, high thinking: building an already-ruled plan, single-system features, reference
+  implementations, non-trivial bugs with an unknown cause. The default workhorse.
+- Sonnet: mechanical follow-through — wiring edges, content rows, applying an approved
+  pattern to a stubbed shell, bugs with a known cause.
+- Haiku subagent: heavy reads (sim output, logs, graph queries), returning only numbers.
+Never use the top tier to re-derive an already-ruled plan.

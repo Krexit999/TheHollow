@@ -35,6 +35,8 @@ import { defaultRecursionState } from './systems/recursionSys';
 import { defaultSpiralState } from './systems/spiral';
 import { defaultRelicsState } from './systems/relics';
 import { defaultConfluenceState } from './systems/confluence';
+import { defaultTechniquesState } from './techniques';
+import { defaultKeystonesState } from './systems/keystones';
 import { defaultRefineryState } from './systems/refinery';
 import { defaultWorkbenchState } from './systems/workbench';
 import { defaultShaftState } from './systems/shaftSys';
@@ -90,7 +92,10 @@ export function initialState(nowMs: number): GameState {
       stamina: 100,
       staminaMax: 100,
       recentChips: [],
+      seepPool: 0,
     },
+    techniques: defaultTechniquesState(),
+    keystones: defaultKeystonesState(),
     kiln: { built: false, heat: 0, feeding: false, progress: D(0) },
     drills: { bayBuilt: false, units: [] },
     depth: 0,

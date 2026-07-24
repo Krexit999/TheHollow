@@ -19,6 +19,8 @@ import type { ModifierCache } from '../modifiers';
 import { addCurrency, spendCurrency } from '../resources';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { registerSignature } from '../signatures';
+import { registerTechnique, techniqueCooldown, techniqueDef } from '../techniques';
+import { stat } from '../upgrades';
 import { masteryLevel } from './mastery';
 import { lawFlag } from '../laws';
 
@@ -26,6 +28,26 @@ export const CHAIN_CAP = 12;
 export const CHAIN_BREAK_PENALTY = 0.5;
 export const CHAIN_TIMEOUT_SEC = 4;
 export const MAGNET_BIAS = 0.85;
+export const POLESHIFT_COOLDOWN_SEC = 8;
+
+// --- The Ferrite band (Part B upgrades) reads its behavioral rows here ------
+// Each is a stat() read so the rows stay data; the mechanic owns the meaning.
+/** Effective chain cap: +1 per Long Route level. */
+export function chainCap(state: GameState): number {
+  return CHAIN_CAP + stat(state, 'longRoute');
+}
+/** Break penalty softened by Keeper Magnets: 0.5 → up to 0.65. */
+export function chainBreakPenalty(state: GameState): number {
+  return CHAIN_BREAK_PENALTY + 0.05 * stat(state, 'keeperMagnets');
+}
+/** Chain timeout stretched by the Induction Coil: 4s → up to 7s. */
+export function chainTimeoutSec(state: GameState): number {
+  return CHAIN_TIMEOUT_SEC + 0.75 * stat(state, 'inductionCoil');
+}
+/** Magnet bias wound tighter by Wound Cores: 85% → up to 95%. */
+export function magnetBias(state: GameState): number {
+  return Math.min(0.95, MAGNET_BIAS + 0.02 * stat(state, 'woundCores'));
+}
 export const MAGNET_COST_BASE = 40; // Scale, structural 1.75 per magnet owned
 export const MAGNET_MASTERY = 4;
 export const LODESTONE_CHAIN_MIN = 5;
@@ -45,7 +67,7 @@ export function defaultPolarityState(): GameState['polarity'] {
 function rollSign(state: GameState, cell: number): number {
   const col = cell % state.face.w;
   const pole = state.polarity.magnets[col] ?? 0;
-  if (pole !== 0 && Math.random() < MAGNET_BIAS) return pole;
+  if (pole !== 0 && Math.random() < magnetBias(state)) return pole;
   return Math.random() < 0.5 ? 1 : -1;
 }
 
@@ -73,7 +95,7 @@ export function chainBase(state: GameState, mods: ModifierCache, strength: numbe
 
 /** The multiplier the NEXT chip would get if it continued the chain. */
 export function nextChainMult(state: GameState, mods: ModifierCache, strength: number): number {
-  const n = Math.min(state.polarity.chain + 1, CHAIN_CAP);
+  const n = Math.min(state.polarity.chain + 1, chainCap(state));
   return Math.pow(chainBase(state, mods, strength), n - 1);
 }
 
@@ -92,7 +114,7 @@ function polarityChipMult(
 
   let mult: number;
   if (pol.chain === 0 || sign === pol.lastSign) {
-    pol.chain = Math.min(pol.chain + 1, CHAIN_CAP);
+    pol.chain = Math.min(pol.chain + 1, chainCap(state));
     mult = Math.pow(chainBase(state, mods, strength), pol.chain - 1);
     if (pol.chain > pol.bestChain) pol.bestChain = pol.chain;
     if (pol.chain >= LODESTONE_CHAIN_MIN) {
@@ -101,8 +123,9 @@ function polarityChipMult(
       addCurrency(state, 'lodestone', D(strength));
     }
   } else {
-    // The chain snaps: this chip pays half, and the chain restarts on it.
-    mult = CHAIN_BREAK_PENALTY;
+    // The chain snaps: this chip pays half (softened by Keeper Magnets),
+    // and the chain restarts on it.
+    mult = chainBreakPenalty(state);
     pol.chain = 1;
     ctx.emit({ type: 'chainBroken', at: cell });
   }
@@ -123,13 +146,35 @@ function polarityFaceTick(
   _strength: number,
 ): void {
   const pol = state.polarity;
-  if (pol.chain > 0 && state.stats.playTimeSec - pol.lastChipAtSec > CHAIN_TIMEOUT_SEC) {
+  if (pol.chain > 0 && state.stats.playTimeSec - pol.lastChipAtSec > chainTimeoutSec(state)) {
     pol.chain = 0;
     pol.lastSign = 0;
   }
 }
 
 export function registerPolarity(): void {
+  registerTechnique({
+    id: 'poleshift',
+    signatureId: 'polarity',
+    name: 'Poleshift',
+    verb: 'Shift a pole',
+    flavor: 'Iron listens to a strong enough opinion.',
+    describe: (state, strength) => {
+      const cd = Math.ceil(techniqueCooldown(techniqueDef('poleshift')!, strength, state));
+      return `Flip one cell's sign on demand — the route becomes yours to lay, not to find. Every ${cd}s.`;
+    },
+    cooldownSec: POLESHIFT_COOLDOWN_SEC,
+    // Pole Dampers (Ferrite band): a quicker hand, bought in Lodestone.
+    cooldownAdjust: (s) => stat(s, 'poleDampers'),
+    targeted: true,
+    perform: (state, _mods, ctx, _strength, cell) => {
+      ensurePolarity(state);
+      const sign = state.polarity.signs[cell!] ?? 1;
+      state.polarity.signs[cell!] = -sign as 1 | -1;
+      ctx.emit({ type: 'poleShifted', cell: cell!, sign: -sign });
+      return { ok: true, data: { cell, sign: -sign } };
+    },
+  });
   registerSignature({
     id: 'polarity',
     shellId: 'ferrite',

@@ -7,8 +7,9 @@
  *
  *   Echoes = floor(3 * (CoresEarnedThisBreach / 500)^0.6)   (locked)
  *
- * Note: Loam has no signature — the first Breach carries nothing down;
- * Polarity is Ferrite-native. Breaching Ferrite (Phase 5+) carries Polarity.
+ * (Stale-comment fix, Part B: Loam DOES have a signature — Seepage was
+ * promoted in Phase 5 and carries down like any other. The registry is the
+ * truth; this header once said otherwise.)
  */
 import { D } from '../decimal';
 import type { ModifierCache } from '../modifiers';
@@ -23,6 +24,7 @@ import { lawFlag } from '../laws';
 import { logScar, resetShaftRun, surfaceCaches } from './shaftSys';
 import { addToolMark } from './heirloom';
 import { faceWhole } from './absence';
+import { keystoneSatisfied } from './keystones';
 import { grantXP } from './xp';
 import { START_H, START_W } from '../state';
 
@@ -36,6 +38,9 @@ export function canBreach(state: GameState): boolean {
     // The one exception to optionality: the Floor Warden bars the way —
     // unless THE OPEN DOOR (law) is written; they keep their treasure.
     (state.combat.wardens.includes(currentShell(state).id) || lawFlag(state, 'wardenOptional')) &&
+    // THE KEYSTONE (Part B): the floor must be shored — by the shell's own
+    // system, or the Guild's slow haul. No def, no gate (stubs III–VII).
+    keystoneSatisfied(state) &&
     // The Hollow's own gate: the face must be WHOLE before the Core opens.
     (currentShell(state).id !== 'hollow' || faceWhole(state))
   );
@@ -47,6 +52,10 @@ export function breachEchoPreview(state: GameState) {
 
 export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx): ActionResult {
   if (!canBreach(state)) {
+    // Name the actual blocker — a gate that won't say its name is a wall.
+    if (state.depth >= currentShell(state).floorDepth && !keystoneSatisfied(state)) {
+      return { ok: false, reason: 'The floor is open but unshored — set the keystone first.' };
+    }
     return { ok: false, reason: 'The floor holds. Descend to it first.' };
   }
   const from = currentShell(state);

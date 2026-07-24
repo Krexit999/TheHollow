@@ -162,6 +162,7 @@ describe('the loam warden (mandatory, auto-beatable with gear)', () => {
     const result = engine.dispatch({ type: 'fightWarden', auto: true });
     expect(result.ok).toBe(true);
     expect(s.combat.wardens).toContain('loam');
+    s.keystones.placed.push('loam'); // the Part B gate, satisfied for this test
     expect(engine.dispatch({ type: 'breach' }).ok).toBe(true);
     expect(s.depthRecords['loam']).toBe(150); // records untouched by any of it
   });

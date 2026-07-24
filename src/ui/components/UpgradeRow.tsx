@@ -12,6 +12,8 @@ import {
   type UpgradeDef,
 } from '../../engine';
 import { ModifierCache } from '../../engine/modifiers';
+import { materialCount } from '../../engine/systems/forge';
+import { materialDef } from '../../engine/materials';
 import { dispatch, useGame, type BulkMode } from '../store';
 import { Amount } from './shared';
 
@@ -138,7 +140,11 @@ export function UpgradeRow({ def, preview }: { def: UpgradeDef; preview?: Previe
   const oneOff = kind !== 'spam';
 
   // How many this click buys, given the bulk mode (clamped to affordable + cap).
-  const affordable = maxed ? 0 : maxAffordable(def, level, bank);
+  // Spine-priced rows (Part B): material stock caps the buy alongside currency.
+  let affordable = maxed ? 0 : maxAffordable(def, level, bank);
+  for (const mc of def.materialCosts ?? []) {
+    affordable = Math.min(affordable, Math.floor(materialCount(state as GameState, mc.id) / mc.count));
+  }
   const wanted = oneOff ? 1 : bulkMode === 'max' ? affordable : Math.min(bulkMode as number, def.maxLevel - level);
   const buyN = Math.max(0, Math.min(wanted, def.maxLevel - level, affordable));
   const cost = maxed ? null : buyN >= 1 ? costForLevels(def, level, buyN) : nextCost(def, level);
@@ -215,6 +221,18 @@ export function UpgradeRow({ def, preview }: { def: UpgradeDef; preview?: Previe
             )}
           </div>
           <div className="mt-0.5 text-xs leading-snug text-cave-400">{def.description(level)}</div>
+          {/* Spine price: what each level eats from the Hold, and what you have. */}
+          {(def.materialCosts ?? []).length > 0 && (
+            <div className="tnum mt-0.5 text-[10px] text-cave-500">
+              each level also takes {(def.materialCosts ?? []).map((mc, i) => (
+                <span key={mc.id}>
+                  {i > 0 && ' + '}
+                  {mc.count} {materialDef(mc.id).name}
+                  <span className="opacity-70"> (have {materialCount(state as GameState, mc.id)})</span>
+                </span>
+              ))}
+            </div>
+          )}
           {/* The effect preview — pillar 2 made legible before you spend. */}
           {previewRows.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">

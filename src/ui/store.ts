@@ -62,8 +62,11 @@ interface UIStore {
   /** Glassmere: while true, tapping the face cycles a mirror instead of chipping. */
   opticsMode: boolean;
   /** THE FACE CLUSTER (v20): what a press on the face does — chip (default),
-   *  tag a cell for drills to skip, or drag a stamina-costed sweep. UI-only. */
-  faceMode: 'chip' | 'sweep';
+   *  tag a cell for drills to skip, or drag a stamina-costed sweep. UI-only.
+   *  'technique' (Part B): the next tap performs the armed signature verb. */
+  faceMode: 'chip' | 'sweep' | 'technique';
+  /** Which targeted technique a face tap performs while faceMode='technique'. */
+  armedTechnique: string | null;
   /** The bulk-buy multiplier, persisted across sessions (localStorage). */
   bulkMode: BulkMode;
   /** Number display format — device preference (localStorage), not in the save. */
@@ -76,7 +79,8 @@ interface UIStore {
   setTab: (tab: TabId) => void;
   markFresh: (tab: TabId) => void;
   setOpticsMode: (on: boolean) => void;
-  setFaceMode: (m: 'chip' | 'sweep') => void;
+  setFaceMode: (m: 'chip' | 'sweep' | 'technique') => void;
+  armTechnique: (id: string | null) => void;
   setBulkMode: (m: BulkMode) => void;
   setNumberFormat: (m: NumberFormat) => void;
   openCompendium: (entryId: string | null) => void;
@@ -98,12 +102,14 @@ export const useGame = create<UIStore>((set, get) => ({
     window.matchMedia('(prefers-reduced-motion: reduce)').matches,
   opticsMode: false,
   faceMode: 'chip',
+  armedTechnique: null,
   bulkMode: loadBulk(),
   numberFormat: loadNumberFormat(),
   setTab: (tab) =>
     set((s) => ({ tab, freshTabs: s.freshTabs.filter((t) => t !== tab) })),
   setOpticsMode: (on) => set({ opticsMode: on }),
-  setFaceMode: (m) => set({ faceMode: m }),
+  setFaceMode: (m) => set({ faceMode: m, ...(m !== 'technique' ? { armedTechnique: null } : {}) }),
+  armTechnique: (id) => set(id ? { armedTechnique: id, faceMode: 'technique' } : { armedTechnique: null, faceMode: 'chip' }),
   setBulkMode: (m) => {
     if (typeof localStorage !== 'undefined') localStorage.setItem(BULK_KEY, String(m));
     set({ bulkMode: m });

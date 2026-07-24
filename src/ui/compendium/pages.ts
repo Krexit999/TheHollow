@@ -100,6 +100,37 @@ export const CONCEPT_PAGES: ConceptPage[] = [
     ],
   },
   {
+    id: 'techniques', title: 'Signature techniques', group: 'How it works',
+    summary: 'The verb each rock grants — carried down, like the mechanic it belongs to.',
+    keywords: ['technique', 'verb', 'skim', 'poleshift', 'signature', 'skill', 'active'],
+    paragraphs: [
+      'Every shell\'s signature grants a TECHNIQUE — something your hands can do that only that rock makes possible. Loam\'s seepage banks a pool you can skim. Ferrite\'s iron will flip a cell\'s sign if you insist. Deeper shells keep their own counsel until you stand in them.',
+      'A technique has no price. Its cooldown is its cost: a verb you must buy would be a purchase, and this is a skill.',
+      'When you Breach, the technique comes down with its signature — weaker in the only way a verb can be weaker: it recovers more slowly. Native rock answers fast; carried rock answers eventually.',
+      'None of this touches what an idle player earns. A technique is what your hands add on top; the leak, the drills, and the ceiling never depended on it and never will.',
+    ],
+    facts: [
+      ['Cost', 'None — the cooldown is the cost'],
+      ['Carried', 'Works everywhere the signature does, slower'],
+      ['Idle player', 'Loses nothing by never using one'],
+    ],
+  },
+  {
+    id: 'keystones', title: 'Keystones', group: 'The ladder',
+    summary: 'A shell\'s floor must be shored before you fall through it.',
+    keywords: ['keystone', 'breach', 'gate', 'shore', 'arch', 'anchor', 'floor', 'cannot breach'],
+    paragraphs: [
+      'Reaching a floor and felling its Warden opens the way down — but the way down must hold. Each shell asks for a KEYSTONE: a piece of shoring made from what that shell\'s own machines produce. The Kiln has been making doorway all along; the Crucible pours one.',
+      'There are always two roads to a keystone. Make it, from the system the shell is about — that is the fast road. Or pay the Guild to haul one up, in plain chip currency — slower, but never shut. A player who builds nothing still crosses every floor.',
+      'A keystone is set ONCE, forever. Collapse does not shake it loose; the Breach falls past it; even a Recursion remembers where you shored. The floor asks each question exactly once.',
+    ],
+    facts: [
+      ['Two roads', 'Craft it from the shell\'s system, or buy the Guild haul'],
+      ['The slow road', 'Chip currency alone — never shut'],
+      ['Once set', 'Survives Collapse, Breach, and Recursion'],
+    ],
+  },
+  {
     id: 'ladder', title: 'The reset ladder', group: 'The ladder',
     summary: 'All four layers: what goes, what stays, what you get.',
     keywords: ['reset', 'ladder', 'collapse', 'breach', 'recursion', 'spiral', 'prestige', 'when should i'],

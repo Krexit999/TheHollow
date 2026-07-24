@@ -35,6 +35,7 @@ function atFloor(): { engine: Engine; s: GameState } {
   s.collapse.nodes['grit'] = 5;
   addMaterial(s, 'marl', 60, 30);
   s.combat.wardens.push('loam'); // the Tapmother has fallen (Phase 5 gate)
+  s.keystones.placed.push('loam'); // the Brick Arch is set (Part B gate)
   engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 5000 });
   engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 100 });
   return { engine, s };
@@ -47,6 +48,8 @@ describe('the breach', () => {
     s.depth = 150;
     expect(canBreach(s)).toBe(false); // the Tapmother bars the way
     s.combat.wardens.push('loam');
+    expect(canBreach(s)).toBe(false); // the floor is open but unshored (Part B)
+    s.keystones.placed.push('loam');
     expect(canBreach(s)).toBe(true);
   });
 

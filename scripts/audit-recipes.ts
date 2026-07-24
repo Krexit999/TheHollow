@@ -15,6 +15,8 @@ import { CHAINS } from '../src/engine/systems/refinery';
 import { createEngine } from '../src/engine';
 import type { GameState } from '../src/engine/types';
 import { stockFor } from '../src/engine/guild/guild';
+import { allKeystones } from '../src/engine/systems/keystones';
+import { allCurrencies } from '../src/engine/resources';
 
 ensureContentLoaded();
 const shells = ['loam', 'ferrite', 'verdance', 'glassmere'];
@@ -157,6 +159,25 @@ for (const r of TOOL_RECIPES) {
 // so every casting is producible from the Crucible's opening era on.
 for (const id of ['steelcasting', 'brazecasting', 'platecasting', 'polecasting', 'cryocasting']) {
   if (!materialDef(id).worked) bad(`${id} is not worked — it could drop from rock`);
+}
+// LAW 6 (Part B) — a KEYSTONE gates its own shell's floor, so every craft
+// input must come from that shell (or a system that runs there by the floor):
+// material inputs from the shell's own registry or a Ferrite-era casting;
+// currency inputs must exist. And every keystone MUST carry an idle leg
+// (idlePriceMult > 0) — the ruled correction, checked structurally here and
+// priced by the sim.
+for (const k of allKeystones()) {
+  if (!(k.idlePriceMult > 0)) bad(`keystone ${k.shellId} has no idle leg`);
+  const era = ORDER.indexOf(k.shellId);
+  for (const m of k.craft.materials ?? []) {
+    const def = materialDef(m.id);
+    if (ORDER.indexOf(def.shellId) > era) {
+      bad(`keystone ${k.shellId} wants ${m.id} from ${def.shellId} — below its own floor`);
+    }
+  }
+  for (const c of k.craft.currencies ?? []) {
+    if (!allCurrencies().some((cur) => cur.id === c.id)) bad(`keystone ${k.shellId} wants unknown currency ${c.id}`);
+  }
 }
 
 console.log(exportViolations === 0 ? 'EXPORT GRAPH + PULL-THROUGH: ok — the curriculum law holds across shells' : `EXPORT GRAPH + PULL-THROUGH: ${exportViolations} VIOLATION(S)`);

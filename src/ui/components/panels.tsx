@@ -104,6 +104,7 @@ export function DigPanel() {
       {defs.map((def) => (
         <UpgradeRow key={def.id} def={def} preview={FIELD_PREVIEW} />
       ))}
+      <ShellBand state={state as GameState} />
       <PressureCard />
       <MagnetCard />
       <OpticsCard />
@@ -113,6 +114,28 @@ export function DigPanel() {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * THE SHELL BAND (Part B) — the expanded tree, one section per shell, priced
+ * through the spine and discovery-gated. Rows appear because you DID the
+ * thing (felt a break, rigged a magnet, held the ore) — never a locked list.
+ * Shells without an authored band (III–VII until the creative pass) render
+ * nothing here.
+ */
+function ShellBand({ state }: { state: GameState }) {
+  const rows = allUpgrades().filter((u) => u.band === 'shell' && (!u.visible || u.visible(state)));
+  if (rows.length === 0) return null;
+  return (
+    <>
+      <div className="mt-3 px-1 text-[9px] font-semibold uppercase tracking-widest text-cave-400">
+        Fittings — bought from what this shell gives, kept through every collapse
+      </div>
+      {rows.map((def) => (
+        <UpgradeRow key={def.id} def={def} preview={FIELD_PREVIEW} />
+      ))}
+    </>
   );
 }
 
