@@ -170,6 +170,20 @@ export function addRelic(state: GameState, relic: RelicInstance): RelicInstance 
  * affix it lacked. The fed relic is consumed; nothing is ever lost, because
  * everything it carried is now on the keeper (or already beaten by it).
  */
+/**
+ * B4 PULL-THROUGH: curation teaches fusion. RAISING a keeper's rarity through
+ * a fusion needs the pattern understood — completed Museum cases, more of them
+ * for higher work. Merging affixes at the keeper's own rarity is NEVER gated
+ * (the raw fallback: fusion itself always works), and a rarity is never lost.
+ * Index = the rarity the keeper would RISE TO (0 Common .. 4 Mythic).
+ */
+export const MUSEUM_FUSION_NEED = [0, 0, 1, 3, 5] as const;
+
+/** Cases needed to fuse a keeper UP to `rarity`, and how many stand complete. */
+export function fusionGate(state: GameState, rarity: number): { need: number; have: number } {
+  return { need: MUSEUM_FUSION_NEED[rarity] ?? 0, have: state.museum.completed.length };
+}
+
 export function fuseRelics(state: GameState, keepUid: number, feedUid: number): { ok: boolean; reason?: string } {
   if (keepUid === feedUid) return { ok: false, reason: 'A relic cannot be fused into itself' };
   const keep = state.relics.held.find((r) => r.uid === keepUid);
@@ -178,6 +192,15 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
   // A LOCKED relic is never consumed. Note it is only ever the FED one that is
   // eaten, so a locked relic can still be the KEEPER and be improved by a fusion.
   if (feed.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
+  if (feed.rarity > keep.rarity) {
+    const gate = fusionGate(state, feed.rarity);
+    if (gate.have < gate.need) {
+      return {
+        ok: false,
+        reason: `Raising a relic that far is learned from the cases — complete ${gate.need} Museum cases (${gate.have} done), or keep the finer relic and feed it the lesser.`,
+      };
+    }
+  }
 
   for (const [k, v] of Object.entries(feed.affixes)) {
     keep.affixes[k] = Math.max(keep.affixes[k] ?? 0, v);
@@ -211,6 +234,9 @@ export interface FusionPreview {
   wasted: Array<{ key: string; label: string }>;
   /** Whether the keeper's rarity would rise. */
   rarityUp: boolean;
+  /** B4: set when the rise is museum-gated and the cases are short — the UI
+   *  must say so BEFORE the attempt, not after. */
+  gatedBy?: { need: number; have: number };
 }
 
 export function fusionPreview(state: GameState, keepUid: number, feedUid: number): FusionPreview | null {
@@ -220,6 +246,10 @@ export function fusionPreview(state: GameState, keepUid: number, feedUid: number
   if (!keep || !feed) return null;
 
   const out: FusionPreview = { gained: [], improved: [], wasted: [], rarityUp: feed.rarity > keep.rarity };
+  if (out.rarityUp) {
+    const gate = fusionGate(state, feed.rarity);
+    if (gate.have < gate.need) out.gatedBy = gate;
+  }
   for (const [key, value] of Object.entries(feed.affixes)) {
     const label = AFFIXES[key]?.label ?? key;
     const have = keep.affixes[key];

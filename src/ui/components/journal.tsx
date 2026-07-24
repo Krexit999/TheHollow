@@ -15,8 +15,11 @@ import {
   type FragmentDef,
 } from '../../engine/guild/sable';
 import { dispatch, useGame } from '../store';
-import { activeConfluences, CONFLUENCE_BY_ID } from '../../engine/systems/confluence';
-import { BUCKET_NAME } from './shared';
+import {
+  activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceAmp,
+  confluenceRankCost, confluenceSlotCap, confluenceSlotCost,
+} from '../../engine/systems/confluence';
+import { Amount, BUCKET_NAME } from './shared';
 
 const SHELL_LABEL: Record<string, string> = { loam: 'THE LOAM PAGES', ferrite: 'THE FERRITE PAGES' };
 
@@ -36,8 +39,25 @@ function ConfluenceCodex() {
   useGame((s) => s.rev);
   if (!state) return null;
   const found = state.confluences.found;
-  if (found.length === 0) return null;
+  // B5: hints from her pages show as unfound margin notes — the read paying out.
+  const hinted = state.confluences.hinted.filter((id) => !found.includes(id));
+  if (found.length === 0 && hinted.length === 0) return null;
   const live = new Set(activeConfluences(state as GameState).map((c) => c.id));
+
+  const slots = state.confluences.slots;
+  const cap = confluenceSlotCap(state as GameState);
+  const echoes = getCurrency(state as GameState, 'echo');
+  // "Dwell" fills the DEEPEST empty slot, so a freed deep channel is never
+  // wasted on nothing — rank rides the slot and re-choosing keeps it.
+  const emptyIdx = slots
+    .map((sl, i) => ({ sl, i }))
+    .filter(({ sl }) => sl.id === null)
+    .sort((a, b) => b.sl.rank - a.sl.rank)[0]?.i;
+  const slotOf = (id: string) => slots.findIndex((sl) => sl.id === id);
+  // Attention opens with the SECOND fall (sim-tuned: a first-Breach amp broke
+  // the return-to-peak floor). Until then the block simply isn't there —
+  // never show a locked list.
+  const anyEchoesEver = state.shell.breachCount >= 2;
 
   return (
     <div className="panel p-3">
@@ -51,23 +71,106 @@ function ConfluenceCodex() {
         Things that only happen when two parts of the world are true at once. They pay while they
         hold and stop when they stop — the note stays either way.
       </p>
+
+      {/* THE ATTENDED MARGIN (B3) — the Echo sink that lives with the notes it reads. */}
+      {anyEchoesEver && (
+        <div className="mt-2 border-l-2 border-[#d8ccf0]/50 pl-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0 text-[11px] text-cave-400">
+              <span className="font-semibold text-cave-200">Attention</span>
+              <span className="tnum ml-2">{slots.filter((sl) => sl.id !== null).length}/{slots.length} held</span>
+              <span className="ml-2 text-cave-500">Echoes: <Amount value={echoes} color="#d8ccf0" /></span>
+            </div>
+            {slots.length < cap ? (
+              <button
+                className="btn shrink-0 px-2 py-0.5 text-[10px]"
+                disabled={echoes.lt(confluenceSlotCost(state as GameState))}
+                onClick={() => dispatch({ type: 'confluenceBuySlot' })}
+              >
+                Widen · <Amount value={confluenceSlotCost(state as GameState)} color="#d8ccf0" /> Echo
+              </button>
+            ) : (
+              <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+                the next signature widens it
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] leading-snug text-cave-500">
+            A note you dwell on pays ×2 while it holds — deepened, up to ×3. One slot for
+            yourself, one per carried signature. Re-choosing is free and keeps the depth.
+          </div>
+        </div>
+      )}
+
       <div className="mt-2 space-y-1.5">
         {found.map((id) => {
           const def = CONFLUENCE_BY_ID.get(id);
           if (!def) return null;
           const on = live.has(id);
+          const si = slotOf(id);
+          const dwelt = si >= 0;
+          const amp = confluenceAmp(state as GameState, id);
           return (
             <div key={id} className={`border-l-2 pl-2 ${on ? 'border-[#c8b48a]' : 'border-cave-700'}`}>
               <div className="flex items-baseline justify-between gap-2">
                 <span className={`text-xs font-semibold ${on ? 'text-cave-200' : 'text-cave-400'}`}>{def.name}</span>
                 <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+                  {dwelt && <span className="mr-1.5 text-[#d8ccf0]">dwelt ×{amp}</span>}
                   {on ? <span className="text-[#c8b48a]">holding</span> : 'quiet'}
                 </span>
               </div>
               <div className="text-[10px] italic leading-snug text-cave-400">{def.flavor}</div>
-              <div className="mt-0.5 text-[10px] text-cave-500">
-                {def.systems[0]} × {def.systems[1]}
-                {on && <span className="ml-1.5 text-[#c8b48a]">+{Math.round(def.bonus * 100)}% {BUCKET_NAME[def.bucket]}</span>}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[10px] text-cave-500">
+                <span>{def.systems[0]} × {def.systems[1]}</span>
+                {on && (
+                  <span className="text-[#c8b48a]">
+                    +{Math.round(def.bonus * amp * 100)}% {BUCKET_NAME[def.bucket]}
+                  </span>
+                )}
+                {slots.length > 0 && (dwelt ? (
+                  <>
+                    {slots[si]!.rank < CONFLUENCE_RANK_CAP && (
+                      <button
+                        className="btn px-1.5 py-0 text-[9px]"
+                        disabled={echoes.lt(confluenceRankCost(slots[si]!))}
+                        onClick={() => dispatch({ type: 'confluenceBuyRank', slot: si })}
+                      >
+                        Deepen · <Amount value={confluenceRankCost(slots[si]!)} color="#d8ccf0" />
+                      </button>
+                    )}
+                    <button
+                      className="btn px-1.5 py-0 text-[9px]"
+                      onClick={() => dispatch({ type: 'confluenceSetSlot', slot: si, id: null })}
+                    >
+                      Let go
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    className="btn px-1.5 py-0 text-[9px]"
+                    disabled={emptyIdx === undefined}
+                    title={emptyIdx === undefined ? 'Every slot is held — let one go first' : undefined}
+                    onClick={() => emptyIdx !== undefined
+                      && dispatch({ type: 'confluenceSetSlot', slot: emptyIdx, id })}
+                  >
+                    Dwell
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+        {hinted.map((id) => {
+          const def = CONFLUENCE_BY_ID.get(id);
+          if (!def) return null;
+          return (
+            <div key={id} className="border-l-2 border-dashed border-cave-700 pl-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs italic text-cave-400">{def.systems[0]} × {def.systems[1]}</span>
+                <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-600">her note</span>
+              </div>
+              <div className="text-[10px] italic leading-snug text-cave-500">
+                Something happens where these meet. She never wrote what.
               </div>
             </div>
           );

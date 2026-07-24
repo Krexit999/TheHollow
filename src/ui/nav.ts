@@ -17,6 +17,10 @@ export interface SystemDef {
   id: TabId;
   label: string;
   visible: (s: GameState) => boolean;
+  /** B5: a CODEX SURFACE — a reference you read, not a system that owes a
+   *  payoff. Reachable like any tab; exempt from the payoff floor and not
+   *  part of the counted-system number. */
+  codex?: true;
 }
 
 export interface ClusterDef {
@@ -71,8 +75,9 @@ export const CLUSTERS: ClusterDef[] = [
       { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
       { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
       { id: 'brew', label: 'Still', visible: (s) => rec(s, 'verdance', 60) },
-      { id: 'relics', label: 'Relics', visible: (s) => s.relics.found > 0 },
-      { id: 'museum', label: 'Museum', visible: (s) => s.relics.found > 0 || s.museum.completed.length > 0 },
+      // B5 FOLD: Museum lives inside the collection screen — curation gates
+      // fusion (B4), so keeping and curating are one decision now.
+      { id: 'relics', label: 'Collection', visible: (s) => s.relics.found > 0 || s.museum.completed.length > 0 },
     ],
   },
   {
@@ -81,11 +86,11 @@ export const CLUSTERS: ClusterDef[] = [
     glyph: '◍',
     systems: [
       { id: 'guild', label: 'Guild', visible: (s) => s.guild.discovered },
-      { id: 'bestiary', label: 'Bestiary', visible: (s) => s.combat.seen.length > 0 },
+      // B5: codex surfaces — read, not worked. Wells folded into Vents.
+      { id: 'bestiary', label: 'Bestiary', visible: (s) => s.combat.seen.length > 0, codex: true },
       { id: 'warrens', label: 'Warrens', visible: (s) => s.maxDepthRecord >= 35 && (s.shell.breachCount >= 3 || Object.keys(s.warrens.cleared).length > 0 || !!s.warrens.active) },
       { id: 'observatory', label: 'Stars', visible: (s) => rec(s, 'glassmere', 20) },
-      { id: 'journal', label: 'Journal', visible: (s) => s.guild.sable.found.length > 0 },
-      { id: 'wells', label: 'Wells', visible: (s) => rec(s, 'cinder', 60) },
+      { id: 'journal', label: 'Journal', visible: (s) => s.guild.sable.found.length > 0, codex: true },
       { id: 'expeditions', label: 'Expeditions', visible: (s) => Object.keys(s.guild.hirelings).length > 0 },
     ],
   },
@@ -97,7 +102,7 @@ export const CLUSTERS: ClusterDef[] = [
       { id: 'delver', label: 'Delver', visible: always },
       { id: 'collapse', label: 'Collapse', visible: (s) => s.maxDepthRecord >= 15 || s.collapse.count > 0 },
       { id: 'rewrite', label: 'Rewrite', visible: (s) => s.shell.breachCount >= 6 || s.recursion.count >= 1 || s.recursion.axioms.length > 0 },
-      { id: 'parallel', label: 'All Worlds', visible: (s) => s.recursion.count >= 1 || s.shell.current === 'aleph' },
+      { id: 'parallel', label: 'All Worlds', visible: (s) => s.recursion.count >= 1 || s.shell.current === 'aleph', codex: true },
       { id: 'spiral', label: 'The Spiral', visible: (s) => s.recursion.count >= 1 },
       { id: 'grid', label: 'Achievements', visible: always },
       { id: 'vault', label: 'Vault', visible: always },

@@ -62,16 +62,30 @@ export function commitToWell(state: GameState, wellId: string, amount: Decimal):
   if (amount.lt(well.minCommit)) return { ok: false, reason: `The well ignores less than ${well.minCommit}` };
   if (amount.gt(cap)) return { ok: false, reason: `A tenth of your holdings at most (${cap.toString()}) — house rule, YOUR house` };
   state.currencies[well.currencyId] = held.sub(amount);
-  state.wells.active.push({ wellId, currencyId: well.currencyId, amount, startedMs: state.guild.clockMs });
+  // THE PRESSURE TAP (B5): the wells live in the vent gallery now, and a well
+  // fed while the gallery runs hot — heat in the working band, a vent route
+  // laid — is stirred by the flow and resolves 25% faster. Printed odds
+  // untouched; only the wait shortens. A player who never vents just waits
+  // the full rope, exactly as before.
+  const tapped = wellTapLive(state);
+  state.wells.active.push({ wellId, currencyId: well.currencyId, amount, startedMs: state.guild.clockMs, tapped });
   state.wells.totalCommitted = state.wells.totalCommitted.add(amount);
-  return { ok: true };
+  return { ok: true, data: { tapped } };
 }
+
+/** Is the tap flowing right now? (Also read by the UI, so the card can say.) */
+export function wellTapLive(state: GameState): boolean {
+  return state.pressure.heat >= 50 && state.pressure.pipes.some((p) => p > 0);
+}
+
+export const WELL_TAP_SPEED = 0.75; // of the printed minutes
 
 export function wellProgress(state: GameState, wellId: string): number {
   const a = state.wells.active.find((x) => x.wellId === wellId);
   if (!a) return 0;
   const well = WELL_BY_ID.get(wellId)!;
-  return Math.min(1, (state.guild.clockMs - a.startedMs) / (well.minutes * 60_000));
+  const minutes = well.minutes * (a.tapped ? WELL_TAP_SPEED : 1);
+  return Math.min(1, (state.guild.clockMs - a.startedMs) / (minutes * 60_000));
 }
 
 export function collectWell(state: GameState, ctx: EngineCtx, wellId: string): ActionResult {

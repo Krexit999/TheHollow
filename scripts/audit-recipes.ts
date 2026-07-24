@@ -129,5 +129,35 @@ for (const e of SHELL_EXPORTS) {
   }
 }
 
-console.log(exportViolations === 0 ? 'EXPORT GRAPH: ok — the curriculum law holds across shells' : `EXPORT GRAPH: ${exportViolations} VIOLATION(S)`);
+// ---------------------------------------------------------------------------
+// THE PULL-THROUGH (B4) — the same law over the Forge's new inputs.
+// ---------------------------------------------------------------------------
+
+console.log('\nPULL-THROUGH:');
+// LAW 4 — a refined variant is an OPTION beside raw inputs, never instead of
+// them (the fallback is the recipe), and its worked material must be
+// producible before the tier's own era: every refined workedId needs a chain
+// whose inputs are mineable at or before the recipe's wall shell.
+for (const r of TOOL_RECIPES) {
+  if (r.tier >= 4 && !r.refined) bad(`${r.id} (T${r.tier}) has no refined variant`);
+  if (r.tier < 4 && r.refined) bad(`${r.id} (T${r.tier}) is refined below the mid band`);
+  if (!r.refined) continue;
+  if (Object.keys(r.inputs).length === 0) bad(`${r.id} refined variant has no raw fallback`);
+  const wdef = materialDef(r.refined.workedId);
+  if (!wdef.worked) bad(`${r.id} refined input ${r.refined.workedId} is not worked`);
+  const wall = wallOf[r.tier];
+  const era = wall ? ORDER.indexOf(wall.shell) : ORDER.length - 1;
+  const chains = CHAINS.filter((c) => c.out === r.refined!.workedId);
+  if (chains.length === 0) bad(`${r.id} refined input ${r.refined.workedId} has no producing chain`);
+  if (!chains.some((c) => [c.a, c.b].every((i) => ORDER.indexOf(materialDef(i).shellId) <= era))) {
+    bad(`${r.id} refined input ${r.refined.workedId} has no chain payable by ${wall?.shell ?? 'the end of the stair'}`);
+  }
+}
+// LAW 5 — a casting is worked (never dug) and its metals are Ferrite's own,
+// so every casting is producible from the Crucible's opening era on.
+for (const id of ['steelcasting', 'brazecasting', 'platecasting', 'polecasting', 'cryocasting']) {
+  if (!materialDef(id).worked) bad(`${id} is not worked — it could drop from rock`);
+}
+
+console.log(exportViolations === 0 ? 'EXPORT GRAPH + PULL-THROUGH: ok — the curriculum law holds across shells' : `EXPORT GRAPH + PULL-THROUGH: ${exportViolations} VIOLATION(S)`);
 if (exportViolations > 0) process.exit(1);

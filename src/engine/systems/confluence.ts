@@ -29,10 +29,12 @@
  * Discovery is a RECORD OF PLAY, so it lives in the save (v13), beside the
  * Codex lists it belongs with.
  */
-import type { EngineCtx, GameState } from '../types';
+import type { ActionResult, ConfluenceSlot, EngineCtx, GameState } from '../types';
 import { registerModifier, foldBonus, type Bucket } from '../modifiers';
 import { currentWeather } from './weather';
 import { traitsOf, type TraitId } from '../traits';
+import { D, type Decimal } from '../decimal';
+import { spendCurrency } from '../resources';
 
 export interface ConfluenceDef {
   id: string;
@@ -187,7 +189,9 @@ export const CONFLUENCES: ConfluenceDef[] = [
 
   // --- SPECIES × ANOMALY --------------------------------------------------
   {
-    id: 'drawnOut', name: 'Drawn Out', systems: ['wells', 'bestiary'],
+    // 'vents' since B5: the wells are a tap in the vent gallery now, and the
+    // strange seasons rise the same shafts.
+    id: 'drawnOut', name: 'Drawn Out', systems: ['vents', 'bestiary'],
     flavor: 'Anomalies bring things up with them. The Bestiary fills faster in a strange season.',
     active: (s) => s.anomalies.resolved >= 3 && s.combat.seen.length >= 12,
     bucket: 'xpGain', bonus: 0.18,
@@ -257,7 +261,8 @@ export const CONFLUENCES: ConfluenceDef[] = [
 
   // --- MUSEUM × EXPEDITION ------------------------------------------------
   {
-    id: 'providedFor', name: 'Provided For', systems: ['museum', 'expeditions'],
+    // 'relics' since B5: the Museum lives inside the collection screen now.
+    id: 'providedFor', name: 'Provided For', systems: ['relics', 'expeditions'],
     flavor: 'The crews walk further when the cases are full. Ashka says it is morale; Dovekin says it is the better boots.',
     active: (s) => s.museum.completed.length >= 3 && s.expeditions.completed >= 5,
     bucket: 'scripGain', bonus: 0.2,
@@ -292,11 +297,105 @@ export function noticeConfluences(state: GameState, ctx: EngineCtx): void {
   }
 }
 
-/** A confluence pays only while its condition holds — found is not kept. */
+// ---------------------------------------------------------------------------
+// THE ATTENDED MARGIN (Interlock B3) — Echoes buy attention, attention
+// amplifies. The margins recorded what you noticed; now you can DWELL on it.
+//
+// An attention SLOT holds one FOUND confluence and multiplies its pay
+// ×(2 + 0.5·rank), capped ×3 at rank 2. Three rules keep it safe:
+//
+//  1. UNATTENDED CONFLUENCES PAY ×1, exactly as before — no save is nerfed,
+//     and the ambient layer stays a discovery reward, never a tax.
+//  2. CAPACITY IS THE BREACH'S CARRY: max slots = 1 + carried signatures.
+//     Every signature you fall through with widens what you can hold in mind
+//     — the carried ghosts are literally the inputs this layer reads.
+//  3. RANK RIDES THE SLOT, NOT THE CHOICE. Re-choosing which confluence a
+//     deep slot holds is free and lossless — switching is never punished.
+// ---------------------------------------------------------------------------
+
+export const CONFLUENCE_RANK_CAP = 2;
+
+/** The amplifier a slotted confluence enjoys: ×2 / ×2.5 / ×3 by rank. */
+export function confluenceAmp(state: GameState, id: string): number {
+  const slot = state.confluences.slots.find((x) => x.id === id);
+  if (!slot) return 1;
+  return 2 + 0.5 * Math.min(slot.rank, CONFLUENCE_RANK_CAP);
+}
+
+/** Max slots: one for yourself, one per carried signature — and none until
+ *  the SECOND Breach. Sim-tuned: a first-Breach amp re-climbs Ferrite fast
+ *  enough to break the 10% return-to-peak floor (5.9–8.6% across seeds), so
+ *  the decision layer arrives with the second fall, when the band holds. */
+export function confluenceSlotCap(state: GameState): number {
+  if (state.shell.breachCount < 2) return 0;
+  return 1 + state.shell.signatures.length;
+}
+
+/** Echo cost of the NEXT slot: 3, 6, 12, 24... — a structural curve. The
+ *  first slot is priced at the whole first Breach's purse ON PURPOSE: the
+ *  sim showed a 2-Echo first amp re-climbs Ferrite fast enough to graze the
+ *  10% return-to-peak floor. */
+export function confluenceSlotCost(state: GameState): Decimal {
+  return D(3 * 2 ** state.confluences.slots.length);
+}
+
+/** Echo cost of a slot's next rank: 2 then 4 — a maxed slot is 6 Echoes all
+ *  in, so one deep channel fits inside the first two Breaches' purse. */
+export function confluenceRankCost(slot: ConfluenceSlot): Decimal {
+  return D(2 * (slot.rank + 1));
+}
+
+export function buyConfluenceSlot(state: GameState, ctx: EngineCtx): ActionResult {
+  if (state.confluences.slots.length >= confluenceSlotCap(state)) {
+    return { ok: false, reason: 'Attention grows with what you carry. The next Breach widens it.' };
+  }
+  if (!spendCurrency(state, 'echo', confluenceSlotCost(state))) {
+    return { ok: false, reason: 'Not enough Echoes' };
+  }
+  state.confluences.slots.push({ id: null, rank: 0 });
+  ctx.dirty();
+  return { ok: true, data: { slots: state.confluences.slots.length } };
+}
+
+export function setConfluenceSlot(
+  state: GameState, ctx: EngineCtx, slot: number, id: string | null,
+): ActionResult {
+  const sl = state.confluences.slots[slot];
+  if (!sl) return { ok: false, reason: 'No such slot' };
+  if (id !== null) {
+    if (!CONFLUENCE_BY_ID.has(id)) return { ok: false, reason: 'No such confluence' };
+    if (!state.confluences.found.includes(id)) {
+      return { ok: false, reason: 'You can only dwell on something you have noticed.' };
+    }
+    if (state.confluences.slots.some((x, i) => i !== slot && x.id === id)) {
+      return { ok: false, reason: 'Already attended' };
+    }
+  }
+  sl.id = id;
+  ctx.dirty();
+  return { ok: true };
+}
+
+export function buyConfluenceRank(state: GameState, ctx: EngineCtx, slot: number): ActionResult {
+  const sl = state.confluences.slots[slot];
+  if (!sl) return { ok: false, reason: 'No such slot' };
+  if (sl.rank >= CONFLUENCE_RANK_CAP) {
+    return { ok: false, reason: 'As deep as attention goes.' };
+  }
+  if (!spendCurrency(state, 'echo', confluenceRankCost(sl))) {
+    return { ok: false, reason: 'Not enough Echoes' };
+  }
+  sl.rank += 1;
+  ctx.dirty();
+  return { ok: true, data: { rank: sl.rank } };
+}
+
+/** A confluence pays only while its condition holds — found is not kept.
+ *  An ATTENDED confluence pays its bonus × the slot's amplifier (B3). */
 export function confluenceBonus(state: GameState, bucket: Bucket): number {
   let total = 0;
   for (const c of activeConfluences(state)) {
-    if (c.bucket === bucket) total += c.bonus;
+    if (c.bucket === bucket) total += c.bonus * confluenceAmp(state, c.id);
   }
   return total;
 }
@@ -314,5 +413,5 @@ export function registerConfluenceModifiers(): void {
 }
 
 export function defaultConfluenceState(): GameState['confluences'] {
-  return { found: [] };
+  return { found: [], slots: [], hinted: [] };
 }

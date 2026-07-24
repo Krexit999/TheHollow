@@ -219,15 +219,15 @@ export const CONCEPT_PAGES: ConceptPage[] = [
   {
     id: 'tempering', title: 'Tempering', group: 'How it works',
     summary: 'A tool matched to a situation, not given another number.',
-    keywords: ['temper', 'quench', 'medium', 'affinity', 'condition', 'trough', 'sap', 'ember', 'void', 'frost'],
+    keywords: ['temper', 'quench', 'medium', 'affinity', 'condition', 'trough', 'sap', 'ember', 'void', 'frost', 'brew', 'cellar'],
     paragraphs: [
-      'A finished tool can be cooled in a medium, and it takes an affinity from whatever it was cooled in. There are six media.',
+      'A finished tool can be cooled in a medium, and it takes an affinity from whatever it was cooled in. There are nine media: six drawn from the rock, and three from the cellar — quenches whose medium is a Still brew, each one drinking a dose when the tool goes in.',
       'A temper is a CONDITION, and that is what makes it different from the other two ways of modifying a tool. Runes are a positional grammar — sequence and adjacency, order is meaning. Alloys accumulate — slot three in, get three effects. A temper does neither: it pays when your situation matches it and idles when it does not.',
-      'The card for each medium says plainly WHEN it pays, because the whole verb is planning around it. One medium wants a hot shaft; another wants eventful weather; another wants the quiet seasons; another wants the deep half of a shell. They are not six versions of the same idea.',
+      'The card for each medium says plainly WHEN it pays, because the whole verb is planning around it. One medium wants a hot shaft; another wants eventful weather; another wants the quiet seasons; another wants the deep half of a shell. They are not nine versions of the same idea.',
       'An idle temper is weak, never dead. A tool cooled for a shell you have since left still carries a trickle of what it learned there.',
       'Re-tempering costs less than the first quench. You are meant to change your mind when you move — there is no roll here, nothing to farm, and no bad outcome to re-roll away.',
     ],
-    facts: [['Media', 'six'], ['Pays', 'while its condition holds'], ['Otherwise', 'a small idle trickle'], ['Re-quenching', 'cheaper than the first']],
+    facts: [['Media', 'nine — six from the rock, three from the Still'], ['Pays', 'while its condition holds'], ['Otherwise', 'a small idle trickle'], ['Re-quenching', 'cheaper than the first']],
   },
   {
     id: 'salvage', title: 'Salvage', group: 'How it works',

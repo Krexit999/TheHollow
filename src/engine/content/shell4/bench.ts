@@ -15,6 +15,7 @@ import { registerCurrency, addCurrency, spendCurrency, getCurrency } from '../..
 import { registerModifier, type Bucket } from '../../modifiers';
 import type { ActionResult, EngineCtx, GameState } from '../../types';
 import { masteryLevel } from '../../systems/mastery';
+import { CONSTELLATIONS } from './observatory';
 
 export const BENCH_SIZE = 7;
 
@@ -181,8 +182,27 @@ export function simulateBench(p: BenchPuzzle, mirrors: Record<number, '/' | '\\'
 // ---------------------------------------------------------------------------
 
 const LENS_BUCKETS: Bucket[] = ['dustYield', 'dropRate', 'xpGain', 'regen', 'drillSpeed', 'kilnRate'];
+/** B5: chart lenses echo their constellation's theme, which reaches buckets
+ *  the puzzle lenses never did. All multiplicative — the union below is what
+ *  the lens modifiers register over. */
+const CHART_BUCKETS: Bucket[] = ['strikePower', 'motifGain', 'descendCost'];
+const ALL_LENS_BUCKETS: Bucket[] = [...LENS_BUCKETS, ...CHART_BUCKETS];
 
 export function lensFor(puzzleId: string): { bucket: Bucket; value: number; name: string } {
+  // B5 — A CHART LENS: the sky solved this one. A completed constellation is
+  // a blueprint the bench grinds directly; the lens echoes the chart's theme
+  // and sits a shade above the best hand-solved glass. (The Door's lens pays
+  // regen — its own bonus is additive-offline, which no lens mount carries.)
+  if (puzzleId.startsWith('chart:')) {
+    const con = CONSTELLATIONS.find((c) => `chart:${c.id}` === puzzleId);
+    if (con) {
+      const bucket = con.bonus.bucket === 'offlineEffAdd' ? 'regen' : con.bonus.bucket;
+      const value = con.bonus.bucket === 'offlineEffAdd' ? 1.04
+        : con.bonus.bucket === 'descendCost' ? con.bonus.value
+          : Math.max(con.bonus.value, 1.04);
+      return { bucket, value, name: `Lens of ${con.name}` };
+    }
+  }
   const p = puzzleById(puzzleId);
   const seedish = Number((puzzleId.match(/\d+/) ?? ['1'])[0]);
   const bucket = LENS_BUCKETS[seedish % LENS_BUCKETS.length]!;
@@ -193,6 +213,27 @@ export function lensFor(puzzleId: string): { bucket: Bucket; value: number; name
     value: 1 + (0.01 + 0.005 * strength) * (authored ? 1.2 : 1),
     name: p && p.name && !p.name.startsWith('Exercise') ? `Lens of ${p.name}` : `Ground Lens ${seedish}`,
   };
+}
+
+export const CHART_GRIND_SILICA = 60;
+
+/** B5 — Observatory→Bench: grind a completed constellation into its lens. */
+export function grindChartLens(state: GameState, ctx: EngineCtx, constellationId: string): ActionResult {
+  if (!benchUnlocked(state)) return { ok: false, reason: 'The Bench wants Glassmere Mastery 4' };
+  const con = CONSTELLATIONS.find((c) => c.id === constellationId);
+  if (!con) return { ok: false, reason: 'No such chart' };
+  if (!state.observatory.constellations.includes(constellationId)) {
+    return { ok: false, reason: 'The sky has not finished that chart — complete the constellation at the Observatory first.' };
+  }
+  const id = `chart:${constellationId}`;
+  if (state.bench.solved.includes(id)) return { ok: false, reason: 'That chart is already ground into glass' };
+  if (!spendCurrency(state, 'silica', D(CHART_GRIND_SILICA))) {
+    return { ok: false, reason: `${CHART_GRIND_SILICA} Silica to grind the blueprint` };
+  }
+  state.bench.solved.push(id);
+  ctx.emit({ type: 'lensGround', puzzleId: id });
+  ctx.dirty();
+  return { ok: true, data: { id } };
 }
 
 export function benchUnlocked(state: GameState): boolean {
@@ -284,7 +325,7 @@ export function registerBench(): void {
     resetsOnCollapse: false,
   });
   registerCraftSystem(benchSystem);
-  for (const bucket of LENS_BUCKETS) {
+  for (const bucket of ALL_LENS_BUCKETS) {
     registerModifier({
       id: `lens.${bucket}`,
       label: 'Equipped Lens',

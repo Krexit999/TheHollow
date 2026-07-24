@@ -71,6 +71,10 @@ export interface ShaftState {
   lift: Record<string, boolean>;
   /** Cure recipes DISCOVERED, by id — the Codex of patience (pillar 5). */
   curesFound: string[];
+  /** Cure recipes REVEALED by reading her pages (B5 — the Journal's read
+   *  incentive). Knowledge, not the deed: the recipe shows, `curesFound`
+   *  still records only what you have actually cured. */
+  curesHinted: string[];
   /** Excavation SHIFTS cleared per site id — permanent, survives Collapse. */
   digs: Record<string, number>;
   /** The depth a dig-shift was last worked at, so a site takes one shift per
@@ -79,7 +83,7 @@ export interface ShaftState {
 }
 
 export function defaultShaftState(): ShaftState {
-  return { reached: 0, rail: {}, scars: [], caches: [], lift: {}, curesFound: [], digs: {}, lastDigDepth: -1 };
+  return { reached: 0, rail: {}, scars: [], caches: [], lift: {}, curesFound: [], curesHinted: [], digs: {}, lastDigDepth: -1 };
 }
 
 export const MAX_CACHES_PER_SHELL = 4;

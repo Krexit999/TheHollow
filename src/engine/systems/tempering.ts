@@ -29,6 +29,7 @@ import { consumeMaterial, materialCount, equippedTool } from './forge';
 import { affinityLevel } from './affinity';
 import { currentWeather } from './weather';
 import { masteryLevel } from './mastery';
+import { BREW_BY_ID } from '../content/shell3/brews';
 
 /** The quench trough opens with the Refinery's deeper half. */
 export const TEMPER_MASTERY = 6;
@@ -45,6 +46,11 @@ export interface TemperDef {
   /** The material that IS the medium, beyond the common ash. */
   medium: string;
   mediumCost: number;
+  /** B4 (the deeper media tree, at last): a quench whose medium is a STILL
+   *  BREW — the dose is consumed from the cellar. Purely additive media: the
+   *  six material quenches stand untouched, so a player who never brews has
+   *  the full original catalog (pillar 4). */
+  brew?: { id: string; doses: number };
   flavor: string;
   /** Said plainly on the card — the player must be able to plan around it. */
   when: string;
@@ -115,6 +121,35 @@ export const TEMPERS: TemperDef[] = [
     active: (s) => s.depth >= currentShell(s).floorDepth * 0.5,
     bucket: 'drillPower', bonus: 0.22, idle: 0.04,
   },
+
+  // --- THE CELLAR SHELF (B4) — three quenches whose medium is a Still brew.
+  // The deeper media tree the ledger kept open: the Still's economy feeding
+  // the trough. Each condition is a new SHAPE again — a fight still ahead, a
+  // gauge of your own play, a running instrument.
+  {
+    id: 'ironbrew', name: 'Ironblood-quenched', medium: 'temperash', mediumCost: 0,
+    brew: { id: 'ironblood', doses: 1 },
+    flavor: 'Quenched in a fighting draught. The tool comes out with an opinion about what is still down there.',
+    when: 'While this shell\'s Floor Warden still stands.',
+    active: (s) => !s.combat.wardens.includes(currentShell(s).id),
+    bucket: 'strikePower', bonus: 0.24, idle: 0.04,
+  },
+  {
+    id: 'stormbrew', name: 'Stormtongue-quenched', medium: 'temperash', mediumCost: 0,
+    brew: { id: 'stormtongue', doses: 1 },
+    flavor: 'The brew hisses on the hot metal and the static stays in the haft. It wants a rhythm to ride.',
+    when: 'While your chip chain runs five or better.',
+    active: (s) => s.polarity.chain >= 5,
+    bucket: 'chainPower', bonus: 0.3, idle: 0.05,
+  },
+  {
+    id: 'hawkbrew', name: "Hawk's-Blood-quenched", medium: 'temperash', mediumCost: 0,
+    brew: { id: 'hawksblood', doses: 1 },
+    flavor: 'Cooled in a scholar\'s draught. The tool starts noticing things and insists you write them down.',
+    when: 'While an Assay is running.',
+    active: (s) => s.assay.active !== null,
+    bucket: 'xpGain', bonus: 0.25, idle: 0.04,
+  },
 ];
 
 export const TEMPER_BY_ID = new Map(TEMPERS.map((t) => [t.id, t]));
@@ -142,7 +177,7 @@ export function temperBonus(state: GameState, bucket: Bucket): number {
   return value;
 }
 
-export function temperCost(state: GameState, temperId: string): { conv: number; ash: number; medium: number } | null {
+export function temperCost(state: GameState, temperId: string): { conv: number; ash: number; medium: number; doses: number } | null {
   const def = TEMPER_BY_ID.get(temperId);
   if (!def) return null;
   const tool = equippedTool(state);
@@ -153,6 +188,7 @@ export function temperCost(state: GameState, temperId: string): { conv: number; 
     conv: Math.round((40 + tool.tier * 12) * (again ? 0.6 : 1)),
     ash: ASH_COST,
     medium: def.mediumCost,
+    doses: def.brew?.doses ?? 0,
   };
 }
 
@@ -170,12 +206,17 @@ export function temperTool(state: GameState, ctx: EngineCtx, temperId: string): 
   if (cost.medium > 0 && materialCount(state, def.medium) < cost.medium) {
     return { ok: false, reason: `${cost.medium} ${def.medium} for the quench` };
   }
+  if (def.brew && (state.brewing.doses[def.brew.id] ?? 0) < def.brew.doses) {
+    const brewName = BREW_BY_ID.get(def.brew.id)?.name ?? def.brew.id;
+    return { ok: false, reason: `This quench drinks a dose of ${brewName} — the Still brews it.` };
+  }
   if (!spendCurrency(state, convCurrencyId(state), D(cost.conv))) {
     return { ok: false, reason: `${cost.conv} to fire the trough` };
   }
 
   consumeMaterial(state, 'temperash', cost.ash);
   if (cost.medium > 0) consumeMaterial(state, def.medium, cost.medium);
+  if (def.brew) state.brewing.doses[def.brew.id] = (state.brewing.doses[def.brew.id] ?? 0) - def.brew.doses;
 
   const previous = tool.temper ?? null;
   tool.temper = temperId;

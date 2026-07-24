@@ -16,6 +16,8 @@ import type { EngineCtx, GameState, ActionResult } from '../types';
 import { getCurrency, spendCurrency } from '../resources';
 import { currentShell } from '../shells';
 import { repTier } from './npcs';
+import { CONFLUENCES } from '../systems/confluence';
+import { CURE_RECIPES } from '../systems/curing';
 
 export type Legibility = 'clear' | 'stained' | 'ciphered';
 
@@ -189,9 +191,56 @@ export function translateFragment(state: GameState, ctx: EngineCtx, fragmentId: 
   return { ok: true };
 }
 
-export function markFragmentRead(state: GameState, fragmentId: string): ActionResult {
+/**
+ * B5 — THE READ INCENTIVE. Her pages carry KNOWLEDGE, and the first read of
+ * each one yields a piece of it: alternating between a CONFLUENCE HINT (which
+ * two systems meet — never the condition, pillar 5 holds) and a CURE RECIPE
+ * (what patience does to which stone). Nothing ambient, no bonus for holding
+ * unread pages — reading is the verb that pays, and it pays in choices for
+ * the attended margin.
+ */
+export function markFragmentRead(state: GameState, ctx: EngineCtx, fragmentId: string): ActionResult {
   if (!state.guild.sable.found.includes(fragmentId)) return { ok: false, reason: 'Not held' };
-  if (!state.guild.sable.read.includes(fragmentId)) state.guild.sable.read.push(fragmentId);
+  if (state.guild.sable.read.includes(fragmentId)) return { ok: true };
+  state.guild.sable.read.push(fragmentId);
+
+  // Even reads point at a meeting of systems; odd reads at a patient stone.
+  // Deterministic (no roll), and each pool simply falls through when spent.
+  const nthRead = state.guild.sable.read.length;
+  const wantCure = nthRead % 2 === 1;
+  // Sets, not gates: this SELECTS which knowledge to grant next — nothing is
+  // ever gated on holding a confluence (the structural test enforces that).
+  const known = new Set([...state.confluences.found, ...state.confluences.hinted]);
+  const nextHint = () => CONFLUENCES.find((c) => !known.has(c.id));
+  const nextCure = () => CURE_RECIPES.find(
+    (r) => !state.shaft.curesFound.includes(r.id) && !state.shaft.curesHinted.includes(r.id),
+  );
+  const cure = wantCure ? nextCure() : undefined;
+  if (cure) {
+    state.shaft.curesHinted.push(cure.id);
+    ctx.emit({ type: 'journalReveal', kind: 'cure', a: cure.from, b: cure.to });
+    ctx.dirty();
+    return { ok: true, data: { reveal: 'cure', id: cure.id } };
+  }
+  const hint = nextHint();
+  if (hint) {
+    state.confluences.hinted.push(hint.id);
+    ctx.emit({ type: 'journalReveal', kind: 'confluenceHint', a: hint.systems[0], b: hint.systems[1] });
+    ctx.dirty();
+    return { ok: true, data: { reveal: 'confluenceHint', id: hint.id } };
+  }
+  // Both pools spent (or an odd read with cures dry): try the other pool once.
+  const fallback = wantCure ? nextHint() : nextCure();
+  if (fallback) {
+    if ('systems' in fallback) {
+      state.confluences.hinted.push(fallback.id);
+      ctx.emit({ type: 'journalReveal', kind: 'confluenceHint', a: fallback.systems[0], b: fallback.systems[1] });
+    } else {
+      state.shaft.curesHinted.push(fallback.id);
+      ctx.emit({ type: 'journalReveal', kind: 'cure', a: fallback.from, b: fallback.to });
+    }
+    ctx.dirty();
+  }
   return { ok: true };
 }
 

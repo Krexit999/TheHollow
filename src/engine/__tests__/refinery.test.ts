@@ -282,15 +282,16 @@ describe('salvage is an exit path, not a bin', () => {
 });
 
 describe('worked materials are made, never found', () => {
-  it('there are twenty-one — seven bench-worked (P16), seven cured (P19), seven exports (Part B) — each made, never dug', () => {
+  it('there are twenty-six — seven bench-worked (P16), seven cured (P19), seven exports (Part B), five castings (B4) — each made, never dug', () => {
     // Cured stones (Phase 19) are the second kind of made-not-found material,
-    // and the export spine (Part B) is the third: also `worked: true`, so all
-    // share every guarantee below (never drop, never listed under a shell
-    // taxonomy). Seven + seven + seven.
+    // the export spine (Part B) the third, and the alloy castings (B4
+    // pull-through) the fourth: all `worked: true`, so all share every
+    // guarantee below (never drop, never listed under a shell taxonomy).
     const worked = workedMaterials();
-    expect(worked).toHaveLength(21);
+    expect(worked).toHaveLength(26);
     for (const id of ['refineslag', 'salvagedust', 'truesilver', 'rustochre', 'sunamber', 'cinderglass',
-      'kilnflux', 'lodeframe', 'setresin', 'fibercloth', 'groundlens', 'glasseal', 'emberglass']) {
+      'kilnflux', 'lodeframe', 'setresin', 'fibercloth', 'groundlens', 'glasseal', 'emberglass',
+      'steelcasting', 'brazecasting', 'platecasting', 'polecasting', 'cryocasting']) {
       expect(worked.some((m) => m.id === id), `${id} is a worked material`).toBe(true);
     }
   });

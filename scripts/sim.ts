@@ -57,6 +57,10 @@ import { arrayUnlocked, openRows, ARRAY_SIZE } from '../src/engine/content/shell
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { stockFor } from '../src/engine/guild/guild';
 import { WELLS, wellProgress, wellsUnlocked } from '../src/engine/content/shell5/wells';
+import {
+  activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceSlotCap,
+} from '../src/engine/systems/confluence';
+import { serialize } from '../src/engine/save/codec';
 
 interface Args {
   hours: number;
@@ -67,6 +71,10 @@ interface Args {
   out: string | null;
   quiet: boolean;
   heat: 'safe' | 'balanced' | 'greedy';
+  /** Serialize the state to snapOut ~30 sim-minutes after breachCount first
+   *  reaches snapBreach (echo-share.ts reads it). */
+  snapBreach: number | null;
+  snapOut: string | null;
 }
 
 function parseArgs(): Args {
@@ -97,6 +105,8 @@ function parseArgs(): Args {
     logMin: Number(get('log') ?? 1),
     out: get('out') ?? null,
     quiet: argv.includes('--quiet'),
+    snapBreach: get('snap-breach') !== undefined ? Number(get('snap-breach')) : null,
+    snapOut: get('snap-out') ?? null,
   };
 }
 
@@ -995,9 +1005,17 @@ function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): 
       }
     }
   }
+  // THE ATTENDED MARGIN (B3): the best Echo deals on the board, so a
+  // competent player RESERVES for the next slot — the cheaper sinks (foundry,
+  // resonant memory) otherwise drain every purse before a 4-Echo slot fills.
+  attendConfluences(engine, s, log);
+  const savingForSlot =
+    s.confluences.found.length > 0 && s.confluences.slots.length < confluenceSlotCap(s);
   // Foundry: slots then modules.
   if (foundryUnlocked(s)) {
-    if (s.foundry.installed.length >= s.foundry.slots) engine.dispatch({ type: 'buyFoundrySlot' });
+    if (!savingForSlot && s.foundry.installed.length >= s.foundry.slots) {
+      engine.dispatch({ type: 'buyFoundrySlot' });
+    }
     for (const mod of FOUNDRY_MODULES) {
       if (engine.dispatch({ type: 'installModule', id: mod.id }).ok) {
         log(`foundry: ${mod.name}`);
@@ -1005,7 +1023,48 @@ function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): 
       }
     }
   }
-  engine.dispatch({ type: 'buyResonantMemory' });
+  if (!savingForSlot) engine.dispatch({ type: 'buyResonantMemory' });
+}
+
+/** Slots, then choices (live first — re-choosing is free), then depth. */
+function attendConfluences(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  if (s.confluences.found.length === 0) return;
+  if (s.confluences.slots.length < confluenceSlotCap(s)) {
+    if (engine.dispatch({ type: 'confluenceBuySlot' }).ok) {
+      log(`attention widened to ${s.confluences.slots.length} slots`);
+    }
+  }
+  if (s.confluences.slots.length === 0) return;
+  const live = new Set(activeConfluences(s).map((c) => c.id));
+  const slotted = new Set(s.confluences.slots.map((x) => x.id).filter((x) => x !== null));
+  // A competent player amplifies what moves INCOME (the chip path), not the
+  // biggest number: +40% motifGain is quieter than +20% dustYield.
+  const bucketWeight: Record<string, number> = {
+    dustYield: 3, strikePower: 2, drillPower: 2, regen: 2, cap: 1.5, brickYield: 1, chainPower: 1,
+  };
+  const score = (id: string): number => {
+    const def = CONFLUENCE_BY_ID.get(id);
+    if (!def) return 0;
+    return (live.has(id) ? 10 : 0) + (bucketWeight[def.bucket] ?? 0.2) * def.bonus;
+  };
+  const candidates = s.confluences.found
+    .filter((id) => !slotted.has(id))
+    .sort((a, b) => score(b) - score(a));
+  for (let i = 0; i < s.confluences.slots.length; i++) {
+    const sl = s.confluences.slots[i]!;
+    // Fill an empty slot, and swap a QUIET choice for a LIVE candidate (free).
+    const wantSwap = sl.id !== null && !live.has(sl.id) && live.has(candidates[0] ?? '');
+    if ((sl.id === null || wantSwap) && candidates.length > 0) {
+      engine.dispatch({ type: 'confluenceSetSlot', slot: i, id: candidates.shift()! });
+    }
+  }
+  for (let i = 0; i < s.confluences.slots.length; i++) {
+    const sl = s.confluences.slots[i]!;
+    if (sl.id !== null && sl.rank < CONFLUENCE_RANK_CAP) {
+      engine.dispatch({ type: 'confluenceBuyRank', slot: i });
+      break;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1558,6 +1617,7 @@ function main(): void {
   // design; sustained idle production must not.
   let p2PrevTotal = 0;
   let p2PrevChip = '';
+  let snapDueSec = 0; // 0 = not armed, >0 = due at that sec, -1 = written
   let p2PrevManual = 0;
   let p2CeilingIntegral = 0;
   let p2PrevCeiling = 0;
@@ -1625,6 +1685,17 @@ function main(): void {
           `core nodes maxed ${maxed}/${CORE_NODES.length} | blade L${bladeLv} | ` +
           `cores banked ${fmt(s.currencies['core'] ?? 0)}${green}`,
       );
+    }
+    // The echo-share snapshot: ~30 sim-minutes of settle after the asked-for
+    // Breach, so the policy has spent its Echoes and rebuilt some face.
+    if (args.snapBreach !== null && args.snapOut && snapDueSec === 0 && s.shell.breachCount >= args.snapBreach) {
+      snapDueSec = sec + 30 * 60;
+    }
+    if (snapDueSec > 0 && sec >= snapDueSec && args.snapOut) {
+      mkdirSync(dirname(args.snapOut), { recursive: true });
+      writeFileSync(args.snapOut, serialize(s, sec * 1000));
+      log(`snapshot (breach ${s.shell.breachCount}, ${(sec / 60).toFixed(0)}m) -> ${args.snapOut}`);
+      snapDueSec = -1;
     }
     if (!beats.tBreach2 && s.shell.breachCount >= 2) beats.tBreach2 = sec;
     if (!beats.tVerd150 && s.shell.current === 'verdance' && s.depth >= 150) beats.tVerd150 = sec;

@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import {
   breachEchoPreview,
   canBreach,
+  carriedStrength,
   currencyDef,
   currentShell,
   fmt,
@@ -13,6 +14,8 @@ import {
   nextShell,
   resonantMemoryCost,
 } from '../../engine';
+import { CARRY_BASE } from '../../engine/signatures';
+import type { GameState } from '../../engine';
 import { materialsOfShell } from '../../engine/materials';
 import { materialCount, equippedTool, alloySlotsUsable } from '../../engine/systems/forge';
 import { transmuteUnlocked } from '../../engine/systems/refinery';
@@ -26,11 +29,14 @@ import {
 import { METALS, alloyDef } from '../../engine/content/shell2/alloys';
 import {
   alloyLivePct,
+  castBindingCosts,
+  castingForAlloy,
   crucibleSystem,
   crucibleUnlocked,
   CRUCIBLE_MASTERY,
   POUR_UNIT,
 } from '../../engine/content/shell2/crucibleSystem';
+import { CASTING_BIND_TIER, materialDef } from '../../engine/materials';
 import {
   FOUNDRY_MODULES,
   foundryUnlocked,
@@ -387,15 +393,28 @@ export function CruciblePanel() {
               <div key={entry.id} className={`border-l-2 pl-2 ${entry.active ? 'border-[#9fc4dd]' : 'border-cave-700'}`}>
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="text-xs font-semibold text-cave-200">{entry.name}</span>
-                  {slotsUsable && !bound && openSlot >= 0 && (
+                  <span className="flex shrink-0 items-baseline gap-1.5">
+                    {slotsUsable && !bound && openSlot >= 0 && (
+                      <button
+                        className="btn px-1.5 py-0 text-[10px]"
+                        onClick={() => dispatch({ type: 'socketAlloy', toolId: tool.id, slot: openSlot, alloyId: entry.id })}
+                      >
+                        Bind · {fmt(alloyLivePct(state, entry.id))}%
+                      </button>
+                    )}
+                    {bound && <span className="text-[9px] uppercase tracking-wider text-[#9fc4dd]">bound</span>}
+                    {/* B4: the pattern made stock — its own ratio again buys a
+                        casting that BINDS a Tier X+ tool (held count shown). */}
                     <button
                       className="btn px-1.5 py-0 text-[10px]"
-                      onClick={() => dispatch({ type: 'socketAlloy', toolId: tool.id, slot: openSlot, alloyId: entry.id })}
+                      disabled={!castBindingCosts(entry.id).every((c) => getCurrency(state, c.metal).gte(c.amount))}
+                      title={`${materialDef(castingForAlloy(entry.id)).name} — a Tier ${CASTING_BIND_TIER}+ binding part. Costs ${castBindingCosts(entry.id).map((c) => `${c.amount} ${c.metal}`).join(' + ')}.`}
+                      onClick={() => dispatch({ type: 'castBinding', alloyId: entry.id })}
                     >
-                      Bind · {fmt(alloyLivePct(state, entry.id))}%
+                      Cast · {materialDef(castingForAlloy(entry.id)).name.split(' ')[0]}
+                      <span className="tnum ml-1 text-cave-500">×{materialCount(state, castingForAlloy(entry.id))}</span>
                     </button>
-                  )}
-                  {bound && <span className="text-[9px] uppercase tracking-wider text-[#9fc4dd]">bound</span>}
+                  </span>
                 </div>
                 <div className="text-[10px] italic text-cave-400">{entry.flavor}</div>
                 <div className="text-[10px] text-cave-300">{entry.effect}</div>
@@ -499,6 +518,20 @@ export function FoundryPanel() {
           <div className="text-[10px] leading-snug">
             Carried signatures run +15% stronger per level. Seepage came down with you;
             Polarity follows at the next breach.
+          </div>
+          {/* The Breach reward, attributed (B3 caveat): the carry IS most of
+              what the echo layer is worth — say its strength out loud. */}
+          {state.shell.signatures.length > 0 && (
+            <div className="tnum mt-0.5 text-[10px] text-[#c9b8f0]">
+              {state.shell.signatures.map((id) => id[0]!.toUpperCase() + id.slice(1)).join(' · ')} — each
+              at {Math.round(carriedStrength(state as GameState) * 100)}% of native strength
+              ({Math.round(CARRY_BASE * 100)}% base{state.shell.resonantMemory > 0
+                ? ` + ${Math.round((carriedStrength(state as GameState) - CARRY_BASE) * 100)}% from your levels`
+                : ''}).
+            </div>
+          )}
+          <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
+            The third Echo sink — attention on your own margins — is spent in the Journal.
           </div>
         </div>
         <button

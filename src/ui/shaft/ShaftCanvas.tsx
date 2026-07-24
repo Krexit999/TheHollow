@@ -446,7 +446,11 @@ function CacheDetail({ state, depth }: { state: GameState; depth: number }) {
     const recipe = cureFor(cache.material);
     const p = cacheProgress(state, cache);
     const ready = cacheReady(state, cache);
-    const known = recipe ? state.shaft.curesFound.includes(recipe.id) : false;
+    // B5: a recipe from her pages reads as known — knowledge is knowledge;
+    // curesFound still records only the cures you have actually done.
+    const known = recipe
+      ? state.shaft.curesFound.includes(recipe.id) || state.shaft.curesHinted.includes(recipe.id)
+      : false;
     const hoursLeft = recipe ? recipe.hours * (1 - p) : 0;
     return (
       <div>
@@ -471,7 +475,11 @@ function CacheDetail({ state, depth }: { state: GameState; depth: number }) {
   // empty — the candidates that will change at this depth
   const candidates = CURE_RECIPES
     .filter((r) => depth >= r.minDepth && materialCount(state, r.from) > 0)
-    .map((r) => ({ r, held: materialCount(state, r.from), known: state.shaft.curesFound.includes(r.id) }));
+    .map((r) => ({
+      r,
+      held: materialCount(state, r.from),
+      known: state.shaft.curesFound.includes(r.id) || state.shaft.curesHinted.includes(r.id),
+    }));
   return (
     <div>
       <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-cave-300">Empty cache · depth {depth}</div>

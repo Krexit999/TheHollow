@@ -177,6 +177,23 @@ export const MATERIALS: MaterialDef[] = [
   M('emberglass', 'Emberglass', 'cinder', 'rich', ['#4a2214', '#843a1e', '#c8642e'], 7, 'crystalline',
     'Glass annealed in a fire held in the band for a minute and a half without wavering. The Hollow rebuilds with it, because it remembers heat the way the void remembers nothing.', true),
 
+  // (CASTING_IDS below is the canonical list; order = family metal order.)
+  // ================= ALLOY CASTINGS (Part B pull-through) =================
+  // Cast at the Crucible from a DISCOVERED alloy's own ratio in metals — the
+  // pattern made stock. One per alloy family; each carries the family's trait
+  // set, and a casting only ever BINDS a Tier X or better tool. `worked: true`
+  // keeps them out of every drop table, as with every made thing.
+  M('steelcasting', 'Steel Casting', 'ferrite', 'rich', ['#3a3d42', '#5e646c', '#939ca8'], 5, 'none',
+    'An Ingot-led alloy cast square for a tool\'s spine. It holds the head the way a beam holds a roof.', true),
+  M('brazecasting', 'Braze Casting', 'ferrite', 'rich', ['#4a3a24', '#7c6138', '#b8925a'], 6, 'soft',
+    'A Flux-led alloy cast thin and warm. A tool bound in it never quite cools between strokes.', true),
+  M('platecasting', 'Plate Casting', 'ferrite', 'rich', ['#3c4440', '#606f68', '#96a89e'], 5, 'none',
+    'A Scale-led alloy cast in leaves. It flexes on the bad angle and forgives the wrist that made it.', true),
+  M('polecasting', 'Pole Casting', 'ferrite', 'rich', ['#2e3644', '#4c5a72', '#7e94b6'], 6, 'soft',
+    'A Lodestone-led alloy cast with the grain aligned. Whatever is set in it stays exactly where it was set.', true),
+  M('cryocasting', 'Cryo Casting', 'ferrite', 'rich', ['#38424c', '#5c7080', '#94b2c4'], 7, 'crystalline',
+    'A Rime-led alloy cast cold and honed once. It keeps the edge it was born with and asks for nothing.', true),
+
   // ======================= SHELL I — LOAM (15, live) =======================
   M('marl', 'Marl', 'loam', 'common', ['#4a3b2a', '#7a6142', '#b39a6e', ], 5, 'none',
     'Clay that remembers being sea-bottom. The first useful thing you will ever dig.'),
@@ -354,6 +371,11 @@ export const MATERIALS: MaterialDef[] = [
   M('worldseed', 'Worldseed Ore', 'aleph', 'starred', ['#2e3328', '#586348', '#96a87a'], 10, 'crystalline'),
   M('paradoxa', 'Paradoxa', 'aleph', 'aberrant', ['#2c2830', '#544c5c', '#8f8299'], 9, 'aberrant'),
 ];
+
+/** The five alloy castings, ordered by family metal [ingot, flux, scale,
+ *  lodestone, rime]. A casting only ever BINDS, and only a Tier X+ tool. */
+export const CASTING_IDS = ['steelcasting', 'brazecasting', 'platecasting', 'polecasting', 'cryocasting'] as const;
+export const CASTING_BIND_TIER = 10;
 
 const materialById = new Map(MATERIALS.map((m) => [m.id, m]));
 

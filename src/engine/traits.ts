@@ -329,6 +329,10 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   setresin: ['springy', 'trueseated'], fibercloth: ['light', 'springy'],
   groundlens: ['charged', 'brittle'], glasseal: ['tough', 'springy'],
   emberglass: ['warm', 'dense', 'trueseated'],
+  // ---- ALLOY CASTINGS (Part B pull-through) — one trait set per family ----
+  steelcasting: ['dense', 'tough'], brazecasting: ['warm', 'light'],
+  platecasting: ['tough', 'springy'], polecasting: ['charged', 'dense'],
+  cryocasting: ['keen', 'hollow'],
   // ---- FERRITE ----
   ironbloom: ['tough', 'dense'], scalechip: ['keen', 'brittle'], rustmarrow: ['brittle', 'warm'],
   greyflux: ['light', 'charged'], lodestone: ['charged', 'dense'], bluesteel: ['keen', 'tough'],

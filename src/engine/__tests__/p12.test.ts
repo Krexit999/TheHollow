@@ -353,11 +353,19 @@ describe('bonus definitions point at REAL modifier buckets', () => {
     const a = addRelic(s, { uid: 0, defId: 'test', rarity: 1, source: 'shaft', affixes: { dustYield: 0.10, regen: 0.05 }, fusedFrom: 0 });
     const b = addRelic(s, { uid: 0, defId: 'test', rarity: 3, source: 'warren', affixes: { dustYield: 0.25, xpGain: 0.12 }, fusedFrom: 0 });
 
+    // Rising to rarity 3 is museum-gated (B4); this test is about PREVIEW
+    // PARITY, so satisfy the gate — the gate itself is pinned in
+    // pull-through.test.ts. Note the preview mirrors it: gatedBy appears
+    // exactly while the cases are short.
+    expect(fusionPreview(s, a.uid, b.uid)!.gatedBy).toBeDefined();
+    s.museum.completed = ['c1', 'c2', 'c3'];
+
     const pv = fusionPreview(s, a.uid, b.uid)!;
     expect(pv.gained.map((g) => g.key)).toEqual(['xpGain']);       // a lacks it
     expect(pv.improved.map((i) => i.key)).toEqual(['dustYield']);  // b is stronger
     expect(pv.wasted).toEqual([]);                                 // b has no weaker line
     expect(pv.rarityUp).toBe(true);                                // 3 > 1
+    expect(pv.gatedBy).toBeUndefined();                            // the cases opened it
 
     const before = { ...a.affixes };
     expect(fuseRelics(s, a.uid, b.uid).ok).toBe(true);

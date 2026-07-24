@@ -68,10 +68,11 @@ const UNDO_WINDOW_MS = 12_000;
 const UNDOABLE = new Set<string>([
   'buyUpgrade', 'upgradeDrill', 'buyLatticeRing', 'placeMotif', 'upgradeMotif',
   'craftTool', 'craftFromParts', 'replacePart', 'beginCraft', 'delegateCraft', 'craftGear',
-  'crackGeode', 'buyResonantMemory', 'buyMagnet', 'pourAlloy', 'socketAlloy', 'socketGem',
+  'crackGeode', 'buyResonantMemory', 'confluenceBuySlot', 'confluenceBuyRank',
+  'buyMagnet', 'pourAlloy', 'castBinding', 'socketAlloy', 'socketGem',
   'buyFoundrySlot', 'installModule', 'buyStock', 'hire', 'plantSeed', 'inoculate',
   'feedMycelium', 'brewExperiment', 'drinkBrew', 'commitWeave', 'spinThread', 'buyMirror',
-  'benchAttempt', 'inscribe', 'buyFuel', 'placeFuel', 'refine', 'transmute', 'salvageTool',
+  'benchAttempt', 'grindChartLens', 'inscribe', 'buyFuel', 'placeFuel', 'refine', 'transmute', 'salvageTool',
   'temperTool', 'commitWell', 'rebuildCell', 'buyAxiom', 'buyGridSlot', 'buyLicence',
   'placeModule', 'fuseRelics', 'donateRelic', 'donateItem', 'buyCoreNode', 'buySkillNode',
   'extendRail', 'installCache', 'depositCache', 'installLift', 'workExcavation',

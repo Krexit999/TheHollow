@@ -252,6 +252,7 @@ function confluenceEntries(): CompendiumEntry[] {
         'You find one by being in the state that makes it true — never by unlocking it, and never by being told. The first time it holds, it writes itself into your own margins in the Journal, with a note on what it is.',
         'A confluence PAYS ONLY WHILE IT HOLDS. Take the condition away and the bonus stops; the note stays. This is deliberate — it makes a confluence something you can arrange on purpose rather than a permanent bonus you collected once.',
         'Nothing in this game is ever locked behind one. A confluence is a reward for having two systems, never a requirement to have them: if you never brew, every door is still open to you and one particular lamp simply never lights.',
+        'A noticed confluence can be DWELT ON, from the second Breach onward. Attention is bought with Echoes in the Journal: a dwelt-on note pays double while it holds, and a deepened one up to triple. You hold one slot for yourself and one more for every signature you carry — each Breach widens what you can keep in mind. Choosing which notes to dwell on is free to change and loses nothing by the change; everything you leave unattended pays exactly what it always did.',
         'This book will not tell you which pairs pay. That is the whole of the thing.',
       ],
       facts: [
@@ -259,6 +260,8 @@ function confluenceEntries(): CompendiumEntry[] {
         ['How they are found', 'By being in the state'],
         ['While the condition holds', 'It pays'],
         ['When it lapses', 'It stops; the note remains'],
+        ['Dwelt on (Echoes)', '×2, deepened up to ×3'],
+        ['Attention slots', 'From the second Breach: one, plus one per carried signature'],
         ['Ever required for anything', 'No'],
       ],
     },

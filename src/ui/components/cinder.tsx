@@ -17,7 +17,7 @@ import {
 } from '../../engine/content/shell5/emberArray';
 import { materialCount } from '../../engine/systems/forge';
 import { InstallButton } from './exports';
-import { WELLS, WELL_ODDS, wellProgress, wellsUnlocked } from '../../engine/content/shell5/wells';
+import { WELLS, WELL_ODDS, wellProgress, wellsUnlocked, wellTapLive } from '../../engine/content/shell5/wells';
 import { ANOMALY_BY_ID } from '../../engine/systems/anomalies';
 import { floodCasualty } from '../../engine/systems/pressure';
 import { npcDef } from '../../engine/guild/npcs';
@@ -443,6 +443,11 @@ export function WellsPanel() {
         <div className="mt-1 italic">
           A tenth of your holdings at most, three ropes at once, results wait forever. A player who
           never touches a Well misses stories, not progress.
+        </div>
+        {/* B5: the pressure tap — the gallery's flow stirs the rope. */}
+        <div className={`mt-1 ${wellTapLive(state as GameState) ? 'text-[#ffb36a]' : 'text-cave-500'}`}>
+          THE TAP: a well fed while the gallery vents hot (heat 50+, a route laid) resolves 25%
+          faster. {wellTapLive(state as GameState) ? 'It is flowing now.' : 'It is not flowing now.'}
         </div>
       </div>
       {WELLS.map((w) => {

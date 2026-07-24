@@ -150,5 +150,29 @@ console.log('\n4. how much is the whole layer worth at once?');
   console.log('      per-bucket totals: ' + [...byBucket.entries()].map(([b, v]) => `${b} +${Math.round(v * 100)}%`).join(', '));
 }
 
+// --- 5. THE ATTENDED MARGIN (B3): the dwelt ceiling is chosen, not ambient --
+// Attention multiplies a CHOSEN few ×3 at most. The worst case is every slot
+// of a full late-game carry (7 slots) parked on one bucket at max rank — an
+// ~99-Echo investment. Read it, and hold it under the point where a "bonus"
+// becomes the economy: the three richest same-bucket picks at ×3.
+console.log('\n5. and dwelt on at the cap?');
+{
+  const byBucket = new Map<string, number[]>();
+  for (const c of CONFLUENCES) {
+    byBucket.set(c.bucket, [...(byBucket.get(c.bucket) ?? []), c.bonus]);
+  }
+  let worstBucket = '';
+  let worstTotal = 0;
+  for (const [bucket, bonuses] of byBucket) {
+    const dwelt = bonuses.sort((a, b) => b - a).slice(0, 7).reduce((a, b) => a + b * 3, 0);
+    if (dwelt > worstTotal) { worstTotal = dwelt; worstBucket = bucket; }
+  }
+  check(
+    worstTotal <= 2.0,
+    'a full-attention single-bucket build stays under +200%',
+    `${worstBucket} +${Math.round(worstTotal * 100)}% with every same-bucket confluence dwelt ×3`,
+  );
+}
+
 console.log(failures === 0 ? '\nCONFLUENCES VERIFIED ✓' : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

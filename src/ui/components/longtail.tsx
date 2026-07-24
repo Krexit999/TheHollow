@@ -449,10 +449,11 @@ export function RelicsPanel() {
                     <button
                       key={o.uid}
                       className={`block w-full rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors ${
-                        worthIt
+                        worthIt && !pv?.gatedBy
                           ? 'border-cave-700 hover:border-lamp-500/50 hover:bg-cave-800'
                           : 'border-cave-800 opacity-60 hover:bg-cave-800'
                       }`}
+                      disabled={!!pv?.gatedBy}
                       onClick={() => {
                         dispatch({ type: 'fuseRelics', keepUid: r.uid, feedUid: o.uid });
                         setFusingInto(null);
@@ -469,7 +470,13 @@ export function RelicsPanel() {
                           <span className="italic">Adds nothing this one does not already beat.</span>
                         ) : (
                           <>
-                            {pv.rarityUp && <span className="mr-2 text-lamp-400">rarity up</span>}
+                            {pv.rarityUp && !pv.gatedBy && <span className="mr-2 text-lamp-400">rarity up</span>}
+                            {/* B4: the museum gate, said BEFORE the attempt. */}
+                            {pv.gatedBy && (
+                              <span className="mr-2 text-[#d4a86a]">
+                                rarity up needs {pv.gatedBy.need} Museum cases ({pv.gatedBy.have} done)
+                              </span>
+                            )}
                             {pv.gained.map((g) => (
                               <span key={g.key} className="mr-2 text-lamp-400">
                                 +{g.label} {Math.round(g.value * 100)}%

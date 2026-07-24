@@ -37,8 +37,9 @@ import { lightOverstoke } from './systems/kiln';
 import { kilnFuel } from './content/kilnFuel';
 import { crackGeode, startAssay } from './systems/drops';
 import { buyResonantMemory, doBreach } from './systems/breach';
+import { buyConfluenceSlot, buyConfluenceRank, setConfluenceSlot } from './systems/confluence';
 import { buyMagnet, toggleMagnet } from './systems/polarity';
-import { pourAlloy } from './content/shell2/crucibleSystem';
+import { castBinding, pourAlloy } from './content/shell2/crucibleSystem';
 import { buyFoundrySlot, installModule, uninstallModule } from './systems/foundry';
 import {
   autoResolvePending,
@@ -56,7 +57,7 @@ import { equipTitle } from './guild/titles';
 import { caravanTrade } from './guild/caravan';
 import { setMirror } from './systems/refraction';
 import { collectObservation, startObservation } from './content/shell4/observatory';
-import { benchAttempt, equipLens } from './content/shell4/bench';
+import { benchAttempt, equipLens, grindChartLens } from './content/shell4/bench';
 import { warrenAnswer, warrenClaim, warrenEnter, warrenLeave } from './content/shell4/warrens';
 import { inscribe } from './content/shell4/runes';
 import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
@@ -294,7 +295,7 @@ export function handleAction(
     }
 
     case 'craftTool':
-      return craftTool(state, mods, ctx, action.recipeId);
+      return craftTool(state, mods, ctx, action.recipeId, action.refined ?? false);
 
     case 'craftFromParts':
       return craftFromParts(state, mods, ctx, action.tier, action.head, action.haft, action.binding);
@@ -342,6 +343,15 @@ export function handleAction(
     case 'buyResonantMemory':
       return buyResonantMemory(state, ctx);
 
+    case 'confluenceBuySlot':
+      return buyConfluenceSlot(state, ctx);
+
+    case 'confluenceSetSlot':
+      return setConfluenceSlot(state, ctx, action.slot, action.id);
+
+    case 'confluenceBuyRank':
+      return buyConfluenceRank(state, ctx, action.slot);
+
     case 'buyMagnet':
       return buyMagnet(state, ctx);
 
@@ -353,6 +363,9 @@ export function handleAction(
 
     case 'socketAlloy':
       return socketAlloy(state, ctx, action.toolId, action.slot, action.alloyId);
+
+    case 'castBinding':
+      return castBinding(state, ctx, action.alloyId);
 
     case 'buyFoundrySlot':
       return buyFoundrySlot(state, ctx);
@@ -417,7 +430,7 @@ export function handleAction(
       return translateFragment(state, ctx, action.fragmentId);
 
     case 'markFragmentRead':
-      return markFragmentRead(state, action.fragmentId);
+      return markFragmentRead(state, ctx, action.fragmentId);
 
     case 'equipTitle':
       return equipTitle(state, ctx, action.titleId);
@@ -489,6 +502,9 @@ export function handleAction(
 
     case 'equipLens':
       return equipLens(state, action.puzzleId, action.slot ?? 1);
+
+    case 'grindChartLens':
+      return grindChartLens(state, ctx, action.constellationId);
 
     case 'warrenEnter':
       return warrenEnter(state, action.id);

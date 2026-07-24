@@ -455,7 +455,9 @@ export interface EmberState {
 }
 
 export interface WellsState {
-  active: Array<{ wellId: string; currencyId: string; amount: Decimal; startedMs: number }>;
+  /** `tapped` (B5): fed while the vent gallery ran hot — the rope stirs and
+   *  the well resolves 25% faster. Absent on old records = not tapped. */
+  active: Array<{ wellId: string; currencyId: string; amount: Decimal; startedMs: number; tapped?: boolean }>;
   rolls: number;
   wins: number;
   losses: number;
@@ -683,6 +685,13 @@ export interface GuildState {
   crewRecalled: boolean;
 }
 
+/** One Echo-bought attention slot (B3). Holds a FOUND confluence id or sits
+ *  empty; `rank` (0..2) deepens the amplifier and belongs to the slot itself. */
+export interface ConfluenceSlot {
+  id: string | null;
+  rank: number;
+}
+
 export interface GameState {
   /** Currency balances, keyed by currency id from the registry. */
   currencies: Record<string, Decimal>;
@@ -782,8 +791,12 @@ export interface GameState {
   spiral: SpiralState;
   relics: RelicsState;
   museum: MuseumState;
-  /** Cross-system confluences the player has FOUND (v13). A record of play. */
-  confluences: { found: string[] };
+  /** Cross-system confluences the player has FOUND (v13). A record of play.
+   *  B3 (Interlock): `slots` is THE ATTENDED MARGIN — Echo-bought attention.
+   *  Each slot holds one FOUND confluence and amplifies it ×(2 + 0.5·rank),
+   *  capped ×3. Rank rides the SLOT, not the choice, so re-choosing is never
+   *  punished. Unattended confluences pay ×1 exactly as before. */
+  confluences: { found: string[]; slots: ConfluenceSlot[]; hinted: string[] };
   /** THE FACE CLUSTER (v20): FIGURES traced in the rock and found — a discovery
    *  Codex, permanent (survives Collapse), never listed in the Compendium. */
   figures: { found: string[] };
@@ -1056,6 +1069,7 @@ export type GameEvent =
   | { type: 'expeditionReturned'; crewId: string; haul: number }
   | { type: 'caseCompleted'; caseId: string }
   | { type: 'confluenceFound'; id: string; name: string }
+  | { type: 'journalReveal'; kind: 'confluenceHint' | 'cure'; a: string; b: string }
   | { type: 'refined'; materialId: string; from: number; to: number; band: string }
   | { type: 'chainFound'; chainId: string; name: string }
   | { type: 'salvaged'; toolName: string; units: number }
@@ -1101,7 +1115,7 @@ export type GameAction =
   | { type: 'upgradeMotif'; q: number; r: number }
   | { type: 'buyLatticeRing' }
   | { type: 'setLatticePress'; on: boolean }
-  | { type: 'craftTool'; recipeId: string }
+  | { type: 'craftTool'; recipeId: string; refined?: boolean }
   | { type: 'craftFromParts'; tier: number; head: string; haft: string; binding: string }
   | { type: 'replacePart'; toolId: number; slot: 'head' | 'haft' | 'binding'; materialId: string }
   | { type: 'beginCraft'; act: 'forge' | 'carve' | 'cut' | 'cast'; context: Record<string, unknown> }
@@ -1115,10 +1129,15 @@ export type GameAction =
   | { type: 'startAssay' }
   | { type: 'breach' }
   | { type: 'buyResonantMemory' }
+  | { type: 'confluenceBuySlot' }
+  | { type: 'confluenceSetSlot'; slot: number; id: string | null }
+  | { type: 'confluenceBuyRank'; slot: number }
   | { type: 'buyMagnet' }
   | { type: 'toggleMagnet'; col: number }
   | { type: 'pourAlloy'; amounts: number[]; catalystId: string }
   | { type: 'socketAlloy'; toolId: number; slot: number; alloyId: string }
+  | { type: 'castBinding'; alloyId: string }
+  | { type: 'grindChartLens'; constellationId: string }
   | { type: 'buyFoundrySlot' }
   | { type: 'installModule'; id: string }
   | { type: 'uninstallModule'; id: string }

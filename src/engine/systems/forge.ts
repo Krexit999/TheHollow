@@ -14,7 +14,7 @@ import { registerModifier, type Bucket } from '../modifiers';
 import { spendCurrency } from '../resources';
 import type { ActionResult, EngineCtx, GameState, Stack, ToolInstance } from '../types';
 import type { ModifierCache } from '../modifiers';
-import { BANDS, bandOf, GEMS, materialDef } from '../materials';
+import { BANDS, bandOf, CASTING_BIND_TIER, CASTING_IDS, GEMS, materialDef } from '../materials';
 import { grantXP } from './xp';
 import { convCurrencyId, currentShell, maxToolTier } from '../shells';
 import { masteryLevel } from './mastery';
@@ -66,7 +66,15 @@ export interface ToolRecipe {
   inputs: Record<string, number>;
   brick: number;
   flavor: string;
+  /** B4 FORGE PULL-THROUGH: the refined variant. Pay this Refinery-worked
+   *  material ON TOP of the raw inputs and the spreads run ×REFINED_SPREAD.
+   *  The raw craft always stands at the plain spread — engaged gets a better
+   *  tool, ignored still gets a usable one (pillar 4). */
+  refined?: { workedId: string; count: number };
 }
+
+/** What the worked material buys: both spreads, multiplicatively. */
+export const REFINED_SPREAD = 1.12;
 
 /** Tier base stats. chip is a dustYield multiplier; strike is inert until Phase 5. */
 export const TIER_BASE: Record<number, { chip: number; strike: number; sockets: number }> = {
@@ -133,67 +141,67 @@ export const TOOL_RECIPES: ToolRecipe[] = [
   // that only opens past the wall the tool exists to break.
   {
     id: 'lodestoneRake', name: 'Lodestone Rake', tier: 4, chipSpread: 1.1, strikeSpread: 0.95,
-    inputs: { lodestone: 10, bluesteel: 6, magnetile: 2 }, brick: 60,
+    inputs: { lodestone: 10, bluesteel: 6, magnetile: 2 }, brick: 60, refined: { workedId: 'bindingclay', count: 2 },
     flavor: 'Drags the charged grains to itself. Ferrite work, tooth to tail.',
   },
   {
     id: 'rimefang', name: 'Rimefang', tier: 5, chipSpread: 0.9, strikeSpread: 1.3,
-    inputs: { rimeiron: 12, polarite: 6, nullsilver: 2 }, brick: 100,
+    inputs: { rimeiron: 12, polarite: 6, nullsilver: 2 }, brick: 100, refined: { workedId: 'bindingclay', count: 2 },
     flavor: 'Cold enough to cut before it touches.',
   },
   {
     id: 'stormcaller', name: 'Stormcaller', tier: 6, chipSpread: 1.15, strikeSpread: 1.05,
     // A.16: no starred-lottery inputs on warden-tier weapons — effort, not luck.
-    inputs: { stormcore: 5, voltglass: 8, polarite: 4 }, brick: 170,
+    inputs: { stormcore: 5, voltglass: 8, polarite: 4 }, brick: 170, refined: { workedId: 'bindingclay', count: 3 },
     flavor: 'Swings with a static hum. On long chains it starts to sing along.',
   },
   {
     id: 'verdantScythe', name: 'Verdant Scythe', tier: 7, chipSpread: 1.0, strikeSpread: 1.2,
-    inputs: { verdantine: 10, bloomsteel: 8, resinpearl: 8 }, brick: 280,
+    inputs: { verdantine: 10, bloomsteel: 8, resinpearl: 8 }, brick: 280, refined: { workedId: 'truesilver', count: 1 },
     flavor: 'Harvests rock the way a scythe harvests wheat: all at once, with a sound like rain.',
   },
   {
     id: 'bloomsteelMattock', name: 'Bloomsteel Mattock', tier: 8, chipSpread: 1.25, strikeSpread: 0.8,
-    inputs: { bloomsteel: 10, feralglass: 8, springvein: 4 }, brick: 450,
+    inputs: { bloomsteel: 10, feralglass: 8, springvein: 4 }, brick: 450, refined: { workedId: 'truesilver', count: 1 },
     flavor: 'The head was grown, not cast. It remembers being a seed and digs accordingly.',
   },
   {
     id: 'wildstarFalx', name: 'Wildstar Falx', tier: 9, chipSpread: 1.05, strikeSpread: 1.25,
-    inputs: { wildstar: 1, heartwood: 8, springvein: 6 }, brick: 700,
+    inputs: { wildstar: 1, heartwood: 8, springvein: 6 }, brick: 700, refined: { workedId: 'truesilver', count: 2 },
     flavor: 'Curved like the question it answers. The bloom in the steel still opens at dawn.',
   },
   // Glassmere X-XII: Prismpick and Lightwright return here as planned (A.17);
   // the Cinder ladder moves up one shell to XIII-XIV.
   {
     id: 'prismpick', name: 'Prismpick', tier: 10, chipSpread: 1.25, strikeSpread: 0.8,
-    inputs: { prismite: 12, coldspar: 8, beamiron: 5 }, brick: 1100,
+    inputs: { prismite: 12, coldspar: 8, beamiron: 5 }, brick: 1100, refined: { workedId: 'truesilver', count: 2 },
     flavor: 'Splits light and stone along the same clean line.',
   },
   {
     id: 'lightwright', name: "Lightwright's Edge", tier: 11, chipSpread: 1.1, strikeSpread: 1.1,
-    inputs: { spectralite: 10, starlens: 6, beamiron: 8 }, brick: 1800,
+    inputs: { spectralite: 10, starlens: 6, beamiron: 8 }, brick: 1800, refined: { workedId: 'truesilver', count: 2 },
     flavor: 'Forged at the exact moment a beam crossed the anvil. It kept the moment.',
   },
   {
     id: 'meridianEdge', name: 'Meridian Edge', tier: 12, chipSpread: 1.0, strikeSpread: 1.35,
-    inputs: { starlens: 8, sunglass: 6, spectrum: 1 }, brick: 3000,
+    inputs: { starlens: 8, sunglass: 6, spectrum: 1 }, brick: 3000, refined: { workedId: 'truesilver', count: 3 },
     flavor: 'Ground to the exact angle at which light gives up and cooperates.',
   },
   // Cinder XIII-XV — THE LADDER ENDS HERE, by ruling. Hollow has no rock to
   // swing at and Aleph needs no tools; the Fifteenth is the last one forged.
   {
     id: 'slagbreaker', name: 'Slagbreaker', tier: 13, chipSpread: 1.3, strikeSpread: 0.9,
-    inputs: { pyroclast: 12, cindersteel: 8, obsidianheart: 6 }, brick: 5000,
+    inputs: { pyroclast: 12, cindersteel: 8, obsidianheart: 6 }, brick: 5000, refined: { workedId: 'truesilver', count: 3 },
     flavor: 'Built to argue with rock that has already been through a fire and won.',
   },
   {
     id: 'pyreheartPick', name: 'Pyreheart Pick', tier: 14, chipSpread: 1.1, strikeSpread: 1.25,
-    inputs: { magmajade: 10, heartflame: 6, ventglass: 5 }, brick: 8000,
+    inputs: { magmajade: 10, heartflame: 6, ventglass: 5 }, brick: 8000, refined: { workedId: 'truesilver', count: 3 },
     flavor: 'The head holds an ember that has never gone out. It digs toward its relatives.',
   },
   {
     id: 'cinderMaul', name: 'Cinder Maul', tier: 15, chipSpread: 1.2, strikeSpread: 1.35,
-    inputs: { heartflame: 10, coronaite: 1, pyrite: 8 }, brick: 15000,
+    inputs: { heartflame: 10, coronaite: 1, pyrite: 8 }, brick: 15000, refined: { workedId: 'truesilver', count: 4 },
     flavor: 'The Fifteenth. Marrow says there is nothing to teach past it, and Marrow would know.',
   },
 ];
@@ -341,16 +349,28 @@ export function craftTool(
   mods: ModifierCache,
   ctx: EngineCtx,
   recipeId: string,
+  /** B4: pay the recipe's Refinery-worked extra for ×REFINED_SPREAD stats.
+   *  The raw craft (false) is always available — the fallback IS the recipe. */
+  refined = false,
 ): ActionResult {
   if (!state.forge.built) return { ok: false, reason: 'No forge' };
   const recipe = recipeDef(recipeId);
   if (recipe.tier > maxToolTier(state)) {
     return { ok: false, reason: 'Its materials belong to a shell you have not reached.' };
   }
+  if (refined && !recipe.refined) {
+    return { ok: false, reason: 'This pattern has no refined form.' };
+  }
   for (const [matId, count] of Object.entries(recipe.inputs)) {
     if (materialCount(state, matId) < count) {
       return { ok: false, reason: `Short of ${materialDef(matId).name}` };
     }
+  }
+  if (refined && recipe.refined && materialCount(state, recipe.refined.workedId) < recipe.refined.count) {
+    return {
+      ok: false,
+      reason: `${recipe.refined.count} ${materialDef(recipe.refined.workedId).name} for the refined form — the Refinery renders it, or salvage feeds the chains.`,
+    };
   }
   // The brick figure is a CONV cost: Brick in Loam, Flux in Ferrite.
   if (!spendCurrency(state, convCurrencyId(state), D(recipe.brick))) {
@@ -363,12 +383,19 @@ export function craftTool(
     puritySum += avg * count;
     inputCount += count;
   }
+  if (refined && recipe.refined) consumeMaterial(state, recipe.refined.workedId, recipe.refined.count);
   const purity = Math.round(puritySum / inputCount);
   const stats = computeStats(recipe, purity);
+  if (refined) {
+    stats.chip = Math.round(stats.chip * REFINED_SPREAD * 100) / 100;
+    stats.strike = Math.round(stats.strike * REFINED_SPREAD * 10) / 10;
+  }
   const tool: ToolInstance = {
     id: state.forge.nextId++,
     recipeId: recipe.id,
-    name: recipe.name,
+    // A refined craft says so on the handle — two same-pattern tools must
+    // never differ silently.
+    name: refined ? `Refined ${recipe.name}` : recipe.name,
     tier: recipe.tier,
     purity,
     chipPower: stats.chip,
@@ -547,6 +574,23 @@ export function partsFromRecipe(
   };
 }
 
+const CASTING_SET = new Set<string>(CASTING_IDS);
+
+/** B4: a Crucible casting BINDS — never heads or hafts — and only a tool
+ *  worth casting for (Tier X+). Shared by the forge and the re-fit bench so
+ *  the two doors cannot drift. Returns the refusal, or null when lawful. */
+function checkCastingSlots(
+  tier: number, headMat: string, haftMat: string, bindingMat: string,
+): ActionResult | null {
+  if (CASTING_SET.has(headMat) || CASTING_SET.has(haftMat)) {
+    return { ok: false, reason: 'A casting is a binding — it holds, it does not swing.' };
+  }
+  if (CASTING_SET.has(bindingMat) && tier < CASTING_BIND_TIER) {
+    return { ok: false, reason: `A casting binds Tier ${CASTING_BIND_TIER}+ work — plain stock holds a smaller tool better.` };
+  }
+  return null;
+}
+
 /**
  * FORGE FROM PARTS — the compositional path. Pick a tier and a material for
  * each of head/haft/binding; the tool's archetype emerges from their traits.
@@ -580,6 +624,11 @@ export function craftFromParts(
   if (headTierCap(headDef.shellId, headDef.rarity) < tier) {
     return { ok: false, reason: `${headDef.name} cannot head a Tier ${tier} tool — it meets the rock, and this rock is too hard for it.` };
   }
+
+  // B4: a Crucible casting is a BINDING — it holds, it does not swing — and
+  // it holds only a tool worth casting for.
+  const castingCheck = checkCastingSlots(tier, headMat, haftMat, bindingMat);
+  if (castingCheck) return castingCheck;
 
   // One unit of each part material.
   for (const id of [headMat, haftMat, bindingMat]) {
@@ -661,6 +710,14 @@ export function replacePart(
       return { ok: false, reason: `${def.name} cannot head a Tier ${tool.tier} tool.` };
     }
   }
+  // B4: castings answer the same law here as at the forge.
+  const castingCheck = checkCastingSlots(
+    tool.tier,
+    slot === 'head' ? materialId : tool.parts.head.materialId,
+    slot === 'haft' ? materialId : tool.parts.haft.materialId,
+    slot === 'binding' ? materialId : tool.parts.binding.materialId,
+  );
+  if (castingCheck) return castingCheck;
   const fee = 3 + tool.tier * 3;
   if (!spendCurrency(state, convCurrencyId(state), D(fee))) {
     return { ok: false, reason: `${fee} to re-fit the ${slot}` };

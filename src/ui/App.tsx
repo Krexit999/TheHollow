@@ -56,7 +56,14 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {/* The Shaft is a full canvas takeover in the hero, not a panel here. */}
       {only('kiln') && <KilnPanel />}
       {only('drills') && <DrillsPanel />}
-      {only('vents') && <VentsPanel />}
+      {/* B5 FOLD: the Wells are a pressure-tap in the vent gallery — one room,
+          three ropes by three holes, not a tab of their own. */}
+      {only('vents') && (
+        <>
+          <VentsPanel />
+          {(state?.depthRecords['cinder'] ?? 0) >= 60 && <WellsPanel />}
+        </>
+      )}
       {only('hollow') && <HollowPanel />}
       <div className={show('lattice')}>{state?.lattice.unlocked && <LatticePanel active={tab === 'lattice'} />}</div>
       {only('crucible') && (state?.shell.breachCount ?? 0) >= 1 && <CruciblePanel />}
@@ -77,7 +84,6 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('warrens') && <WarrensPanel />}
       {only('observatory') && <ObservatoryPanel />}
       {only('journal') && <JournalPanel />}
-      {only('wells') && <WellsPanel />}
       {only('delver') && <DelverPanel />}
       {only('collapse') && <CollapsePanel />}
       {only('rewrite') && <RewritePanel />}
@@ -86,8 +92,14 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
       {only('automation') && <AutomationPanel />}
-      {only('relics') && <RelicsPanel />}
-      {only('museum') && <MuseumPanel />}
+      {/* B5 FOLD: one collection screen — what you keep and what you curate,
+          side by side, because curation now GATES fusion (B4). */}
+      {only('relics') && (
+        <>
+          <RelicsPanel />
+          <MuseumPanel />
+        </>
+      )}
       {only('expeditions') && <ExpeditionsPanel />}
     </>
   );

@@ -14,8 +14,8 @@ import type { ModifierCache } from '../../modifiers';
 import { registerModifier } from '../../modifiers';
 import { getCurrency, spendCurrency, addCurrency } from '../../resources';
 import type { ActionResult, EngineCtx, GameState } from '../../types';
-import { materialDef } from '../../materials';
-import { consumeMaterial, equippedTool, materialCount, purityMult } from '../../systems/forge';
+import { CASTING_IDS, materialDef } from '../../materials';
+import { addMaterial, consumeMaterial, equippedTool, materialCount, purityMult } from '../../systems/forge';
 import { transmuteUnlocked } from '../../systems/refinery';
 import { masteryLevel } from '../../systems/mastery';
 import { grantXP } from '../../systems/xp';
@@ -63,6 +63,52 @@ export function alloyLivePct(state: GameState, id: string): number {
   const purity = state.crucible.purities[id] ?? 50;
   const rank = state.crucible.ranks[id] ?? 1;
   return def.basePct * purityMult(purity) * rankMult(rank);
+}
+
+// ---------------------------------------------------------------------------
+// ALLOY CASTINGS (B4 pull-through) — the pattern made stock.
+//
+// A discovered alloy can be CAST: its own ratio in metals, again, buys one
+// casting of its FAMILY (dominant metal). The casting is a worked material
+// that BINDS a Tier X+ tool with the family's trait set — the Crucible's
+// economy feeding the Forge's late ladder, on top of the free pattern-binding
+// that alloy slots already give (which stays, and is the fallback).
+// ---------------------------------------------------------------------------
+
+export const CAST_UNIT = 25; // currency per ratio point — dearer than a pour
+
+/** family by dominant metal: ingot/flux/scale/lodestone/rime. Ties go to the
+ *  first-listed metal, matching how the families were named. */
+export function castingForAlloy(alloyId: string): string {
+  const def = alloyDef(alloyId);
+  let idx = 0;
+  def.ratio.forEach((v, i) => { if (v > def.ratio[idx]!) idx = i; });
+  return CASTING_IDS[idx]!;
+}
+
+export function castBindingCosts(alloyId: string): Array<{ metal: string; amount: number }> {
+  const def = alloyDef(alloyId);
+  return def.ratio
+    .map((v, i) => ({ metal: METALS[i]!, amount: v * CAST_UNIT }))
+    .filter((c) => c.amount > 0);
+}
+
+export function castBinding(state: GameState, ctx: EngineCtx, alloyId: string): ActionResult {
+  if (!crucibleUnlocked(state)) return { ok: false, reason: 'The Crucible is cold' };
+  if (!state.crucible.discovered.includes(alloyId)) {
+    return { ok: false, reason: 'The Crucible has not poured that' };
+  }
+  const costs = castBindingCosts(alloyId);
+  for (const c of costs) {
+    if (getCurrency(state, c.metal).lt(c.amount)) {
+      return { ok: false, reason: `A casting wants the alloy's own ratio again — short of ${c.metal[0]!.toUpperCase() + c.metal.slice(1)} (${c.amount})` };
+    }
+  }
+  for (const c of costs) spendCurrency(state, c.metal, D(c.amount));
+  // The pattern's recorded purity is the casting's — a well-caught pour casts true.
+  addMaterial(state, castingForAlloy(alloyId), state.crucible.purities[alloyId] ?? 50);
+  ctx.dirty();
+  return { ok: true, data: { castingId: castingForAlloy(alloyId) } };
 }
 
 function updateHint(state: GameState, lastPour: number[]): void {

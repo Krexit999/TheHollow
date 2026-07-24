@@ -170,6 +170,14 @@ export function Toasts() {
         if (ev.auto) {
           fresh.push({ key: entry.seq, title: 'Auto-collapse', body: `Depth ${ev.depth} · +${fmt(ev.cores)} Cores.`, color: '#8be9fd' });
         }
+      } else if (ev.type === 'journalReveal') {
+        // B5: the read incentive, announced. A hint names the meeting, never
+        // the condition; a cure names the stone and what patience makes of it.
+        if (ev.kind === 'confluenceHint') {
+          fresh.push({ key: entry.seq, title: 'A note in her margins', body: `Something happens where ${ev.a} meets ${ev.b}. She never wrote what.`, color: '#c8b48a' });
+        } else {
+          fresh.push({ key: entry.seq, title: 'A recipe of patience', body: `${materialDef(ev.a).name}, cached in the deep, becomes ${materialDef(ev.b).name}. The shaft Codex holds the how.`, color: '#c8b48a' });
+        }
       } else if (ev.type === 'chordDiscovered') {
         const def = CHORD_BY_ID[ev.id];
         if (def) fresh.push({ key: entry.seq, title: `Chord discovered: ${def.name}`, body: def.flavor, color: '#9fd8c0' });

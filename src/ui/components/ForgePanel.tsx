@@ -10,6 +10,7 @@ import { GEMS, gemDef, materialDef } from '../../engine/materials';
 import {
   equippedTool,
   materialCount,
+  REFINED_SPREAD,
   TIER_BASE,
   TOOL_RECIPES,
   type ToolRecipe,
@@ -344,13 +345,30 @@ function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
             <span className="opacity-70"> · rolls with input purity</span>
           </div>
         </div>
-        <button
-          className={`btn shrink-0 px-2.5 py-1 text-xs ${canCraft ? 'btn-warm' : ''}`}
-          disabled={!canCraft}
-          onClick={() => dispatch({ type: 'craftTool', recipeId: recipe.id })}
-        >
-          Forge · <Amount value={recipe.brick} color={conv.color} />
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button
+            className={`btn px-2.5 py-1 text-xs ${canCraft ? 'btn-warm' : ''}`}
+            disabled={!canCraft}
+            onClick={() => dispatch({ type: 'craftTool', recipeId: recipe.id })}
+          >
+            Forge · <Amount value={recipe.brick} color={conv.color} />
+          </button>
+          {/* B4: the refined form — the Refinery's worked material buys +12%
+              on both stats. The raw button above always stands (pillar 4). */}
+          {recipe.refined && (
+            <button
+              className="btn px-2 py-0.5 text-[10px]"
+              disabled={!canCraft || materialCount(state, recipe.refined.workedId) < recipe.refined.count}
+              title={`+${Math.round((REFINED_SPREAD - 1) * 100)}% chip & strike · consumes ${recipe.refined.count} ${materialDef(recipe.refined.workedId).name} on top of the raw inputs — the Refinery renders it`}
+              onClick={() => dispatch({ type: 'craftTool', recipeId: recipe.id, refined: true })}
+            >
+              Refined · {recipe.refined.count} {materialDef(recipe.refined.workedId).name}
+              <span className="tnum ml-1 text-cave-500">
+                ({materialCount(state, recipe.refined.workedId)}/{recipe.refined.count})
+              </span>
+            </button>
+          )}
+        </div>
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
         {inputs.map((input) => {

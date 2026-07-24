@@ -10,7 +10,7 @@ import {
   CONSTELLATIONS, OBSERVATION_TIERS, observationProgress, observatoryUnlocked,
 } from '../../engine/content/shell4/observatory';
 import {
-  AUTHORED_PUZZLES, BENCH_SIZE, benchUnlocked, lensFor, puzzleById, simulateBench,
+  AUTHORED_PUZZLES, BENCH_SIZE, benchUnlocked, CHART_GRIND_SILICA, lensFor, puzzleById, simulateBench,
 } from '../../engine/content/shell4/bench';
 import { WARRENS, puzzleData, warrenAvailable } from '../../engine/content/shell4/warrens';
 import {
@@ -223,6 +223,12 @@ export function ObservatoryPanel() {
             );
           })}
         </div>
+        {/* B5 — the chart's second life, said where the chart closes. */}
+        {state.observatory.constellations.length > 0 && (
+          <div className="mt-1.5 text-[10px] italic text-cave-400">
+            A closed sky is a blueprint: the Bench can grind it into a lens.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -343,6 +349,33 @@ export function BenchPanel() {
           </button>
         </div>
       </div>
+      {/* B5 — Observatory→Bench: a finished chart is a blueprint. */}
+      {state.observatory.constellations.length > 0 && (
+        <div className="panel p-3">
+          <div className="text-[9px] uppercase tracking-widest text-cave-400">Star charts — the sky's own blueprints</div>
+          <div className="mt-1 text-[10px] italic leading-snug text-cave-400">
+            A completed constellation is a solved configuration. Grind it and the chart becomes
+            a lens that echoes its theme.
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {state.observatory.constellations.map((conId) => {
+              const ground = state.bench.solved.includes(`chart:${conId}`);
+              const lens = lensFor(`chart:${conId}`);
+              return (
+                <button
+                  key={conId}
+                  className={`btn px-1.5 py-0.5 text-[9px] ${ground ? 'opacity-50' : 'btn-warm'}`}
+                  disabled={ground || getCurrency(state, 'silica').lt(CHART_GRIND_SILICA)}
+                  title={ground ? 'Already in the case below' : `+${Math.round((lens.value - 1) * 100)}% ${lens.bucket} · ${CHART_GRIND_SILICA} Silica`}
+                  onClick={() => dispatch({ type: 'grindChartLens', constellationId: conId })}
+                >
+                  {ground ? `${lens.name} ✓` : `Grind ${lens.name} · ${CHART_GRIND_SILICA} Silica`}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {/* The lens case */}
       {state.bench.solved.length > 0 && (
         <div className="panel p-3">
