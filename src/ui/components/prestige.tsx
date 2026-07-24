@@ -7,6 +7,7 @@ import {
 import {
   SKILL_NODES,
   skillRank,
+  skillNodeUnlocked,
   type SkillBranch,
 } from '../../engine/content/shell1/skillTree';
 import { dispatch, useGame } from '../store';
@@ -147,7 +148,10 @@ export function DelverPanel() {
               .map((node) => {
                 const rank = skillRank(state, node.id);
                 const maxed = rank >= node.maxRank;
-                const canBuy = !node.stub && !maxed && state.delver.skillPoints >= node.costPerRank;
+                const unlocked = skillNodeUnlocked(state, node);
+                const canBuy = unlocked && !maxed && state.delver.skillPoints >= node.costPerRank;
+                // The shell that opens a still-locked node (loam 0, ferrite 1, …).
+                const opensIn = !unlocked ? allShells()[node.unlockBreach ?? 0]?.name ?? 'a deeper shell' : null;
                 return (
                   <button
                     key={node.id}
@@ -155,8 +159,8 @@ export function DelverPanel() {
                     onClick={() => dispatch({ type: 'buySkillNode', id: node.id })}
                     title={node.description(rank)}
                     className={`panel block w-full p-2 text-left transition-colors ${
-                      node.stub
-                        ? 'opacity-35'
+                      !unlocked
+                        ? 'opacity-40'
                         : maxed
                           ? 'border-lamp-500/40'
                           : canBuy
@@ -166,9 +170,10 @@ export function DelverPanel() {
                   >
                     <div className="flex items-center justify-between gap-1">
                       <span className="truncate text-[11px] font-semibold text-cave-200">{node.name}</span>
+                      {!unlocked && <span className="shrink-0 text-[8px] uppercase tracking-wide text-cave-500">🔒 {opensIn}</span>}
                     </div>
-                    {node.stub ? (
-                      <div className="mt-1 text-[9px] italic leading-tight text-cave-500">Not yet — a deeper delve opens this branch.</div>
+                    {!unlocked ? (
+                      <div className="mt-1 text-[9px] italic leading-tight text-cave-500">Opens when you breach into {opensIn}.</div>
                     ) : (
                       <>
                         <div className="mt-1 flex gap-0.5">
@@ -211,7 +216,7 @@ export function DelverPanel() {
         </div>
       </div>
       <p className="px-1 text-center text-[11px] italic text-cave-400">
-        Sealed nodes open in deeper shells. The Delver never resets — not even at the end.
+        Locked nodes open as you breach into deeper shells. The Delver never resets — not even at the end.
       </p>
     </div>
   );

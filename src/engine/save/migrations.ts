@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -510,6 +510,36 @@ export const MIGRATIONS: Record<number, Migration> = {
     const mats = (state['materials'] ??= {}) as Record<string, unknown>;
     mats['gemFused'] ??= 0;
     return { ...p, version: 22, state };
+  },
+
+  // v22 -> v23 — THE EXPORT SPINE (Part B). The spine gates infrastructure on
+  // exports; a save that already BUILT that infrastructure under the old rules
+  // keeps every stick of it. Grandfathering reads the evidence in the save:
+  //   - greenhouse beds beyond the free four  -> that many frames, granted
+  //   - a loom that has ever committed a weave -> already iron-framed
+  //   - fuel standing in a deeper Array row    -> that many sockets, granted
+  22: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const greenhouse = (state['greenhouse'] ??= {}) as Record<string, unknown>;
+    const plots = greenhouse['plots'] as unknown[] | undefined;
+    greenhouse['frames'] ??= Math.max(0, (plots?.length ?? 4) - 4);
+    const loom = (state['loom'] ??= {}) as Record<string, unknown>;
+    loom['framed'] ??= ((loom['weaves'] as number) ?? 0) > 0
+      || (((loom['discoveredShapes'] as unknown[]) ?? []).length > 0);
+    const ember = (state['ember'] ??= {}) as Record<string, unknown>;
+    if (ember['sockets'] === undefined) {
+      let deepestRow = 0;
+      for (const key of ['grid', 'savedLayout'] as const) {
+        const cells = ember[key] as unknown[] | undefined;
+        if (!cells) continue;
+        for (let i = 0; i < cells.length; i++) {
+          if (cells[i] != null) deepestRow = Math.max(deepestRow, Math.floor(i / 6));
+        }
+      }
+      ember['sockets'] = deepestRow;
+    }
+    ember['annealSec'] ??= 0;
+    return { ...p, version: 23, state };
   },
 };
 

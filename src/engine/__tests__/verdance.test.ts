@@ -231,6 +231,7 @@ describe('the loom: solve for shape, never memorize', () => {
   it('committing consumes thread stock and the woven shapes carry modifiers', () => {
     const { engine, s } = verdant();
     s.depthRecords['verdance'] = 40; // mastery 4
+    s.loom.framed = true; // iron frame installed (export spine; gate tested in export-spine.test.ts)
     s.loom.threads['silkS'] = 6;
     s.loom.threads['rootZ'] = 12;
     s.loom.threads['rootS'] = 6;

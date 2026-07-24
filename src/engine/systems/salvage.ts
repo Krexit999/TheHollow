@@ -22,7 +22,7 @@ import { D } from '../decimal';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { spendCurrency } from '../resources';
 import { convCurrencyId } from '../shells';
-import { addMaterial, recipeDef } from './forge';
+import { addMaterial, recipeById } from './forge';
 
 /** Share of a recipe's inputs that come back. The rest is residue. */
 export const SALVAGE_RETURN = 0.5;
@@ -63,8 +63,12 @@ export function salvagePreview(state: GameState, toolId: number): SalvagePreview
     }
   } else {
     // A legacy tool with no composition (pre-v15, unmigrated) falls back to the
-    // recipe. Should not happen post-migration, but never crash on it.
-    const recipe = recipeDef(tool.recipeId);
+    // recipe. The STARTER tool ('delversPick') has no parts AND no craftable
+    // recipe, so this must NOT throw — a throw here unmounts the whole React
+    // root (the Refinery/Salvage black-screen crash). A tool with no resolvable
+    // recipe simply cannot be broken down: return null so callers skip it.
+    const recipe = recipeById(tool.recipeId);
+    if (!recipe) return null;
     for (const [matId, count] of Object.entries(recipe.inputs)) {
       const back = Math.floor(count * SALVAGE_RETURN);
       if (back > 0) { returns[matId] = back; returnPurity[matId] = tool.purity; }

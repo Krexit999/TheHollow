@@ -25,6 +25,7 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import type { ModifierCache } from '../modifiers';
 import { addCurrency, spendCurrency } from '../resources';
 import { registerSignature, runVoidTick } from '../signatures';
+import { consumeMaterial, materialCount } from './forge';
 import { currentShell } from '../shells';
 
 export const SILENCE_MUTE_MAX = 0.7; // at 100 stacks, carried income runs at 30%
@@ -80,8 +81,16 @@ export function rebuildCell(state: GameState, ctx: EngineCtx, cell: number): Act
   if (state.depth < REBUILD_DEPTH_PER_CELL * k) {
     return { ok: false, reason: `The ${k + 1}th cell only exists below depth ${REBUILD_DEPTH_PER_CELL * k}` };
   }
+  // THE EXPORT SPINE (Part B): the ninth cell on is rebuilt IN something —
+  // Emberglass, Cinder's export, glass that remembers heat where the void
+  // remembers nothing. Annealed at a held burn, or hauled up by Serra.
+  const wantsGlass = k >= 8;
+  if (wantsGlass && materialCount(state, 'emberglass') < 1) {
+    return { ok: false, reason: 'Cells past the eighth want 1 Emberglass — hold the Ember Array in the band, or buy it from Serra' };
+  }
   const cost = rebuildCost(state);
   if (!spendCurrency(state, 'void', cost)) return { ok: false, reason: `${cost.toExponential(1)} Void to remember one cell of rock` };
+  if (wantsGlass) consumeMaterial(state, 'emberglass', 1);
   state.hollow.rebuilt.push(cell);
   state.hollow.voidSpent = D(state.hollow.voidSpent).add(cost).toString();
   state.face.cells[cell] = 0; // it begins empty. It begins.

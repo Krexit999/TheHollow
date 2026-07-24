@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { allUpgrades, fmt, getCurrency, type MotifShape } from '../../engine';
 import { hexKey, cellCount } from '../../engine/systems/lattice/hex';
+import { cellContribution, boardResonance } from '../../engine/systems/lattice/latticeCore';
 import {
   currentHint,
   latticeGhost,
@@ -26,7 +27,7 @@ const SHAPE_META: { shape: MotifShape; glyph: string; hint: string }[] = [
   { shape: 'hex', glyph: '⬢', hint: 'Hex — seals and deeper things' },
 ];
 
-export function LatticePanel() {
+export function LatticePanel({ active = true }: { active?: boolean }) {
   const state = useGame((s) => s.state);
   const engine = useGame((s) => s.engine);
   const reducedMotion = useGame((s) => s.reducedMotion);
@@ -34,6 +35,11 @@ export function LatticePanel() {
 
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<LatticeView | null>(null);
+  // One live renderer at a time (A.38): the board stays mounted, but its ticker
+  // only runs while this tab is the one on screen.
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useEffect(() => { viewRef.current?.setActive(active); }, [active]);
   const [brush, setBrush] = useState<{ shape: MotifShape; rank: number }>({ shape: 'triangle', rank: 1 });
   const [selected, setSelected] = useState<string | null>(null);
   const [ghostMode, setGhostMode] = useState(false);
@@ -69,7 +75,10 @@ export function LatticePanel() {
       },
     }).then((v) => {
       if (cancelled) v.destroy();
-      else viewRef.current = view = v;
+      else {
+        viewRef.current = view = v;
+        v.setActive(activeRef.current);
+      }
     });
     return () => {
       cancelled = true;
@@ -113,9 +122,12 @@ export function LatticePanel() {
 
       {/* Brush + balance */}
       <div className="panel space-y-2 p-3">
-        <div className="flex items-center justify-between text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 text-xs">
           <span className="text-cave-400">
             Motifs: <Amount value={motifs} color="#9fd8c0" className="text-sm" />
+          </span>
+          <span className="text-cave-400" title="The sum of positive resonance across the whole board — same-shape harmony and wheel-flow, minus discord.">
+            Resonance <span className="tnum text-[#9fd8c0]">{boardResonance(lat)}</span>
           </span>
           <span className="text-cave-400">
             Passive Rank{' '}
@@ -180,36 +192,67 @@ export function LatticePanel() {
         </label>
       </div>
 
-      {/* Selected motif */}
+      {/* Selected motif — its resonance, spelled out. */}
       {sel && selected && (
-        <div className="panel flex items-center gap-3 p-3">
-          <span className="text-xl text-[#cfc9b4]">
-            {SHAPE_META.find((m) => m.shape === sel.shape)?.glyph}
-          </span>
-          <div className="min-w-0 flex-1 text-xs">
-            <div className="font-semibold capitalize text-cave-200">
-              {sel.shape} · Rank {sel.rank}
+        <div className="panel space-y-2 p-3">
+          <div className="flex items-center gap-3">
+            <span className="text-xl text-[#cfc9b4]">
+              {SHAPE_META.find((m) => m.shape === sel.shape)?.glyph}
+            </span>
+            <div className="min-w-0 flex-1 text-xs">
+              <div className="font-semibold capitalize text-cave-200">
+                {sel.shape} · Rank {sel.rank}
+              </div>
+              <div className="text-[10px] text-cave-400">Placed {sel.seq + 1}ᵗʰ — order matters, later.</div>
             </div>
-            <div className="text-[10px] text-cave-400">Placed {sel.seq + 1}ᵗʰ — order matters, later.</div>
-          </div>
-          {sel.rank < maxRank && (
+            {sel.rank < maxRank && (
+              <button
+                className="btn px-2 py-1 text-[11px]"
+                disabled={motifs.lt(upgradeCost(sel.rank, sel.rank + 1))}
+                onClick={() => dispatch({ type: 'upgradeMotif', ...keyToQR(selected) })}
+              >
+                Rank up · {fmt(upgradeCost(sel.rank, sel.rank + 1))}
+              </button>
+            )}
             <button
               className="btn px-2 py-1 text-[11px]"
-              disabled={motifs.lt(upgradeCost(sel.rank, sel.rank + 1))}
-              onClick={() => dispatch({ type: 'upgradeMotif', ...keyToQR(selected) })}
+              onClick={() => {
+                dispatch({ type: 'removeMotif', ...keyToQR(selected) });
+                setSelected(null);
+              }}
             >
-              Rank up · {fmt(upgradeCost(sel.rank, sel.rank + 1))}
+              Remove · +{fmt(placementCost(sel.rank).mul(REMOVE_REFUND))}
             </button>
-          )}
-          <button
-            className="btn px-2 py-1 text-[11px]"
-            onClick={() => {
-              dispatch({ type: 'removeMotif', ...keyToQR(selected) });
-              setSelected(null);
-            }}
-          >
-            Remove · +{fmt(placementCost(sel.rank).mul(REMOVE_REFUND))}
-          </button>
+          </div>
+          {/* THE ARITHMETIC (pillar 5: resonance is a legible rule; a chord's
+              identity is not, and is never named here). */}
+          {(() => {
+            const c = cellContribution(lat, selected);
+            const netCol = c.net > 0 ? 'text-[#9fd8c0]' : c.net < 0 ? 'text-[#e08a6a]' : 'text-cave-400';
+            return (
+              <div className="border-t border-cave-800 pt-1.5 text-[11px]">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-cave-400">Resonance it carries</span>
+                  <span className={`tnum font-semibold ${netCol}`}>{c.net >= 0 ? '+' : ''}{c.net}</span>
+                </div>
+                {c.relations.length === 0 ? (
+                  <div className="mt-0.5 text-[10px] italic text-cave-500">Alone — no neighbour touches it yet. Set a same-shape stone beside it to harmonise, or its wheel-successor to feed it.</div>
+                ) : (
+                  <ul className="mt-1 space-y-0.5">
+                    {c.relations.map((rel, i) => (
+                      <li key={i} className="flex items-baseline justify-between gap-2">
+                        <span className="text-cave-300">
+                          <span className={rel.kind === 'discord' ? 'text-[#e08a6a]' : rel.kind === 'flow' ? 'text-[#c9c07a]' : 'text-[#9fd8c0]'}>{rel.kind}</span>
+                          {' '}with the {rel.otherShape} (r{rel.otherRank}) to the {rel.dir}
+                        </span>
+                        <span className={`tnum shrink-0 ${rel.value >= 0 ? 'text-[#9fd8c0]' : 'text-[#e08a6a]'}`}>{rel.value >= 0 ? '+' : ''}{rel.value}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

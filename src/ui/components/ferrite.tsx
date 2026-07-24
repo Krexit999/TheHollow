@@ -15,6 +15,8 @@ import {
 } from '../../engine';
 import { materialsOfShell } from '../../engine/materials';
 import { materialCount, equippedTool, alloySlotsUsable } from '../../engine/systems/forge';
+import { transmuteUnlocked } from '../../engine/systems/refinery';
+import { ExportProduceRow } from './exports';
 import {
   buyMagnet as _bm, // typing anchor
   magnetArrayUnlocked,
@@ -38,7 +40,7 @@ import {
 } from '../../engine/systems/foundry';
 import { dispatch, useGame } from '../store';
 import { usePersisted } from '../usePersisted';
-import { Amount, HoldButton } from './shared';
+import { Amount, HoldButton, BUCKET_NAME } from './shared';
 import { MaterialIcon } from './MaterialIcon';
 
 void _bm;
@@ -230,6 +232,13 @@ export function CruciblePanel() {
         <div className="text-[10px] uppercase tracking-widest text-cave-300">
           The Pour — {state.crucible.pours} poured, {state.crucible.fails} slag
         </div>
+        {transmuteUnlocked(state) && (
+          <div className="text-[10px] leading-snug text-cave-400">
+            Every pour burns <span className="text-[#cbb072]">1 Kilnflux</span>{' '}
+            <span className="tnum">(held {materialCount(state, 'kilnflux')})</span> — Loam's export.
+            Fire it at the Refinery (The Kiln Firing) or buy it from Serra.
+          </div>
+        )}
         {METALS.map((metal, i) => (
           <div key={metal} className="flex items-center gap-2">
             <span className="w-20 text-xs capitalize" style={{ color: METAL_COLORS[i] }}>
@@ -335,16 +344,20 @@ export function CruciblePanel() {
               const data = result.data as { result: string };
               setLastResult(data.result === 'slag' ? 'slag' : data.result);
               setLastMix({ amounts: [...amounts], catalystId: chosen });
+            } else {
+              setLastResult(`refused:${result.reason ?? 'The crucible refuses'}`);
             }
           }}
         >
           Pour
         </button>
         {lastResult && (
-          <div className={`text-center text-xs ${lastResult === 'slag' ? 'text-cave-400' : 'text-[#9fc4dd]'}`}>
+          <div className={`text-center text-xs ${lastResult === 'slag' ? 'text-cave-400' : lastResult.startsWith('refused:') ? 'text-[#d4a86a]' : 'text-[#9fc4dd]'}`}>
             {lastResult === 'slag'
               ? 'Slag. Half the metals drained off; the catalyst survived.'
-              : `It poured true: ${alloyDef(lastResult).name}.`}
+              : lastResult.startsWith('refused:')
+                ? lastResult.slice('refused:'.length)
+                : `It poured true: ${alloyDef(lastResult).name}.`}
           </div>
         )}
         {state.crucible.lastHint && (
@@ -353,6 +366,9 @@ export function CruciblePanel() {
           </div>
         )}
       </div>
+
+      {/* The export: iron cast for the shell below (Part B spine) */}
+      <ExportProduceRow materialId="lodeframe" />
 
       {/* Codex — discovered alloys, bindable */}
       <div className="panel p-3">
@@ -401,6 +417,14 @@ export function CruciblePanel() {
 // The Foundry
 // ---------------------------------------------------------------------------
 
+/** What a module actually does, in plain +/-% — the line the card was missing. */
+function moduleEffectText(mod: { bucket: string; value: number }): string {
+  const name = (BUCKET_NAME as Record<string, string>)[mod.bucket] ?? mod.bucket;
+  if (mod.bucket === 'offlineEffAdd') return `+${Math.round(mod.value * 100)}% offline efficiency`;
+  const pct = Math.round((mod.value - 1) * 100);
+  return `${pct >= 0 ? '+' : ''}${pct}% ${name}`;
+}
+
 export function FoundryPanel() {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
@@ -442,6 +466,9 @@ export function FoundryPanel() {
                 <div className="min-w-0">
                   <span className="text-xs font-semibold text-cave-200">{mod.name}</span>
                   <span className="ml-2 text-[9px] uppercase tracking-wider text-cave-400">[{mod.tag}]</span>
+                  {/* The EFFECT, which the card never showed — only flavour. That
+                      missing line is why a hovered module read as "random text". */}
+                  <div className="text-[10px] font-medium text-[#c9b8f0]">{moduleEffectText(mod)}</div>
                   <div className="text-[10px] italic leading-snug text-cave-400">{mod.flavor}</div>
                 </div>
                 {installed ? (
@@ -452,10 +479,10 @@ export function FoundryPanel() {
                   <button
                     className="btn shrink-0 px-2 py-1 text-[10px]"
                     disabled={!!clash || getCurrency(state, mod.cost.currencyId).lt(mod.cost.amount)}
-                    title={clash ? `Conflicts with ${moduleDef(clash).name}` : undefined}
+                    title={clash ? `Conflicts with ${moduleDef(clash).name}` : `${moduleEffectText(mod)} · costs ${fmt(mod.cost.amount)} ${cur.name}`}
                     onClick={() => dispatch({ type: 'installModule', id: mod.id })}
                   >
-                    {clash ? 'Conflict' : <>Fit · <Amount value={mod.cost.amount} color={cur.color} /></>}
+                    {clash ? 'Conflict' : <>Fit · <Amount value={mod.cost.amount} color={cur.color} /> {cur.name}</>}
                   </button>
                 )}
               </div>

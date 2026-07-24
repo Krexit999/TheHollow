@@ -53,7 +53,9 @@ import { TITLE_BY_ID } from '../src/engine/guild/titles';
 import { hiredCount } from '../src/engine/guild/hirelings';
 import { dpsMax } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
-import { arrayUnlocked } from '../src/engine/content/shell5/emberArray';
+import { arrayUnlocked, openRows, ARRAY_SIZE } from '../src/engine/content/shell5/emberArray';
+import { transmuteUnlocked } from '../src/engine/systems/refinery';
+import { stockFor } from '../src/engine/guild/guild';
 import { WELLS, wellProgress, wellsUnlocked } from '../src/engine/content/shell5/wells';
 
 interface Args {
@@ -892,6 +894,77 @@ const POUR_PLAN: Array<{ amounts: number[]; log: string }> = [
 ];
 
 /** Ferrite-era play: magnets, pours, foundry, resonant memory. */
+// ---------------------------------------------------------------------------
+// THE EXPORT SPINE (Part B) — a competent player provisions the shell below
+// before leaving, and lets Serra fill the gaps. This block is the sim-side
+// proof of the curriculum law: every gate the spine adds must be payable by
+// the policies here, or the run stalls and the harness shows it.
+// ---------------------------------------------------------------------------
+
+const spineMetrics = { fluxFired: 0, framesCast: 0, lensesGround: 0, clothBought: 0, serraBuys: 0 };
+
+function provisionSpine(engine: Engine, s: GameState, log: (msg: string) => void): void {
+  const shell = currentShell(s).id;
+
+  // FERRITE — fire Kilnflux for the pours, cast Lodeframes for the greenery.
+  if (shell === 'ferrite') {
+    if (
+      transmuteUnlocked(s) && materialCount(s, 'kilnflux') < 2
+      && materialCount(s, 'palegold') >= 1 && materialCount(s, 'marl') >= 1
+    ) {
+      if (engine.dispatch({ type: 'transmute', a: 'palegold', b: 'marl' }).ok) {
+        spineMetrics.fluxFired += 1;
+        if (spineMetrics.fluxFired === 1) log('spine: first Kiln Firing (palegold + marl -> 6 kilnflux)');
+      }
+    }
+    if (materialCount(s, 'lodeframe') < 4) {
+      if (engine.dispatch({ type: 'produceExport', id: 'lodeframe' }).ok) spineMetrics.framesCast += 1;
+    }
+  }
+
+  // VERDANCE — brace the loom, frame the beds, render resin ahead of need.
+  if (shell === 'verdance') {
+    if (!s.loom.framed && materialCount(s, 'lodeframe') > 0) {
+      if (engine.dispatch({ type: 'installLoomFrame' }).ok) log('spine: loom braced in iron');
+    }
+    if (materialCount(s, 'lodeframe') > 0) engine.dispatch({ type: 'installFrame' }); // no-ops at cap
+    if (materialCount(s, 'setresin') < 2) engine.dispatch({ type: 'produceExport', id: 'setresin' });
+  }
+
+  // GLASSMERE — grind the fire's lenses before the fire is yours.
+  if (shell === 'glassmere') {
+    if (materialCount(s, 'groundlens') < 5) {
+      if (engine.dispatch({ type: 'produceExport', id: 'groundlens' }).ok) spineMetrics.lensesGround += 1;
+    }
+  }
+
+  // CINDER — socket the grate while the lenses hold out.
+  if (shell === 'cinder' && openRows(s) < ARRAY_SIZE && materialCount(s, 'groundlens') > 0) {
+    if (engine.dispatch({ type: 'installSocket' }).ok && openRows(s) === 4) {
+      log(`spine: grate socketed to row ${openRows(s)} — the billet block fits`);
+    }
+  }
+
+  // ANYWHERE — Serra hauls what the stair left short (the designed fallback,
+  // and buying from her here is what verifies it).
+  const wants: string[] = [];
+  if (masteryLevelOf(s, 'glassmere') >= 2 && materialCount(s, 'fibercloth') < 1) wants.push('fibercloth');
+  if (shell === 'ferrite' && transmuteUnlocked(s) && materialCount(s, 'kilnflux') < 1) wants.push('kilnflux');
+  if (shell === 'verdance' && materialCount(s, 'lodeframe') < 1 && (!s.loom.framed || s.greenhouse.plots.length < 6)) wants.push('lodeframe');
+  if (shell === 'cinder' && openRows(s) < 4 && materialCount(s, 'groundlens') < 1) wants.push('groundlens');
+  if ((shell === 'hollow' || shell === 'aleph') && materialCount(s, 'emberglass') < 1) wants.push('emberglass');
+  if (wants.length > 0 && (s.currencies['scrip']?.toNumber() ?? 0) > 120) {
+    const shelf = stockFor(s, 'serra');
+    for (const want of wants) {
+      const idx = shelf.findIndex((slot) => slot.id === want);
+      if (idx >= 0 && engine.dispatch({ type: 'buyStock', npcId: 'serra', slot: idx }).ok) {
+        spineMetrics.serraBuys += 1;
+        if (want === 'fibercloth') spineMetrics.clothBought += 1;
+      }
+    }
+  }
+}
+
 function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
   if (s.shell.breachCount === 0) return;
   // Magnets: buy when Scale allows; poles all + for long corridors.
@@ -1139,6 +1212,7 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   const wallBlocked = forgePlay(engine, s, log);
   combatPlay(engine, s, log);
   latticePlay(engine, s, log);
+  provisionSpine(engine, s, log);
   ferritePlay(engine, s, log);
   guildPlay(engine, s, log);
   verdancePlay(engine, s, wallBlocked);
@@ -1700,6 +1774,13 @@ function main(): void {
     `beats(late): BREACH 4 ${beats.tBreach4 ? min(beats.tBreach4) : '—'} | BREACH 5 ${beats.tBreach5 ? min(beats.tBreach5) : '—'} | ` +
       `face whole ${beats.tFaceWhole ? min(beats.tFaceWhole) : '—'} | BREACH 6 ${beats.tBreach6 ? min(beats.tBreach6) : '—'} | ` +
       `RECURSION 1 ${beats.tRecursion1 ? min(beats.tRecursion1) : '—'}`,
+  );
+  console.error(
+    `export spine: kiln firings ${spineMetrics.fluxFired} | frames cast ${spineMetrics.framesCast} | ` +
+      `lenses ground ${spineMetrics.lensesGround} | grate rows ${openRows(s)}/${ARRAY_SIZE} | ` +
+      `loom ${s.loom.framed ? 'braced' : 'WOODEN'} | beds ${s.greenhouse.plots.length} | ` +
+      `serra fallback buys ${spineMetrics.serraBuys} (cloth ${spineMetrics.clothBought}) | ` +
+      `held: flux ${materialCount(s, 'kilnflux')} cloth ${materialCount(s, 'fibercloth')} glass ${materialCount(s, 'emberglass')}`,
   );
   if (args.out) console.error(`csv -> ${args.out}`);
 }

@@ -19,6 +19,15 @@ import { runFaceReset } from '../signatures';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
 
+/** Levels every resetting face upgrade is kept AT through a Collapse (the floor
+ *  the fall leaves behind): 4 per Momentum core-node rank, or the Gentle Fall
+ *  law's flat 20, whichever is stronger. The CARRY-ONE mark keeps one upgrade
+ *  ABOVE this floor, at its full level. Exported so the UI can price the choice
+ *  with the same number the engine uses. */
+export function collapseRetained(state: GameState): number {
+  return Math.max(4 * coreNodeLevel(state, 'momentum'), lawNum(state, 'collapseRetain'));
+}
+
 export function collapsePreview(state: GameState): ReturnType<typeof coresForDepth> {
   return coresForDepth(shaftPeak(state));
 }
@@ -38,11 +47,18 @@ export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx
 
   // Momentum core node: retain up to 4 levels of each face upgrade per rank.
   // THE GENTLE FALL (law) retains 20 regardless — the stronger memory wins.
-  const retained = Math.max(4 * coreNodeLevel(state, 'momentum'), lawNum(state, 'collapseRetain'));
+  const retained = collapseRetained(state);
   // CARRY ONE (Phase 21): one marked face upgrade keeps its full level through
   // this fall. Non-stacking, and the mark is spent here. Sim-bounded — see
   // scripts/carry-verify.ts: one upgrade can never take return-to-peak under 10%.
   const carry = state.qol.carryUpgradeId;
+  // What the carry saved — recorded for the run summary so the choice is legible
+  // after the fall, not just before. Captured before the reset loop runs.
+  let carriedInfo: { name: string; levels: number } | undefined;
+  if (carry) {
+    const cdef = allUpgrades().find((u) => u.id === carry);
+    if (cdef) carriedInfo = { name: cdef.name, levels: Math.max(0, stat(state, cdef.id) - retained) };
+  }
   for (const def of allUpgrades()) {
     if (!def.resetsOnCollapse) continue;
     if (def.id === carry) continue; // carried — untouched by the fall
@@ -80,7 +96,7 @@ export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // the new "last run" for the next Collapse to measure itself by.
   const sec = Math.max(0, Math.floor(state.stats.playTimeSec - state.collapse.runStartAt));
   const prev = state.collapse.lastRun;
-  state.collapse.lastRun = { depth: depthAtCollapse, cores, sec, count: state.collapse.count };
+  state.collapse.lastRun = { depth: depthAtCollapse, cores, sec, count: state.collapse.count, carried: carriedInfo };
   state.collapse.runStartAt = state.stats.playTimeSec;
 
   ctx.emit({ type: 'collapse', cores, depth: depthAtCollapse, sec, prev, auto });

@@ -11,6 +11,7 @@ import { MATERIALS } from '../materials';
 import {
   ALL_TRAITS, TRAIT_PAIRS, MATERIAL_TRAITS, traitsOf, traitDef,
   activePairs, traitPair,
+  traitFactorLines, traitLeanText, compositionLean,
 } from '../traits';
 
 describe('every material has a character', () => {
@@ -122,5 +123,53 @@ describe('trait pairs are the discovered layer', () => {
       const hasB = MATERIALS.some((m) => traitsOf(m.id).includes(p.b));
       expect(hasA && hasB, `pair '${p.name}' needs a material for each half`).toBe(true);
     }
+  });
+});
+
+// The legibility layer: the words the UI shows so a trait reads as a direction,
+// not a mystery. Same rule 3 as the vocabulary — a fact about the stone, never a
+// solution; combinations (pairs) are still nowhere in this output.
+describe('trait directions are legible', () => {
+  it('VISIBLE: each factor becomes a labelled +/- line, raises first', () => {
+    expect(traitFactorLines('keen')).toEqual([
+      { axis: 'edge', label: 'chip yield', dir: 1, pct: 32 },
+      { axis: 'hold', label: 'edge & rune hold', dir: -1, pct: 18 },
+    ]);
+    // A neutral factor (=1) never produces a line, and no line is 0%.
+    for (const id of ALL_TRAITS) {
+      for (const l of traitFactorLines(id)) {
+        expect(l.pct, `${id} → ${l.label}`).toBeGreaterThan(0);
+        expect([1, -1]).toContain(l.dir);
+      }
+    }
+  });
+
+  it('reads as a one-line "raises A · lowers B" for every trait', () => {
+    expect(traitLeanText('keen')).toBe('raises chip yield · lowers edge & rune hold');
+    // Dense moves two axes that both read as strike power — they dedupe to one.
+    expect(traitLeanText('dense')).toBe('raises strike power · lowers chip speed');
+    for (const id of ALL_TRAITS) {
+      expect(traitLeanText(id).length, `${id} has no lean`).toBeGreaterThan(0);
+    }
+  });
+
+  it('composition lean multiplies, groups by player label, and nets', () => {
+    // Empty tool leans nowhere.
+    expect(compositionLean([])).toEqual([]);
+    // force + heft both read "strike power": Dense yields ONE strike line
+    // (1.38 × 1.18 = 1.6284 → +63%), not two.
+    const dense = compositionLean(['dense']);
+    const strike = dense.filter((l) => l.label === 'strike power');
+    expect(strike).toHaveLength(1);
+    expect(strike[0]!.dir).toBe(1);
+    expect(strike[0]!.pct).toBe(63);
+    // Duplicate traits multiply: two Keen heads → 1.32² on chip yield.
+    expect(compositionLean(['keen', 'keen']).find((l) => l.label === 'chip yield')!.pct).toBe(74);
+    // Opposing factors net across the set: Dense cuts chip speed (0.78), Light
+    // raises it more (1.34) → 1.0452, a small net RAISE.
+    const dl = compositionLean(['dense', 'light']);
+    expect(dl.find((l) => l.label === 'chip speed')!.dir).toBe(1);
+    // Sorted strongest-first.
+    for (let i = 1; i < dl.length; i++) expect(dl[i - 1]!.pct).toBeGreaterThanOrEqual(dl[i]!.pct);
   });
 });

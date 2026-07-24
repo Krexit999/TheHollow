@@ -160,7 +160,10 @@ describe('delver xp', () => {
     expect(engine.dispatch({ type: 'buySkillNode', id: 'sharpenedEdge' }).ok).toBe(true);
     expect(engine.dispatch({ type: 'buySkillNode', id: 'scholar' }).ok).toBe(true);
     expect(s.delver.skillPoints).toBe(3);
-    expect(engine.dispatch({ type: 'buySkillNode', id: 'stub.extraction.0' }).ok).toBe(false);
+    // A deeper-shell node is refused until you have breached to it (was a
+    // permanently-sealed stub; now a real node gated by unlockBreach).
+    expect(s.shell.breachCount).toBe(0);
+    expect(engine.dispatch({ type: 'buySkillNode', id: 'veinMemory' }).ok).toBe(false);
     engine.dispatch({ type: 'respecSkills' });
     expect(s.delver.skillPoints).toBe(5);
     expect(Object.keys(s.delver.skills)).toHaveLength(0);

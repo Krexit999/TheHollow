@@ -4,6 +4,7 @@ import type { Engine, GameState, MotifShape } from '../types';
 import {
   boardResonance,
   cellScores,
+  cellContribution,
   chordId,
   detectChords,
   matchProgression,
@@ -28,6 +29,37 @@ function place(engine: Engine, q: number, r: number, shape: MotifShape, rank = 1
   const result = engine.dispatch({ type: 'placeMotif', q, r, shape, rank });
   if (!result.ok) throw new Error(`place(${q},${r}) failed: ${result.reason}`);
 }
+
+describe('cellContribution — the arithmetic the player is shown', () => {
+  it('net always equals the cell resonance score, relation by relation', () => {
+    const { engine, s } = ready();
+    // A square with a same-shape neighbour (harmony), a wheel-successor feeder
+    // (flow), and a wheel-opposite (discord). Off-centre — the Navel is fused.
+    place(engine, 2, 0, 'square', 1);
+    place(engine, 3, 0, 'square', 1);   // harmony: min(1,1)=1 into (2,0)
+    place(engine, 2, 1, 'circle', 1);   // circle→square flow: 1/2=0.5 into (2,0)
+    place(engine, 1, 0, 'hex', 1);      // square↔hex discord: -1 into (2,0)
+    const key = hexKey(2, 0);
+    const c = cellContribution(s.lattice, key);
+    // net must match the authoritative score.
+    expect(c.net).toBe(cellScores(s.lattice)[key]);
+    // and the sum of the shown lines must equal net (nothing hidden or invented).
+    expect(c.relations.reduce((a, rel) => a + rel.value, 0)).toBe(c.net);
+    // the three relation kinds are all present and correctly valued.
+    const byKind = Object.fromEntries(c.relations.map((r) => [r.kind, r.value]));
+    expect(byKind['harmony']).toBe(1);
+    expect(byKind['flow']).toBe(0.5);
+    expect(byKind['discord']).toBe(-1);
+  });
+
+  it('a lone motif carries nothing and lists no relations', () => {
+    const { engine, s } = ready();
+    place(engine, 2, 0, 'triangle', 1);
+    const c = cellContribution(s.lattice, hexKey(2, 0));
+    expect(c.net).toBe(0);
+    expect(c.relations).toHaveLength(0);
+  });
+});
 
 describe('hex board', () => {
   it('ring sizes: 7 / 19 / 37 / 61', () => {

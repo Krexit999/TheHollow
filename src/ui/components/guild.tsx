@@ -5,7 +5,7 @@
  * of the thirty reads as an individual.
  */
 import { useState } from 'react';
-import { getCurrency } from '../../engine';
+import { getCurrency, currencyDef, resolveCurrencyId, fmt } from '../../engine';
 import type { GameState } from '../../engine';
 import {
   CHARTER_SINKS,
@@ -21,13 +21,14 @@ import {
 import { npcDef, REP_TIER_NAMES, REP_TIERS, repTier, type NpcDef, type PortraitDef } from '../../engine/guild/npcs';
 import { contractProgress } from '../../engine/guild/contracts';
 import { HIRELING_BY_NPC, hireCost, hiredCount } from '../../engine/guild/hirelings';
-import { caravanUnlocked, drift, effectiveFee, routesAvailable } from '../../engine/guild/caravan';
+import { gearDef } from '../../engine/combat/gear';
+import { caravanUnlocked, drift, effectiveFee, routeRate, routesAvailable } from '../../engine/guild/caravan';
 import { TITLES, TITLE_BY_ID } from '../../engine/guild/titles';
 import { materialsOfShell } from '../../engine/materials';
 import { materialCount } from '../../engine/systems/forge';
 import { ModifierCache } from '../../engine/modifiers';
 import { dispatch, useGame } from '../store';
-import { Amount } from './shared';
+import { Amount, CoinToast, useCoinToast } from './shared';
 import { MaterialIcon } from './MaterialIcon';
 
 const uiMods = new ModifierCache();
@@ -219,9 +220,21 @@ export function GuildPanel() {
 // One person, up close.
 // ---------------------------------------------------------------------------
 
+/** What a favour PAYS, in the player's words — the reward was in the data all
+ *  along; only the objective was ever shown. */
+function questRewardText(r: { scrip?: number; renown?: number; charter?: number; gearId?: string }): string {
+  const parts: string[] = [];
+  if (r.scrip) parts.push(`${r.scrip} Scrip`);
+  if (r.renown) parts.push(`${r.renown} Renown`);
+  if (r.charter) parts.push(`${r.charter} Charter`);
+  if (r.gearId) { try { parts.push(gearDef(r.gearId).name); } catch { parts.push('a piece of gear'); } }
+  return parts.join(' · ') || 'their goodwill';
+}
+
 function NpcCard({ state, def }: { state: Readonly<GameState>; def: NpcDef }) {
   const [stance, setStance] = useState<'fair' | 'press' | 'lowball'>('fair');
   const [note, setNote] = useState<string | null>(null);
+  const { toast, fire } = useCoinToast();
   const n = state.guild.npcs[def.id] ?? { rep: 0, met: false, questStep: 0 };
   const tier = repTier(n.rep);
   const nextAt = REP_TIERS[tier + 1];
@@ -233,7 +246,8 @@ function NpcCard({ state, def }: { state: Readonly<GameState>; def: NpcDef }) {
   const factor = priceFactor(state, def.id);
 
   return (
-    <div className="panel guild-warm p-3">
+    <div className="panel guild-warm relative p-3">
+      <CoinToast toast={toast} />
       <div className="flex items-start gap-3">
         <Portrait p={def.portrait} size={64} dim={away} />
         <div className="min-w-0 flex-1">
@@ -300,7 +314,11 @@ function NpcCard({ state, def }: { state: Readonly<GameState>; def: NpcDef }) {
                   disabled={left <= 0 || getCurrency(state, 'scrip').lt(price)}
                   onClick={() => {
                     const r = dispatch({ type: 'buyStock', npcId: def.id, slot: i, stance: def.id === 'vess' ? stance : undefined });
-                    if (r.ok) setNote((r.data as { haggleNote: string | null }).haggleNote);
+                    if (r.ok) {
+                      const cost = (r.data as { cost?: number }).cost;
+                      setNote((r.data as { haggleNote: string | null }).haggleNote);
+                      fire(`Bought — ${slot.label}${cost ? ` · −${cost} Scrip` : ''}`);
+                    }
                   }}
                 >
                   {left <= 0 ? 'sold out' : <>~{price} Scrip</>}
@@ -322,7 +340,10 @@ function NpcCard({ state, def }: { state: Readonly<GameState>; def: NpcDef }) {
             {def.name} wants · favour {Math.min(n.questStep, quest.length)} of {quest.length}
           </div>
           {n.questStep < quest.length ? (
-            <div className="mt-0.5 text-[11px] text-cave-200">{quest[n.questStep]!.note}</div>
+            <div className="mt-0.5">
+              <div className="text-[11px] text-cave-200">{quest[n.questStep]!.note}</div>
+              <div className="text-[10px] text-[#9fd8c0]">pays {questRewardText(quest[n.questStep]!.reward)} · advances on its own when done</div>
+            </div>
           ) : (
             <div className="mt-0.5 text-[11px] italic text-[#9fd8c0]">Nothing more — only the friendship.</div>
           )}
@@ -355,13 +376,15 @@ function NpcCard({ state, def }: { state: Readonly<GameState>; def: NpcDef }) {
 
 function SellRow({ state, buys }: { state: Readonly<GameState>; buys: 'ore' | 'combat' }) {
   const shellId = state.shell.current;
+  const { toast, fire } = useCoinToast();
   const sellable = (buys === 'combat'
     ? [...materialsOfShell('loam'), ...materialsOfShell('ferrite')].filter((m) => m.source === 'combat')
     : materialsOfShell(shellId).filter((m) => !m.source)
   ).filter((m) => materialCount(state, m.id) > 0);
   if (sellable.length === 0) return null;
   return (
-    <div className="mt-2 border-t border-cave-800/70 pt-2">
+    <div className="relative mt-2 border-t border-cave-800/70 pt-2">
+      <CoinToast toast={toast} color="#9ab87a" />
       <div className="text-[9px] uppercase tracking-widest text-cave-400">
         {buys === 'combat' ? 'She buys what bit you' : 'She buys ore, five at a time'}
       </div>
@@ -374,7 +397,10 @@ function SellRow({ state, buys }: { state: Readonly<GameState>; buys: 'ore' | 'c
               key={m.id}
               className="btn flex items-center gap-1 px-1.5 py-0.5 text-[10px]"
               title={`Sell ${count} ${m.name} for ${total} Scrip`}
-              onClick={() => dispatch({ type: 'sellMaterial', materialId: m.id, count })}
+              onClick={() => {
+                const r = dispatch({ type: 'sellMaterial', materialId: m.id, count });
+                if (r.ok) fire(`+${(r.data as { total: number }).total} Scrip · ${m.name} ×${count}`);
+              }}
             >
               <MaterialIcon id={m.id} size={14} />
               <span className="tnum">×{count} → {total}</span>
@@ -460,37 +486,65 @@ function CaravanCard({ state }: { state: Readonly<GameState> }) {
     );
   }
   const fee = effectiveFee(state);
+  const { toast, fire } = useCoinToast();
   return (
-    <div className="panel guild-warm p-3">
+    <div className="panel guild-warm relative p-3">
+      <CoinToast toast={toast} color="#9ab87a" />
       <div className="flex items-baseline justify-between">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">Serra&apos;s Caravan</span>
         <span className="tnum text-[10px] text-cave-400">
-          fee {(fee * 100).toFixed(0)}% · {state.guild.caravan.trades} loads · rates drift; holdings never rot
+          fee {(fee * 100).toFixed(0)}% · {state.guild.caravan.trades} loads
         </span>
       </div>
-      <div className="mt-1.5 space-y-1">
+      <div className="mt-1 text-[10px] leading-snug text-cave-400">
+        She trades one coin for another. Each leg pays her cut, so the road MOVES wealth — it never
+        makes it — and rates drift, so a lean leg swings back. Holdings never rot; there is no hurry.
+      </div>
+      <div className="mt-1.5 space-y-1.5">
         {routesAvailable(state).map((route) => {
           const d = drift(state, route);
           const hot = d > 1.06;
           const cold = d < 0.94;
+          const fromId = resolveCurrencyId(route.from, state);
+          const toId = resolveCurrencyId(route.to, state);
+          const fromName = currencyDef(fromId).name;
+          const toName = currencyDef(toId).name;
+          const rate = routeRate(state, null, route);
+          let load = getCurrency(state, fromId).mul(0.25);
+          if (route.maxLoad !== undefined) load = load.min(route.maxLoad);
+          const gain = load.mul(rate);
+          const canTrade = load.gt(0.01);
           return (
-            <div key={route.id} className="flex items-center justify-between gap-2 text-[11px]">
-              <span className="min-w-0 truncate text-cave-200">
-                {route.label}{' '}
+            <div key={route.id} className="rounded border border-cave-800/60 p-1.5">
+              <div className="flex items-baseline justify-between gap-2 text-[11px]">
+                <span className="min-w-0 truncate text-cave-200">{fromName} → {toName}</span>
                 <span
-                  className="tnum text-[9px]"
+                  className="tnum shrink-0 text-[9px]"
                   style={{ color: hot ? '#9ab87a' : cold ? '#7c8ede' : '#8a7f70' }}
                   title={hot ? 'The drift favors this leg right now' : cold ? 'A lean leg — it will swing back' : 'About fair'}
                 >
                   {hot ? '▲ good rate' : cold ? '▼ lean' : '— fair'}
                 </span>
-              </span>
-              <button
-                className={`btn shrink-0 px-2 py-0.5 text-[10px] ${hot ? 'btn-warm' : ''}`}
-                onClick={() => dispatch({ type: 'caravanTrade', route: route.id, amount: 0.25 })}
-              >
-                Send a quarter
-              </button>
+              </div>
+              <div className="mt-0.5 text-[9px] italic leading-snug text-cave-500">{route.label}</div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <span className="tnum min-w-0 truncate text-[9px] text-cave-400">
+                  {canTrade
+                    ? <>send ~{fmt(load)} {fromName} → get ~{fmt(gain)} {toName}</>
+                    : `nothing to send — earn ${fromName} first`}
+                </span>
+                <button
+                  className={`btn shrink-0 px-2 py-0.5 text-[10px] ${hot ? 'btn-warm' : ''}`}
+                  disabled={!canTrade}
+                  title={`Send a quarter of your ${fromName} down this leg`}
+                  onClick={() => {
+                    const r = dispatch({ type: 'caravanTrade', route: route.id, amount: 0.25 });
+                    if (r.ok) fire(`+${fmt((r.data as { received: typeof gain }).received)} ${toName}`);
+                  }}
+                >
+                  Send ¼
+                </button>
+              </div>
             </div>
           );
         })}

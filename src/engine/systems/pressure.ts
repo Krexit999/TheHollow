@@ -48,6 +48,7 @@ import { allUpgrades, stat } from '../upgrades';
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { applyFieldSize, cellCap } from './face';
 import { runFaceReset } from '../signatures';
+import { consumeMaterial, materialCount } from './forge';
 import { currentWeather } from './weather';
 import { harmHireling } from '../guild/hirelings';
 import { chipCurrencyId, currentShell } from '../shells';
@@ -98,6 +99,10 @@ export const VENT_OUTLETS = [3, 6, 2 * VENT_W + 6, 4 * VENT_W + 3, 4 * VENT_W + 
 export const OUTLET_VENT = 0.5;
 export const VENT_FALLOFF = 0.92;
 export const MAX_PIPES = 24;
+/** Sections that join without a gasket (Part B export spine). Twelve covers
+ *  the full three-outlet route the heat sim's every stance lays — the flood
+ *  guarantees never touch the gate. Pipes 13-24 want a Glasseal each. */
+export const FREE_PIPES = 12;
 export const PIPE_COST_BASE = 15;
 export const PIPE_COST_RATIO = 1.45;
 
@@ -152,7 +157,17 @@ export function layPipe(state: GameState, cell: number): ActionResult {
   const cost = nextPipeCost(state);
   const held = state.currencies['obsidian'] ?? D(0);
   if (held.lt(cost)) return { ok: false, reason: `${cost} Obsidian to cast the section` };
+  // THE EXPORT SPINE (Part B): the standard gallery — twelve sections, enough
+  // for the full three-outlet route every heat policy runs — joins dry. Every
+  // section past it wants a Glasseal gasket, Glassmere's export, or the joint
+  // weeps heat. The idle-never-floods guarantee never needed a thirteenth
+  // pipe, so the guarantee and the gate never meet.
+  const wantsSeal = pipeCount(state) >= FREE_PIPES;
+  if (wantsSeal && materialCount(state, 'glasseal') < 1) {
+    return { ok: false, reason: 'Sections past the twelfth want 1 Glasseal — cast it at the Bench in Glassmere, or buy it from Serra' };
+  }
   state.currencies['obsidian'] = held.sub(cost);
+  if (wantsSeal) consumeMaterial(state, 'glasseal', 1);
   state.pressure.pipes[cell] = 1;
   return { ok: true };
 }

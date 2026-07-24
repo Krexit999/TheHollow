@@ -4,6 +4,7 @@ import type { Engine, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import { D } from '../decimal';
 import { addCurrency, getCurrency } from '../resources';
+import { addMaterial } from '../systems/forge';
 import { traceBeam, setMirror, splitUnlocked } from '../systems/refraction';
 import {
   CONSTELLATIONS, OBSERVATION_TIERS, collectObservation, observationProgress, startObservation,
@@ -92,6 +93,9 @@ describe('refraction: light walks a path you arranged', () => {
 describe('the observatory: AFK skies with structure', () => {
   it('exposes on the game clock, waits forever, completes constellations', () => {
     const { engine, s } = glassy();
+    // The export spine: a held gaze wraps the lens in Verdance's cloth.
+    expect(startObservation(s, 1).ok).toBe(false); // no fibercloth yet
+    addMaterial(s, 'fibercloth', 70, 3);
     expect(startObservation(s, 1).ok).toBe(true);
     expect(collectObservation(s, ctx).ok).toBe(false); // still exposing
     s.guild.clockMs += OBSERVATION_TIERS[1]!.minutes * 60_000 + 1;

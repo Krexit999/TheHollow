@@ -21,6 +21,7 @@ import type { ActionResult, EngineCtx, GameState } from '../../types';
 import { spendCurrency } from '../../resources';
 import { registerModifier } from '../../modifiers';
 import { registerCraftSystem, type CraftSystem, type CodexEntry } from '../../craft';
+import { addMaterial, consumeMaterial } from '../../systems/forge';
 import { masteryLevel } from '../../systems/mastery';
 
 export const ARRAY_SIZE = 6;
@@ -30,6 +31,8 @@ export const TEMP_DECAY = 0.08; // 8%/s toward cold
 export const IGNITE_AT = 0.2; // a dying cell (below this remaining share) lights neighbors
 export const PASSIVE_RANK_SEC = 1500;
 export const PASSIVE_RANK_CAP = 20;
+/** In-band seconds per Emberglass annealed (Part B export spine). */
+export const ANNEAL_SEC = 90;
 export const PASSIVE_PER_RANK = 0.008; // ×20 = +0.16
 export const BURN_BONUS_SCALE = 0.04; // × log2(1 + best/120) — +0.16 at ~30 min
 
@@ -66,10 +69,30 @@ export function buyFuel(state: GameState, fuelId: string, n = 1): ActionResult {
   return { ok: true };
 }
 
+/** Rows of the grate open to fuel: the first is free; every further row wants
+ *  a Ground Lens socketed over it (Part B export spine — Glassmere's export
+ *  steadies the draft). */
+export function openRows(state: GameState): number {
+  return Math.min(ARRAY_SIZE, 1 + (state.ember.sockets ?? 0));
+}
+
+export function installSocket(state: GameState): ActionResult {
+  if (!arrayUnlocked(state)) return { ok: false, reason: 'The Array is cold' };
+  if (openRows(state) >= ARRAY_SIZE) return { ok: false, reason: 'Every row is socketed' };
+  if (consumeMaterial(state, 'groundlens', 1) === null) {
+    return { ok: false, reason: 'A socket wants 1 Ground Lens — grind it at the Bench in Glassmere, or buy one from Serra' };
+  }
+  state.ember.sockets = (state.ember.sockets ?? 0) + 1;
+  return { ok: true, data: { rows: openRows(state) } };
+}
+
 /** Place (or clear) fuel in a cold cell. Burning cells cannot be touched. */
 export function placeFuel(state: GameState, cell: number, fuelId: string | null): ActionResult {
   if (cell < 0 || cell >= ARRAY_SIZE * ARRAY_SIZE) return { ok: false, reason: 'Off the grate' };
   if (state.ember.burn[cell]! > 0) return { ok: false, reason: 'That cell is burning' };
+  if (fuelId !== null && Math.floor(cell / ARRAY_SIZE) >= openRows(state)) {
+    return { ok: false, reason: 'That row has no lens over it — socket a Ground Lens (Bench in Glassmere, or Serra)' };
+  }
   const current = state.ember.grid[cell];
   if (fuelId === null) {
     if (current) state.ember.fuelOwned[current] = (state.ember.fuelOwned[current] ?? 0) + 1;
@@ -179,6 +202,19 @@ function tickArray(state: GameState, ctx: EngineCtx, dt: number): void {
   e.temp = Math.max(0, e.temp * (1 - TEMP_DECAY * dt) + output * dt);
   const inBand = e.temp >= BAND_LOW && e.temp <= BAND_HIGH;
   if (inBand) {
+    // THE ANNEAL (Part B export spine): 90 seconds held in the band, in total,
+    // anneals one Emberglass — Cinder's export, the glass the Hollow rebuilds
+    // with. Work done accumulates across band exits (unlike the sustain
+    // streak); only a LIVE fire anneals — the banked fire makes rank, not
+    // glass.
+    const prevGlass = Math.floor((e.annealSec ?? 0) / ANNEAL_SEC);
+    e.annealSec = (e.annealSec ?? 0) + dt;
+    const nowGlass = Math.floor(e.annealSec / ANNEAL_SEC);
+    if (nowGlass > prevGlass) {
+      addMaterial(state, 'emberglass', 70, nowGlass - prevGlass);
+      ctx.emit({ type: 'emberglassAnnealed', total: nowGlass });
+      ctx.dirty();
+    }
     e.sustainSec += dt;
     if (e.sustainSec > e.bestSustainSec) {
       const prevTier = Math.floor(e.bestSustainSec / 60);
@@ -205,6 +241,8 @@ export const emberArraySystem: CraftSystem = {
     // is the kind of thing that bites two phases later — normalise it here
     // rather than bump the save version for one flag (A.24).
     state.ember.draw ??= false;
+    state.ember.sockets ??= 0;
+    state.ember.annealSec ??= 0;
   },
   tick(state, _mods, ctx, dt) {
     tickArray(state, ctx, dt);
@@ -272,5 +310,7 @@ export function defaultEmberState(): GameState['ember'] {
     fuelOwned: {},
     passiveRank: 0,
     passiveProgressSec: 0,
+    sockets: 0,
+    annealSec: 0,
   };
 }

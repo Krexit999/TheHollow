@@ -203,6 +203,10 @@ describe('the ember array: a fuse you design and then ride', () => {
     const { engine, s } = cindery();
     engine.dispatch({ type: 'debug', op: 'grant', currency: 'ember', amount: 10000 });
     expect(buyFuel(s, 'emberbillet', 4).ok).toBe(true);
+    // Cells 14-16 sit in row 2 — rows past the first want lens sockets (export
+    // spine; the gate itself is exercised in export-spine.test.ts).
+    expect(placeFuel(s, 14, 'emberbillet').ok).toBe(false);
+    s.ember.sockets = 2;
     expect(placeFuel(s, 14, 'emberbillet').ok).toBe(true);
     expect(placeFuel(s, 15, 'emberbillet').ok).toBe(true);
     expect(placeFuel(s, 16, 'emberbillet').ok).toBe(true);

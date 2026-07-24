@@ -20,6 +20,7 @@ import type { DrillBehavior } from '../../engine';
 import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
+import { Select } from './Select';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
 import { OpticsCard } from './glassmere';
@@ -205,18 +206,20 @@ export function KilnPanel() {
             you can actually feed (a material you hold) are offered. */}
         <div className="mt-2 flex items-center gap-1.5">
           <span className="shrink-0 text-[10px] uppercase tracking-wide text-cave-500">Fuel</span>
-          <select
-            className="min-h-[32px] flex-1 rounded border border-cave-700 bg-cave-900 px-1.5 text-[11px] text-cave-200"
-            value={state.kiln.fuel ?? ''}
+          <Select
+            className="flex-1"
+            ariaLabel="Kiln fuel"
             title="Each fuel trades how fast it heats against how well it holds — no strictly-best"
-            onChange={(e) => dispatch({ type: 'setKilnFuel', fuelId: e.target.value || null })}
-          >
-            <option value="">Bare fire (no fuel)</option>
-            {KILN_FUELS.map((f) => {
-              const held = materialCount(state, f.materialId);
-              return <option key={f.id} value={f.id} disabled={held < 1 && state.kiln.fuel !== f.id}>{f.name} ×{held}</option>;
-            })}
-          </select>
+            value={state.kiln.fuel ?? ''}
+            onChange={(v) => dispatch({ type: 'setKilnFuel', fuelId: v || null })}
+            options={[
+              { value: '', label: 'Bare fire (no fuel)' },
+              ...KILN_FUELS.map((f) => {
+                const held = materialCount(state, f.materialId);
+                return { value: f.id, label: `${f.name} ×${held}`, disabled: held < 1 && state.kiln.fuel !== f.id };
+              }),
+            ]}
+          />
         </div>
         {kilnFuel(state.kiln.fuel) && (
           <p className="mt-1 text-[10px] italic leading-snug text-cave-500">{kilnFuel(state.kiln.fuel)!.note}</p>
@@ -297,7 +300,6 @@ export function DrillsPanel() {
   }
 
   const countDef = allUpgrades().find((u) => u.id === 'drillCount')!;
-  const brick = getCurrency(state, 'brick');
 
   return (
     <div className="space-y-2">
@@ -313,7 +315,7 @@ export function DrillsPanel() {
       {state.drills.units.length < MAX_DRILLS && <UpgradeRow def={countDef} />}
       <div className="space-y-1.5">
         {state.drills.units.map((unit, i) => (
-          <DrillRow key={i} state={state} m={m} unit={unit} i={i} brick={brick} />
+          <DrillRow key={i} state={state} m={m} unit={unit} i={i} />
         ))}
       </div>
     </div>
@@ -328,11 +330,10 @@ const CONDITION_META: Record<string, { label: string; color: string }> = {
 };
 
 /** One drill — an individual: name, condition, affinity, and how it is configured. */
-function DrillRow({ state, m, unit, i, brick }: {
-  state: GameState; m: ModifierCache; unit: GameState['drills']['units'][number]; i: number; brick: ReturnType<typeof getCurrency>;
+function DrillRow({ state, m, unit, i }: {
+  state: GameState; m: ModifierCache; unit: GameState['drills']['units'][number]; i: number;
 }) {
   const upCost = D(5).mul(Math.pow(1.25, unit.level));
-  const canUp = unit.level < 25 && brick.gte(upCost);
   const behavior = drillHead(unit.head)?.behavior ?? unit.behavior;
   const meta = BEHAVIOR_META[behavior];
   const cond = drillCondition(unit);
@@ -340,7 +341,13 @@ function DrillRow({ state, m, unit, i, brick }: {
   const wear = unit.wear ?? 0;
   const shell = currentShell(state);
   const aff = affinityLevel(unit, shell.id);
+  // Both upgrade AND repair are paid in the shell's converted currency (Brick in
+  // Loam, its own coin deeper). The old code checked BRICK for the upgrade, so
+  // past Loam the button read the wrong purse. Name it, and check the real one.
   const conv = convCurrencyId(state);
+  const convName = currencyDef(conv).name;
+  const convColor = currencyDef(conv).color;
+  const canUp = unit.level < 25 && getCurrency(state, conv).gte(upCost);
   const repairCost = D(drillRepairCost(unit));
   const canRepair = wear > 0 && getCurrency(state, conv).gte(repairCost);
   // Materials the player actually holds — the pool a bit can be cut from.
@@ -365,9 +372,10 @@ function DrillRow({ state, m, unit, i, brick }: {
         <button
           className={`btn shrink-0 px-2 py-1 text-[11px] ${canUp ? 'btn-warm' : ''}`}
           disabled={!canUp}
+          title={unit.level >= 25 ? 'This drill is at its ceiling' : `Upgrade — costs ${fmtNum(upCost.toNumber(), 0)} ${convName}`}
           onClick={() => dispatch({ type: 'upgradeDrill', index: i })}
         >
-          {unit.level >= 25 ? 'Max' : <>▲ <Amount value={upCost} color="#c96f4a" /></>}
+          {unit.level >= 25 ? 'Max' : <>▲ <Amount value={upCost} color={convColor} /> <span className="text-[9px] font-normal text-cave-400">{convName}</span></>}
         </button>
       </div>
 
@@ -389,10 +397,10 @@ function DrillRow({ state, m, unit, i, brick }: {
           <button
             className={`min-h-[28px] shrink-0 rounded border px-2 text-[10px] ${canRepair ? 'border-lamp-500/50 text-lamp-200 hover:bg-cave-800' : 'border-cave-800 text-cave-500'}`}
             disabled={!canRepair}
-            title="Repair to pristine"
+            title={`Repair to pristine — costs ${fmtNum(repairCost.toNumber(), 0)} ${convName}`}
             onClick={() => dispatch({ type: 'repairDrill', index: i })}
           >
-            Repair <Amount value={repairCost} color="#c96f4a" />
+            Repair <Amount value={repairCost} color={convColor} /> <span className="text-[9px] text-cave-400">{convName}</span>
           </button>
         </div>
       )}
@@ -412,27 +420,31 @@ function DrillRow({ state, m, unit, i, brick }: {
             ))}
           </div>
         )}
-        <select
-          className="min-h-[28px] rounded border border-cave-700 bg-cave-900 px-1 text-[10px] text-cave-200"
-          value={unit.head ?? ''}
+        <Select
+          className="min-w-[6.5rem] flex-1"
+          ariaLabel="Drill head"
           title="Fit a head — it sets how the drill targets and where its strength leans"
-          onChange={(e) => dispatch({ type: 'fitDrillHead', index: i, head: e.target.value || null })}
-        >
-          <option value="">No head (behaviour)</option>
-          {DRILL_HEADS.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
-        </select>
-        <select
-          className="min-h-[28px] max-w-[7.5rem] rounded border border-cave-700 bg-cave-900 px-1 text-[10px] text-cave-200"
-          value={unit.bit?.materialId ?? ''}
+          value={unit.head ?? ''}
+          onChange={(v) => dispatch({ type: 'fitDrillHead', index: i, head: v || null })}
+          options={[
+            { value: '', label: 'No head (behaviour)' },
+            ...DRILL_HEADS.map((h) => ({ value: h.id, label: h.name })),
+          ]}
+        />
+        <Select
+          className="min-w-[6.5rem] flex-1"
+          ariaLabel="Drill bit"
           title="Cut a bit from a material — its traits tune power, speed, and wear"
-          onChange={(e) => dispatch({ type: 'fitDrillBit', index: i, materialId: e.target.value || null })}
-        >
-          <option value="">No bit</option>
-          {unit.bit && !ownedBits.some((b) => b.id === unit.bit!.materialId) && (
-            <option value={unit.bit.materialId}>{materialDef(unit.bit.materialId).name} (fitted)</option>
-          )}
-          {ownedBits.map((b) => <option key={b.id} value={b.id}>{b.name} ×{materialCount(state, b.id)}</option>)}
-        </select>
+          value={unit.bit?.materialId ?? ''}
+          onChange={(v) => dispatch({ type: 'fitDrillBit', index: i, materialId: v || null })}
+          options={[
+            { value: '', label: 'No bit' },
+            ...(unit.bit && !ownedBits.some((b) => b.id === unit.bit!.materialId)
+              ? [{ value: unit.bit.materialId, label: `${materialDef(unit.bit.materialId).name} (fitted)` }]
+              : []),
+            ...ownedBits.map((b) => ({ value: b.id, label: `${b.name} ×${materialCount(state, b.id)}` })),
+          ]}
+        />
         {unit.bit && <MaterialIcon id={unit.bit.materialId} size={16} />}
       </div>
     </div>

@@ -21,6 +21,7 @@
  * destroyed under the live Face (Pixi's shared batch pools do not survive it).
  */
 import { Application, Container, Graphics, Sprite, Texture, RenderTexture } from 'pixi.js';
+import { guardPixiRender, lastRenderFailed } from '../pixiGuard';
 import type { Engine } from '../../engine';
 import { currentShell } from '../../engine/shells';
 import { railDepth, digShifts, cacheReady } from '../../engine/systems/shaftSys';
@@ -190,6 +191,7 @@ export class ShaftView {
       preserveDrawingBuffer: true,
     });
     if (this.destroyed) { this.app.destroy(true); return; }
+    guardPixiRender(this.app, 'shaft'); // covers chunk bakes AND the stage render
     this.host.appendChild(this.app.canvas);
     this.app.canvas.style.touchAction = 'none';
 
@@ -221,8 +223,11 @@ export class ShaftView {
     this.destroyed = true;
     this.resizeObserver?.disconnect();
     if (this.wheelHandler && this.app?.canvas) this.app.canvas.removeEventListener('wheel', this.wheelHandler);
+    this.flushDisposals();
     for (const c of this.chunks.values()) { c.rt.destroy(true); }
     this.chunks.clear();
+    for (const rt of this.rtPool) rt.destroy(true);
+    this.rtPool = [];
     if (this.app?.renderer) this.app.destroy(true, { children: true });
   }
 
@@ -231,6 +236,9 @@ export class ShaftView {
     this.active = active;
     if (active) {
       this.targetDepth = this.lampDepth = this.lastPlayerDepth = this.engine.getState().depth;
+      // A resize (or the very first sizing) arrived while hidden — run it now,
+      // while THIS renderer is the live one.
+      if (this.pendingLayout) this.layout();
       // Shell may have changed while hidden.
       const nowShell = this.engine.getState().shell.current;
       if (nowShell !== this.shellId) { this.shellId = nowShell; this.clearChunks(); this.rebuildStatics(); }
@@ -261,8 +269,18 @@ export class ShaftView {
   // Layout
   // -------------------------------------------------------------------------
 
+  /** Layout was requested while the view slept — run it on the next wake. */
+  private pendingLayout = false;
+
   private layout(): void {
     if (!this.app?.renderer) return;
+    // While the Shaft is hidden, DEFER: layout clears the chunk cache, and
+    // destroying RenderTextures while the Face's renderer is the live one is
+    // exactly the shared-batcher poisoning that killed the Face (A.38). The
+    // ResizeObserver fires on every hero height swap (phone: 66vh ↔ 42vh), so
+    // this path runs on every single "back to Dig" without the guard.
+    if (!this.active) { this.pendingLayout = true; return; }
+    this.pendingLayout = false;
     this.app.resize();
     const { width, height } = this.app.screen;
     this.viewW = width;
@@ -278,10 +296,26 @@ export class ShaftView {
     this.rebuildStatics();
   }
 
+  /** Evicted chunk textures waiting to be rendered over (same size until layout). */
+  private rtPool: RenderTexture[] = [];
+  /** Destruction deferred to the top of the next frame — never mid-batch. */
+  private pendingDispose: (() => void)[] = [];
+
+  private flushDisposals(): void {
+    if (this.pendingDispose.length === 0) return;
+    const list = this.pendingDispose;
+    this.pendingDispose = [];
+    for (const f of list) f();
+  }
+
   private clearChunks(): void {
+    this.flushDisposals();
     for (const c of this.chunks.values()) { c.sprite.destroy(); c.rt.destroy(true); }
     this.chunks.clear();
     this.chunkLayer.removeChildren();
+    // Sizes are about to change (ppd/viewW) — the pooled textures are stale.
+    for (const rt of this.rtPool) rt.destroy(true);
+    this.rtPool = [];
   }
 
   // -------------------------------------------------------------------------
@@ -406,7 +440,7 @@ export class ShaftView {
     return this.centerX + side * hw * this.ppd;
   }
 
-  private bakeChunk(index: number): Chunk {
+  private bakeChunk(index: number): Chunk | null {
     const d0 = index * CHUNK_DEPTHS - ShaftView.PAD;
     const d1 = index * CHUNK_DEPTHS + CHUNK_DEPTHS + ShaftView.PAD;
     const W = Math.ceil(this.viewW);
@@ -571,10 +605,24 @@ export class ShaftView {
     const cont = new Container();
     cont.addChild(new Sprite(canvasTex));
     this.drawDecals(cont, index, d0, d1, profile, yOf);
-    const rt = RenderTexture.create({ width: W, height: H, resolution: 1 });
-    this.app.renderer.render({ container: cont, target: rt });
-    cont.destroy({ children: true });
-    canvasTex.destroy(true);
+    // RECYCLE, don't destroy: evicted chunk textures go back to a pool and are
+    // rendered over. Destroying a texture that a pooled batch still references
+    // is the shared-batcher poisoning reproduced in A.38 ("null.clear" /
+    // "null.geometry" on later frames) — recycling removes the destroy entirely.
+    const rt = this.rtPool.pop() ?? RenderTexture.create({ width: W, height: H, resolution: 1 });
+    this.app.renderer.render({ container: cont, target: rt, clear: true });
+    // Defer the bake scaffolding's destruction to the top of the NEXT frame:
+    // tearing it down while this frame's batches still reference it is the
+    // same poisoning by another door.
+    this.pendingDispose.push(() => { cont.destroy({ children: true }); canvasTex.destroy(true); });
+    // A SWALLOWED bake render (the guard eats poisoned frames) must not be
+    // cached — a blank RenderTexture cached forever IS the "random empty band
+    // in the column" report. Return the texture to the pool and signal the
+    // caller to retry next frame, when the batch pools have rebuilt.
+    if (lastRenderFailed(this.app)) {
+      this.rtPool.push(rt);
+      return null;
+    }
     const sprite = new Sprite(rt);
     sprite.eventMode = 'none';
     return { key: `${this.shellId}:${index}`, index, rt, sprite, used: this.chunkClock++ };
@@ -627,19 +675,25 @@ export class ShaftView {
       let c = this.chunks.get(key);
       if (c) { this.chunkHits++; c.used = this.chunkClock++; }
       else {
-        c = this.bakeChunk(i);
+        const baked = this.bakeChunk(i);
+        if (!baked) continue; // failed bake — retry next frame, never cache blank
+        c = baked;
         this.chunks.set(key, c);
         this.chunkLayer.addChild(c.sprite);
       }
       c.sprite.position.set(0, (i * CHUNK_DEPTHS - ShaftView.PAD) * this.ppd);
     }
-    // Evict LRU beyond the cap.
+    // Evict LRU beyond the cap. The sprite comes off the stage now but is
+    // destroyed next frame; the RenderTexture is recycled, never destroyed.
     while (this.chunks.size > ShaftView.LRU_CAP) {
       let lru: Chunk | null = null;
       for (const c of this.chunks.values()) if (!lru || c.used < lru.used) lru = c;
       if (!lru) break;
-      lru.sprite.destroy(); lru.rt.destroy(true);
-      this.chunks.delete(lru.key);
+      const dead = lru;
+      this.chunkLayer.removeChild(dead.sprite);
+      this.pendingDispose.push(() => dead.sprite.destroy());
+      this.rtPool.push(dead.rt);
+      this.chunks.delete(dead.key);
     }
   }
 
@@ -809,8 +863,26 @@ export class ShaftView {
   // Frame
   // -------------------------------------------------------------------------
 
+  private frameErrCount = 0;
+  /** Same throw-proofing as FaceView: a bad frame is logged and skipped, never
+   *  the death of the loop. */
   private frame(dt: number): void {
+    try {
+      this.frameInner(dt);
+    } catch (e) {
+      if (this.frameErrCount < 3) {
+        this.frameErrCount += 1;
+        // eslint-disable-next-line no-console
+        console.error('[ShaftView.frame] recovered from a throw (ticker kept alive):', e);
+      }
+    }
+  }
+
+  private frameInner(dt: number): void {
     if (this.destroyed || !this.active) return;
+    // Yesterday's bake scaffolding and evicted sprites die HERE, before any
+    // rendering this frame — never while a batch still points at them.
+    this.flushDisposals();
     const s = this.engine.getState();
     if (s.shell.current !== this.shellId) { this.shellId = s.shell.current; this.clearChunks(); this.dynSig = null; }
 

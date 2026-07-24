@@ -4,7 +4,7 @@
  */
 import { useState } from 'react';
 import { getCurrency } from '../../engine';
-import type { GameState } from '../../engine';
+import type { GameState, Bucket } from '../../engine';
 import { WAVELENGTH_RULES, splitUnlocked } from '../../engine/systems/refraction';
 import {
   CONSTELLATIONS, OBSERVATION_TIERS, observationProgress, observatoryUnlocked,
@@ -14,11 +14,27 @@ import {
 } from '../../engine/content/shell4/bench';
 import { WARRENS, puzzleData, warrenAvailable } from '../../engine/content/shell4/warrens';
 import {
-  INSCRIPTION_TARGETS, RUNES, RUNE_GLYPHS, RUNE_NAMES, RUNE_PAIRS, RUNE_SLOTS,
+  INSCRIPTION_TARGETS, RUNES, RUNE_GLYPHS, RUNE_NAMES, RUNE_PAIRS, RUNE_SLOTS, RUNE_TRIPLES,
+  runeSlots, sequencePairs, sequenceTriples,
   type RuneId,
 } from '../../engine/content/shell4/runes';
 import { dispatch, useGame } from '../store';
-import { Amount } from './shared';
+import { Amount, BUCKET_NAME } from './shared';
+import { materialCount } from '../../engine/systems/forge';
+import { D, Decimal } from '../../engine/decimal';
+import { ExportProduceRow } from './exports';
+
+/**
+ * A rune join's effect in the player's own words: the bucket it feeds and by how
+ * much. Cost buckets (value < 1) read as a reduction. This is a RULE made legible
+ * (rule 5), never a hint about which joins pay — that stays discovered.
+ */
+function runeEffectText(def: { bucket: Bucket; value: number }): string {
+  const name = BUCKET_NAME[def.bucket];
+  if (def.bucket === 'offlineEffAdd') return `${name} +${Math.round(def.value * 100)}%`;
+  const pct = Math.round(Math.abs(def.value - 1) * 100);
+  return `${name} ${def.value >= 1 ? '+' : '−'}${pct}%`;
+}
 
 // ---------------------------------------------------------------------------
 // The Optics card — lives in the Dig panel while the beam is yours.
@@ -34,43 +50,78 @@ export function OpticsCard() {
   const carried = state.shell.signatures.includes('refraction');
   if (!native && !carried) return null;
   const placed = Object.keys(state.refraction.mirrors).length;
+  const mirrorCost = D(40).mul(Decimal.pow(1.5, state.refraction.mirrorStock - 2));
+  const wantsResin = state.refraction.mirrorStock >= 4;
+  const resinHeld = materialCount(state as GameState, 'setresin');
 
   return (
     <div className="panel p-3">
       <div className="flex items-baseline justify-between">
         <span className="text-sm font-semibold text-[#bcd8ee]">The Beam</span>
         <span className="tnum text-[10px] text-cave-400">
-          mirrors {placed}/{state.refraction.mirrorStock} · lit cells harvest brighter
+          mirrors {placed}/{state.refraction.mirrorStock}
         </span>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-        <span className="text-cave-400">Enters at row</span>
-        {Array.from({ length: state.face.h }, (_, r) => (
-          <button
-            key={r}
-            className={`btn btn-cell h-6 w-6 p-0 text-[10px] ${state.refraction.entryRow === r ? 'btn-warm' : ''}`}
-            onClick={() => dispatch({ type: 'setBeamRow', row: r })}
-          >
-            {r + 1}
-          </button>
-        ))}
+      {/* Layer 1 — what it IS. Layer 2 — what to DO now. (Layer 3, where the
+          numbers come from, is the readout line below the controls.) */}
+      <p className="mt-1 text-[11px] leading-snug text-cave-400">
+        A shaft of light enters one row of the face and walks straight across it. Mirrors bend it;
+        a cell the beam passes through is <span className="text-[#bcd8ee]">lit</span>, and a lit cell
+        pays more when you chip it.
+      </p>
+      <p className="mt-1 text-[11px] leading-snug text-cave-300">
+        Pick the entry row, tap <span className="text-[#bcd8ee]">place mirrors</span> and set
+        <span className="text-cave-200"> /</span> or <span className="text-cave-200">\</span> on the
+        face to steer the beam across your richest cells — then chip the lit ones.
+      </p>
+
+      {/* Entry row — its own centred row of proper tap targets (not a 24px pad
+          with an off-centre digit). */}
+      <div className="mt-2">
+        <div className="text-center text-[10px] uppercase tracking-wider text-cave-500">Enters at row</div>
+        <div className="mt-1 flex flex-wrap justify-center gap-1.5">
+          {Array.from({ length: state.face.h }, (_, r) => (
+            <button
+              key={r}
+              aria-label={`Beam enters at row ${r + 1}`}
+              aria-pressed={state.refraction.entryRow === r}
+              className={`btn flex w-10 items-center justify-center px-0 py-1.5 text-xs ${state.refraction.entryRow === r ? 'btn-warm' : ''}`}
+              onClick={() => dispatch({ type: 'setBeamRow', row: r })}
+            >
+              {r + 1}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <button
-          className={`btn ml-auto px-2 py-0.5 text-[10px] ${opticsMode ? 'btn-warm' : ''}`}
+          className={`btn flex-1 px-2 py-1 text-[11px] ${opticsMode ? 'btn-warm' : ''}`}
           title="While placing: tapping the face cycles a mirror ( / then \ then none ) instead of chipping."
           onClick={() => setOpticsMode(!opticsMode)}
         >
           {opticsMode ? 'placing mirrors…' : 'place mirrors'}
         </button>
         <button
-          className="btn px-2 py-0.5 text-[10px]"
-          disabled={getCurrency(state, 'silica').lt(40)}
+          className="btn px-2 py-1 text-[11px]"
+          disabled={getCurrency(state, 'silica').lt(mirrorCost) || (wantsResin && resinHeld < 1)}
+          title={wantsResin
+            ? `Mirrors past the fourth are silvered with Set Resin (held ${resinHeld}) — the Still in Verdance, or Serra`
+            : 'Buy another mirror to place'}
           onClick={() => dispatch({ type: 'buyMirror' })}
         >
-          + mirror · Silica
+          + mirror · <Amount value={mirrorCost} color="#c8c2b8" /> Silica
+          {wantsResin && <span className="text-[#bd9a44]"> + 1 Set Resin ({resinHeld})</span>}
         </button>
       </div>
+
+      {/* Layer 3 — where the numbers live. */}
+      <div className="mt-2 border-t border-cave-800 pt-1.5 text-[10px] text-cave-500">
+        {placed} of {state.refraction.mirrorStock} mirrors placed · lit cells harvest brighter, and
+        a full-charge cell on the path <span className="text-cave-400">amplifies</span> the beam onward.
+      </div>
       {splitUnlocked(state) && (
-        <div className="mt-1.5 border-t border-cave-800 pt-1.5 text-[9px] leading-relaxed text-cave-400">
+        <div className="mt-1.5 text-[9px] leading-relaxed text-cave-400">
           <span className="font-semibold text-[#bcd8ee]">Wavelength Split.</span>{' '}
           {WAVELENGTH_RULES.slice(1).join(' ')}
         </div>
@@ -86,6 +137,7 @@ export function OpticsCard() {
 export function ObservatoryPanel() {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
+  const [obsNote, setObsNote] = useState<string | null>(null);
   if (!state) return null;
   if (!observatoryUnlocked(state)) {
     return (
@@ -123,14 +175,27 @@ export function ObservatoryPanel() {
           </div>
         ) : (
           <div className="mt-2 grid grid-cols-2 gap-1.5">
-            {OBSERVATION_TIERS.map((t) => (
-              <button key={t.id} className="btn py-1.5 text-[11px]" onClick={() => dispatch({ type: 'startObservation', tier: t.id })}>
-                {t.name}
-                <span className="block text-[9px] text-cave-400">{t.minutes}m · ~{t.spectrum} Spectrum</span>
-              </button>
-            ))}
+            {OBSERVATION_TIERS.map((t) => {
+              const cloth = materialCount(state as GameState, 'fibercloth');
+              const short = t.cloth > cloth;
+              return (
+                <button
+                  key={t.id}
+                  className="btn py-1.5 text-[11px]"
+                  disabled={short}
+                  onClick={() => setObsNote(dispatch({ type: 'startObservation', tier: t.id }).reason ?? null)}
+                >
+                  {t.name}
+                  <span className="block text-[9px] text-cave-400">
+                    {t.minutes}m · ~{t.spectrum} Spectrum
+                    {t.cloth > 0 && <> · {t.cloth} Fibercloth ({cloth} held)</>}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         )}
+        {obsNote && <div className="mt-1.5 text-[10px] text-[#d4a86a]">{obsNote}</div>}
       </div>
       {/* Star charts — a collection with structure. */}
       <div className="panel p-3">
@@ -187,6 +252,9 @@ export function BenchPanel() {
 
   return (
     <div className="space-y-2">
+      {/* The exports: ground and cast for the fire below (Part B spine) */}
+      <ExportProduceRow materialId="groundlens" />
+      <ExportProduceRow materialId="glasseal" />
       <div className="panel p-3">
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-[#bcd8ee]">Solved</span>
@@ -461,13 +529,18 @@ export function RunesPanel() {
     );
   }
   const current = state.runes.inscriptions[target] ?? [null, null, null];
+  // The tool earns MORE rune room the higher its tier (up to 5); gear stays at 3.
+  // The editor must offer exactly that many, or the extra slots — and the triples
+  // that only fit in a longer sequence — are unreachable.
+  const slots = runeSlots(state, target);
+  const view = Array.from({ length: slots }, (_, i) => seq[i] ?? null);
 
   return (
     <div className="space-y-2">
       <div className="panel p-3">
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-[#bcd8ee]">Inscription</span>
-          <span className="tnum text-[10px] text-cave-400">{state.runes.pairsSeen.length}/14 pairs known</span>
+          <span className="tnum text-[10px] text-cave-400">{state.runes.pairsSeen.length}/{Object.keys(RUNE_PAIRS).length} pairs known</span>
         </div>
         <div className="mt-1 text-[10px] italic leading-snug text-cave-400">
           Adjacent runes interact, IN ORDER — Kel-Thur is not Thur-Kel. A dissonant pair ruins the
@@ -475,38 +548,43 @@ export function RunesPanel() {
         </div>
         <div className="mt-2 flex flex-wrap gap-1">
           {INSCRIPTION_TARGETS.map((t) => (
-            <button key={t} className={`btn px-2 py-0.5 text-[10px] ${target === t ? 'btn-warm' : ''}`} onClick={() => { setTarget(t); setSeq([null, null, null]); }}>
+            <button key={t} className={`btn px-2 py-0.5 text-[10px] ${target === t ? 'btn-warm' : ''}`} onClick={() => { setTarget(t); setSeq(Array(runeSlots(state, t)).fill(null)); }}>
               {t}{state.runes.fouled[t] ? ' (fouled)' : ''}
             </button>
           ))}
         </div>
-        <div className="mt-2 flex items-center gap-2">
-          {Array.from({ length: RUNE_SLOTS }, (_, i) => (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {view.map((slot, i) => (
             <button
               key={i}
               className="h-10 w-10 rounded-md border border-cave-600 bg-cave-950 text-lg text-[#bcd8ee]"
               title="Tap to clear"
-              onClick={() => setSeq((sq) => sq.map((x, j) => (j === i ? null : x)))}
+              onClick={() => setSeq(view.map((x, j) => (j === i ? null : x)))}
             >
-              {seq[i] ? RUNE_GLYPHS[seq[i] as keyof typeof RUNE_GLYPHS] : '·'}
+              {slot ? RUNE_GLYPHS[slot as keyof typeof RUNE_GLYPHS] : '·'}
             </button>
           ))}
           <span className="text-[10px] text-cave-400">
             now: {current.filter(Boolean).map((r) => RUNE_GLYPHS[r as keyof typeof RUNE_GLYPHS]).join(' ') || 'bare'}
           </span>
         </div>
+        {slots > RUNE_SLOTS && (
+          <div className="mt-1 text-[9px] italic leading-snug text-cave-500">
+            This tool holds {slots} runes — a longer line, where three in a row can say a third thing.
+          </div>
+        )}
         <div className="mt-2 flex flex-wrap gap-1">
           {RUNES.map((r) => (
             <button
               key={r}
               className="btn px-2 py-1 text-xs"
-              disabled={(state.runes.found[r] ?? 0) <= seq.filter((x) => x === r).length}
+              disabled={(state.runes.found[r] ?? 0) <= view.filter((x) => x === r).length}
               title={RUNE_NAMES[r]}
-              onClick={() => setSeq((sq) => {
-                const i = sq.findIndex((x) => x === null);
-                if (i < 0) return sq;
-                return sq.map((x, j) => (j === i ? r : x));
-              })}
+              onClick={() => {
+                const i = view.findIndex((x) => x === null);
+                if (i < 0) return;
+                setSeq(view.map((x, j) => (j === i ? r : x)));
+              }}
             >
               {RUNE_GLYPHS[r]} <span className="tnum text-[9px] text-cave-400">×{state.runes.found[r] ?? 0}</span>
             </button>
@@ -514,11 +592,40 @@ export function RunesPanel() {
         </div>
         <button
           className="btn btn-warm mt-2 w-full py-1.5 text-xs"
-          disabled={!seq.some(Boolean)}
-          onClick={() => dispatch({ type: 'inscribe', target, sequence: seq })}
+          disabled={!view.some(Boolean)}
+          onClick={() => dispatch({ type: 'inscribe', target, sequence: view })}
         >
           Etch the sequence
         </button>
+        {/* What the ETCHED inscription is doing right now — named where you have
+            found it, honest that the rest is already in your totals (rule 5). */}
+        {(() => {
+          const activeP = sequencePairs(current).filter((p) => RUNE_PAIRS[p]);
+          const activeT = sequenceTriples(current).filter((t) => RUNE_TRIPLES[t]);
+          if (activeP.length === 0 && activeT.length === 0) return null;
+          const all = [...activeP, ...activeT];
+          const named = all.filter((k) => state.runes.pairsSeen.includes(k));
+          const unnamed = all.length - named.length;
+          return (
+            <div className="mt-2 rounded border border-cave-800 bg-cave-950/60 p-2 text-[10px]">
+              <div className="mb-0.5 uppercase tracking-widest text-cave-500">What the {target} carries now</div>
+              {named.map((k) => {
+                const def = RUNE_PAIRS[k] ?? RUNE_TRIPLES[k];
+                return def ? (
+                  <div key={k} className="flex justify-between gap-2">
+                    <span className="text-cave-200">{def.name}</span>
+                    <span className="shrink-0 text-[#9fd8c0]">{runeEffectText(def)}</span>
+                  </div>
+                ) : null;
+              })}
+              {unnamed > 0 && (
+                <div className="italic leading-snug text-cave-500">
+                  {unnamed} more {unnamed > 1 ? 'joins are' : 'join is'} speaking, still unnamed — the effect is already in your totals; watch which number moved to name it.
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
       {/* The grammar, as discovered. */}
       <div className="panel p-3">
@@ -530,11 +637,11 @@ export function RunesPanel() {
             const [a, b] = p.split('|');
             if (!def) return null;
             return (
-              <div key={p} className="flex items-baseline justify-between border-l-2 border-[#3c4658] pl-2 text-[11px]">
+              <div key={p} className="flex items-baseline justify-between gap-2 border-l-2 border-[#3c4658] pl-2 text-[11px]">
                 <span className="text-cave-200">
                   {RUNE_GLYPHS[a as keyof typeof RUNE_GLYPHS]}→{RUNE_GLYPHS[b as keyof typeof RUNE_GLYPHS]} {def.name}
                 </span>
-                <span className="text-[9px] text-[#9fd8c0]">{def.bucket}</span>
+                <span className="shrink-0 text-right text-[9px] text-[#9fd8c0]">{runeEffectText(def)}</span>
               </div>
             );
           })}

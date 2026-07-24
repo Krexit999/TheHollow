@@ -5,6 +5,7 @@
  */
 import { useState } from 'react';
 import { convCurrencyId, currencyDef, fmtNum, getCurrency, maxToolTier } from '../../engine';
+import type { GameState, Stack } from '../../engine';
 import { GEMS, gemDef, materialDef } from '../../engine/materials';
 import {
   equippedTool,
@@ -19,7 +20,7 @@ import { opinionRead } from '../../engine/systems/opinions';
 import { traitsOf, TRAITS } from '../../engine/traits';
 import { dispatch, useGame } from '../store';
 import { GemIcon, MaterialIcon } from './MaterialIcon';
-import { Amount } from './shared';
+import { Amount, TraitTag } from './shared';
 import { GearBench } from './combat';
 import { ForgeBench } from './ForgeBench';
 import { CraftWorkbench } from './CraftWorkbench';
@@ -141,6 +142,22 @@ export function ForgePanel() {
                       )}
                     </div>
                   )}
+                  {/* Only the tool in hand feeds the totals — so name what its
+                      gems are doing, right here, instead of only on hover. */}
+                  {isEquipped && tool.sockets.some(Boolean) && (
+                    <div className="mt-1 space-y-0.5">
+                      {tool.sockets.map((gemId, slot) => gemId ? (
+                        <div key={slot} className="flex items-center gap-1.5 text-[9px] text-cave-400">
+                          <GemIcon id={gemId} size={10} />
+                          <span className="text-[#9fd8c0]">{gemDef(gemId).effectText}</span>
+                          {state.workbench.gemCuts[gemId] && (
+                            <span className="text-lamp-400" title="A learned cut sharpens this gem's effect">✦</span>
+                          )}
+                        </div>
+                      ) : null)}
+                      <div className="text-[8px] italic text-cave-600">Live while this tool is in hand — folded into the totals above.</div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
                   {!isEquipped && (
@@ -181,9 +198,7 @@ export function ForgePanel() {
                             <span className="min-w-0 flex-1 truncate text-cave-200">{materialDef(id).name}</span>
                             <span className="flex gap-0.5">
                               {traitsOf(id).map((t) => (
-                                <span key={t} className="rounded bg-cave-800 px-1 text-[8px] uppercase tracking-wide text-cave-300" title={TRAITS[t].blurb}>
-                                  {TRAITS[t].name}
-                                </span>
+                                <TraitTag key={t} id={t} size="xs" />
                               ))}
                             </span>
                           </button>
@@ -198,19 +213,31 @@ export function ForgePanel() {
                   {gemsHeld.length === 0 ? (
                     <div className="text-[10px] italic text-cave-400">No gems held. The deep ones live in geodes.</div>
                   ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {gemsHeld.map((g) => (
-                        <button
-                          key={g.id}
-                          className="btn flex items-center gap-1.5 px-2 py-1 text-[10px]"
-                          onClick={() => {
-                            dispatch({ type: 'socketGem', toolId: tool.id, slot: socketPicker.slot, gemId: g.id });
-                            setSocketPicker(null);
-                          }}
-                        >
-                          <GemIcon id={g.id} size={16} /> {g.name}
-                        </button>
-                      ))}
+                    <div className="flex flex-col gap-1">
+                      {gemsHeld.map((g) => {
+                        const cut = state.workbench.gemCuts[g.id];
+                        return (
+                          <button
+                            key={g.id}
+                            className="btn flex items-center gap-2 px-2 py-1 text-left text-[10px]"
+                            onClick={() => {
+                              dispatch({ type: 'socketGem', toolId: tool.id, slot: socketPicker.slot, gemId: g.id });
+                              setSocketPicker(null);
+                            }}
+                          >
+                            <GemIcon id={g.id} size={16} />
+                            <span className="min-w-0 flex-1">
+                              <span className="text-cave-200">{g.name}</span>
+                              <span className="block text-[9px] leading-tight text-[#9fd8c0]">{g.effectText}</span>
+                            </span>
+                            {cut && (
+                              <span className="shrink-0 text-[8px] uppercase tracking-wide text-lamp-400" title={`Cut ${cut.lean}-lean, quality ${Math.round(cut.quality * 100)}% — its effect is sharpened`}>
+                                cut ✦
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -273,6 +300,21 @@ export function ForgePanel() {
   );
 }
 
+/** Average purity across every held band of a material — what the recipe rolls
+ *  its stats from. Null when none is held. */
+function heldAvgPurity(state: GameState, id: string): number | null {
+  const perMat = state.materials.stacks[id];
+  if (!perMat) return null;
+  let count = 0;
+  let sum = 0;
+  for (const st of Object.values(perMat) as (Stack | undefined)[]) {
+    if (!st) continue;
+    count += st.count;
+    sum += st.puritySum;
+  }
+  return count > 0 ? sum / count : null;
+}
+
 function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
@@ -310,21 +352,25 @@ function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
           Forge · <Amount value={recipe.brick} color={conv.color} />
         </button>
       </div>
-      <div className="mt-1.5 flex flex-wrap gap-2">
-        {inputs.map((input) => (
-          <span
-            key={input.id}
-            className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
-              input.have >= input.need ? 'border-cave-700 text-cave-300' : 'border-red-900/60 text-red-400/90'
-            }`}
-            title={materialDef(input.id).name}
-          >
-            <MaterialIcon id={input.id} size={16} />
-            <span className="tnum">
-              {input.have}/{input.need}
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        {inputs.map((input) => {
+          const name = materialDef(input.id).name;
+          const purity = heldAvgPurity(state as GameState, input.id);
+          const short = Math.max(0, input.need - input.have);
+          return (
+            <span
+              key={input.id}
+              className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] ${
+                input.have >= input.need ? 'border-cave-700 text-cave-300' : 'border-red-900/60 text-red-400/90'
+              }`}
+              title={`${name}${purity !== null ? ` · purity ~${Math.round(purity)}% (rolls into the tool's stats)` : ''} — you hold ${input.have}, this recipe needs ${input.need}${short > 0 ? ` (short ${short})` : ''}`}
+            >
+              <MaterialIcon id={input.id} size={16} />
+              <span className="max-w-[6rem] truncate">{name}</span>
+              <span className="tnum text-cave-500">{input.have}/{input.need}</span>
             </span>
-          </span>
-        ))}
+          );
+        })}
       </div>
       <div className="mt-1 text-[9px] italic leading-snug text-cave-400">{recipe.flavor}</div>
     </div>

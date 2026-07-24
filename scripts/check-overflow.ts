@@ -6,7 +6,7 @@
  */
 import { chromium, type Page } from 'playwright';
 
-const URL = 'http://localhost:5173';
+const URL = process.argv[2] ?? 'http://localhost:5173';
 const IDS = ['dig','kiln','drills','vents','hollow','lattice','crucible','foundry','greenhouse','mycelium','loom','bench','array','chamber','hold','forge','runes','brew','guild','bestiary','warrens','observatory','journal','wells','delver','collapse','rewrite','parallel','grid','vault'];
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

@@ -9,11 +9,14 @@ import { fmt, getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
 import {
   MAX_PIPES, OVERPRESSURE_SEC, VENT_OUTLETS, VENT_SHAFT_CELL,
-  VENT_W, VENT_H, heatCeiling, holdLine, networkCapacity, nextPipeCost, ventRate, yieldMult,
+  VENT_W, VENT_H, FREE_PIPES, heatCeiling, holdLine, networkCapacity, nextPipeCost, ventRate, yieldMult,
 } from '../../engine/systems/pressure';
 import {
   ARRAY_SIZE, BAND_HIGH, BAND_LOW, FUELS, FUEL_BY_ID, arrayUnlocked, DRAW_RATE, DRAW_FLOOR,
+  openRows, ANNEAL_SEC,
 } from '../../engine/content/shell5/emberArray';
+import { materialCount } from '../../engine/systems/forge';
+import { InstallButton } from './exports';
 import { WELLS, WELL_ODDS, wellProgress, wellsUnlocked } from '../../engine/content/shell5/wells';
 import { ANOMALY_BY_ID } from '../../engine/systems/anomalies';
 import { floodCasualty } from '../../engine/systems/pressure';
@@ -239,6 +242,13 @@ export function VentsPanel() {
           Better routing is how you run hotter SAFELY — for the idle line and the greedy one alike.
           Pulling pipe back up is free; re-routing is the whole game here.
         </div>
+        {pipes >= FREE_PIPES && pipes < MAX_PIPES && (
+          <div className="mt-1 text-[10px] leading-snug text-[#a2b8a8]">
+            Sections past the twelfth want <span className="font-semibold">1 Glasseal</span> each
+            (held {materialCount(state as GameState, 'glasseal')}) — Glassmere's export. Cast at the
+            Bench, or from Serra.
+          </div>
+        )}
         <div className="mt-2 inline-block">
           {Array.from({ length: VENT_H }, (_, r) => (
             <div key={r} className="flex gap-0.5" style={{ marginTop: r > 0 ? 2 : 0 }}>
@@ -307,12 +317,18 @@ export function EmberPanel() {
           <span>{e.temp.toFixed(0)}° {inBand ? `· IN BAND ${Math.floor(e.sustainSec)}s` : ''}</span>
           <span>band {BAND_LOW}-{BAND_HIGH}° · a record never cools</span>
         </div>
+        {/* The anneal: in-band work becomes the Hollow's glass (Part B spine). */}
+        <div className="tnum mt-1 text-[9px] text-cave-400">
+          Anneal: {Math.floor((e.annealSec ?? 0) % ANNEAL_SEC)}/{ANNEAL_SEC}s in band →{' '}
+          <span className="text-[#c8642e]">1 Emberglass</span> (held {materialCount(state as GameState, 'emberglass')}) — work done keeps; only a live fire anneals.
+        </div>
         {/* The grate. */}
         <div className="mt-2 inline-block">
           {Array.from({ length: ARRAY_SIZE }, (_, r) => (
             <div key={r} className="flex gap-0.5" style={{ marginTop: r > 0 ? 2 : 0 }}>
               {Array.from({ length: ARRAY_SIZE }, (_, c) => {
                 const cell = r * ARRAY_SIZE + c;
+                const rowClosed = r >= openRows(state as GameState);
                 const fuelId = e.grid[cell];
                 const burning = (e.burn[cell] ?? 0) > 0;
                 const fuel = fuelId ? FUEL_BY_ID.get(fuelId) : null;
@@ -322,22 +338,39 @@ export function EmberPanel() {
                     className={`h-7 w-7 rounded-[3px] border text-[11px] leading-none ${
                       burning ? 'border-[#ff8a4a] bg-[#3a1c0e] text-[#ffb36a]'
                       : fuelId ? 'border-[#8a6248] bg-[#241a12] text-[#c9a86a]'
+                      : rowClosed ? 'border-cave-800 bg-cave-950/60 text-cave-700'
                       : 'border-cave-700 bg-cave-950 text-cave-600'
                     }`}
-                    title={burning ? `${fuel?.name} — ${Math.ceil(e.burn[cell]!)}s left` : fuelId ? `${fuel?.name} (tap to light, long-press logic: place empties)` : 'Place the selected fuel'}
+                    title={burning ? `${fuel?.name} — ${Math.ceil(e.burn[cell]!)}s left`
+                      : fuelId ? `${fuel?.name} (tap to light, long-press logic: place empties)`
+                      : rowClosed ? 'No lens over this row — socket a Ground Lens to open it'
+                      : 'Place the selected fuel'}
                     onClick={() => {
                       if (burning) return;
                       if (fuelId) dispatch({ type: 'lightCell', cell });
                       else dispatch({ type: 'placeFuel', cell, fuelId: fuelPick });
                     }}
                   >
-                    {burning ? '🔥' : fuelId ? '▪' : '·'}
+                    {burning ? '🔥' : fuelId ? '▪' : rowClosed ? '×' : '·'}
                   </button>
                 );
               })}
             </div>
           ))}
         </div>
+        {openRows(state as GameState) < ARRAY_SIZE && (
+          <div className="mt-1.5">
+            <InstallButton
+              action={{ type: 'installSocket' }}
+              label={`Socket row ${openRows(state as GameState) + 1} of ${ARRAY_SIZE}`}
+              exportId="groundlens"
+            />
+            <div className="mt-1 text-[10px] leading-snug text-cave-500">
+              Each Ground Lens — Glassmere's export — steadies one more row's draft. The Bench
+              grinds them; Serra hauls them.
+            </div>
+          </div>
+        )}
         {/* Fuel rack. */}
         <div className="mt-2 flex flex-wrap gap-1">
           {FUELS.map((f) => (

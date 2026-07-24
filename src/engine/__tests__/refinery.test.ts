@@ -35,6 +35,36 @@ const openBench = (s: GameState) => {
   s.shell.current = 'ferrite';
 };
 
+describe('salvage never throws on the starter tool (the Refinery black-screen)', () => {
+  // The Refinery/Salvage panel maps EVERY spare tool through salvagePreview.
+  // The starter tool's recipeId ('delversPick') is not a craftable recipe, so
+  // the old `recipeDef(tool.recipeId)` fallback threw "Unknown recipe" — and a
+  // throw in a render path unmounts the whole React root (black screen, lost
+  // session). salvagePreview must return null for it, and salvageTool refuse it,
+  // never throw.
+  it('salvagePreview returns null for the starter (no parts, no recipe) instead of throwing', () => {
+    const { s } = fresh();
+    // Craft-equip a spare so the starter (id 0) becomes a salvageable spare.
+    s.forge.tools.push({ id: 1, recipeId: 'marlsplitter', name: 'Pick', tier: 3, purity: 60, chipPower: 2, strikePower: 8, sockets: [], alloys: [] });
+    s.forge.equipped = 1;
+    const starter = s.forge.tools.find((t) => t.id === 0)!;
+    expect(starter.recipeId).toBe('delversPick');
+    expect(() => salvagePreview(s, 0)).not.toThrow();
+    expect(salvagePreview(s, 0)).toBeNull();
+  });
+
+  it('salvageTool refuses the starter with a reason, not a throw', () => {
+    const { s } = fresh();
+    s.forge.tools.push({ id: 1, recipeId: 'marlsplitter', name: 'Pick', tier: 3, purity: 60, chipPower: 2, strikePower: 8, sockets: [], alloys: [] });
+    s.forge.equipped = 1;
+    let r: ReturnType<typeof salvageTool>;
+    expect(() => { r = salvageTool(s, ctx, 0, false); }).not.toThrow();
+    expect(r!.ok).toBe(false);
+    // The starter is still there — nothing was destroyed.
+    expect(s.forge.tools.some((t) => t.id === 0)).toBe(true);
+  });
+});
+
 describe('refining makes purity workable', () => {
   it('is shut until the smiths open it', () => {
     const { s } = fresh();
@@ -252,13 +282,15 @@ describe('salvage is an exit path, not a bin', () => {
 });
 
 describe('worked materials are made, never found', () => {
-  it('there are fourteen — seven bench-worked (P16), seven cured (P19) — each made, never dug', () => {
-    // Cured stones (Phase 19) are the second kind of made-not-found material:
-    // also `worked: true`, so they share every guarantee below (never drop, never
-    // listed under a shell taxonomy). Seven + seven.
+  it('there are twenty-one — seven bench-worked (P16), seven cured (P19), seven exports (Part B) — each made, never dug', () => {
+    // Cured stones (Phase 19) are the second kind of made-not-found material,
+    // and the export spine (Part B) is the third: also `worked: true`, so all
+    // share every guarantee below (never drop, never listed under a shell
+    // taxonomy). Seven + seven + seven.
     const worked = workedMaterials();
-    expect(worked).toHaveLength(14);
-    for (const id of ['refineslag', 'salvagedust', 'truesilver', 'rustochre', 'sunamber', 'cinderglass']) {
+    expect(worked).toHaveLength(21);
+    for (const id of ['refineslag', 'salvagedust', 'truesilver', 'rustochre', 'sunamber', 'cinderglass',
+      'kilnflux', 'lodeframe', 'setresin', 'fibercloth', 'groundlens', 'glasseal', 'emberglass']) {
       expect(worked.some((m) => m.id === id), `${id} is a worked material`).toBe(true);
     }
   });

@@ -367,7 +367,11 @@ export function claimExpedition(state: GameState, ctx: EngineCtx, crewId: string
     const idx = Math.min(behind.length - 1, Math.round(base * (1 - reach) + (behind.length - 1) * reach));
     from = behind[idx]!;
   }
-  const pool = MATERIALS.filter((m) => m.shellId === from.id);
+  // Never the worked set: refined intermediates, cured stones, and the export
+  // spine can only ever be MADE (or hauled by Serra, deliberately) — a crew
+  // with shovels does not dig up a Lodeframe. Same law as rollDrop and the
+  // guild stalls.
+  const pool = MATERIALS.filter((m) => m.shellId === from.id && !m.worked);
   let granted = 0;
   for (let i = 0; i < haul && pool.length > 0; i++) {
     const mat = pool[(done!.seed + i * 13) % pool.length]!;

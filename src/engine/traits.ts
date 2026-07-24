@@ -38,6 +38,12 @@ export type TraitId =
   | 'keen' | 'tough' | 'dense' | 'light' | 'springy'
   | 'brittle' | 'charged' | 'warm' | 'hollow' | 'trueseated';
 
+/** Canonical order for listing all ten (the Compendium glossary, etc.). */
+export const TRAIT_IDS: TraitId[] = [
+  'keen', 'tough', 'dense', 'light', 'springy',
+  'brittle', 'charged', 'warm', 'hollow', 'trueseated',
+];
+
 /** Which stat a factor touches. Defaults are 1.0 (no effect). */
 export interface PartFactors {
   /** Head → chip yield. */
@@ -133,6 +139,73 @@ export function traitDef(id: TraitId): TraitDef {
   const t = TRAITS[id];
   if (!t) throw new Error(`Unknown trait: ${id}`);
   return t;
+}
+
+/** Plain name for each factor axis — the stat a trait pushes. */
+export const AXIS_LABEL: Record<keyof PartFactors, string> = {
+  edge: 'chip yield',
+  force: 'strike power',
+  heft: 'strike power',
+  cadence: 'chip speed',
+  flex: 'durability',
+  grip: 'sockets',
+  hold: 'edge & rune hold',
+};
+
+export interface FactorLine { axis: keyof PartFactors; label: string; dir: 1 | -1; pct: number; }
+
+/**
+ * The DIRECTIONS a trait pushes, for legibility: e.g. keen → [+chip yield,
+ * −edge & rune hold]. Reading a trait's factors, above 1 is a raise, below 1 a
+ * cut. This is a fact about the stone (rule 3), never a solution — a player uses
+ * it to reason about which part to make from what.
+ */
+export function traitFactorLines(id: TraitId): FactorLine[] {
+  const out: FactorLine[] = [];
+  for (const [axis, v] of Object.entries(traitDef(id).factors) as [keyof PartFactors, number][]) {
+    if (v === 1 || v === undefined) continue;
+    out.push({ axis, label: AXIS_LABEL[axis], dir: v > 1 ? 1 : -1, pct: Math.round(Math.abs(v - 1) * 100) });
+  }
+  // Raises first, then cuts — reads as "good at X, costs Y".
+  return out.sort((a, b) => b.dir - a.dir);
+}
+
+/**
+ * The net LEAN of a set of traits (a whole tool's combined traits): which stat
+ * axes end up raised and which lowered, strongest first. Multiplies each trait's
+ * factors per axis so a haft's Dense and a binding's Hollow read as one verdict.
+ * Legibility only — never reveals a pairing, which stays discovered.
+ */
+export function compositionLean(traits: TraitId[]): FactorLine[] {
+  // Grouped by the PLAYER-FACING label, not the raw axis: edge/force and heft
+  // both read as "strike power", so their multipliers combine into one verdict
+  // instead of two lines that could point opposite ways.
+  const byLabel = new Map<string, number>();
+  const axisOf = new Map<string, keyof PartFactors>();
+  for (const t of traits) {
+    for (const [axis, v] of Object.entries(traitDef(t).factors) as [keyof PartFactors, number][]) {
+      const label = AXIS_LABEL[axis];
+      byLabel.set(label, (byLabel.get(label) ?? 1) * v);
+      if (!axisOf.has(label)) axisOf.set(label, axis);
+    }
+  }
+  const out: FactorLine[] = [];
+  for (const [label, v] of byLabel) {
+    if (Math.abs(v - 1) < 0.005) continue;
+    out.push({ axis: axisOf.get(label)!, label, dir: v > 1 ? 1 : -1, pct: Math.round(Math.abs(v - 1) * 100) });
+  }
+  return out.sort((a, b) => b.pct - a.pct);
+}
+
+/** A one-line "raises A · lowers B" summary of a trait's directions. */
+export function traitLeanText(id: TraitId): string {
+  const lines = traitFactorLines(id);
+  const up = lines.filter((l) => l.dir > 0).map((l) => l.label);
+  const down = lines.filter((l) => l.dir < 0).map((l) => l.label);
+  const parts: string[] = [];
+  if (up.length) parts.push(`raises ${[...new Set(up)].join(' & ')}`);
+  if (down.length) parts.push(`lowers ${[...new Set(down)].join(' & ')}`);
+  return parts.join(' · ');
 }
 
 /**
@@ -251,6 +324,11 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   rustochre: ['dense', 'tough'], setsilk: ['tough', 'light'], stillglass: ['charged', 'trueseated'],
   bloomrust: ['tough', 'warm'], sunamber: ['trueseated', 'charged'], frostpane: ['trueseated', 'light'],
   cinderglass: ['dense', 'warm'],
+  // ---- EXPORTS (Part B spine) — made by one shell, wanted by the next ----
+  kilnflux: ['warm', 'hollow'], lodeframe: ['tough', 'dense', 'trueseated'],
+  setresin: ['springy', 'trueseated'], fibercloth: ['light', 'springy'],
+  groundlens: ['charged', 'brittle'], glasseal: ['tough', 'springy'],
+  emberglass: ['warm', 'dense', 'trueseated'],
   // ---- FERRITE ----
   ironbloom: ['tough', 'dense'], scalechip: ['keen', 'brittle'], rustmarrow: ['brittle', 'warm'],
   greyflux: ['light', 'charged'], lodestone: ['charged', 'dense'], bluesteel: ['keen', 'tough'],

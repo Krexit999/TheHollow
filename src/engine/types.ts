@@ -305,6 +305,10 @@ export interface GreenhouseState {
   /** Discovered strains — base finds and bred hybrids. Pillar 5: only this. */
   codex: string[];
   harvests: number;
+  /** Iron bed-frames (Part B export spine): each Lodeframe installed opens one
+   *  plot beyond the free four. Mastery still sets the CEILING (6 at 8, 8 at
+   *  15) — mastery reveals the room, Ferrite iron builds the bed. */
+  frames: number;
 }
 
 export interface MyceliumState {
@@ -337,6 +341,9 @@ export interface LoomState {
   weaves: number;
   passiveRank: number;
   passiveProgressSec: number;
+  /** The iron frame (Part B export spine): a wooden loom cannot hold a full
+   *  warp. One Ferrite Lodeframe braces it for good; until then, no commit. */
+  framed: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -436,6 +443,15 @@ export interface EmberState {
   fuelOwned: Record<string, number>;
   passiveRank: number;
   passiveProgressSec: number;
+  /** Lens sockets (Part B export spine): row r of the grate needs r sockets
+   *  open — each Ground Lens from the Glassmere bench focuses one more row's
+   *  draft. Row 0 is free; 5 sockets open the whole 6×6. */
+  sockets: number;
+  /** Cumulative in-band seconds toward the next Emberglass anneal (90s each).
+   *  Unlike sustainSec this never resets on a band exit — annealing is WORK
+   *  DONE, the streak is a record. Live burns only; the banked fire anneals
+   *  nothing while you are away. */
+  annealSec: number;
 }
 
 export interface WellsState {
@@ -849,6 +865,10 @@ export interface RunSummary {
   cores: Decimal;
   sec: number;
   count: number;
+  /** What the CARRY-ONE mark saved this fall: the upgrade kept and the levels it
+   *  held that would otherwise have reset. Optional — absent when nothing carried
+   *  (and on saves from before it was recorded). */
+  carried?: { name: string; levels: number };
 }
 
 /** A saved tool composition — recall it and re-forge with different stone. */
@@ -1012,6 +1032,7 @@ export type GameEvent =
   | { type: 'crewRecalled' }
   | { type: 'crewRestationed' }
   | { type: 'arrayBest'; seconds: number }
+  | { type: 'emberglassAnnealed'; total: number }
   | { type: 'wellResult'; wellId: string; mult: number; amount: Decimal }
   | { type: 'anomaly'; id: string }
   | { type: 'anomalyAnswered'; id: string; line: string }
@@ -1064,6 +1085,7 @@ export type GameAction =
   | { type: 'upgradeDrill'; index: number }
   | { type: 'setDrillBehavior'; index: number; behavior: DrillBehavior }
   | { type: 'descend' }
+  | { type: 'descendMany'; count: number }
   | { type: 'climb'; to?: number }
   | { type: 'extendRail' }
   | { type: 'installCache' }
@@ -1107,6 +1129,7 @@ export type GameAction =
   | { type: 'fightWarden'; auto: boolean }
   | { type: 'setAutoResolve'; on: boolean }
   | { type: 'craftGear'; gearId: string }
+  | { type: 'unequipGear'; slot: 'offhand' | 'lantern' | 'harness' | 'boots' }
   | { type: 'buyStock'; npcId: string; slot: number; stance?: 'fair' | 'press' | 'lowball' }
   | { type: 'sellMaterial'; materialId: string; count: number }
   | { type: 'acceptContract'; slot: number }
@@ -1148,6 +1171,11 @@ export type GameAction =
   | { type: 'lightCell'; cell: number }
   | { type: 'setOverdrive'; on: boolean }
   | { type: 'setDraw'; on: boolean }
+  // Part B export spine — production + the installs that consume exports.
+  | { type: 'produceExport'; id: string }
+  | { type: 'installFrame' }
+  | { type: 'installLoomFrame' }
+  | { type: 'installSocket' }
   | { type: 'refine'; materialId: string; band: string }
   | { type: 'transmute'; a: string; b: string }
   | { type: 'salvageTool'; toolId: number; extract: boolean }

@@ -56,7 +56,53 @@ ORDER-OVER-TIME carvings that complete only across whole sessions — plus GEM F
 BULK SALVAGE, and a temper that now resonates with the tool's own shell affinity. The
 phase also rebuilt the UNBUILT ledger against the codebase after two rows (gem cutting,
 rune casting) were found already-shipped, and added the standing rule that the ledger is
-a claim, not evidence.** This repository contains:
+a claim, not evidence; and a LIVE-PLAYTEST FIX PASS root-caused seven reported bugs — a
+Refinery crash that black-screened the game (a content-id lookup throwing in a render
+path, now guarded AND caught by a per-room ERROR BOUNDARY so one broken panel can never
+take down the game again), the Delver skill tree that dead-ended in Loam (twelve sealed
+stubs turned into real nodes that now OPEN ACROSS ALL SEVEN SHELLS), gear you couldn't
+take off or count, the Museum leaking raw ids, a Lattice board that clipped at ring 4,
+single-step-only descent (now MULTI-DESCEND, cost-identical to N taps by construction),
+and a Foundry price that never named its material; and a LEGIBILITY & AUTHORING PASS that made
+the systems EXPLAIN THEMSELVES without ever giving away an answer (pillar 5 intact) — a stub
+audit that found the game was an information problem, not a content one (and ledgered the two
+real shortfalls honestly instead of hiding them); per-motif resonance on the Lattice, a
+generated trait glossary with the direction each trait pushes and a live "lean" on the forge,
+gem and rune contributions made visible (with a stale rune counter fixed and a rune editor
+that had been hiding slots the engine already accepted), the caravan's rates and previews, the
+weather chip read from its actual modifiers, and every NPC buy/sell now raising a small
+self-fading toast; plus ONE accessible dropdown — a portalled ARIA combobox, keyboard-driven
+and 44px-tall — replacing every native `<select>` in the game's own dark language; and a SECOND
+LIVE-PLAYTEST FIX PASS whose headline was a severe one — the core screen froze black "after
+buying an upgrade" / "after returning from the Shaft," recoverable only by refresh. The root
+was structural: `main.tsx` mounted the app under NO error boundary, so any uncaught render
+throw unmounted the whole tree, and the unmount's effect-cleanups DESTROYED the Face's Pixi
+renderer and stopped its ticker for good (the engine kept running on its own loop, so currency
+still moved — the exact tell). The fix nets the app at the root AND wraps the hero's chips apart
+from the canvas, so a throwing overlay now vanishes instead of taking the screen with it —
+proved live. The same pass gave the Glassmere Beam card its three-layer explanation and
+centred, tappable row buttons; made forge recipe chips name their material (with purity and
+held-vs-needed); and made CARRY-ONE legible — its value shown before you choose ("saves 18.9K
+Dust") and confirmed after in the run summary — once a sim proved the power was already right
+(33.6% of a rebuild, return-to-peak safely in band) and only the visibility was missing; and the
+INTERLOCK PHASE opened (A.39) — a full value/interlock audit found the game's middle band pays
+only ceiling-capped percentages ("nothing needs anything else"), and the ruled plan (a
+cross-shell EXPORT SPINE, Echoes buying confluence slots, the Forge pulling Refinery/Crucible/
+Still through it, and folds) is pinned in the ledger, with checkpoint one landing the two bugs
+everything else stands on: THE SHAPE NET (a loaded save can never be missing a slice — the
+"undefined.push" class closed at the hydrate door) and the Shaft's failed-bake-never-cached rule
+(the blank-band regression, proved self-healing live) — and checkpoint two building THE EXPORT
+SPINE whole (B1+B2): one export per shell, made by that shell's own craft and demanded by the
+next shell's signature infrastructure, Loam→Aleph — Kilnflux fires every Crucible pour,
+Lodeframes build Verdance's beds and brace its loom, Set Resin silvers mirrors and Fibercloth
+wraps lenses, Ground Lenses socket the Ember Array's rows and Glasseals join the deep pipe,
+Emberglass (annealed by holding the Array in the band) rebuilds the Hollow and cuts every
+Chamber tape, and every Axiom is written in 25 Resonance that now RIDES Recursion. Serra's
+stall gained the EXPORT SHELF — every left-behind shell's export, deterministic, never rotated
+— so the spine gates but can never softlock, a law now enforced mechanically by the extended
+audit-recipes.ts export-graph audit, walked end-to-end by export-spine.test.ts, grandfathered
+for standing saves (v23), and provisioned by the sim's own play policy.** This
+repository contains:
 the headless engine, the Shell I slice, THE LATTICE, ore + THE FORGE,
 **FERRITE + THE BREACH** (the shell architecture proof: signatures, Polarity,
 the Alloy Crucible, the Foundry, Shell Mastery), **COMBAT + BESTIARY +

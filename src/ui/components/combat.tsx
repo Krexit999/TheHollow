@@ -20,7 +20,7 @@ import {
   resolveFight,
 } from '../../engine/combat/combat';
 import { speciesDef, speciesOfShell, wardenOf, type Silhouette, type SpeciesDef } from '../../engine/combat/species';
-import { GEAR_DEFS, type GearDef } from '../../engine/combat/gear';
+import { GEAR_DEFS, GEAR_SLOTS, gearWornCount, type GearDef } from '../../engine/combat/gear';
 import { materialDef } from '../../engine/materials';
 import { materialCount } from '../../engine/systems/forge';
 import { dispatch, useGame } from '../store';
@@ -640,8 +640,11 @@ export function GearBench() {
 
   return (
     <>
-      <div className="px-1 pt-1 text-xs font-semibold uppercase tracking-wider text-cave-400">
-        The other bench — gear
+      <div className="flex items-baseline justify-between px-1 pt-1">
+        <span className="text-xs font-semibold uppercase tracking-wider text-cave-400">The other bench — gear</span>
+        <span className="tnum text-[10px] text-cave-400" title="One piece per slot: offhand, lantern, harness, boots.">
+          {gearWornCount(state)}/{GEAR_SLOTS.length} slots worn
+        </span>
       </div>
       <div className="space-y-1.5">
         {GEAR_DEFS.filter((g) => g.tier <= tierCap).map((def) => {
@@ -668,13 +671,23 @@ export function GearBench() {
                     <span className="text-[#9fd8c0]">{combatText(def)}</span>
                   </div>
                 </div>
-                <button
-                  className={`btn shrink-0 px-2.5 py-1 text-xs ${can && !isWorn ? 'btn-warm' : ''}`}
-                  disabled={!can || isWorn}
-                  onClick={() => dispatch({ type: 'craftGear', gearId: def.id })}
-                >
-                  {isWorn ? 'Worn' : <>Fit · <Amount value={def.conv} color={conv.color} /></>}
-                </button>
+                {isWorn ? (
+                  <button
+                    className="btn shrink-0 px-2.5 py-1 text-xs"
+                    title="Take it off — the slot goes empty and its bonuses stop. Re-fit any time."
+                    onClick={() => dispatch({ type: 'unequipGear', slot: def.slot })}
+                  >
+                    Take off
+                  </button>
+                ) : (
+                  <button
+                    className={`btn shrink-0 px-2.5 py-1 text-xs ${can ? 'btn-warm' : ''}`}
+                    disabled={!can}
+                    onClick={() => dispatch({ type: 'craftGear', gearId: def.id })}
+                  >
+                    Fit · <Amount value={def.conv} color={conv.color} />
+                  </button>
+                )}
               </div>
               <div className="mt-1.5 flex flex-wrap gap-2">
                 {inputs.map((input) => (

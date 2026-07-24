@@ -24,10 +24,11 @@ import {
   type StageDef, type CraftAct,
 } from '../../engine/systems/workbench';
 import { ACT_DELEGATE } from '../../engine/systems/workbenchActs';
-import { traitsOf, TRAITS } from '../../engine/traits';
+import { traitsOf } from '../../engine/traits';
 import { RUNE_NAMES, RUNE_GLYPHS, RUNES } from '../../engine/content/shell4/runes';
 import { GEMS } from '../../engine/materials';
 import { dispatch, useGame } from '../store';
+import { TraitTag } from './shared';
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -364,9 +365,20 @@ function FacetPlacer({ onDone }: { onDone: (e: number, data?: Record<string, unk
     return Math.max(0.2, 1 - err * 2);
   };
 
+  const q = quality();
+  const qpct = Math.round(q * 100);
+  // The numbers behind "how it reads" (see gemCutMult): a leaned cut lifts its
+  // favoured face by up to q·28% and shaves the other by up to q·8%; balanced
+  // lifts both by up to q·12%. Shown live so the choice is legible, not folklore.
+  const leanText = lean === 'balanced'
+    ? `lifts BOTH faces +${Math.round(q * 12)}%`
+    : lean === 'mine'
+      ? `mining face +${Math.round(q * 28)}%, combat −${Math.round(q * 8)}%`
+      : `combat face +${Math.round(q * 28)}%, mining −${Math.round(q * 8)}%`;
+
   return (
     <div className="mt-2">
-      <div className="text-[10px] italic text-cave-500">Place up to three facets, evenly, then choose how it reads.</div>
+      <div className="text-[10px] italic text-cave-500">Place up to three facets, evenly, then choose how it reads. Evenly-spread facets cut cleaner.</div>
       <div className="mt-1 grid grid-cols-6 gap-1">
         {Array.from({ length: 12 }, (_, i) => i * 30).map((ang) => (
           <button key={ang} className={`btn py-1.5 text-[10px] ${facets.includes(ang) ? 'btn-warm' : ''}`} onClick={() => place(ang)}>
@@ -381,10 +393,15 @@ function FacetPlacer({ onDone }: { onDone: (e: number, data?: Record<string, unk
           </button>
         ))}
       </div>
+      <div className="mt-1 text-[9px] leading-snug text-cave-400">
+        {facets.length < 2
+          ? <span className="italic text-cave-600">Place at least two facets to read the cut.</span>
+          : <>Cut quality <span className="tnum text-cave-200">{qpct}%</span> — this cut {leanText} on a socketed gem.</>}
+      </div>
       <button
         className="btn btn-warm mt-1.5 w-full py-1.5 text-xs"
         disabled={facets.length < 2}
-        onClick={() => onDone(quality(), { lean })}
+        onClick={() => onDone(q, { lean })}
       >
         Cleave {facets.length < 2 ? '(place at least two)' : ''}
       </button>
@@ -518,7 +535,7 @@ function CastLauncher({ held, state, onClose }: { held: string[]; state: GameSta
       </div>
       {traits.length > 0 && (
         <div className="mt-0.5 flex flex-wrap gap-0.5">
-          {traits.map((t) => <span key={t} className="rounded bg-cave-800 px-1 text-[8px] uppercase tracking-wide text-cave-300">{TRAITS[t].name}</span>)}
+          {traits.map((t) => <TraitTag key={t} id={t} size="xs" />)}
         </div>
       )}
       <div className="mt-1 max-h-32 space-y-0.5 overflow-y-auto scroll-thin">

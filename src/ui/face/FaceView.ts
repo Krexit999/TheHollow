@@ -14,6 +14,7 @@ import {
   Sprite,
 } from 'pixi.js';
 import { cellCap, type ChipResult } from '../../engine/systems/face';
+import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
 import { ModifierCache } from '../../engine/modifiers';
 import type { DrillBehavior, Engine } from '../../engine';
@@ -273,6 +274,7 @@ export class FaceView {
       this.app.destroy(true);
       return;
     }
+    guardPixiRender(this.app, 'face'); // a poisoned frame skips, never kills the loop
     this.host.appendChild(this.app.canvas);
     this.app.canvas.style.touchAction = 'none';
 
@@ -315,6 +317,35 @@ export class FaceView {
     this.resizeObserver?.disconnect();
     if (this.app?.renderer) {
       this.app.destroy(true, { children: true });
+    }
+  }
+
+  private active = true;
+
+  /**
+   * Mount-and-hide, SYMMETRIC at last. The Face used to keep rendering while
+   * hidden under the Shaft — so the Shaft's chunk bakes and RenderTexture
+   * evictions interleaved with live Face renders, which is exactly the shared-
+   * batcher poisoning that froze/blanked the grid (A.38 addendum). Now only one
+   * renderer runs at a time, and waking FORCES a full repaint: every tile is
+   * invalidated and one frame is rendered immediately, so whatever happened
+   * while asleep, returning to the Dig always shows a freshly drawn grid.
+   */
+  setActive(active: boolean): void {
+    if (this.active === active || !this.app?.ticker) return;
+    this.active = active;
+    if (active) {
+      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; }
+      this.layout(); // the hero height differs between Shaft and Dig on phone
+      // Start the ticker but do NOT render synchronously: this call runs inside
+      // a React effect, in the same commit where the OTHER view is about to be
+      // deactivated (tree order runs the Face first). A sync render here is a
+      // one-frame overlap with the Shaft — the exact interleave being removed.
+      // The first RAF tick lands after the commit, when the Shaft is asleep;
+      // preserveDrawingBuffer keeps the last frame up until then, so no flash.
+      this.app.ticker.start();
+    } else {
+      this.app.ticker.stop();
     }
   }
 
@@ -981,7 +1012,28 @@ export class FaceView {
   // Frame
   // -------------------------------------------------------------------------
 
+  private frameErrCount = 0;
+  /**
+   * The ticker's callback. Pixi v8 reschedules its requestAnimationFrame AFTER
+   * running listeners, so a listener that THROWS never reaches the reschedule and
+   * the ticker dies permanently — the core screen freezes until a page refresh
+   * (the "grid stops responding" / "beam stuck" report). A render loop must
+   * survive a single bad frame: catch, log once, and keep ticking. The catch is
+   * defence, not the fix — the underlying throw is still hunted and removed.
+   */
   private frame(dt: number): void {
+    try {
+      this.frameInner(dt);
+    } catch (e) {
+      if (this.frameErrCount < 3) {
+        this.frameErrCount += 1;
+        // eslint-disable-next-line no-console
+        console.error('[FaceView.frame] recovered from a throw (ticker kept alive):', e);
+      }
+    }
+  }
+
+  private frameInner(dt: number): void {
     if (this.destroyed) return;
     const state = this.engine.getState();
 

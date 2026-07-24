@@ -17,6 +17,14 @@ import type { ModifierCache } from '../modifiers';
 
 export type GearSlot = 'offhand' | 'lantern' | 'harness' | 'boots';
 
+/** The four gear slots, one piece each — this IS the gear limit. */
+export const GEAR_SLOTS: GearSlot[] = ['offhand', 'lantern', 'harness', 'boots'];
+
+/** How many slots currently hold a piece — the "used" of used/total. */
+export function gearWornCount(state: GameState): number {
+  return GEAR_SLOTS.filter((slot) => state.forge.gear[slot]).length;
+}
+
 export interface GearDef {
   id: string;
   slot: GearSlot;
@@ -296,6 +304,18 @@ export function craftGear(
   grantXP(state, mods, ctx, D(20 * def.tier));
   ctx.emit({ type: 'gearForged', gearId: def.id, slot: def.slot, purity });
   return { ok: true, data: inst };
+}
+
+/**
+ * Take a piece off. The slot goes empty and its bonuses stop — you can re-fit a
+ * piece to it any time. (Fitting always crafts fresh, so nothing is stored in a
+ * bag; unequip is simply the "off" the bench never had.)
+ */
+export function unequipGear(state: GameState, ctx: EngineCtx, slot: GearSlot): ActionResult {
+  if (!state.forge.gear[slot]) return { ok: false, reason: 'Nothing worn there' };
+  state.forge.gear[slot] = null;
+  ctx.dirty();
+  return { ok: true };
 }
 
 /** Mining-face modifiers for worn gear, purity-scaled. */

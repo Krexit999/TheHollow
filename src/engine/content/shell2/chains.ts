@@ -125,4 +125,16 @@ export function registerChains(): void {
     name: 'The Green Burn',
     flavor: 'Verdance burns badly and leaves a very particular ash.',
   });
+
+  // --- The export spine (Part B): Loam's last word in every Ferrite pour ---
+  // Palegold had one consumer (the binder chain) and marl had none the audit
+  // could see past its curing. One firing yields a BATCH of six: the flawless
+  // stone is an outing, not a per-pour toll — and Serra sells the flux
+  // ready-made once you are past Loam, so the Crucible can gate but never
+  // starve.
+  registerChain({
+    id: 'kilnFiring', a: 'palegold', b: 'marl', out: 'kilnflux', cost: 1, yield: 6,
+    name: 'The Kiln Firing',
+    flavor: 'Gold that lost its colour, fired into clay that remembers the sea. What comes out makes every other stone agree to melt.',
+  });
 }

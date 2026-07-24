@@ -20,10 +20,11 @@ import {
   computePartStats, headTierCap, PART_SLOTS, type PartSlot, type ToolParts,
 } from '../../engine/systems/toolParts';
 import { marrowCritique } from '../../engine/systems/marrow';
-import { TRAITS, traitsOf, activePairs, type TraitId } from '../../engine/traits';
+import { traitsOf, activePairs, compositionLean, type TraitId } from '../../engine/traits';
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
-import { Amount } from './shared';
+import { Amount, TraitTag } from './shared';
+import { Select } from './Select';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'];
 
@@ -35,18 +36,9 @@ const PART_WANTS: Record<PartSlot, string> = {
 };
 
 function TraitChips({ id, size = 'sm' }: { id: string; size?: 'sm' | 'xs' }) {
-  const traits = traitsOf(id);
   return (
     <span className="flex flex-wrap gap-0.5">
-      {traits.map((t) => (
-        <span
-          key={t}
-          className={`rounded ${size === 'xs' ? 'px-1 text-[8px]' : 'px-1.5 text-[9px]'} bg-cave-800 uppercase tracking-wide text-cave-300`}
-          title={TRAITS[t].blurb}
-        >
-          {TRAITS[t].name}
-        </span>
-      ))}
+      {traitsOf(id).map((t) => <TraitTag key={t} id={t} size={size} />)}
     </span>
   );
 }
@@ -91,6 +83,12 @@ export function ForgeBench() {
     ? [...traitsOf(head!), ...traitsOf(haft!), ...traitsOf(binding!)]
     : [];
   const pairs = parts ? activePairs(combined) : [];
+  // The whole tool's traits netted into a plain "leans toward X, away from Y"
+  // verdict — teaches the vocabulary as parts swap (the numbers above are the
+  // exact outcome; this is the reading of them).
+  const lean = parts ? compositionLean(combined) : [];
+  const leanUp = [...new Set(lean.filter((l) => l.dir > 0).map((l) => l.label))];
+  const leanDown = [...new Set(lean.filter((l) => l.dir < 0).map((l) => l.label))];
 
   // Marrow's eye + a side-by-side against the tool in your hand (Phase 21).
   const marrowLines = complete ? marrowCritique(state as GameState, head, haft, binding) : [];
@@ -124,15 +122,17 @@ export function ForgeBench() {
         <span className="text-xs font-semibold uppercase tracking-wider text-[#e0b054]">The bench</span>
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-cave-400">Tier</span>
-          <select
-            value={tier}
-            onChange={(e) => { setTier(Number(e.target.value)); if (head && headTierCap(materialDef(head).shellId, materialDef(head).rarity) < Number(e.target.value)) setHead(null); }}
-            className="rounded border border-cave-700 bg-cave-950 px-1 py-0.5 text-xs text-cave-200"
-          >
-            {Array.from({ length: cap }, (_, i) => i + 1).map((t) => (
-              <option key={t} value={t}>{ROMAN[t]}</option>
-            ))}
-          </select>
+          <Select
+            value={String(tier)}
+            ariaLabel="Tool tier"
+            className="w-20"
+            options={Array.from({ length: cap }, (_, i) => i + 1).map((t) => ({ value: String(t), label: ROMAN[t]! }))}
+            onChange={(v) => {
+              const nt = Number(v);
+              setTier(nt);
+              if (head && headTierCap(materialDef(head).shellId, materialDef(head).rarity) < nt) setHead(null);
+            }}
+          />
         </div>
       </div>
       <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
@@ -207,6 +207,14 @@ export function ForgeBench() {
             <span className="text-[#9fd8c0]">Strike <span className="tnum font-semibold">{fmtNum(preview.strike, 1)}</span></span>
             <span className="text-cave-400">Sockets <span className="tnum">{preview.sockets}</span></span>
           </div>
+          {(leanUp.length > 0 || leanDown.length > 0) && (
+            <div className="mt-1 text-[10px] leading-snug text-cave-400">
+              These three lean{' '}
+              {leanUp.length > 0 && <span className="text-[#9fd8c0]">toward {leanUp.join(' & ')}</span>}
+              {leanUp.length > 0 && leanDown.length > 0 && <span className="text-cave-500"> · </span>}
+              {leanDown.length > 0 && <span className="text-[#d8a0a0]">away from {leanDown.join(' & ')}</span>}
+            </div>
+          )}
           {pairs.length > 0 && (
             <div className="mt-1 text-[10px] leading-snug">
               {pairs.map((p) => {

@@ -24,6 +24,8 @@ import { ChamberPanel, HollowPanel, ParallelView, RewritePanel } from './compone
 import { NextHint } from './components/NextHint';
 import { DisclosureGate } from './components/DisclosureGate';
 import { SystemHeader } from './components/SystemHeader';
+import { PanelErrorBoundary } from './components/ErrorBoundary';
+import { SYSTEM_COPY } from './systemCopy';
 import { SpiralPanel, AutomationPanel, RelicsPanel, MuseumPanel, ExpeditionsPanel } from './components/longtail';
 import { Compendium, CompendiumButton } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
@@ -40,6 +42,11 @@ import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './co
  * application, and repeatedly destroying renderers poisons Pixi's shared object
  * pools. It is hidden by CSS, as before.
  */
+/** The room's display name, for the error-boundary message. */
+function roomLabel(tab: TabId): string {
+  return SYSTEM_COPY[tab]?.title ?? 'This screen';
+}
+
 function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGame.getState>['state'] }) {
   const only = (id: TabId) => tab === id;
   const show = (id: TabId) => (tab === id ? '' : 'hidden');
@@ -51,7 +58,7 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('drills') && <DrillsPanel />}
       {only('vents') && <VentsPanel />}
       {only('hollow') && <HollowPanel />}
-      <div className={show('lattice')}>{state?.lattice.unlocked && <LatticePanel />}</div>
+      <div className={show('lattice')}>{state?.lattice.unlocked && <LatticePanel active={tab === 'lattice'} />}</div>
       {only('crucible') && (state?.shell.breachCount ?? 0) >= 1 && <CruciblePanel />}
       {only('foundry') && (state?.shell.breachCount ?? 0) >= 1 && <FoundryPanel />}
       {only('greenhouse') && <GreenhousePanel />}
@@ -226,12 +233,21 @@ export function App() {
         <div className={`shrink-0 flex-col gap-2 px-2 pt-1 lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:px-0 lg:pt-0 ${inRoom ? 'hidden' : 'flex'}`}>
           <div className={`relative shrink-0 lg:h-auto lg:min-h-0 lg:flex-1 ${onShaft ? 'h-[66vh]' : 'h-[42vh]'}`}>
             <div className={`absolute inset-0 ${onShaft ? 'invisible' : ''}`}>
-              <FaceCanvas />
-              <WeatherChip />
-              <GrowthChip />
-              <EncounterBanner />
-              <OverpressureOverlay />
-              <AnomalyBanner />
+              {/* One live renderer at a time: the Face sleeps while the Shaft
+                  owns the hero, and wakes with a full repaint (A.38). */}
+              <FaceCanvas active={!onShaft} />
+              {/* The chips/banners that float OVER the face live in their own
+                  boundary, apart from the canvas: if one throws (a weather or
+                  encounter edge case), it vanishes instead of unmounting the
+                  hero — which would destroy the Face's Pixi renderer. The canvas
+                  itself sits outside, protected by the root AppErrorBoundary. */}
+              <PanelErrorBoundary label="Face overlays" fallback={null}>
+                <WeatherChip />
+                <GrowthChip />
+                <EncounterBanner />
+                <OverpressureOverlay />
+                <AnomalyBanner />
+              </PanelErrorBoundary>
             </div>
             {shaftAvailable && (
               <div className={`absolute inset-0 ${onShaft ? '' : 'invisible pointer-events-none'}`}>
@@ -267,7 +283,11 @@ export function App() {
                 P9/P10 panels "self-explained" — the same assumption that left
                 the Kiln unexplained until a player said so out loud. */}
             <SystemHeader system={tab} />
-            <PanelHost tab={tab} state={state} />
+            {/* One broken room degrades in place instead of black-screening the
+                whole game. Keyed by tab so leaving and returning re-attempts. */}
+            <PanelErrorBoundary key={tab} label={roomLabel(tab)}>
+              <PanelHost tab={tab} state={state} />
+            </PanelErrorBoundary>
             {inRoom && <div className="mt-3 lg:hidden"><NextHint /></div>}
           </div>
         </section>

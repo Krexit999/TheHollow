@@ -17,7 +17,9 @@ import { AutoResolveRow } from './combat';
 import { ComfortSettings } from './qol';
 
 // ---------------------------------------------------------------------------
-// The achievement grid — 25 x 10, mostly empty. The emptiness is the hook.
+// The achievement grid — ACH_COLS × ACH_ROWS (19 × 10), authored full. (The
+// comment once read "25 × 10, mostly empty"; the grid was shrunk to 19 wide and
+// filled in P13, and the stale note was corrected in the P-Legibility pass.)
 // ---------------------------------------------------------------------------
 
 export function GridPanel() {

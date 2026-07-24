@@ -78,6 +78,33 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
   return finishDescend(state, mods, ctx);
 }
 
+/**
+ * MULTI-DESCEND — go down N steps in one act. It is IMPLEMENTED as a loop of
+ * single `descend` calls, so it spends EXACTLY what N taps of Descend would
+ * spend and obeys every per-step gate (walls, floor, laws, the cost curve) with
+ * no parallel cost path that could drift — the same guarantee the lift makes for
+ * batched convenience. It stops early the moment a step cannot be paid or a wall
+ * blocks it, having descended (and paid for) exactly the steps that succeeded.
+ * `count` is clamped to a sane bound so a huge N cannot loop forever.
+ */
+export function descendMany(
+  state: GameState,
+  mods: ModifierCache,
+  ctx: EngineCtx,
+  count: number,
+): ActionResult {
+  const want = Math.max(1, Math.min(1000, Math.floor(count)));
+  let descended = 0;
+  let firstReason: string | undefined;
+  for (let i = 0; i < want; i++) {
+    const r = descend(state, mods, ctx);
+    if (!r.ok) { if (descended === 0) firstReason = r.reason; break; }
+    descended += 1;
+  }
+  if (descended === 0) return { ok: false, reason: firstReason ?? 'Cannot descend' };
+  return { ok: true, data: { descended, depth: state.depth } };
+}
+
 function finishDescend(state: GameState, mods: ModifierCache, ctx: EngineCtx): ActionResult {
   const shell = currentShell(state);
   // NEW GROUND is anything past the run's cleared floor. Re-treading cleared

@@ -14,6 +14,7 @@ import { GRID_MODULES, MODULE_BY_ID, GRID_W, GRID_CELLS, automationRate } from '
 import { RARITIES, RELIC_SLOTS, AFFIXES, SOURCE_BY_ID, fusionPreview } from '../../engine/systems/relics';
 import { CASES, caseProgress, ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs } from '../../engine/systems/museum';
 import { HIRELING_BY_NPC } from '../../engine/guild/hirelings';
+import { keyDisplayName } from '../../engine/content/keyNames';
 import { cachesOf } from '../../engine/systems/shaftSys';
 import { currentShell } from '../../engine/shells';
 import { dispatch, useGame } from '../store';
@@ -32,13 +33,15 @@ function museumCandidates(
   state: NonNullable<ReturnType<typeof useGame.getState>['state']>,
   from: 'bestiary' | 'codex' | 'gem' | 'relic',
 ): Array<{ key: string; label: string }> {
+  // Every branch used to leak the raw id as its label (`triangle.flowing.mixed`).
+  // keyDisplayName resolves each `kind:id` to its real, authored name.
   if (from === 'bestiary') {
-    return state.combat.seen.map((id) => ({ key: `species:${id}`, label: id }));
+    return state.combat.seen.map((id) => ({ key: `species:${id}`, label: keyDisplayName(`species:${id}`) }));
   }
   if (from === 'gem') {
     return Object.entries(state.materials.gems)
       .filter(([, n]) => (n ?? 0) > 0)
-      .map(([id]) => ({ key: `gem:${id}`, label: id }));
+      .map(([id]) => ({ key: `gem:${id}`, label: keyDisplayName(`gem:${id}`) }));
   }
   if (from === 'codex') {
     const all = [
@@ -49,7 +52,7 @@ function museumCandidates(
       ...state.brewing.discovered.map((d) => `brew:${d}`),
       ...state.bench.solved.map((d) => `lens:${d}`),
     ];
-    return all.map((k) => ({ key: k, label: k.split(':')[1] ?? k }));
+    return all.map((k) => ({ key: k, label: keyDisplayName(k) }));
   }
   return [];
 }

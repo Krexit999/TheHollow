@@ -13,7 +13,7 @@ import { donateToCase, claimExpedition, ROUTE_BY_ID , routeDurationMs } from './
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
-import { descend } from './systems/depthSys';
+import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
   installLift, hasLift, railDepth, workExcavation,
@@ -21,7 +21,7 @@ import {
 import { doCollapse } from './systems/collapseSys';
 import { applyOfflineProgress } from './systems/offline';
 import { coreNodeAvailable, coreNodeCost, coreNodeDef, coreNodeLevel } from './content/shell1/coreTree';
-import { skillNodeDef, skillRank, spentSkillPoints } from './content/shell1/skillTree';
+import { skillNodeDef, skillRank, spentSkillPoints, skillNodeUnlocked } from './content/shell1/skillTree';
 import {
   buyLatticeRing,
   placeMotif,
@@ -30,7 +30,7 @@ import {
 } from './content/shell1/latticeSystem';
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
-import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial } from './systems/forge';
+import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount } from './systems/forge';
 import { drillRepairCost } from './systems/drills';
 import { drillHead } from './content/drillParts';
 import { lightOverstoke } from './systems/kiln';
@@ -47,7 +47,7 @@ import {
   fleePending,
   startFight,
 } from './combat/combat';
-import { craftGear } from './combat/gear';
+import { craftGear, unequipGear } from './combat/gear';
 import { buyStock, presentIds, sellMaterial, spendCharter } from './guild/guild';
 import { acceptContract, completeContract, rerollContract } from './guild/contracts';
 import { hire } from './guild/hirelings';
@@ -60,7 +60,8 @@ import { benchAttempt, equipLens } from './content/shell4/bench';
 import { warrenAnswer, warrenClaim, warrenEnter, warrenLeave } from './content/shell4/warrens';
 import { inscribe } from './content/shell4/runes';
 import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
-import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw } from './content/shell5/emberArray';
+import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw, installSocket } from './content/shell5/emberArray';
+import { produceExport } from './content/exports';
 import { refine, transmute } from './systems/refinery';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
@@ -73,10 +74,10 @@ import { listen, rebuildCell } from './systems/absence';
 import { buyAxiom, doRecursion } from './systems/recursionSys';
 import { wardenOf } from './combat/species';
 import { lawFlag, sealed } from './laws';
-import { harvestPlot, plantSeed } from './content/shell3/greenhouse';
+import { harvestPlot, plantSeed, installFrame } from './content/shell3/greenhouse';
 import { feedMycelium, inoculate } from './content/shell3/mycelium';
 import { brewExperiment, drinkBrew } from './content/shell3/brews';
-import { commitWeave, setThread, spinThread } from './content/shell3/loomSystem';
+import { commitWeave, setThread, spinThread, installLoomFrame } from './content/shell3/loomSystem';
 import { convCurrencyId, resolveCurrencyId } from './shells';
 import { MAX_DRILLS } from './systems/drills';
 import { grantXP } from './systems/xp';
@@ -227,6 +228,9 @@ export function handleAction(
 
     case 'descend':
       return descend(state, mods, ctx);
+
+    case 'descendMany':
+      return descendMany(state, mods, ctx, action.count);
 
     case 'climb':
       return climb(state, ctx, action.to);
@@ -388,6 +392,9 @@ export function handleAction(
     case 'craftGear':
       return craftGear(state, mods, ctx, action.gearId);
 
+    case 'unequipGear':
+      return unequipGear(state, ctx, action.slot);
+
     case 'buyStock':
       return buyStock(state, mods, ctx, action.npcId, action.slot, action.stance);
 
@@ -459,7 +466,14 @@ export function handleAction(
 
     case 'buyMirror': {
       const cost = D(40).mul(Decimal.pow(1.5, state.refraction.mirrorStock - 2));
+      // The export spine: mirrors past the fourth are silvered with Set Resin —
+      // Verdance's export, rendered at the Still. Serra hauls it if you won't.
+      const wantsResin = state.refraction.mirrorStock >= 4;
+      if (wantsResin && materialCount(state, 'setresin') < 1) {
+        return { ok: false, reason: 'Mirrors past the fourth want 1 Set Resin — render it at the Still in Verdance, or buy it from Serra' };
+      }
       if (!spendCurrency(state, 'silica', cost)) return { ok: false, reason: `${cost.toFixed(0)} Silica for the next mirror` };
+      if (wantsResin) consumeMaterial(state, 'setresin', 1);
       state.refraction.mirrorStock += 1;
       return { ok: true };
     }
@@ -515,6 +529,19 @@ export function handleAction(
     case 'lightCell':
       return lightCell(state, action.cell);
 
+    // --- Part B export spine: production + export-consuming installs -------
+    case 'produceExport':
+      return produceExport(state, action.id);
+
+    case 'installFrame':
+      return installFrame(state);
+
+    case 'installLoomFrame':
+      return installLoomFrame(state);
+
+    case 'installSocket':
+      return installSocket(state);
+
     case 'setOverdrive':
       return setOverdrive(state, action.on);
 
@@ -561,6 +588,15 @@ export function handleAction(
 
     case 'tapeRecord': {
       if (action.on) {
+        // The export spine: arming a recording burns 1 Emberglass — the tape
+        // is CUT in Cinder's glass, which is why it survives being replayed
+        // forever. Stopping is free; a new recording is a new plate.
+        if (!state.chamber.recording) {
+          if (materialCount(state, 'emberglass') < 1) {
+            return { ok: false, reason: 'A recording is cut in 1 Emberglass — hold the Ember Array in the band, or buy it from Serra' };
+          }
+          consumeMaterial(state, 'emberglass', 1);
+        }
         state.chamber.running = false;
         state.chamber.tape = [];
         state.chamber.trace = [];
@@ -767,7 +803,7 @@ export function handleAction(
 
     case 'buySkillNode': {
       const def = skillNodeDef(action.id);
-      if (def.stub) return { ok: false, reason: 'Sealed' };
+      if (!skillNodeUnlocked(state, def)) return { ok: false, reason: 'Breach deeper to open this' };
       const rank = skillRank(state, action.id);
       if (rank >= def.maxRank) return { ok: false, reason: 'Max rank' };
       if (state.delver.skillPoints < def.costPerRank) {

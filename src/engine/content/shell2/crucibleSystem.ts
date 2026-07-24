@@ -16,6 +16,7 @@ import { getCurrency, spendCurrency, addCurrency } from '../../resources';
 import type { ActionResult, EngineCtx, GameState } from '../../types';
 import { materialDef } from '../../materials';
 import { consumeMaterial, equippedTool, materialCount, purityMult } from '../../systems/forge';
+import { transmuteUnlocked } from '../../systems/refinery';
 import { masteryLevel } from '../../systems/mastery';
 import { grantXP } from '../../systems/xp';
 import {
@@ -112,6 +113,17 @@ export function pourAlloy(
   }
   if (materialCount(state, catalystId) < 1) return { ok: false, reason: 'No catalyst held' };
 
+  // THE EXPORT SPINE (Part B): every pour burns one Kilnflux — Loam's export,
+  // the powder that makes the metals agree to melt. The bill starts exactly
+  // when the player can pay it: transmutation (which fires the flux) unlocks
+  // at Ferrite Mastery 6, so earlier pours are the Crucible teaching itself.
+  // No softlock by construction — and Serra sells flux from her ferrite
+  // arrival on, so the fallback predates the toll as well.
+  const wantsFlux = transmuteUnlocked(state);
+  if (wantsFlux && materialCount(state, 'kilnflux') < 1) {
+    return { ok: false, reason: 'A pour wants 1 Kilnflux — fire it at the Refinery (The Kiln Firing) or buy it from Serra' };
+  }
+
   // Full metals up front.
   for (let i = 0; i < 5; i++) {
     if (clean[i]! > 0 && getCurrency(state, METALS[i]!).lt(clean[i]! * POUR_UNIT)) {
@@ -121,6 +133,8 @@ export function pourAlloy(
   for (let i = 0; i < 5; i++) {
     if (clean[i]! > 0) spendCurrency(state, METALS[i]!, D(clean[i]! * POUR_UNIT));
   }
+  // The flux burns whether the pour hits or misses — it made the melt happen.
+  if (wantsFlux) consumeMaterial(state, 'kilnflux', 1);
 
   state.crucible.pours += 1;
   const match = matchAlloy(clean);

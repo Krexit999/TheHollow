@@ -23,7 +23,8 @@ import { ModifierCache } from '../../engine/modifiers';
 import { fmtNum } from '../../engine';
 import { dispatch, useGame } from '../store';
 import { GemIcon, GeodeIcon, MaterialIcon } from './MaterialIcon';
-import { HoldButton } from './shared';
+import { HoldButton, TraitTag } from './shared';
+import { traitsOf } from '../../engine/traits';
 import { AutoRefineControl, PinnedStrip, ShortfallReadout } from './qol';
 
 const RARITY_LABEL: Record<MaterialRarity, string> = {
@@ -138,9 +139,17 @@ export function HoldPanel() {
                   <span className="tnum text-sm font-bold text-cave-200">{count}</span>
                 </button>
               </div>
-              {open && def.flavor && (
-                <div className="mt-1.5 border-t border-cave-800 pt-1.5 text-[10px] italic leading-snug text-cave-400">
-                  {def.flavor}
+              {open && (
+                <div className="mt-1.5 border-t border-cave-800 pt-1.5">
+                  {traitsOf(def.id).length > 0 && (
+                    <div className="mb-1 flex flex-wrap items-center gap-1">
+                      <span className="text-[9px] uppercase tracking-wider text-cave-500">Traits</span>
+                      {traitsOf(def.id).map((t) => <TraitTag key={t} id={t} size="xs" />)}
+                    </div>
+                  )}
+                  {def.flavor && (
+                    <div className="text-[10px] italic leading-snug text-cave-400">{def.flavor}</div>
+                  )}
                 </div>
               )}
               {open && <AutoRefineControl materialId={def.id} />}

@@ -6,13 +6,15 @@
  * rate or a yield; they only catch a mistake or remember a preference.
  */
 import { useEffect, useRef, useState } from 'react';
-import { fmt, fmtDuration, maxToolTier, type NumberFormat, type RunSummary } from '../../engine';
+import { fmt, fmtDuration, maxToolTier, chipCurrencyId, currencyDef, type NumberFormat, type RunSummary } from '../../engine';
 import { BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import { materialCount, TOOL_RECIPES } from '../../engine/systems/forge';
 import { refineryUnlocked } from '../../engine/systems/refinery';
-import { allUpgrades, upgradeLevel } from '../../engine/upgrades';
+import { allUpgrades, upgradeLevel, costForLevels } from '../../engine/upgrades';
+import { collapseRetained } from '../../engine/systems/collapseSys';
 import { automationRate } from '../../engine/content/shell7/gridModules';
 import { dispatch, useGame } from '../store';
+import { Select } from './Select';
 
 // ---------------------------------------------------------------------------
 // Undo — a short window to reverse the last spend or craft.
@@ -60,6 +62,7 @@ interface RunLedger {
   cores: string;
   sec: number;
   prev: RunSummary | null;
+  carried?: { name: string; levels: number };
 }
 
 export function RunSummaryModal() {
@@ -77,7 +80,10 @@ export function RunSummaryModal() {
       // A hand-pulled Collapse gets the full ledger page; an auto-collapse stays
       // out of the way (a quiet toast covers it) so an idle run isn't interrupted.
       if (ev.type === 'collapse' && !ev.auto) {
-        setLedger({ key: entry.seq, depth: ev.depth, cores: fmt(ev.cores), sec: ev.sec, prev: ev.prev });
+        // The carry mark was just spent — read what it saved from the run the
+        // engine just banked, so the fall CONFIRMS the choice you made before it.
+        const carried = state.collapse.lastRun?.carried;
+        setLedger({ key: entry.seq, depth: ev.depth, cores: fmt(ev.cores), sec: ev.sec, prev: ev.prev, carried });
       }
     }
   }, [rev, state]);
@@ -104,6 +110,9 @@ export function RunSummaryModal() {
             color="#8be9fd"
           />
           <Line label="Run length" value={fmtDuration(ledger.sec)} color="#c9a86a" />
+          {ledger.carried && ledger.carried.levels > 0 && (
+            <Line label="Carried through" value={`${ledger.carried.name} · ${ledger.carried.levels} levels kept`} color="#9fd8c0" />
+          )}
         </div>
         {!prev && (
           <div className="mt-3 text-[11px] italic text-cave-400">
@@ -348,6 +357,17 @@ export function CollapseControls() {
   // Only resetting face upgrades the player actually has levels in can be carried.
   const carriable = allUpgrades().filter((u) => u.resetsOnCollapse && upgradeLevel(state, u.id) > 0);
   const carryDef = carry ? allUpgrades().find((u) => u.id === carry) : null;
+  // What carrying an upgrade SAVES — the rebuild you skip, priced in the chip
+  // currency the fall would make you re-earn. This is the whole value of the
+  // choice, and it was invisible; showing it is the fix (the power was fine).
+  const retained = collapseRetained(state);
+  const chipCur = currencyDef(chipCurrencyId(state));
+  const carryValue = (id: string) => {
+    const def = allUpgrades().find((u) => u.id === id);
+    const lvl = upgradeLevel(state, id);
+    const levels = Math.max(0, lvl - retained);
+    return { levels, cost: def ? costForLevels(def, retained, levels) : null };
+  };
   const autoOn = automationRate(state.spiral?.grid ?? {}) > 0;
   const acd = state.qol.autoCollapseDepth;
 
@@ -361,6 +381,9 @@ export function CollapseControls() {
             <span>Depth <span className="tnum font-semibold text-[#8be9fd]">{last.depth}</span></span>
             <span>Cores <span className="tnum font-semibold text-[#8be9fd]">{fmt(last.cores)}</span></span>
             <span>Run <span className="tnum text-cave-400">{fmtDuration(last.sec)}</span></span>
+            {last.carried && last.carried.levels > 0 && (
+              <span>Carried <span className="text-[#9fd8c0]">{last.carried.name} (+{last.carried.levels} lv)</span></span>
+            )}
           </div>
         </div>
       )}
@@ -372,21 +395,39 @@ export function CollapseControls() {
           <div className="text-[10px] italic text-cave-500">No face upgrades to carry yet.</div>
         ) : (
           <>
-            <select
+            <Select
+              className="w-full"
+              ariaLabel="Upgrade to carry through the next fall"
               value={carry ?? ''}
-              onChange={(e) => dispatch({ type: 'setCarryUpgrade', upgradeId: e.target.value || null })}
-              className="w-full rounded border border-cave-700 bg-cave-950 px-2 py-1 text-[11px] text-cave-200"
-            >
-              <option value="">— carry nothing —</option>
-              {carriable.map((u) => (
-                <option key={u.id} value={u.id}>{u.name} · Lv {upgradeLevel(state, u.id)}</option>
-              ))}
-            </select>
-            <div className="mt-1 text-[10px] italic leading-snug text-cave-500">
-              {carryDef
-                ? `${carryDef.name} keeps its full level; everything else resets. The mark is spent on the fall.`
-                : 'One upgrade rides the collapse at full level. One only — choose it each run.'}
-            </div>
+              onChange={(v) => dispatch({ type: 'setCarryUpgrade', upgradeId: v || null })}
+              options={[
+                { value: '', label: '— carry nothing —' },
+                ...carriable.map((u) => {
+                  const v = carryValue(u.id);
+                  const worth = v.cost && v.levels > 0 ? ` · saves ${fmt(v.cost)} ${chipCur.name}` : '';
+                  return { value: u.id, label: `${u.name} · Lv ${upgradeLevel(state, u.id)}${worth}` };
+                }),
+              ]}
+            />
+            {(() => {
+              if (!carryDef) {
+                return (
+                  <div className="mt-1 text-[10px] italic leading-snug text-cave-500">
+                    One upgrade rides the fall at full level while the rest drop to Lv {retained} — pick the one
+                    that cost you the most to build. The value of each is shown above; the mark is spent on the fall.
+                  </div>
+                );
+              }
+              const v = carryValue(carryDef.id);
+              return (
+                <div className="mt-1 rounded border border-[#9fd8c0]/25 bg-[#9fd8c0]/5 px-2 py-1 text-[10px] leading-snug text-cave-300">
+                  Carrying <span className="text-[#9fd8c0]">{carryDef.name}</span> skips re-buying{' '}
+                  <span className="text-cave-100">{v.levels} levels</span> next run —
+                  {v.cost ? <> about <span className="tnum text-[#9fd8c0]">{fmt(v.cost)} {chipCur.name}</span> of the climb back.</> : ' its full level.'}{' '}
+                  Everything else falls to Lv {retained}. The mark is spent on the fall.
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

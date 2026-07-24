@@ -15,6 +15,7 @@ import type { ModifierCache } from '../modifiers';
 import { registerModifier } from '../modifiers';
 import { addMaterial, materialCount, consumeMaterial } from '../systems/forge';
 import { materialDef, materialsOfShell, GEMS } from '../materials';
+import { SHELL_EXPORTS } from '../content/exports';
 import { npcDef, npcsPresent, NPCS, repTier, type NpcDef, type StallKind } from './npcs';
 import { refillBoard } from './contracts';
 import { tickHirelings } from './hirelings';
@@ -222,11 +223,37 @@ export function stockFor(state: GameState, npcId: string): StockSlot[] {
     slots.push({ key: `${npcId}.0`, kind: 'currency', id: 'scale', qty: 3, price: 20, label: 'A crate of Scale, 150 count' });
     slots.push({ key: `${npcId}.1`, kind: 'currency', id: 'lodestone', qty: 3, price: 24, label: 'Lodestone shot, 150 count' });
     pickMats('ferrite', ['common', 'rich'], 2);
+  } else if (kind === 'exports') {
+    // THE EXPORT SHELF (Part B spine) — Serra hauls every left-behind shell's
+    // export down the stair. Deterministic, not rotated: the shelf is the
+    // spine's no-softlock guarantee, so it must never roll away. Prices rise
+    // with the length of the haul.
+    const ordinal = Math.min(state.shell.breachCount, SPINE_SHELLS.length);
+    for (const e of SHELL_EXPORTS) {
+      if (!e.materialId) continue;
+      const home = SPINE_SHELLS.indexOf(e.shellId);
+      if (home < 0 || home >= ordinal) continue; // only shells the stair left behind
+      slots.push({
+        key: `${npcId}.x.${e.materialId}`, kind: 'material', id: e.materialId,
+        qty: 4, purity: 70, price: EXPORT_SHELF_PRICE + home * 12,
+        label: `${materialDef(e.materialId).name} — hauled up from ${e.shellId}`,
+      });
+    }
+    if (state.shell.breachCount >= 6) {
+      slots.push({
+        key: `${npcId}.x.resonance`, kind: 'currency', id: 'resonance',
+        qty: 3, price: 45, label: 'Bottled Resonance, 25 measures (she will not say how)',
+      });
+    }
   }
   return slots;
 }
 
-const CURRENCY_PACKS: Record<string, number> = { rime: 50, scale: 150, lodestone: 150 };
+/** The stair's shell order — a material's home index gates Serra's shelf. */
+const SPINE_SHELLS = ['loam', 'ferrite', 'verdance', 'glassmere', 'cinder', 'hollow'];
+const EXPORT_SHELF_PRICE = 26;
+
+const CURRENCY_PACKS: Record<string, number> = { rime: 50, scale: 150, lodestone: 150, resonance: 25 };
 
 /** Rep + ledger discount/penalty on a stall's prices. */
 export function priceFactor(state: GameState, npcId: string): number {

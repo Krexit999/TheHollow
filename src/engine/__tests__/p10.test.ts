@@ -11,6 +11,7 @@ import type { Engine, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import { D } from '../decimal';
 import { addCurrency, getCurrency } from '../resources';
+import { addMaterial } from '../systems/forge';
 import { lawFlag, lawNum } from '../laws';
 import { AXIOMS } from '../content/shell7/axioms';
 import { axiomsFromEchoes } from '../systems/recursionSys';
@@ -186,9 +187,14 @@ describe('recursion: the world resets and you do not', () => {
 
   it('axioms are bought once, permanently, and firstWord rewrites the next beginning', () => {
     const { engine, s } = primed();
+    // The export spine: a law is written in Resonance, and Resonance RIDES
+    // Recursion with the meta currencies — banked listening buys new-world laws.
+    addCurrency(s, 'resonance', D(60));
     engine.dispatch({ type: 'recurse' });
     const n = engine.getState() as GameState;
+    expect(getCurrency(n, 'resonance').toNumber()).toBe(60); // it survived the reset
     expect(engine.dispatch({ type: 'buyAxiom', id: 'firstWord' }).ok).toBe(true);
+    expect(getCurrency(n, 'resonance').toNumber()).toBe(35); // 25 spent on the writing
     expect(engine.dispatch({ type: 'buyAxiom', id: 'firstWord' }).ok).toBe(false); // already written
     expect(n.recursion.axioms).toContain('firstWord');
     // A second recursion begins with the structures standing.
@@ -218,6 +224,7 @@ describe('the echo chamber: a program is indistinguishable from a hand', () => {
     s.face.cells[0] = 5;
     s.face.cells[1] = 5;
     addCurrency(s, 'resonance', D(100));
+    addMaterial(s, 'emberglass', 70, 1); // the plate a recording is cut in (export spine)
     engine.dispatch({ type: 'tapeRecord', on: true });
     engine.dispatch({ type: 'chip', cell: 0 });
     engine.dispatch({ type: 'chip', cell: 1 });

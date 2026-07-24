@@ -6,7 +6,8 @@
 import { useState } from 'react';
 import { fmt, getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
-import { greenhouseUnlocked, plotCount, strainDef } from '../../engine/content/shell3/greenhouse';
+import { greenhouseUnlocked, plotCount, plotCap, strainDef } from '../../engine/content/shell3/greenhouse';
+import { ExportProduceRow, InstallButton } from './exports';
 import {
   clusters, inoculate as _inoc, inoculateCost, MYC_LANES, MYC_NODE_TYPES, MYC_ROWS,
   mycUnlocked, siteDepth, siteId, siteReachable, SPREAD_COST,
@@ -19,7 +20,7 @@ import { currentWeather } from '../../engine/systems/weather';
 import { vinedCellCount, feralCellCount } from '../../engine/systems/growth';
 import { materialCount } from '../../engine/systems/forge';
 import { dispatch, useGame } from '../store';
-import { Amount } from './shared';
+import { Amount, BUCKET_NAME } from './shared';
 import { MaterialIcon } from './MaterialIcon';
 
 void _inoc;
@@ -33,15 +34,28 @@ export function WeatherChip() {
   useGame((s) => s.rev);
   if (!state?.guild.discovered) return null;
   const w = currentWeather(state as GameState);
+  // Built from the weather's ACTUAL modifier values, not a re-typed description —
+  // so what the chip says is exactly what the pipeline is applying right now.
+  const effects: string[] = w.mods.map((mm) => `${BUCKET_NAME[mm.bucket]} +${Math.round((mm.value - 1) * 100)}%`);
+  if (w.growthAging && w.growthAging !== 1) effects.push(`vines age ×${w.growthAging}`);
+  if (w.greenhouse && w.greenhouse !== 1) effects.push(`Greenhouse growth ×${w.greenhouse}`);
+  const effectLine = effects.join(' · ');
   return (
     <div
-      className="pointer-events-auto absolute right-2 top-2 z-20 rounded-lg border border-cave-700 bg-cave-900/85 px-2 py-1"
-      title={`${w.blurb}${w.neutral ? '' : ' (weather is only ever upside — the floor is neutral)'}`}
+      className="pointer-events-auto absolute right-2 top-2 z-20 max-w-[9.5rem] rounded-lg border border-cave-700 bg-cave-900/85 px-2 py-1"
+      title={`${w.blurb}${effectLine ? `\n\nRight now: ${effectLine}.` : ''}\n\nWeather is only ever upside — the floor is neutral.`}
     >
-      <span className="mr-1">{w.glyph}</span>
-      <span className={`text-[10px] uppercase tracking-wider ${w.neutral ? 'text-cave-400' : 'text-[#cfe89a]'}`}>
-        {w.name}
-      </span>
+      <div>
+        <span className="mr-1">{w.glyph}</span>
+        <span className={`text-[10px] uppercase tracking-wider ${w.neutral ? 'text-cave-400' : 'text-[#cfe89a]'}`}>
+          {w.name}
+        </span>
+      </div>
+      {effectLine ? (
+        <div className="mt-0.5 text-[9px] leading-tight text-[#9fd8c0]">{effectLine}</div>
+      ) : w.neutral ? (
+        <div className="mt-0.5 text-[9px] leading-tight text-cave-500">no bonus, no penalty</div>
+      ) : null}
     </div>
   );
 }
@@ -54,7 +68,7 @@ export function GrowthChip() {
   const vines = vinedCellCount(state as GameState);
   if (vines === 0) return null;
   return (
-    <div className="pointer-events-none absolute right-2 top-10 z-20 rounded-lg border border-[#3f6b32]/70 bg-cave-900/85 px-2 py-1 text-[10px] text-[#9ee07a]">
+    <div className="pointer-events-none absolute right-2 top-[3.75rem] z-20 rounded-lg border border-[#3f6b32]/70 bg-cave-900/85 px-2 py-1 text-[10px] text-[#9ee07a]">
       {vines} vined · {feralCellCount(state as GameState)} feral
     </div>
   );
@@ -94,6 +108,19 @@ export function GreenhousePanel() {
           Adjacent beds flowering together cross-breed — the slower parent sets the shape, the humors
           blend. Hypotheses welcome; the codex only records what you have actually grown.
         </div>
+        {plotCount(state) < plotCap(state) && (
+          <div className="mt-2">
+            <InstallButton
+              action={{ type: 'installFrame' }}
+              label={`Frame bed ${plotCount(state) + 1} of ${plotCap(state)}`}
+              exportId="lodeframe"
+            />
+            <div className="mt-1 text-[10px] leading-snug text-cave-500">
+              Mastery revealed the room; the bed itself is Ferrite iron — cast a Lodeframe at the
+              Crucible, or buy one from Serra.
+            </div>
+          </div>
+        )}
         {/* Beds in a row — adjacency is left/right. */}
         <div className="mt-2 grid grid-cols-4 gap-1.5">
           {plots.map((p, i) => {
@@ -119,7 +146,7 @@ export function GreenhousePanel() {
                 className={`flex h-20 flex-col items-center justify-between rounded-md border p-1 ${
                   mature ? 'border-[#e6f5aa]/70' : flowering ? 'border-[#9ee07a]/60' : 'border-cave-700'
                 }`}
-                title={`${def.name} — ${def.flavor}`}
+                title={`${def.name} — yields ${strainYieldText(p.speciesId)}${mature ? ' · ripe, tap to harvest' : ` · ${Math.round(prog * 100)}% grown`}\n${def.flavor}`}
                 disabled={!mature}
                 onClick={() => dispatch({ type: 'harvestPlot', plot: i })}
               >
@@ -145,6 +172,7 @@ export function GreenhousePanel() {
                 <button
                   key={id}
                   className={`rounded border px-1.5 py-0.5 text-[10px] ${chosen === id ? 'border-[#9ee07a] text-[#cfe89a]' : 'border-cave-700 text-cave-300'}`}
+                  title={`${strainName(id)} — grows to yield ${strainYieldText(id)}`}
                   onClick={() => setSelectedSeed(id)}
                 >
                   {strainName(id)} <span className="tnum text-cave-400">×{n}</span>
@@ -174,6 +202,7 @@ export function GreenhousePanel() {
                     ({strainName(def.parents[0])} × {strainName(def.parents[1])})
                   </span>
                 )}
+                <div className="text-[9px] text-[#9fd8c0]">yields {strainYieldText(id)}</div>
               </div>
             );
           })}
@@ -188,6 +217,25 @@ function strainName(id: string): string {
     return strainDef(id).name;
   } catch {
     return id;
+  }
+}
+
+// A strain harvests into currency by its HUMOR (see harvestPlot): bright→Spore
+// (×3), iron→Sap, chill→Chlorophyll; a hybrid splits its yield across both. This
+// mirrors the engine exactly so the plot can say what it will pay before you tap.
+const HUMOR_YIELD: Record<string, { name: string; mult: number }> = {
+  bright: { name: 'Spore', mult: 3 },
+  iron: { name: 'Sap', mult: 1 },
+  chill: { name: 'Chlorophyll', mult: 1 },
+};
+function strainYieldText(id: string): string {
+  try {
+    const def = strainDef(id);
+    const humors = Array.isArray(def.humor) ? def.humor : [def.humor];
+    const per = (8 * def.yieldMult) / humors.length;
+    return humors.map((h) => `${HUMOR_YIELD[h]!.name} ×${Math.round(per * HUMOR_YIELD[h]!.mult)}`).join(' · ');
+  } catch {
+    return '';
   }
 }
 
@@ -323,15 +371,38 @@ export function LoomPanel() {
             ↶ Undo that placement <span className="text-cave-500">({undo.length} back)</span>
           </button>
         )}
+        {!state.loom.framed && (
+          <div className="mt-2">
+            <InstallButton
+              action={{ type: 'installLoomFrame' }}
+              label="Brace the frame in iron"
+              exportId="lodeframe"
+            />
+            <div className="mt-1 text-[10px] leading-snug text-cave-500">
+              The wooden frame bows under a full warp — no commit until it is braced with a
+              Lodeframe (Crucible in Ferrite, or Serra).
+            </div>
+          </div>
+        )}
         <button
           className="btn btn-warm mt-2 w-full py-1.5 text-xs"
+          disabled={!state.loom.framed}
           onClick={() => { dispatch({ type: 'commitWeave' }); setUndo([]); }}
         >
-          Set the weave (consumes one of each assigned thread)
+          Set the weave (consumes one of each assigned thread · yields 1 Fibercloth)
         </button>
         {shapes.length > 0 && (
-          <div className="mt-1.5 text-[10px] text-[#9fd8c0]">
-            Woven now: {shapes.map((sh) => `${SHAPE_EFFECTS[sh.shape]?.name ?? sh.shape} (${sh.fiber})`).join(' · ')}
+          <div className="mt-1.5 space-y-0.5">
+            <div className="text-[9px] uppercase tracking-widest text-cave-500">Woven now — each figure's bonus is live</div>
+            {shapes.map((sh, k) => {
+              const def = SHAPE_EFFECTS[sh.shape];
+              return (
+                <div key={`${sh.shape}-${sh.fiber}-${k}`} className="flex items-baseline justify-between gap-2 text-[10px]">
+                  <span className="text-[#9fd8c0]">{def?.name ?? sh.shape} <span className="text-cave-500">({sh.fiber})</span></span>
+                  {def && <span className="shrink-0 text-[#9fd8c0]">+{Math.round(def.pct * 100)}% {BUCKET_NAME[def.bucket]}</span>}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -445,6 +516,8 @@ export function BrewPanel() {
           <div className="border-t border-cave-800 pt-1.5 text-[11px] italic text-cave-300">“{state.brewing.lastHint}”</div>
         )}
       </div>
+      {/* The export: resin rendered down and set hard (Part B spine) */}
+      <ExportProduceRow materialId="setresin" />
       {/* Cellar */}
       <div className="panel p-3">
         <div className="flex items-baseline justify-between">
@@ -518,7 +591,7 @@ export function MyceliumPanel() {
             <button
               key={t.id}
               className={`btn px-2 py-0.5 text-[10px] ${nodeType === t.id ? 'btn-warm' : ''}`}
-              title={`${t.name}: small ${t.bucket} per node, amplified by cluster size`}
+              title={`${t.name}: +${((t.value - 1) * 100).toFixed(1)}% ${BUCKET_NAME[t.bucket]} per node, amplified by cluster size`}
               onClick={() => setNodeType(t.id)}
             >
               {t.glyph} {t.name}
@@ -552,7 +625,7 @@ export function MyceliumPanel() {
                           ? 'border-cave-600 bg-cave-900 text-cave-500 hover:border-[#9ee07a]/50'
                           : 'border-cave-800 bg-cave-950 text-cave-700'
                     }`}
-                    title={owned ? `${t?.name}` : reachable ? `Inoculate · ${cost} Humus` : `Wants depth ${siteDepth(r)}`}
+                    title={owned ? `${t?.name}${t ? ` · +${((t.value - 1) * 100).toFixed(1)}% ${BUCKET_NAME[t.bucket]} per node` : ''}` : reachable ? `Inoculate · ${cost} Humus` : `Wants depth ${siteDepth(r)}`}
                     disabled={!!owned || !reachable}
                     onClick={() => dispatch({ type: 'inoculate', siteId: id, nodeType })}
                   >

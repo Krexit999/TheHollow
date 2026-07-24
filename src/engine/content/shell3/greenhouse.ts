@@ -13,6 +13,7 @@ import { lawFlag } from '../../laws';
 import type { ActionResult, EngineCtx, GameState } from '../../types';
 import { addCurrency } from '../../resources';
 import { registerModifier } from '../../modifiers';
+import { consumeMaterial } from '../../systems/forge';
 import { masteryLevel } from '../../systems/mastery';
 import { greenhouseWeatherMult } from '../../systems/weather';
 
@@ -108,9 +109,31 @@ export function greenhouseUnlocked(state: GameState): boolean {
   return masteryLevel(state, 'verdance') >= 2;
 }
 
-export function plotCount(state: GameState): number {
+/** Mastery sets the CEILING; iron builds the bed (Part B export spine).
+ *  Four plots come free. Every plot past four wants a Ferrite Lodeframe
+ *  installed — mastery 8 reveals room for six beds, 15 for eight, but the
+ *  beds themselves are iron, and iron comes from the shell above. */
+export function plotCap(state: GameState): number {
   const m = masteryLevel(state, 'verdance');
   return m >= 15 ? 8 : m >= 8 ? 6 : 4;
+}
+
+export function plotCount(state: GameState): number {
+  return Math.min(plotCap(state), 4 + (state.greenhouse.frames ?? 0));
+}
+
+export function installFrame(state: GameState): ActionResult {
+  if (!greenhouseUnlocked(state)) return { ok: false, reason: 'The Greenhouse wants Verdance Mastery 2' };
+  const cap = plotCap(state);
+  if (4 + state.greenhouse.frames >= cap) {
+    return { ok: false, reason: cap >= 8 ? 'Every bed is framed' : 'No room for another bed yet — mastery opens the next wall' };
+  }
+  if (consumeMaterial(state, 'lodeframe', 1) === null) {
+    return { ok: false, reason: 'A bed wants 1 Lodeframe — cast it at the Crucible in Ferrite, or buy one from Serra' };
+  }
+  state.greenhouse.frames += 1;
+  ensurePlots(state);
+  return { ok: true, data: { plots: plotCount(state) } };
 }
 
 function ensurePlots(state: GameState): void {
@@ -244,5 +267,5 @@ export function registerGreenhouseModifiers(): void {
 }
 
 export function defaultGreenhouseState(): GameState['greenhouse'] {
-  return { plots: [null, null, null, null], seeds: {}, codex: [], harvests: 0 };
+  return { plots: [null, null, null, null], seeds: {}, codex: [], harvests: 0, frames: 0 };
 }

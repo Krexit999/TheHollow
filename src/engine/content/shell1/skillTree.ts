@@ -1,7 +1,13 @@
 /**
- * Delver skill tree — three branches, 22 nodes each at full size. Phase 1
- * implements 6 real nodes (2 per branch); the rest are visible stubs so the
- * shape of the tree is clear. Free respec (locked).
+ * Delver skill tree — three branches. Thirteen nodes open from the start (Loam);
+ * twelve more OPEN PROGRESSIVELY as you breach into deeper shells, so the tree
+ * keeps giving your skill points a home the whole way down rather than finishing
+ * in Shell I. Free respec (locked). The Delver never resets.
+ *
+ * The old build shipped these twelve as permanently-sealed `stub` nodes with a
+ * promise ("opens in deeper shells") that no code ever kept — so a player maxed
+ * the ~47 points of real nodes in Loam and every point after had nowhere to go.
+ * They are now real nodes with real effects, gated by `unlockBreach`.
  */
 import { registerModifier } from '../../modifiers';
 import type { GameState } from '../../types';
@@ -18,8 +24,12 @@ export interface SkillNodeDef {
   maxRank: number;
   /** Skill points per rank. */
   costPerRank: number;
-  /** Stubbed nodes render sealed and cannot be bought (later phases). */
-  stub?: boolean;
+  /**
+   * Breaches (deeper shells) that must be reached before this node opens.
+   * Undefined or 0 = available from the start. loam 0, ferrite 1, verdance 2,
+   * glassmere 3, cinder 4, hollow 5, aleph 6.
+   */
+  unlockBreach?: number;
 }
 
 export const SKILL_NODES: SkillNodeDef[] = [
@@ -158,34 +168,67 @@ export const SKILL_NODES: SkillNodeDef[] = [
   },
 ];
 
-/** Sealed stubs — visible so the tree's eventual shape reads on screen. */
-const STUB_NAMES: Record<SkillBranch, string[]> = {
-  extraction: ['Vein Memory', 'Ruinous Arc', 'The Long Pick'],
-  industry: ['Surplus Doctrine', 'Belt Discipline', 'Second Furnace', 'Foreman\'s Eye', 'Closed Loop', 'The Great Engine'],
-  insight: ['Borrowed Light', 'Counting the Dark', 'The Core\'s Grammar'],
-};
-
-const FIRST_STUB_ROW: Record<SkillBranch, number> = { extraction: 5, industry: 2, insight: 5 };
-
-for (const branch of ['extraction', 'industry', 'insight'] as const) {
-  STUB_NAMES[branch].forEach((name, i) => {
-    SKILL_NODES.push({
-      id: `stub.${branch}.${i}`,
-      branch,
-      row: FIRST_STUB_ROW[branch] + i,
-      name,
-      maxRank: 5,
-      costPerRank: 1,
-      description: () => 'Sealed. Something in a later shell unlocks this.',
-      stub: true,
-    });
-  });
-}
+/**
+ * The deeper nodes — real effects now, opening as you breach into each shell.
+ * Two per shell II–VII, so every world you fall into hands the tree new ground.
+ * Each keys off `unlockBreach` and routes its effect through the modifier
+ * pipeline below, exactly as the starting nodes do.
+ */
+const DEEP_NODES: SkillNodeDef[] = [
+  // --- Ferrite (breach 1) ---
+  { id: 'veinMemory', branch: 'extraction', row: 5, unlockBreach: 1, maxRank: 3, costPerRank: 1,
+    name: 'Vein Memory',
+    description: (r) => `The rock remembers where it gave. +6% material drop chance per rank (now +${6 * r}%).` },
+  { id: 'surplusDoctrine', branch: 'industry', row: 2, unlockBreach: 1, maxRank: 5, costPerRank: 1,
+    name: 'Surplus Doctrine',
+    description: (r) => `Nothing is spare. +8% Brick from the Kiln per rank (now +${8 * r}%).` },
+  // --- Verdance (breach 2) ---
+  { id: 'beltDiscipline', branch: 'industry', row: 3, unlockBreach: 2, maxRank: 5, costPerRank: 1,
+    name: 'Belt Discipline',
+    description: (r) => `The belts never stutter. Drills strike +6% faster per rank (now +${6 * r}%).` },
+  { id: 'borrowedLight', branch: 'insight', row: 5, unlockBreach: 2, maxRank: 5, costPerRank: 1,
+    name: 'Borrowed Light',
+    description: (r) => `Read by someone else's lamp. +8% Delver XP per rank (now +${8 * r}%).` },
+  // --- Glassmere (breach 3) ---
+  { id: 'ruinousArc', branch: 'extraction', row: 6, unlockBreach: 3, maxRank: 5, costPerRank: 1,
+    name: 'Ruinous Arc',
+    description: (r) => `The pick's whole arc is a threat. +8% strike power per rank (now +${8 * r}%).` },
+  { id: 'secondFurnace', branch: 'industry', row: 4, unlockBreach: 3, maxRank: 5, costPerRank: 1,
+    name: 'Second Furnace',
+    description: (r) => `A second throat on the fire. +10% Kiln intake per rank (now +${10 * r}%).` },
+  // --- Cinder (breach 4) ---
+  { id: 'foremansEye', branch: 'industry', row: 5, unlockBreach: 4, maxRank: 5, costPerRank: 1,
+    name: "Foreman's Eye",
+    description: (r) => `Someone is watching the line. +5% drill power per rank (now +${5 * r}%).` },
+  { id: 'countingTheDark', branch: 'insight', row: 6, unlockBreach: 4, maxRank: 3, costPerRank: 1,
+    name: 'Counting the Dark',
+    description: (r) => `Every absence is data. +6% motif gain per rank (now +${6 * r}%).` },
+  // --- Hollow (breach 5) ---
+  { id: 'theLongPick', branch: 'extraction', row: 7, unlockBreach: 5, maxRank: 5, costPerRank: 1,
+    name: 'The Long Pick',
+    description: (r) => `Reach past the near seam. +6% Dust from every chip per rank (now +${6 * r}%).` },
+  { id: 'closedLoop', branch: 'industry', row: 6, unlockBreach: 5, maxRank: 3, costPerRank: 1,
+    name: 'Closed Loop',
+    description: (r) => `The works feed themselves. +6% field regen per rank (now +${6 * r}%).` },
+  // --- Aleph (breach 6) ---
+  { id: 'theGreatEngine', branch: 'industry', row: 7, unlockBreach: 6, maxRank: 5, costPerRank: 1,
+    name: 'The Great Engine',
+    description: (r) => `The whole shell is one machine. +4% resource cap per rank (now +${4 * r}%).` },
+  { id: 'coresGrammar', branch: 'insight', row: 7, unlockBreach: 6, maxRank: 5, costPerRank: 1,
+    name: "The Core's Grammar",
+    description: (r) => `You begin to read the rules. Descending costs -3% per rank (now -${3 * r}%).` },
+];
+for (const n of DEEP_NODES) SKILL_NODES.push(n);
 
 export function skillNodeDef(id: string): SkillNodeDef {
   const def = SKILL_NODES.find((n) => n.id === id);
   if (!def) throw new Error(`Unknown skill node: ${id}`);
   return def;
+}
+
+/** Has this node opened yet? A node opens once you have breached deep enough. */
+export function skillNodeUnlocked(state: GameState, node: SkillNodeDef): boolean {
+  return (state.shell.breachCount ?? 0) >= (node.unlockBreach ?? 0);
 }
 
 export function skillRank(state: GameState, id: string): number {
@@ -252,4 +295,28 @@ export function registerSkillModifiers(): void {
   });
   // heavyHands is consumed directly by manualChip; assayersHunch by the
   // Table; deepGrip by playerMaxHp.
+
+  // --- The deeper nodes (open across shells II–VII) ---------------------
+  const deep: Array<{ id: string; bucket: Parameters<typeof registerModifier>[0]['bucket']; per: number; sign?: -1 }> = [
+    { id: 'veinMemory', bucket: 'dropRate', per: 0.06 },
+    { id: 'surplusDoctrine', bucket: 'brickYield', per: 0.08 },
+    { id: 'beltDiscipline', bucket: 'drillSpeed', per: 0.06 },
+    { id: 'borrowedLight', bucket: 'xpGain', per: 0.08 },
+    { id: 'ruinousArc', bucket: 'strikePower', per: 0.08 },
+    { id: 'secondFurnace', bucket: 'kilnRate', per: 0.1 },
+    { id: 'foremansEye', bucket: 'drillPower', per: 0.05 },
+    { id: 'countingTheDark', bucket: 'motifGain', per: 0.06 },
+    { id: 'theLongPick', bucket: 'dustYield', per: 0.06 },
+    { id: 'closedLoop', bucket: 'regen', per: 0.06 },
+    { id: 'theGreatEngine', bucket: 'cap', per: 0.04 },
+    { id: 'coresGrammar', bucket: 'descendCost', per: 0.03, sign: -1 },
+  ];
+  for (const d of deep) {
+    registerModifier({
+      id: `skill.${d.id}`,
+      label: `${SKILL_NODES.find((n) => n.id === d.id)?.name ?? d.id} (Skill)`,
+      bucket: d.bucket,
+      value: (s) => 1 + (d.sign ?? 1) * d.per * skillRank(s, d.id),
+    });
+  }
 }

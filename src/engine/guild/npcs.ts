@@ -14,7 +14,7 @@
 
 export type ArrivalGate = 'open' | 'stalls' | 'crews' | 'ferrite';
 
-export type StallKind = 'ore' | 'combat' | 'gems' | 'gear' | 'provisions' | 'geodes' | 'ferrite';
+export type StallKind = 'ore' | 'combat' | 'gems' | 'gear' | 'provisions' | 'geodes' | 'ferrite' | 'exports';
 
 export interface PortraitDef {
   /** Base hue 0-360 for the garb. */
@@ -227,6 +227,9 @@ export const NPCS: NpcDef[] = [
     line: 'Two worlds, one road, and me in the middle taking a fair cut of both. Beautiful arrangement.',
     sourLine: 'A wheel cracked on the Breach stair. Do you know what a wheel COSTS down here?',
     arrives: 'ferrite', portrait: { hue: 25, hat: 'scarf', eyes: 'wide', extra: 'earring' },
+    // The export shelf (Part B spine): she hauls every left-behind shell's
+    // export down the stair — the spine's no-softlock guarantee has wheels.
+    stall: { kind: 'exports' },
     questline: true, floorHours: [6, 20],
   }),
   N({

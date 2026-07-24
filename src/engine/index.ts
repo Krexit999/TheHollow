@@ -24,6 +24,7 @@ import type {
 } from './types';
 import { ensureContentLoaded } from './content';
 import { initialState } from './state';
+import { ensureStateShape } from './save/shape';
 import { handleAction } from './actions';
 import { allCraftSystems } from './craft';
 import { tickFace } from './systems/face';
@@ -307,6 +308,13 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
         state.chamber.tape.length < lawNum(state, 'tapeSteps')
       ) {
         state.chamber.tape.push({ action: JSON.parse(JSON.stringify(action)), label: tapeLabel(action) });
+      }
+      // THE SHAPE NET (A.39): every save enters the engine through hydrate —
+      // fill any slice a long-lived save is missing (an array added after the
+      // record was created, a migration that missed one spot) from the current
+      // default shape, BEFORE any code can `.push` into a hole. Additive only.
+      if (action.type === 'hydrate' && action.state) {
+        ensureStateShape(action.state, initialState(0));
       }
       // Snapshot BEFORE an undoable spend/craft (serialize is only paid for those).
       const snapBefore = UNDOABLE.has(action.type) ? serialize(state, Date.now()) : null;

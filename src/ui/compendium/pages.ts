@@ -11,6 +11,8 @@
  * is not in here.
  */
 
+import { TRAIT_IDS, TRAITS, traitLeanText } from '../../engine/traits';
+
 export interface ConceptPage {
   id: string;
   title: string;
@@ -19,6 +21,19 @@ export interface ConceptPage {
   keywords: string[];
   paragraphs: string[];
   facts?: Array<[string, string]>;
+}
+
+/**
+ * The ten-word glossary, GENERATED from the trait registry so it can never drift
+ * from what the materials actually carry — name → plain sentence + which way it
+ * pushes. Folded into the hand-authored 'traits' page below (rule 5: the glossary
+ * is the vocabulary; the PAIRINGS stay unwritten, found only by forging).
+ */
+function traitGlossaryFacts(): Array<[string, string]> {
+  return TRAIT_IDS.map((id) => {
+    const lean = traitLeanText(id);
+    return [TRAITS[id].name, lean ? `${TRAITS[id].blurb} — ${lean}` : TRAITS[id].blurb] as [string, string];
+  });
 }
 
 export const CONCEPT_PAGES: ConceptPage[] = [
@@ -228,14 +243,18 @@ export const CONCEPT_PAGES: ConceptPage[] = [
   },
   {
     id: 'traits', title: 'Material traits', group: 'How it works',
-    summary: 'Why a material is a character, not just a tier.',
-    keywords: ['trait', 'traits', 'keen', 'tough', 'dense', 'light', 'brittle', 'material', 'character', 'edge', 'heft'],
+    summary: 'The ten words a material can carry, and which way each pushes.',
+    keywords: [
+      'trait', 'traits', 'material', 'character', 'vocabulary', 'what does', 'mean',
+      'edge', 'heft', 'chip', 'strike', 'durability', 'socket',
+      ...TRAIT_IDS, ...TRAIT_IDS.map((id) => TRAITS[id].name.toLowerCase()),
+    ],
     paragraphs: [
       'Every material carries two or three TRAITS — plain, opinionated properties. Loamiron is keen and springy. Umberjade is brittle and charged. You read them in the Hold and on the forge bench, and they are the same everywhere: a trait is a fact about the stone, not a puzzle.',
-      'Traits TRADE. Keen takes a savage edge and loses it fast. Dense hits like the floor of the shaft and swings slow. Tough will not crack and will not sharpen. Nothing is good at everything, which is the rule that keeps a common relevant forever: a keen common out-edges a tough rare, at any hour of the game.',
+      'Traits TRADE. Each pushes some stats up and pays for it by pushing others down — the whole vocabulary is listed below with its direction. Nothing is good at everything, which is the rule that keeps a common relevant forever: a keen common out-edges a tough rare, at any hour of the game. The forge preview shows the exact numbers once you place the parts.',
       'This is the one place discovery does not apply — a trait is visible, always. What is NOT written down is what traits do TOGETHER. Some pairings shatter, some sing. You find those by building, and the Codex writes them down when you do. This book never will.',
     ],
-    facts: [['Per material', 'two or three'], ['Always', 'visible'], ['In combination', 'discovered']],
+    facts: traitGlossaryFacts(),
   },
   {
     id: 'parts', title: 'Tools from parts', group: 'How it works',

@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { getCurrency, fmt } from '../../engine';
 import type { GameState } from '../../engine';
 import { BANDS, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
-import { materialCount, recipeDef, equippedTool } from '../../engine/systems/forge';
+import { materialCount, toolRecipeName, equippedTool } from '../../engine/systems/forge';
 import {
   refineryUnlocked, transmuteUnlocked, refinePreview, foundChains,
   REFINE_RATIO, REFINERY_MASTERY,
@@ -23,6 +23,7 @@ import { TEMPERS, temperingUnlocked, temperCost, currentTemper } from '../../eng
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
 import { BUCKET_NAME } from './shared';
+import { Select } from './Select';
 
 const useLive = () => {
   const state = useGame((s) => s.state);
@@ -128,18 +129,19 @@ export function RefineryPanel() {
               {([['A', feedA, setFeedA], ['B', feedB, setFeedB]] as const).map(([label, val, set]) => (
                 <div key={label} className="rounded-md border border-cave-700 p-2">
                   <div className="text-[9px] uppercase tracking-widest text-cave-500">Slot {label}</div>
-                  <select
+                  <Select
+                    className="mt-1 w-full"
+                    ariaLabel={`Refinery slot ${label}`}
                     value={val ?? ''}
-                    onChange={(e) => set(e.target.value || null)}
-                    className="mt-1 w-full rounded border border-cave-700 bg-cave-950 px-1 py-1 text-[11px] text-cave-200"
-                  >
-                    <option value="">— empty —</option>
-                    {held.map(({ id }) => (
-                      <option key={id} value={id}>
-                        {materialDef(id).name} ×{materialCount(state as GameState, id)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => set(v || null)}
+                    options={[
+                      { value: '', label: '— empty —' },
+                      ...held.map(({ id }) => ({
+                        value: id,
+                        label: `${materialDef(id).name} ×${materialCount(state as GameState, id)}`,
+                      })),
+                    ]}
+                  />
                 </div>
               ))}
             </div>
@@ -178,9 +180,6 @@ export function RefineryPanel() {
           </>
         )}
       </div>
-
-      {/* --- TEMPER ------------------------------------------------------ */}
-      <TemperPanel />
 
       {/* --- TEMPER ------------------------------------------------------ */}
       <TemperPanel />
@@ -234,7 +233,7 @@ function SalvagePanel() {
             <div key={t.id} className="rounded-md border border-cave-800 p-2">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="text-[11px] font-semibold text-cave-200">
-                  {t.name} <span className="text-cave-500">· {recipeDef(t.recipeId).name}</span>
+                  {t.name} <span className="text-cave-500">· {toolRecipeName(t)}</span>
                 </span>
                 <span className="tnum shrink-0 text-[10px] text-cave-500">purity {Math.round(t.purity)}</span>
               </div>

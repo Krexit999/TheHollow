@@ -241,25 +241,66 @@ function Hud({ state, onHere, hereOpen, onCloseSheets, selected }: {
       </div>
 
       {/* Bottom action row — climb, descend, and "here". */}
-      <div className="absolute inset-x-0 bottom-0 flex items-stretch gap-1 bg-gradient-to-t from-black/85 to-transparent p-1.5 pt-6">
-        <button
-          className="btn min-h-[44px] flex-1 text-sm"
-          disabled={depth <= 0}
-          onClick={() => dispatch({ type: 'climb' })}
-          aria-label="Climb up one"
-        >↑<span className="ml-1 hidden text-xs sm:inline">Climb</span></button>
-        <DescendButton state={state} />
-        <button
-          className={`btn min-h-[44px] flex-1 text-sm ${hereOpen ? 'btn-warm' : ''}`}
-          onClick={onHere}
-          aria-label="What can I do here"
-        >⚒<span className="ml-1 hidden text-xs sm:inline">Here</span></button>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-1.5 pt-6">
+        <MultiDescendRow state={state} />
+        <div className="flex items-stretch gap-1">
+          <button
+            className="btn min-h-[44px] flex-1 text-sm"
+            disabled={depth <= 0}
+            onClick={() => dispatch({ type: 'climb' })}
+            aria-label="Climb up one"
+          >↑<span className="ml-1 hidden text-xs sm:inline">Climb</span></button>
+          <DescendButton state={state} />
+          <button
+            className={`btn min-h-[44px] flex-1 text-sm ${hereOpen ? 'btn-warm' : ''}`}
+            onClick={onHere}
+            aria-label="What can I do here"
+          >⚒<span className="ml-1 hidden text-xs sm:inline">Here</span></button>
+        </div>
       </div>
 
       {/* Sheets, over the column. */}
       {hereOpen && <Sheet onClose={onCloseSheets}><HereActions state={state} /></Sheet>}
       {selected && <Sheet onClose={onCloseSheets}><MarkerDetail state={state} marker={selected} /></Sheet>}
     </>
+  );
+}
+
+/**
+ * Multi-descend — go down several at once. Each button dispatches `descendMany`,
+ * which is a loop of single descents, so it spends EXACTLY what that many taps
+ * would and stops at the first wall or empty purse. Shown only when there is new
+ * ground to dig and the rock ahead is not walled.
+ */
+function MultiDescendRow({ state }: { state: GameState }) {
+  const shell = currentShell(state);
+  const tool = equippedTool(state);
+  const needed = requiredTier(state, state.depth + 1);
+  const atFloor = state.depth >= shell.floorDepth;
+  const walled = tool.tier < needed;
+  const newGround = state.depth >= state.shaft.reached;
+  // Only meaningful when there is fresh ground and the tool can take it.
+  if (atFloor || walled || !newGround) return null;
+  const toFloor = Math.max(0, shell.floorDepth - state.depth);
+  const options: { label: string; count: number }[] = [
+    { label: '×5', count: 5 },
+    { label: '×25', count: 25 },
+    { label: 'To floor', count: toFloor },
+  ];
+  return (
+    <div className="mb-1 flex items-stretch gap-1">
+      <span className="flex items-center pl-1 pr-0.5 text-[9px] uppercase tracking-wider text-cave-500">Dig</span>
+      {options.map((o) => (
+        <button
+          key={o.label}
+          className="btn min-h-[36px] flex-1 text-[11px]"
+          title={`Descend up to ${o.count} — pays exactly that many single descents, stopping at the next wall or when the purse runs out`}
+          onClick={() => dispatch({ type: 'descendMany', count: o.count })}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

@@ -1,7 +1,66 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { Bucket } from '../../engine';
 import { breakdown, fmt, D } from '../../engine';
+import { TRAITS, traitLeanText, type TraitId } from '../../engine/traits';
 import { useGame } from '../store';
+
+/**
+ * A small self-fading toast for a single spot — the "+340 Scrip" / "Bought —
+ * Ironblood ×2" that rises off an NPC transaction. `fire(text)` shows it; it
+ * clears itself. Local, so it never spams the global event feed. Anchor the
+ * returned <CoinToast/> inside a `relative` container over the button/row.
+ */
+export function useCoinToast() {
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+  const seq = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fire = (text: string) => {
+    seq.current += 1;
+    setToast({ id: seq.current, text });
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setToast(null), 1500);
+  };
+  return { toast, fire };
+}
+
+/** The rising/​fading label itself. Render inside a `relative` positioned parent. */
+export function CoinToast({ toast, color = '#e0b054' }: { toast: { id: number; text: string } | null; color?: string }) {
+  const reducedMotion = useGame((s) => s.reducedMotion);
+  if (!toast) return null;
+  return (
+    <span
+      key={toast.id}
+      aria-live="polite"
+      className={`pointer-events-none absolute -top-4 left-1/2 z-50 -translate-x-1/2 whitespace-nowrap rounded bg-cave-950/90 px-1.5 py-0.5 text-[10px] font-semibold tnum shadow ${reducedMotion ? 'coin-fade' : 'coin-float'}`}
+      style={{ color }}
+    >
+      {toast.text}
+    </span>
+  );
+}
+
+/** The full trait reading: its plain sentence AND which way it pushes the numbers. */
+export function traitTooltip(id: TraitId): string {
+  const lean = traitLeanText(id);
+  return lean ? `${TRAITS[id].blurb} — ${lean}` : TRAITS[id].blurb;
+}
+
+/**
+ * A trait chip with the whole reading on hover/tap: the sentence plus the stat
+ * directions it pushes. Used everywhere a material's traits appear, so the
+ * vocabulary is defined and legible in one voice (rule 3 — a trait is a fact,
+ * never a solution; combinations stay discovered).
+ */
+export function TraitTag({ id, size = 'sm' }: { id: TraitId; size?: 'sm' | 'xs' }) {
+  return (
+    <span
+      className={`rounded bg-cave-800 uppercase tracking-wide text-cave-300 ${size === 'xs' ? 'px-1 text-[8px]' : 'px-1.5 text-[9px]'}`}
+      title={traitTooltip(id)}
+    >
+      {TRAITS[id].name}
+    </span>
+  );
+}
 
 /**
  * What each modifier bucket is CALLED, in the player's language.

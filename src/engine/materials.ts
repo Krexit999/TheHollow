@@ -155,6 +155,28 @@ export const MATERIALS: MaterialDef[] = [
   M('cinderglass', 'Cinderglass', 'cinder', 'pure', ['#3a1e14', '#6e3620', '#a85c34'], 7, 'crystalline',
     'Ash grit left where the deep is warm until it fused. Heavy, dark, and it holds heat like a grudge.', true),
 
+  // ================= EXPORT MATERIALS (Part B spine) ======================
+  // One per shell, made by that shell's own craft and DEMANDED by the next
+  // shell's signature infrastructure — the reason a shell needs the shell
+  // before it. `worked: true` keeps them out of every drop table; they ride
+  // the Hold and survive Breach like any material, and Serra hauls them up
+  // the stair once their home shell is behind you. (The Hollow's export is
+  // Resonance itself — a currency, so it is not in this registry.)
+  M('kilnflux', 'Kilnflux', 'loam', 'rich', ['#5c4a2e', '#8f7648', '#cbb072'], 6, 'soft',
+    'A grey-gold powder fired down at the Refinery that makes other stones agree to melt. Loam\'s last word in every Ferrite pour — which two stones go in the firing is yours to find.', true),
+  M('lodeframe', 'Lodeframe', 'ferrite', 'rich', ['#33383e', '#565e68', '#8a949e'], 5, 'none',
+    'An iron bed-frame, cast true and bolted square. Verdance grows things; Ferrite is what they grow IN.', true),
+  M('setresin', 'Set Resin', 'verdance', 'rich', ['#4a3a16', '#7e6426', '#bd9a44'], 7, 'soft',
+    'Resin rendered down at the still until it sets hard and optically dead-clear. Glassmere silvers its mirrors with it.', true),
+  M('fibercloth', 'Fibercloth', 'verdance', 'rich', ['#3c4430', '#64724e', '#9aab78'], 6, 'soft',
+    'A committed weave, cut from the frame and bolted. Glassmere wraps its lenses in it against the cold and the dust.', true),
+  M('groundlens', 'Ground Lens', 'glassmere', 'rich', ['#3a4854', '#617a8c', '#9cc0d4'], 8, 'crystalline',
+    'Silica ground against prism-dust until it focuses. Cinder sets one over each furnace row to steady the draft.', true),
+  M('glasseal', 'Glasseal', 'glassmere', 'rich', ['#404a44', '#68796e', '#a2b8a8'], 6, 'crystalline',
+    'Rime-tempered glass gasket. The only thing that keeps a vent pipe honest past the twelfth join.', true),
+  M('emberglass', 'Emberglass', 'cinder', 'rich', ['#4a2214', '#843a1e', '#c8642e'], 7, 'crystalline',
+    'Glass annealed in a fire held in the band for a minute and a half without wavering. The Hollow rebuilds with it, because it remembers heat the way the void remembers nothing.', true),
+
   // ======================= SHELL I — LOAM (15, live) =======================
   M('marl', 'Marl', 'loam', 'common', ['#4a3b2a', '#7a6142', '#b39a6e', ], 5, 'none',
     'Clay that remembers being sea-bottom. The first useful thing you will ever dig.'),
@@ -485,9 +507,14 @@ export function rollDrop(shellId: string, depth: number, rng: () => number = Mat
   // Combat-only materials never come out of the rock, and neither do WORKED
   // ones — those are made at a bench, not found in a seam.
   const pool = MATERIALS.filter((m) => m.shellId === shellId && m.rarity === rarity && !m.source && !m.worked);
-  const def = pool[Math.floor(rng() * pool.length)] ?? MATERIALS[0]!;
+  const def = pool[Math.floor(rng() * pool.length)] ?? FALLBACK_DROP;
   return { kind: 'material', materialId: def.id, purity: rollPurity(def.rarity, rng) };
 }
+
+/** The seam's floor: when a (shell, rarity) pool is empty, fall back to the
+ *  first MINEABLE material — never MATERIALS[0], which is a worked material
+ *  (refineslag) and would leak a bench product into the rock. */
+const FALLBACK_DROP = MATERIALS.find((m) => !m.worked && !m.source)!;
 
 /** Geodes crack into 2-4 rarity-boosted rolls with a real gem chance. */
 export function crackGeodeRolls(shellId: string, depth: number, rng: () => number = Math.random): RolledDrop[] {
@@ -502,9 +529,13 @@ export function crackGeodeRolls(shellId: string, depth: number, rng: () => numbe
       }
     }
     // Boosted: roll at an effective depth 40 deeper than where it was found.
+    // Worked materials are BENCH products — a cracked geode is still rock, so
+    // it must exclude them exactly as rollDrop does (the leak the export spine
+    // sim caught: a rich Loam geode was rolling Kilnflux, a Verdance one
+    // Fibercloth — both bench exports appearing in the seam).
     const rarity = rollRarity(depth + 40, rng) ?? 'common';
-    const pool = MATERIALS.filter((m) => m.shellId === shellId && m.rarity === rarity && !m.source);
-    const def = pool[Math.floor(rng() * pool.length)] ?? MATERIALS[0]!;
+    const pool = MATERIALS.filter((m) => m.shellId === shellId && m.rarity === rarity && !m.source && !m.worked);
+    const def = pool[Math.floor(rng() * pool.length)] ?? FALLBACK_DROP;
     out.push({ kind: 'material', materialId: def.id, purity: rollPurity(def.rarity, rng) });
   }
   return out;

@@ -20,7 +20,7 @@
  * last-placed motif) matched against ordered patterns as a subsequence.
  */
 import type { ActiveChord, LatticeState, MotifPlacement, MotifShape } from '../../types';
-import { hexKey, LINE_AXES, neighborsOf, parseKey, inBoard } from './hex';
+import { hexKey, HEX_DIRS, LINE_AXES, neighborsOf, parseKey, inBoard } from './hex';
 
 export const SHAPES: MotifShape[] = ['circle', 'square', 'triangle', 'hex'];
 
@@ -96,6 +96,52 @@ export function boardResonance(lattice: LatticeState): number {
   let total = 0;
   for (const v of Object.values(cellScores(lattice))) if (v > 0) total += v;
   return total;
+}
+
+/** A neighbour's contribution INTO one motif — the arithmetic to show the player. */
+export interface CellRelation {
+  kind: RelationKind;
+  otherShape: MotifShape;
+  otherRank: number;
+  value: number;
+  dir: string;
+}
+export interface CellContribution {
+  /** Net resonance the motif carries (== cellScores[key]). */
+  net: number;
+  relations: CellRelation[];
+}
+
+/** Readable direction of each of the six neighbours, in HEX_DIRS order. */
+const DIR_LABEL = ['right', 'lower-right', 'lower-left', 'left', 'upper-left', 'upper-right'];
+
+/**
+ * Why a placed motif scores what it does: one entry per neighbour that touches
+ * it, naming the neighbour's shape, the relation (harmony/flow/discord) and its
+ * value, and the direction it sits. This is RESONANCE — a legible rule the
+ * player is meant to reason with — NOT a chord identity, which stays hidden
+ * until discovered (pillar 5). `net` equals the cell's resonance score.
+ */
+export function cellContribution(lattice: LatticeState, key: string): CellContribution {
+  const motif = lattice.cells[key];
+  if (!motif) return { net: 0, relations: [] };
+  const { q, r } = parseKey(key);
+  const relations: CellRelation[] = [];
+  let net = 0;
+  HEX_DIRS.forEach((d, i) => {
+    const other = lattice.cells[hexKey(q + d.q, r + d.r)];
+    if (!other) return;
+    let kind: RelationKind | null = null;
+    let value = 0;
+    if (other.shape === motif.shape) { kind = 'harmony'; value = Math.min(motif.rank, other.rank); }
+    else if (SUCCESSOR[other.shape] === motif.shape) { kind = 'flow'; value = other.rank / 2; }
+    else if (OPPOSITE[other.shape] === motif.shape) { kind = 'discord'; value = -1; }
+    if (kind) {
+      relations.push({ kind, otherShape: other.shape, otherRank: other.rank, value, dir: DIR_LABEL[i]! });
+      net += value;
+    }
+  });
+  return { net, relations };
 }
 
 // ---------------------------------------------------------------------------

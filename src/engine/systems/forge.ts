@@ -204,6 +204,22 @@ export function recipeDef(id: string): ToolRecipe {
   return def;
 }
 
+/**
+ * The starter tool's `delversPick` is deliberately NOT a craftable recipe, so
+ * `recipeDef` throws on it — and a throw in a render path unmounts the whole
+ * React root (the Phase 11b class of crash). Any code that might see the
+ * starter — salvage, displays — must use this SAFE lookup and handle undefined,
+ * never `recipeDef`.
+ */
+export function recipeById(id: string): ToolRecipe | undefined {
+  return TOOL_RECIPES.find((r) => r.id === id);
+}
+
+/** A tool's recipe name for display, safe for the starter (no recipe). */
+export function toolRecipeName(tool: { recipeId: string }): string {
+  return recipeById(tool.recipeId)?.name ?? "Delver's Pick";
+}
+
 /** Highest tier craftable in Shell I (see shells.maxToolTier for the live rule). */
 export const SHELL1_MAX_TIER = 3;
 

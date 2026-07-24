@@ -12,7 +12,8 @@ import {
 } from '../../engine/systems/absence';
 import { chamberUnlocked } from '../../engine/content/shell6/chamber';
 import { AXIOMS } from '../../engine/content/shell7/axioms';
-import { axiomsFromEchoes, canRecurse } from '../../engine/systems/recursionSys';
+import { axiomsFromEchoes, canRecurse, AXIOM_RESONANCE } from '../../engine/systems/recursionSys';
+import { materialCount } from '../../engine/systems/forge';
 import { dispatch, useGame } from '../store';
 import { Amount } from './shared';
 
@@ -93,15 +94,24 @@ export function HollowPanel() {
             The face is whole. The world is remembered. The stair to the Core is open.
           </div>
         ) : (
-          <button
-            className="btn btn-warm mt-2 w-full py-1.5 text-xs"
-            disabled={nextCell < 0 || state.depth < depthGate || getCurrency(state, 'void').lt(cost)}
-            onClick={() => nextCell >= 0 && dispatch({ type: 'rebuildCell', cell: nextCell })}
-          >
-            {state.depth < depthGate
-              ? `The ${rebuilt + 1}th cell wants depth ${depthGate}`
-              : `Remember one cell — ${fmt(cost)} Void`}
-          </button>
+          <>
+            <button
+              className="btn btn-warm mt-2 w-full py-1.5 text-xs"
+              disabled={nextCell < 0 || state.depth < depthGate || getCurrency(state, 'void').lt(cost)
+                || (rebuilt >= 8 && materialCount(state as GameState, 'emberglass') < 1)}
+              onClick={() => nextCell >= 0 && dispatch({ type: 'rebuildCell', cell: nextCell })}
+            >
+              {state.depth < depthGate
+                ? `The ${rebuilt + 1}th cell wants depth ${depthGate}`
+                : `Remember one cell — ${fmt(cost)} Void${rebuilt >= 8 ? ` + 1 Emberglass (${materialCount(state as GameState, 'emberglass')})` : ''}`}
+            </button>
+            {rebuilt >= 8 && (
+              <div className="mt-1 text-[10px] leading-snug text-cave-500">
+                Cells past the eighth are rebuilt IN Emberglass — Cinder's export, annealed by
+                holding the Ember Array in the band. Serra bottles the haul if the fire is far.
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -141,8 +151,13 @@ export function ChamberPanel() {
               Stop recording ({c.tape.length} steps)
             </button>
           ) : (
-            <button className="btn flex-1 py-1.5 text-xs" onClick={() => dispatch({ type: 'tapeRecord', on: true })}>
-              Record a tape
+            <button
+              className="btn flex-1 py-1.5 text-xs"
+              disabled={materialCount(state as GameState, 'emberglass') < 1}
+              title="A recording is cut in Emberglass — Cinder's export. Hold the Array in the band, or buy from Serra."
+              onClick={() => dispatch({ type: 'tapeRecord', on: true })}
+            >
+              Record a tape · 1 Emberglass ({materialCount(state as GameState, 'emberglass')})
             </button>
           )}
           {c.tape.length > 0 && !c.recording && (
@@ -258,10 +273,11 @@ export function RewritePanel() {
                   ) : (
                     <button
                       className="btn px-2 py-0.5 text-[9px]"
-                      disabled={held.lt(1)}
+                      disabled={held.lt(1) || getCurrency(state, 'resonance').lt(AXIOM_RESONANCE)}
+                      title="A law is written in Resonance — the Hollow's export. It survives Recursion; listen before you leave, or buy it bottled from Serra."
                       onClick={() => dispatch({ type: 'buyAxiom', id: a.id })}
                     >
-                      write · 1 Axiom
+                      write · 1 Axiom + {AXIOM_RESONANCE} Res
                     </button>
                   )}
                 </div>

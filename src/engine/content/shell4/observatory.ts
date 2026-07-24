@@ -12,6 +12,7 @@ import { D } from '../../decimal';
 import type { ActionResult, EngineCtx, GameState } from '../../types';
 import { addCurrency } from '../../resources';
 import { registerModifier, type Bucket } from '../../modifiers';
+import { consumeMaterial, materialCount } from '../../systems/forge';
 import { masteryLevel } from '../../systems/mastery';
 
 export interface ObservationTier {
@@ -20,13 +21,16 @@ export interface ObservationTier {
   minutes: number;
   spectrum: number;
   pieceRolls: number;
+  /** Fibercloth wrapped around the lens against cold and dust (Part B export
+   *  spine). A glance costs none; the long watches cost Verdance's cloth. */
+  cloth: number;
 }
 
 export const OBSERVATION_TIERS: ObservationTier[] = [
-  { id: 0, name: 'A Glance Upward', minutes: 10, spectrum: 5, pieceRolls: 1 },
-  { id: 1, name: 'A Held Gaze', minutes: 60, spectrum: 40, pieceRolls: 2 },
-  { id: 2, name: 'A Long Watch', minutes: 240, spectrum: 190, pieceRolls: 4 },
-  { id: 3, name: 'A Night of Stars', minutes: 720, spectrum: 640, pieceRolls: 8 },
+  { id: 0, name: 'A Glance Upward', minutes: 10, spectrum: 5, pieceRolls: 1, cloth: 0 },
+  { id: 1, name: 'A Held Gaze', minutes: 60, spectrum: 40, pieceRolls: 2, cloth: 1 },
+  { id: 2, name: 'A Long Watch', minutes: 240, spectrum: 190, pieceRolls: 4, cloth: 1 },
+  { id: 3, name: 'A Night of Stars', minutes: 720, spectrum: 640, pieceRolls: 8, cloth: 2 },
 ];
 
 export interface ConstellationDef {
@@ -61,6 +65,10 @@ export function startObservation(state: GameState, tierId: number): ActionResult
   if (state.observatory.active) return { ok: false, reason: 'The lens is already committed' };
   const tier = OBSERVATION_TIERS.find((t) => t.id === tierId);
   if (!tier) return { ok: false, reason: 'No such exposure' };
+  if (tier.cloth > 0 && materialCount(state, 'fibercloth') < tier.cloth) {
+    return { ok: false, reason: `${tier.name} wants ${tier.cloth} Fibercloth around the lens — commit a weave at the Loom in Verdance, or buy it from Serra` };
+  }
+  if (tier.cloth > 0) consumeMaterial(state, 'fibercloth', tier.cloth);
   state.observatory.active = { tier: tierId, startedMs: state.guild.clockMs };
   return { ok: true };
 }

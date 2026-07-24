@@ -163,6 +163,10 @@ export interface TransmuteChain {
   out: string;
   /** How many of each input per unit out. */
   cost: number;
+  /** Units out per firing (default 1). The export chains use this: their rare
+   *  input amortises over several outputs, so a scarce stone is a batch, not
+   *  a bottleneck. */
+  yield?: number;
   /** Recorded in the Codex when found. */
   name: string;
   flavor: string;
@@ -234,7 +238,7 @@ export function transmute(
 
   // The output inherits the WORSE of the two inputs' typical purity — you
   // cannot launder a bad stack into a good one by routing it through a chain.
-  addMaterial(state, chain.out, BAND_RANGES['fair'][0], 1);
+  addMaterial(state, chain.out, BAND_RANGES['fair'][0], chain.yield ?? 1);
   grantSlag(state, 1);
   state.refinery.attempts += 1;
 

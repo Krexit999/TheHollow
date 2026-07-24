@@ -18,7 +18,7 @@ import { registerCurrency, spendCurrency, addCurrency } from '../../resources';
 import { registerModifier, type Bucket } from '../../modifiers';
 import type { ActionResult, EngineCtx, GameState, LoomState } from '../../types';
 import { masteryLevel } from '../../systems/mastery';
-import { materialCount, consumeMaterial } from '../../systems/forge';
+import { materialCount, consumeMaterial, addMaterial } from '../../systems/forge';
 
 export const LOOM_SIZE = 6;
 export const WEAVE_THREAD_COST = 12;
@@ -203,6 +203,7 @@ export function defaultLoomState(): LoomState {
     weaves: 0,
     passiveRank: 0,
     passiveProgressSec: 0,
+    framed: false,
   };
 }
 
@@ -245,8 +246,23 @@ export function setThread(state: GameState, axis: 'warp' | 'weft', index: number
   return { ok: true };
 }
 
+/** The iron frame (Part B export spine): one Lodeframe braces the loom for
+ *  good. A wooden frame bows under a full warp — no commit without it. */
+export function installLoomFrame(state: GameState): ActionResult {
+  if (!loomUnlocked(state)) return { ok: false, reason: 'No loom yet' };
+  if (state.loom.framed) return { ok: false, reason: 'The frame is already iron' };
+  if (consumeMaterial(state, 'lodeframe', 1) === null) {
+    return { ok: false, reason: 'The frame wants 1 Lodeframe — cast it at the Crucible in Ferrite, or buy one from Serra' };
+  }
+  state.loom.framed = true;
+  return { ok: true };
+}
+
 export function commitWeave(state: GameState, ctx: EngineCtx): ActionResult {
   if (!loomUnlocked(state)) return { ok: false, reason: 'No loom yet' };
+  if (!state.loom.framed) {
+    return { ok: false, reason: 'The wooden frame bows under a full warp — brace it with 1 Lodeframe (Crucible in Ferrite, or Serra)' };
+  }
   const { warp, weft } = state.loom;
   if (warp.some((t) => !t) || weft.some((t) => !t)) return { ok: false, reason: 'Every row and column wants a thread' };
   // The commit consumes one unit of each assigned thread choice's stock.
@@ -259,6 +275,9 @@ export function commitWeave(state: GameState, ctx: EngineCtx): ActionResult {
   state.loom.setWarp = [...warp];
   state.loom.setWeft = [...weft];
   state.loom.weaves += 1;
+  // The export spine: every committed weave bolts off one Fibercloth —
+  // Verdance's cloth, wanted around Glassmere's lenses against cold and dust.
+  addMaterial(state, 'fibercloth', 70, 1);
   const shapes = findShapes(warp, weft);
   const counts: Record<string, number> = {};
   for (const s of shapes) {

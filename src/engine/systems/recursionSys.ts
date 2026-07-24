@@ -109,8 +109,11 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
   next.anomalies.seen = state.anomalies.seen;
   next.anomalies.resolved = state.anomalies.resolved;
   next.anomalies.merchantMeets = state.anomalies.merchantMeets;
-  // Meta currencies ride; everything else washes.
-  for (const id of ['scrip', 'renown', 'charter', 'axiom'] as const) {
+  // Meta currencies ride; everything else washes. Resonance rides too (Part B
+  // export spine): every Axiom is written IN it, and what you banked listening
+  // in the old world's Hollow must be spendable on the new world's laws — or
+  // the toll would wall off the Rewrite it exists to feed.
+  for (const id of ['scrip', 'renown', 'charter', 'axiom', 'resonance'] as const) {
     next.currencies[id] = state.currencies[id] ?? D(0);
   }
   // Tools: heirlooms. The pack is never empty; the pick remembers your hand.
@@ -144,13 +147,24 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
   return { ok: true, data: { count: next.recursion.count, axiomsGained: gained } };
 }
 
+/** Resonance per Axiom written (Part B export spine): the Hollow's export is
+ *  the ink of the Rewrite. Resonance survives Recursion (it rides with the
+ *  meta currencies), so the toll sequences writing after listening — it can
+ *  never wall it off. Serra bottles it too, once the Hollow is behind you. */
+export const AXIOM_RESONANCE = 25;
+
 export function buyAxiom(state: GameState, ctx: EngineCtx, id: string): ActionResult {
   const def = AXIOM_BY_ID.get(id);
   if (!def) return { ok: false, reason: 'No such law' };
   if (state.recursion.axioms.includes(id)) return { ok: false, reason: 'Already written' };
   const held = state.currencies['axiom'] ?? D(0);
   if (held.lt(1)) return { ok: false, reason: 'One Axiom, and you have none to spend' };
+  const res = state.currencies['resonance'] ?? D(0);
+  if (res.lt(AXIOM_RESONANCE)) {
+    return { ok: false, reason: `A law is written in ${AXIOM_RESONANCE} Resonance — listen in the Hollow, or buy it bottled from Serra` };
+  }
   state.currencies['axiom'] = held.sub(1);
+  state.currencies['resonance'] = res.sub(AXIOM_RESONANCE);
   state.recursion.axioms.push(id);
   ctx.dirty();
   ctx.emit({ type: 'axiomBought', id, heresy: def.heresy === true });

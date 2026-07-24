@@ -5,6 +5,7 @@
  * single beam across the board. Respects prefers-reduced-motion.
  */
 import { Application, Container, Graphics } from 'pixi.js';
+import { guardPixiRender } from '../pixiGuard';
 import type { Engine, GameState, MotifShape } from '../../engine';
 import {
   boardRelations,
@@ -102,6 +103,7 @@ export class LatticeView {
       this.app.destroy(true);
       return;
     }
+    guardPixiRender(this.app, 'lattice');
     this.host.appendChild(this.app.canvas);
     this.app.canvas.style.touchAction = 'manipulation';
 
@@ -136,15 +138,39 @@ export class LatticeView {
     if (this.app?.renderer) this.app.destroy(true, { children: true });
   }
 
+  private active = true;
+
+  /** The Lattice stays mounted for its whole life (the documented exception) —
+   *  but its ticker used to free-run under every other tab, a third live
+   *  renderer interleaving with the Face and the Shaft. Same discipline now:
+   *  hidden ⇒ paused; shown ⇒ resume and render a frame immediately. */
+  setActive(active: boolean): void {
+    if (this.active === active || !this.app?.ticker) return;
+    this.active = active;
+    if (active) {
+      this.layout();
+      this.app.ticker.start();
+      this.frame(0.016);
+      this.app.render();
+    } else {
+      this.app.ticker.stop();
+    }
+  }
+
   private layout(): void {
     if (!this.app?.renderer) return;
     this.app.resize(); // re-measure the host (it may have just been un-hidden)
     const rings = this.engine.getState().lattice.rings;
     const { width, height } = this.app.screen;
-    // Board spans (2*rings+1) hexes across: sqrt(3)*size*(2rings+1) wide.
-    const fitW = width / (Math.sqrt(3) * (2 * rings + 1.6));
-    const fitH = height / (1.5 * (2 * rings + 1.8));
-    this.hexSize = Math.max(10, Math.min(fitW, fitH, 34));
+    // The board's largest drawn element is the background CIRCLE in drawSockets,
+    // radius √3·(rings+1.15)·hexSize — bigger than the hex-center span. Fitting
+    // only the hex span (as before) let that circle overflow and clip at ring 4.
+    // So size the whole thing to fit the CIRCLE inside the smaller dimension,
+    // with a touch of extra so a rim always shows. The floor is small (6px) so a
+    // big board on a phone shrinks to fit rather than spilling out of the frame.
+    const R = Math.sqrt(3) * (rings + 1.3); // circle radius in hex-size units, +rim
+    const fit = Math.min(width, height) / (2 * R);
+    this.hexSize = Math.max(6, Math.min(fit, 34));
     this.root.position.set(width / 2, height / 2);
     this.ringsDrawn = 0; // force socket redraw
     this.boardSig = '';
