@@ -1,16 +1,19 @@
 /**
- * IDLE-PACING DIAGNOSTIC (A.40 close-out) — harness-vs-game, isolated.
+ * THE FIRST TIER WALL — drops-to-crossable, and its VARIANCE.
  *
- * The 12h idle run ended at depth 44 with tool tier 1 and 0 tools forged from
- * 346 drops. Two candidate explanations, and they need different fixes:
- *   HARNESS — the policy never actually attempts a forge (sim gap), or spends
- *             the materials elsewhere before it can.
- *   GAME    — 346 idle drops genuinely cannot pay a tier-2 pick, which would
- *             be a pillar-1 break (the idle player is walled at d45 forever).
+ * The ruling: hold tier walls to the keystone idle standard — a low
+ * single-digit idle-to-active ratio, and not RNG-swingy. The named cause was
+ * the rich band's depth coupling: rich cannot drop above depth 10, and every
+ * Collapse puts the player back at depth 0, so the binding input for tier II
+ * only earned during part of each cycle.
  *
- * This replays the ENGINE'S OWN drop roller for the observed drop count at
- * loam depths, then asks the real craftTool for a verdict. No policy, no
- * sim — just: can that haul pay that recipe?
+ * This measures the thing the ruling cares about. It drives the ENGINE'S OWN
+ * drop roller along a realistic collapse cycle (climb, reset, climb) and counts
+ * the drops needed before ANY tier-II recipe can be paid — median and spread
+ * across many trials, for the rich-only ladder and for the ladder with its new
+ * commons floor.
+ *
+ *   npx tsx scripts/probe-idle-forge.ts [trials]
  */
 import { createEngine } from '../src/engine';
 import { D } from '../src/engine/decimal';
@@ -19,57 +22,57 @@ import { applyDrop } from '../src/engine/systems/drops';
 import { materialCount, TOOL_RECIPES } from '../src/engine/systems/forge';
 import type { GameState } from '../src/engine/types';
 
-const DROPS = Number(process.argv[2] ?? 346);
+const TRIALS = Number(process.argv[2] ?? 40);
+const CAP = 4000; // give up after this many drops
 const ctx = { emit: () => {}, dirty: () => {} };
 
-const engine = createEngine({ nowMs: 0 });
-const s = engine.getState() as GameState;
-
-// The observed 12h-idle end state: forge standing, brick banked, at the wall.
-s.forge.built = true;
-s.kiln.built = true;
-s.depth = 44;
-s.maxDepthRecord = 44;
-s.depthRecords['loam'] = 44;
-s.currencies['brick'] = D(2565);
-
-// The haul: DROPS rolls through the real roller, at the depths an idle run
-// actually mines (it climbs to 44 and collapses, so weight the shallow band).
-for (let i = 0; i < DROPS; i++) {
-  const depth = Math.floor((i / DROPS) * 44);
-  s.depth = depth;
-  applyDrop(s, ctx, rollDrop('loam', depth));
+/** The idle cycle: climb 0 -> 44 over ~90 drops, Collapse, climb again. */
+function depthAt(i: number): number {
+  const CYCLE = 90;
+  return Math.min(44, Math.floor(((i % CYCLE) / CYCLE) * 60));
 }
-s.depth = 44;
 
-const recipe = TOOL_RECIPES.find((r) => r.id === 'loamironPick')!;
-const held: Record<string, number> = {};
-for (const id of Object.keys(recipe.inputs)) held[id] = materialCount(s, id);
-
-console.log(`--- ${DROPS} real drop rolls at loam depths 0..44 ---`);
-console.log('recipe loamironPick wants:', JSON.stringify(recipe.inputs), `+ ${recipe.brick} brick`);
-console.log('haul holds:              ', JSON.stringify(held), `+ ${s.currencies['brick']!.toNumber()} brick`);
-console.log('total drops banked:', s.materials.totalDrops, '| geodes:', s.materials.geodes);
-
-const result = engine.dispatch({ type: 'craftTool', recipeId: 'loamironPick' });
-console.log('craftTool ->', JSON.stringify(result));
-console.log('tool tier now:', s.forge.tools.length > 0 ? s.forge.tools[s.forge.tools.length - 1]!.tier : 'none crafted');
-
-// How many drops does the recipe actually need? Walk it down until it fails.
-for (const n of [300, 250, 200, 150, 120, 100, 80, 60, 40]) {
-  const e2 = createEngine({ nowMs: 0 });
-  const s2 = e2.getState() as GameState;
-  s2.forge.built = true;
-  s2.currencies['brick'] = D(2565);
-  for (let i = 0; i < n; i++) {
-    s2.depth = Math.floor((i / n) * 44);
-    applyDrop(s2, ctx, rollDrop('loam', s2.depth));
+const payable = (s: GameState, ids: string[]): string | null => {
+  for (const id of ids) {
+    const r = TOOL_RECIPES.find((x) => x.id === id)!;
+    if (Object.entries(r.inputs).every(([m, n]) => materialCount(s, m) >= n)) return id;
   }
-  s2.depth = 44;
-  const r2 = e2.dispatch({ type: 'craftTool', recipeId: 'loamironPick' });
-  if (!r2.ok) {
-    console.log(`floor: ${n} drops FAILS -> ${(r2 as { reason: string }).reason}`);
-    break;
+  return null;
+};
+
+/** Drops needed before one of `ids` can be paid, on one RNG trial. */
+function dropsUntil(ids: string[]): number {
+  const engine = createEngine({ nowMs: 0 });
+  const s = engine.getState() as GameState;
+  s.currencies['brick'] = D(1e6);
+  for (let i = 0; i < CAP; i++) {
+    s.depth = depthAt(i);
+    applyDrop(s, ctx, rollDrop('loam', s.depth));
+    if (payable(s, ids)) return i + 1;
   }
-  console.log(`${n} drops still pays it`);
+  return CAP;
 }
+
+function stats(ids: string[], label: string): void {
+  const runs: number[] = [];
+  for (let t = 0; t < TRIALS; t++) runs.push(dropsUntil(ids));
+  runs.sort((a, b) => a - b);
+  const at = (p: number) => runs[Math.min(runs.length - 1, Math.floor(p * runs.length))]!;
+  const med = at(0.5);
+  const p10 = at(0.1);
+  const p90 = at(0.9);
+  const fails = runs.filter((r) => r >= CAP).length;
+  console.log(
+    `${label.padEnd(34)} median ${String(med).padStart(4)} drops | p10 ${String(p10).padStart(4)} | p90 ${String(p90).padStart(4)}` +
+    ` | spread ${(p90 / Math.max(1, p10)).toFixed(2)}x${fails ? ` | ${fails}/${TRIALS} NEVER PAID` : ''}`,
+  );
+}
+
+const tier2 = TOOL_RECIPES.filter((r) => r.tier === 2).map((r) => r.id);
+const rich = tier2.filter((id) => id !== 'chalkhead');
+
+console.log(`--- drops needed to cross the depth-45 wall (${TRIALS} trials, collapse cycling) ---`);
+stats(['loamironPick'], 'loamironPick alone (the old path)');
+stats(rich, 'any rich tier-II (pre-fix ladder)');
+stats(tier2, 'any tier-II incl. commons floor');
+console.log('\ncommons floor recipe:', JSON.stringify(TOOL_RECIPES.find((r) => r.id === 'chalkhead')?.inputs));

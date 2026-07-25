@@ -16,7 +16,8 @@ import { ModifierCache } from '../modifiers';
 import { availableTechniques, techniqueCooldown, techniqueDef } from '../techniques';
 import { skimPoolCap, SEEP_EFFICIENCY } from '../systems/face';
 import { chainTimeoutSec, chainBreakPenalty, chainCap, magnetBias } from '../systems/polarity';
-import { addMaterial, materialCount } from '../systems/forge';
+import { addMaterial, materialCount, TOOL_RECIPES } from '../systems/forge';
+import { MATERIALS, materialDef } from '../materials';
 import { keystoneFor, keystoneIdlePrice, keystonePlaced } from '../systems/keystones';
 import { canBreach } from '../systems/breach';
 import { allUpgrades } from '../upgrades';
@@ -207,6 +208,45 @@ describe('the ferrite band — discovery-gated, spine-priced, behavioral', () =>
     const band = allUpgrades().filter((u) => u.band === 'shell');
     expect(band.length).toBe(15);
     expect(band.every((u) => !u.resetsOnCollapse)).toBe(true);
+  });
+});
+
+describe('the tier ladder has a floor an idle player can always reach', () => {
+  /**
+   * A.40 close-out ruling: tier walls are held to the keystone idle standard.
+   * Every tier-II recipe used to want a RICH-band material, and rich cannot
+   * drop above depth 10 while every Collapse resets depth to 0 — so the first
+   * hardness wall was gated on a band that earns for only part of each cycle
+   * (measured: median 129 drops, p90/p10 spread 2.82x). A commons-only recipe
+   * removes the coupling: commons pay at every depth, including the shallows.
+   */
+  it('tier II is payable from the common band alone', () => {
+    const commons = new Set(
+      MATERIALS.filter((m) => m.shellId === 'loam' && m.rarity === 'common' && !m.worked).map((m) => m.id),
+    );
+    const tier2 = TOOL_RECIPES.filter((r) => r.tier === 2);
+    const commonsOnly = tier2.filter((r) => Object.keys(r.inputs).every((id) => commons.has(id)));
+    expect(commonsOnly.length, 'no tier-II recipe is payable without the rich band').toBeGreaterThanOrEqual(1);
+  });
+
+  it('the commons floor is the WORST tier-II pick — tier gates hardness, spread is quality', () => {
+    const tier2 = TOOL_RECIPES.filter((r) => r.tier === 2);
+    const floor = tier2.find((r) => r.id === 'chalkhead')!;
+    const others = tier2.filter((r) => r.id !== 'chalkhead');
+    // It must clear the wall (same tier) while never being the tool you'd
+    // choose if you could pay for another — so working for the rich pick pays.
+    expect(floor.tier).toBe(2);
+    expect(others.some((r) => r.chipSpread > floor.chipSpread)).toBe(true);
+    expect(others.every((r) => r.strikeSpread > floor.strikeSpread)).toBe(true);
+  });
+
+  it('every tier-I and tier-II recipe stays inside the curriculum law', () => {
+    // Nothing the ladder's floor added may want a material from a later shell.
+    for (const r of TOOL_RECIPES.filter((x) => x.tier <= 2)) {
+      for (const id of Object.keys(r.inputs)) {
+        expect(materialDef(id).shellId, `${r.id} wants ${id}`).toBe('loam');
+      }
+    }
   });
 });
 

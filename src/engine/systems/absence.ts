@@ -73,13 +73,35 @@ export function rebuildCost(state: GameState): Decimal {
   return D(REBUILD_BASE).mul(D(REBUILD_RATIO).pow(state.hollow.rebuilt.length));
 }
 
+/**
+ * The depth site k opens at — 14 per cell, CLAMPED TO THE SHELL FLOOR.
+ *
+ * The clamp closes a hard wall on the endgame. The schedule was a bare
+ * `14 * k` with no relation to how deep the shell actually goes: a default
+ * 36-cell face put its last site at 490, comfortably inside the Hollow's 560,
+ * but the face is not fixed at 36. Buying `expand` once takes it to 42 cells,
+ * whose last site wanted depth 574 — deeper than the shell has floor. The face
+ * could then never be whole, and faceWhole() gates the Breach, so a player who
+ * bought an ordinary upgrade in the Hollow permanently sealed Aleph and
+ * Recursion behind it.
+ *
+ * Clamping (rather than re-spacing) is deliberate: for every face the shell
+ * already paced correctly the returned schedule is UNCHANGED — a test pins
+ * that — and past the floor the sites stop being depth-gated and are paced by
+ * the Void curve alone, which was always the real cost.
+ */
+export function rebuildDepthFor(k: number, floorDepth: number): number {
+  return Math.min(REBUILD_DEPTH_PER_CELL * k, floorDepth);
+}
+
 export function rebuildCell(state: GameState, ctx: EngineCtx, cell: number): ActionResult {
   if (!inHollow(state)) return { ok: false, reason: 'There is nothing to rebuild anywhere else' };
   if (cell < 0 || cell >= state.face.cells.length) return { ok: false, reason: 'Beyond even the absence' };
   if (state.hollow.rebuilt.includes(cell)) return { ok: false, reason: 'That cell already remembers being rock' };
   const k = state.hollow.rebuilt.length;
-  if (state.depth < REBUILD_DEPTH_PER_CELL * k) {
-    return { ok: false, reason: `The ${k + 1}th cell only exists below depth ${REBUILD_DEPTH_PER_CELL * k}` };
+  const site = rebuildDepthFor(k, currentShell(state).floorDepth);
+  if (state.depth < site) {
+    return { ok: false, reason: `The ${k + 1}th cell only exists below depth ${site}` };
   }
   // THE EXPORT SPINE (Part B): the ninth cell on is rebuilt IN something —
   // Emberglass, Cinder's export, glass that remembers heat where the void

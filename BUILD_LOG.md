@@ -3948,3 +3948,110 @@ clean, and the original reading was an artifact.**
 raised the alarm had structurally discarded the evidence that would have answered it.
 The alarm cost a re-run to disprove. Balance runs that might get diagnosed should keep
 their event log.
+
+## A.41 THE FLOOR BLOCK AND THE LADDER'S FLOOR
+
+### 1. THE HOLLOW WOULD NOT BREACH — two defects behind one symptom
+
+Reported: standing on the Hollow's floor at depth 560, the breach panel read
+"Reach the floor first" with the button dead. Diagnosed as ruled, and checked across
+all seven shells rather than the one that broke.
+
+**(a) The mislabel.** The Hollow's own gate is `faceWhole()`. Neither the panel's label
+chain nor `doBreach`'s refusal had a branch for it, so the real blocker fell through to
+the floor message — printed while the player stood ON the floor. Both now enumerate
+every gate in `canBreach()` (floor → Warden → keystone → face → nothing-below), with
+the floor as the fallback and only the fallback. The refusal now counts the cells:
+"The face is not whole — N of M cells remember being rock."
+
+**(b) THE WALL, and it was real.** Rebuild site k demanded `depth >= 14k`, a schedule
+with no relation to how deep the shell actually goes. A default 36-cell face puts its
+last site at 490, inside the Hollow's 560 — so the standard path worked and hid this.
+But the face is not fixed at 36: `expand` is buyable in any shell with a Kiln, and
+ONE level takes the face to 7×6 = 42 cells, whose last site wanted depth **574 — past
+a floor that ends at 560**. The face could then never be whole, `faceWhole()` gates the
+Breach, and Hollow → Aleph → Recursion was **permanently sealed by buying an ordinary
+upgrade**. The entire endgame, walled, with no error message that named it.
+
+Fixed by clamping the schedule to the shell floor (`rebuildDepthFor`): unchanged for
+every face the shell already paced correctly (pinned by test), and past the floor the
+sites stop being depth-gated and are paced by the Void curve alone — which was always
+the real cost. A test walks all eleven face sizes `expand` can produce and asserts the
+last site is standable-on.
+
+**Regression suite** (`breach-floors.test.ts`, 7 cases): every shell's floor opens its
+breach with warden + keystone; Aleph's deliberately does not (no shell below — Recursion
+takes over); one depth short keeps every floor shut; the face gate names itself; an
+EXPANDED face can still be made whole standing on the floor.
+
+### 2. THE LADDER'S FLOOR — the first tier wall, held to the keystone standard
+
+Ruling: a low single-digit idle-to-active ratio, not RNG-swingy. The diagnosis named the
+cause as the rich band's depth coupling. The audit found the sharper version: **every**
+tier-II recipe wanted a rich-band material (loamiron / duskflint / rootglass), and rich
+cannot drop above depth 10 while every Collapse resets depth to 0. There was no
+commons-only path to tier II at all — the first wall was gated on a band that earns
+during only part of each cycle.
+
+Added `chalkhead` (Chalkhead Pick): bonechalk 14 + marl 12 + graveclay 8, all common
+band, payable at every depth including the shallows after a Collapse. It is deliberately
+the WORST tier-II pick — spreads under all three siblings, pinned by test — so tier
+gates hardness while spread stays quality, and working for the rich pick still pays.
+
+**Measured** (`scripts/probe-idle-forge.ts`, 40 trials, engine's own roller driven along
+a realistic collapse cycle) — drops needed to cross the depth-45 wall:
+
+| ladder | median | p10 | p90 | spread |
+|---|---|---|---|---|
+| `loamironPick` alone (what the sim modelled) | 129 | 77 | 217 | **2.82×** |
+| any rich tier-II (pre-fix ladder, all recipes) | 83 | 58 | 112 | 1.93× |
+| any tier-II incl. the commons floor | **72** | 58 | 81 | **1.40×** |
+
+**A harness finding inside the fix:** the middle row is the pre-fix game played
+properly. `forgePlay` named ONE recipe per tier, so the sim reported a wall harsher than
+the game had — 129 median vs 83. Fixed too: it now tries every recipe at the target
+tier, best chip-spread first (a real player takes the good pick when the bank allows and
+the crude one when it does not). Same family as the `--quiet` lesson: the harness was
+shaping the finding.
+
+### Sim verification
+
+**Idle (12h, non-quiet, the ruled verification):** crossed tier II at **591m52s** via
+`chalkhead`, then tier III at 702m, ending depth 120 (max 123), 11 collapses, 2 tools.
+Pre-fix baseline: 633m, tier II only, max depth 109.
+
+**Active (10h):** loam floor **468.9m** — inside the established 441.7–495.4m family —
+`PILLAR 6 return-to-peak 20.3%`, in the ≤25% band. Active pacing is not hurt. The 3h
+run on current code crossed tier II at **14m20s** and tier III at 63m40s.
+
+### THE FINDING THAT CORRECTS THE A.40 DIAGNOSIS
+
+The ruling assumed the rich-band coupling was what made the first wall slow, and A.40's
+ledger row said so. Measuring it properly says otherwise:
+
+- Idle first REACHED depth 44 at **524m** and forged at **592m**. The material phase is
+  68 minutes — **11% of the crossing**. The other 89% is descent.
+- Time-to-depth: idle 66m to d35 / 524m to d44; active 8m / 28m → **8.3× and 18.7×**.
+  The ratio WIDENS with depth, because `dustCost(d) = 25·1.09^d` is exponential and idle
+  income is not.
+- Drop rates: active 12.0/min vs idle 1.09/min = **11.1×**.
+
+So **recipe cost cannot move the ratio**: crossing time ≈ requirement ÷ drop-rate, and
+cheapening a recipe speeds BOTH sides proportionally. Measured directly — the commons
+floor took idle's cross from 633m to 603m to 592m (barely), while removing the rich-band
+dependency completely and tightening the controlled spread 2.48× → 1.86×. The variance
+half of the ruling is met; the low-single-digit ratio is not reachable this way, and
+saying otherwise would be fitting the report to the ruling.
+
+Set against pillar 1 (active ≈5× idle early): the drop economy runs at 11× and
+time-to-depth at 8–19×, so every material or depth gate is 2–4× harsher on an idle
+player than the design ratio intends. That is a drop-economy/descend-curve property the
+tier ladder merely exposes. Both levers — seepage's per-tick drop weight (faucet-adjacent;
+B2 closed two faucets deliberately) and the descend curve's idle affordability — are
+pillar-level. Ledgered, not touched.
+
+**Second harness lesson, same family as `--quiet`:** the refusal `Short of Graveclay`
+named the missing input but not how much was held, which cost an hour of estimating.
+`forgePlay` now prints held/needed per input. A controlled 160-drop haul yields 26–37 of
+each common against a need of 7, so a live sink is eating them (contracts fetch 21 at a
+time; gear takes 4–8) — ledgered with the instrument now able to name it.

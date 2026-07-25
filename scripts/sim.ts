@@ -29,7 +29,7 @@ import { allUpgrades, upgradeLevel, nextCost } from '../src/engine/upgrades';
 import { boardCells, hexKey, inBoard, isSealed, LINE_AXES, neighborsOf, type Axial } from '../src/engine/systems/lattice/hex';
 import { boardResonance } from '../src/engine/systems/lattice/latticeCore';
 import { ringCost, MAX_RINGS } from '../src/engine/content/shell1/latticeSystem';
-import { addMaterial, equippedTool, materialCount, requiredTier } from '../src/engine/systems/forge';
+import { addMaterial, equippedTool, materialCount, requiredTier, TOOL_RECIPES } from '../src/engine/systems/forge';
 import { materialDef } from '../src/engine/materials';
 import { assayUnlocked } from '../src/engine/systems/drops';
 import { currentShell, chipCurrencyId, convCurrencyId } from '../src/engine/shells';
@@ -828,25 +828,35 @@ function forgePlay(engine: Engine, s: GameState, log: (msg: string) => void): bo
   const hardBlocked = requiredTier(s, s.depth + 1) > tier;
   // Craft the next pick when the wall is near (or already blocking).
   const wallSoon = requiredTier(s, Math.min(s.depth + 8, shell.floorDepth)) > tier;
-  const ladder: Array<[number, string]> = [
-    [2, 'loamironPick'], [3, 'deepcutter'],
-    [4, 'lodestoneRake'], [5, 'rimefang'], [6, 'stormcaller'],
-    [7, 'verdantScythe'], [8, 'bloomsteelMattock'], [9, 'wildstarFalx'],
-    [10, 'prismpick'], [11, 'lightwright'], [12, 'meridianEdge'],
-    [13, 'slagbreaker'], [14, 'pyreheartPick'], [15, 'cinderMaul'],
-  ];
-  for (const [t, recipeId] of ladder) {
-    // Craft the next tier the moment it is affordable — a wall never has to
-    // be touching you to justify a better pick.
-    if (t === tier + 1) {
-      const result = engine.dispatch({ type: 'craftTool', recipeId });
-      if (result.ok) {
-        log(`forged ${recipeId} (tier ${t}) at ${shell.id} depth ${s.depth}`);
-      } else if (hardBlocked && s.stats.playTimeSec - lastCraftWhine > 1800) {
-        lastCraftWhine = s.stats.playTimeSec;
-        log(`wall-blocked at ${shell.id} ${s.depth}: ${recipeId} — ${result.reason}`);
-      }
+  // Craft the next tier the moment it is affordable — a wall never has to be
+  // touching you to justify a better pick. EVERY recipe at that tier is tried,
+  // best chip-spread first: a real player takes the good pick when the bank
+  // allows and the crude one when it does not, and the ladder's floor exists
+  // precisely so the second case is never a dead end. (This used to name ONE
+  // recipe per tier, which made the commons-only fallbacks invisible to the
+  // harness — the sim would report a wall the game did not have.)
+  const target = tier + 1;
+  const atTier = TOOL_RECIPES.filter((r) => r.tier === target)
+    .sort((a, b) => b.chipSpread - a.chipSpread);
+  let crafted = false;
+  const refusals: string[] = [];
+  for (const recipe of atTier) {
+    const result = engine.dispatch({ type: 'craftTool', recipeId: recipe.id });
+    if (result.ok) {
+      log(`forged ${recipe.id} (tier ${target}) at ${shell.id} depth ${s.depth}`);
+      crafted = true;
+      break;
     }
+    // A refusal that names WHAT is short but not HOW MUCH you hold is half a
+    // diagnosis — the A.41 investigation lost an hour to exactly that gap.
+    const held = Object.entries(recipe.inputs)
+      .map(([m, n]) => `${m} ${materialCount(s, m)}/${n}`)
+      .join(', ');
+    refusals.push(`${recipe.id}: ${result.reason} [${held}]`);
+  }
+  if (!crafted && hardBlocked && atTier.length > 0 && s.stats.playTimeSec - lastCraftWhine > 1800) {
+    lastCraftWhine = s.stats.playTimeSec;
+    log(`wall-blocked at ${shell.id} ${s.depth} (tier ${target}) — ${refusals.join(' | ')}`);
   }
   void wallSoon;
   while (s.materials.geodes > 0) {

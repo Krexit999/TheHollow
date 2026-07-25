@@ -53,8 +53,26 @@ export function breachEchoPreview(state: GameState) {
 export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx): ActionResult {
   if (!canBreach(state)) {
     // Name the actual blocker — a gate that won't say its name is a wall.
-    if (state.depth >= currentShell(state).floorDepth && !keystoneSatisfied(state)) {
+    // (The Hollow's face gate had no branch here, so it reported the floor and
+    // read as "Reach the floor first" while standing ON the floor.)
+    const shell = currentShell(state);
+    const atFloor = state.depth >= shell.floorDepth;
+    if (atFloor && !state.combat.wardens.includes(shell.id) && !lawFlag(state, 'wardenOptional')) {
+      return { ok: false, reason: 'The Warden holds the floor.' };
+    }
+    if (atFloor && !keystoneSatisfied(state)) {
       return { ok: false, reason: 'The floor is open but unshored — set the keystone first.' };
+    }
+    if (atFloor && shell.id === 'hollow' && !faceWhole(state)) {
+      const have = state.hollow.rebuilt.length;
+      const need = state.face.cells.length;
+      return {
+        ok: false,
+        reason: `The face is not whole — ${have} of ${need} cells remember being rock. The Core does not open onto an absence.`,
+      };
+    }
+    if (atFloor && nextShell(state) === null) {
+      return { ok: false, reason: 'There is nothing below this. The way on is a Recursion.' };
     }
     return { ok: false, reason: 'The floor holds. Descend to it first.' };
   }

@@ -16,6 +16,7 @@ import {
 } from '../../engine';
 import { CARRY_BASE } from '../../engine/signatures';
 import { keystoneFor, keystoneIdlePrice, keystonePlaced, keystoneSatisfied } from '../../engine/systems/keystones';
+import { faceWhole } from '../../engine/systems/absence';
 import { chipCurrencyId } from '../../engine/shells';
 import type { GameState } from '../../engine';
 import { materialsOfShell } from '../../engine/materials';
@@ -88,16 +89,30 @@ export function BreachCard() {
         holdMs={2000}
         className="btn mt-3 w-full border-[#8be9fd]/50 py-3 text-sm font-bold tracking-widest text-[#8be9fd]"
       >
-        {ready
-          ? 'HOLD — AND LET GO OF EVERYTHING'
-          : state.depth >= shell.floorDepth && !state.combat.wardens.includes(shell.id)
-            ? 'The Warden holds the floor'
-            : state.depth >= shell.floorDepth && !keystoneSatisfied(state)
-              ? 'The floor is open but unshored'
-              : 'Reach the floor first'}
+        {breachBlockerLabel(state as GameState, ready)}
       </HoldButton>
     </div>
   );
+}
+
+/**
+ * What the button SAYS when it is dead. Every gate in canBreach() gets a
+ * branch here; the fallback is the floor, and only the floor.
+ *
+ * The bug this replaces: the Hollow's faceWhole() gate had no branch, so the
+ * chain fell through to "Reach the floor first" — printed while the player
+ * stood ON the floor at depth 560, with no hint that the face was the gate.
+ */
+function breachBlockerLabel(state: GameState, ready: boolean): string {
+  if (ready) return 'HOLD — AND LET GO OF EVERYTHING';
+  const shell = currentShell(state);
+  if (state.depth < shell.floorDepth) return 'Reach the floor first';
+  if (!state.combat.wardens.includes(shell.id)) return 'The Warden holds the floor';
+  if (!keystoneSatisfied(state)) return 'The floor is open but unshored';
+  if (shell.id === 'hollow' && !faceWhole(state)) {
+    return `The face is not whole — ${state.hollow.rebuilt.length}/${state.face.cells.length} cells`;
+  }
+  return 'The floor holds';
 }
 
 /**

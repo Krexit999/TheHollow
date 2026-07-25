@@ -108,6 +108,32 @@ export const TOOL_RECIPES: ToolRecipe[] = [
     flavor: 'Weighted wrong for digging and right for something else.',
   },
   // --- Tier II — the depth-45 wall answers to these ------------------------
+  /**
+   * THE LADDER'S FLOOR (A.40 close-out ruling). Every other tier-II recipe
+   * wants a RICH-band material, and rich cannot drop above depth 10 — while
+   * every Collapse puts you back at depth 0. So the first hardness wall was
+   * gated on a band that only earns for part of each cycle: a fully idle
+   * player crossed it in ~10.5h, or didn't, depending on the rolls.
+   *
+   * This one is payable from the COMMON band alone, which pays at every depth
+   * including the shallows right after a Collapse. It is deliberately the
+   * WORST tier-II pick — the spreads sit under all three of its siblings, so
+   * an engaged player still wants the rich ones. Tier gates hardness; spread
+   * is quality. Nothing is taken from the player who works for the better tool.
+   *
+   * It takes NO MARL, on purpose: marl is a Kiln fuel (0.35/sec while feeding),
+   * and the ladder's floor must not compete with the machine every player
+   * runs. Its 21 units also sit just under the Loamiron Pick's 22 — the same
+   * armful of stone, from the band that pays at every depth. The first live
+   * run of this recipe sat "Short of Marl" for eighty minutes and taught the
+   * rule: commons are only abundant until something else is eating them
+   * (contracts fetch them by the score, gear takes them by the handful).
+   */
+  {
+    id: 'chalkhead', name: 'Chalkhead Pick', tier: 2, chipSpread: 0.95, strikeSpread: 0.7,
+    inputs: { bonechalk: 9, graveclay: 7, ochre: 5 }, brick: 12,
+    flavor: 'Crude, heavy, and honest. Every camp has three of them and nobody signs their name to one.',
+  },
   {
     id: 'loamironPick', name: 'Loamiron Pick', tier: 2, chipSpread: 1.15, strikeSpread: 0.8,
     inputs: { loamiron: 8, marl: 10, ochre: 4 }, brick: 12,
