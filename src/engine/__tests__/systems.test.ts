@@ -13,6 +13,14 @@ describe('the kiln', () => {
     s.kiln.built = true;
     s.kiln.feeding = true;
     s.kiln.heat = 1; // fully stoked: efficiency = 1, and it stays at 1 while fed
+    // EMPTY THE FACE FIRST. `consumed` below is a NET dust change, so any income
+    // arriving during the window is counted as kiln intake that never happened.
+    // A fresh face starts at cap, so seepage was paying into the same purse the
+    // kiln was eating from — inside the 25-dust slack at SEEP_EFFICIENCY 0.10
+    // and outside it at 0.15, which is how a test that had always measured the
+    // wrong thing finally said so. Cells below cap cannot overflow, so this
+    // isolates the converter, which is what the test is about.
+    s.face.cells.fill(0);
     engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 10_000 });
     const dustBefore = s.currencies['dust']!;
     engine.tick(60);

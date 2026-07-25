@@ -251,7 +251,11 @@ describe('the tier ladder has a floor an idle player can always reach', () => {
 });
 
 describe('seep constants stay honest', () => {
-  it('the leak rate is the documented 10%', () => {
-    expect(SEEP_EFFICIENCY).toBe(0.1);
+  it('the leak rate is the documented 15%', () => {
+    // Raised 0.10 -> 0.15 at A.43. This is not a flavour constant: before the
+    // drill bay exists it IS the idle/active income ratio, and 0.10 was setting
+    // it to 10x against pillar 1's stated ~5x. The value is measured, not
+    // derived — see seepage.test.ts and sim-out/a43-part-b.md.
+    expect(SEEP_EFFICIENCY).toBe(0.15);
   });
 });

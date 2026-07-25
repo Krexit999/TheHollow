@@ -62,12 +62,34 @@ export function dpsMax(state: GameState, mods: ModifierCache): Decimal {
 
 /**
  * SEEPAGE — LOAM'S SIGNATURE (promoted in Phase 5; a correction to the doc).
- * A cell at cap can't hold more, but the rock keeps producing: 10% × strength
+ * A cell at cap can't hold more, but the rock keeps producing: 15% × strength
  * of the overflow leaks out as chip currency. Native in Loam; carried down
  * like any signature (0.4 base, raised by Resonant Memory). Pillar 1's idle
  * floor — thin, never absent, strictly under the regen ceiling.
+ *
+ * THIS CONSTANT IS THE PRE-MACHINE IDLE/ACTIVE RATIO (A.43).
+ *
+ * Not a flavour number. Before the drill bay exists it is the ONLY income an
+ * idle player has, and an active player sustains 0.96–1.00 of the field
+ * ceiling (measured, `sim-out/a43-part-a.md`) — so this fraction *is* the ratio
+ * pillar 1 legislates, and at 0.10 it was setting it to 10× against a stated
+ * ~5×. Everything the last two phases chased through the descent curve, the
+ * drop economy and the tier walls was this one number seen from downstream.
+ *
+ * Raised to 0.15 at A.43, and the value is MEASURED, not derived. The
+ * derivation says 0.20 (make income exactly 5×) and is wrong: idle also earns
+ * from the opening bootstrap, from Depth Pressure and later from drills, and
+ * those compound on top, so 0.20 overshoots time-to-depth to 3.0–3.9×. 0.15
+ * lands R at 4.0–5.0 across d30–d60. Three seeds, both arms, one flag apart.
+ *
+ * It cannot become a faucet at any value below 1.0: seepage takes a fraction of
+ * OVERFLOW, which is regen the field produced and no drill harvested, so
+ * seep + drill ≤ regen identically. Pillar 2 binds unchanged.
+ *
+ * It cannot speed an ACTIVE player at any value: overflow only exists when a
+ * cell is AT CAP, and a player working the face never leaves one there.
  */
-export const SEEP_EFFICIENCY = 0.1;
+export const SEEP_EFFICIENCY = 0.15;
 
 /**
  * SKIM — Loam's TECHNIQUE (the verb-per-signature layer). While seepage runs,

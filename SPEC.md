@@ -206,23 +206,44 @@ Token, Axiom Fragment, Sigil
 > reading are unknown, not approximate. See PILLARS.md, "every pacing number
 > measured before A.42 is void".
 
-### Re-measured against the corrected harness (A.42, in progress)
+### Re-measured (A.42, then A.43 — the A.42 column is itself superseded)
 
-Corrected policy: collapse only when the run is stalled (walled / at the floor /
-next step over a one-minute horizon of ceiling income) and never while walled
-with drills in hand. Drill bay gate at depth-record 35. THE SETTLING on.
+**The A.42 column below was measured under a harness defect of its own** and is
+void by the same rule that voided everything before it. `shop()` gated descent
+on `s.kiln.built || currentDescendCost < 100` while `descendCost(17) = 108`, so
+depth froze at 16 for **seventeen consecutive minutes** with 100–415 dust banked
+and income growing eleven-fold — the sixth defect of this kind. It also predates
+the seepage change, so both the policy and the economy moved under it.
 
-| Beat | Pre-A.42 (void) | Re-measured | Confidence |
-|---|---|---|---|
-| First upgrade | ~4 s | ~4 s | ✓ unaffected (pre-collapse) |
-| Kiln raised | ~4 min | ~30 min | ✓ MEASURED (A.42 short runs) |
-| Drill Bay | ~50 min | idle ~60 min at the gate | ✓ MEASURED |
-| Loam floor (d150), idle | 7.6–8.8 h | **3.6 h** (217 m, 3 seeds, gate 40) | ✓ MEASURED |
-| Loam floor (d150), active | 7.6–8.8 h | **~1.9 h** (115 m, 3 seeds, gate 40) | ✓ MEASURED |
-| Collapse cadence | ~~4–12 min~~ **VOID** | **~25–35 min, 7–11 per Loam arc** — the corrected TARGET | ✓ MEASURED, model reconciled |
-| RTP, Collapse layer | ≤10% (one run at 30%) | **20%** (n=2, 95%-of-peak tolerance) | ✓ MEASURED — in band |
-| RTP, Breach / Recursion / Spiral | — | no samples yet | ? UNMEASURED |
-| Everything below the Loam floor | see void table | — | ? UNMEASURED |
+Current harness: collapse only when the run is stalled (walled / at the floor /
+next step over a one-minute horizon of ceiling income), never while walled with
+drills in hand; descent holds the next unlock's price as a RESERVE and spends
+the surplus. Drill bay gate at depth-record 35. THE SETTLING on.
+`SEEP_EFFICIENCY = 0.15`.
+
+| Beat | Pre-A.42 (void) | A.42 (superseded) | **A.43 — current** | Confidence |
+|---|---|---|---|---|
+| First upgrade | ~4 s | ~4 s | ~4 s | ✓ unaffected (pre-collapse) |
+| Kiln raised | ~4 min | ~30 min | **~3 min** | ✓ MEASURED — the 30 was the latch |
+| Drill Bay | ~50 min | idle ~60 min | **idle ~20 min** | ✓ MEASURED (opening CSV) |
+| Loam floor (d150), idle | 7.6–8.8 h | 3.6 h | pending the 12 h run | ? in flight |
+| Loam floor (d150), active | 7.6–8.8 h | ~1.9 h | pending the 12 h run | ? in flight |
+| d125, idle | — | 177 min | **144 min** | ✓ MEASURED |
+| d125, active | — | 74 min | **59 min** | ✓ MEASURED |
+| Collapse cadence | ~~4–12 min~~ VOID | ~25–35 min | **~31–47 min** | ✓ MEASURED — see below |
+| RTP, Collapse layer | ≤10% (one run at 30%) | 20% (n=2) | **9%** (n=1) | ✓ MEASURED — in band |
+| RTP, Breach / Recursion / Spiral | — | no samples | no samples | ? UNMEASURED |
+| Everything below the Loam floor | see void table | — | — | ? UNMEASURED |
+
+**Cadence moved and the ledgered trigger did not fire the way it predicted.**
+The A.42 row parked cadence with a trigger: "if the Kiln pass moves `f`,
+re-measure". `f` — the share of a run's earnings reaching the stair — is
+**unchanged at 29%**. Cadence still drifted up (31–47 min against a ~25–35
+target) because `I_final/I_mean` rose instead, 1.53 → 1.64–2.66: a richer idle
+floor means a run's income climbs further within the run, which is the same term
+by the other route. The corrected model held; the guess about which of its two
+factors would move did not. Target left alone — it has been restated once
+already this phase-pair and 47 min is one seed of three.
 
 **The cadence beat, diagnosed.** Measured ~29 min for BOTH policies, against a
 stated 4–12. The 12T derivation was wrong, not the number, and it was wrong in
