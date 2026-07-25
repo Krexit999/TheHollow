@@ -52,7 +52,7 @@ import { translationFee, FRAGMENTS } from '../src/engine/guild/sable';
 import { CARAVAN_ROUTES, drift } from '../src/engine/guild/caravan';
 import { TITLE_BY_ID } from '../src/engine/guild/titles';
 import { hiredCount } from '../src/engine/guild/hirelings';
-import { dpsMax, cellRegen } from '../src/engine/systems/face';
+import { dpsMax, cellRegen, cellCap } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
 import { arrayUnlocked, openRows, ARRAY_SIZE } from '../src/engine/content/shell5/emberArray';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
@@ -91,6 +91,9 @@ interface Args {
   settle: string | null;
   /** Attribute every common consumed to the action that took it (A.42). */
   commons: boolean;
+  /** THE OPENING ARC (A.43 A1): a per-minute CSV of where an idle player's
+   *  income comes from and where it goes, before any machine exists. */
+  opening: string | null;
   /** Override the Loam depth record that unlocks the DRILL BAY (A.42). The
    *  shipped 55 sits BEHIND the tier-II wall at 44; this makes the alternative
    *  a measurement instead of an argument. */
@@ -130,6 +133,7 @@ function parseArgs(): Args {
     depthLog: get('depthlog') ?? null,
     settle: get('settle') ?? null,
     commons: argv.includes('--commons'),
+    opening: get('opening') ?? null,
     bay: get('bay') !== undefined ? Number(get('bay')) : null,
   };
 }
@@ -1514,11 +1518,33 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     }
   }
 
-  // Descend with a buffer — keep some bank for the shopping trips. Until the
-  // converter exists, only take the cheap early depths (save for the unlock).
+  // Descend with a buffer — keep some bank for the shopping trips, and RESERVE
+  // the price of the next unlock rather than freezing until you have bought it.
+  //
+  // (A.43 A1 harness fix, the sixth of its kind.) This read
+  // `s.kiln.built || currentDescendCost < 100`, which is not a reserve, it is a
+  // LATCH: `descendCost(17) = 108`, so from depth 16 the policy refused every
+  // descent until the Kiln existed. Measured on the opening instrument: **depth
+  // frozen at 16 for seventeen minutes** while the bank sat at 100–415 dust and
+  // income grew ELEVEN-FOLD — a player who by minute 25 earns 145 dust a minute
+  // and will not spend 108 on a step. That is the same shape as the policy that
+  // never upgraded within a tier: refusing something it can plainly afford, and
+  // the seventeen minutes were being read as an idle-economy problem.
+  //
+  // A reserve models the actual decision (save for the unlock, spend the
+  // surplus) and lets the unlock arrive on the same clock.
+  const unlockReserve = () => {
+    if (s.kiln.built) return D(0);
+    const def = allUpgrades().find((u) => u.id === 'kilnBuild');
+    return def ? def.baseCost : D(0);
+  };
+  const RESERVE_MODE = process.env.SIM_DESCEND_POLICY ?? 'reserve';
   while (
-    dust().gte(currentDescendCost(s, mods).mul(1.5)) &&
-    (s.kiln.built || currentDescendCost(s, mods).lt(100))
+    (RESERVE_MODE === 'plain'
+      ? dust().gte(currentDescendCost(s, mods).mul(1.5))
+      : RESERVE_MODE === 'latch'
+        ? dust().gte(currentDescendCost(s, mods).mul(1.5)) && (s.kiln.built || currentDescendCost(s, mods).lt(100))
+        : dust().sub(unlockReserve()).gte(currentDescendCost(s, mods).mul(1.5)))
   ) {
     mods.invalidate();
     const paid = effectiveDescendCost(s, mods).toNumber();
@@ -1984,6 +2010,19 @@ function main(): void {
   let diagPrevCeiling = 0;
   let diagPrevHarvest = 0;
   let diagPrevDrip = 0;
+  // THE OPENING ARC INSTRUMENT (A.43 A1). One row a minute: what the field
+  // produced, which path harvested it, what the purse spent it on, and what
+  // the ceiling was while that happened. The opening is the one stretch where
+  // an idle player has no machines, so every number here is the floor doing
+  // the work or failing to.
+  const openingRows: string[] = [
+    'min,depth,ceiling,realized,seep_charge,chip_charge,earned,spent_descent,spent_other,bank,cells_at_cap,kiln,bay,blade,soil',
+  ];
+  let opPrevEarned = 0;
+  let opPrevSeep = 0;
+  let opPrevChip = 0;
+  let opPrevDescent = 0;
+  let opCeilInt = 0;
   // THE DESCENT INSTRUMENT: first-arrival time per depth record, per shell.
   const depthRows: string[] = ['shell,depth,sec'];
   const seenRecord: Record<string, number> = {};
@@ -2005,6 +2044,41 @@ function main(): void {
     else if (args.policy === 'balanced' && sec % 300 === 0) chipFullest(engine, 40);
     engine.tick(1);
     noteRtpTick(s.shell.current, s.depthRecords[s.shell.current] ?? 0, s.depth, sec);
+    if (args.opening) {
+      opCeilInt += dpsMax(s, mods).toNumber();
+      if (sec % 60 === 0) {
+        const earned = s.totals[chipCurrencyId(s)]?.toNumber() ?? 0;
+        const chipCharge = s.stats.totalChargeChipped.toNumber();
+        const fieldCharge = s.stats.fieldChargeHarvested.toNumber();
+        const seepCharge = fieldCharge - chipCharge;
+        const cap = cellCap(s, mods);
+        const atCap = s.face.cells.filter((c: number) => c >= cap - 1e-9).length / s.face.cells.length;
+        const dEarned = earned - opPrevEarned;
+        const dDescent = cadence.spentOnDescent - opPrevDescent;
+        openingRows.push([
+          sec / 60,
+          s.depth,
+          (opCeilInt / 60).toFixed(4),
+          opCeilInt > 0 ? (dEarned / opCeilInt).toFixed(3) : "",
+          (seepCharge - opPrevSeep).toFixed(2),
+          (chipCharge - opPrevChip).toFixed(2),
+          dEarned.toFixed(2),
+          dDescent.toFixed(2),
+          (dEarned - dDescent).toFixed(2),
+          (s.currencies[chipCurrencyId(s)]?.toNumber() ?? 0).toFixed(2),
+          atCap.toFixed(2),
+          s.kiln.built ? 1 : 0,
+          s.drills.bayBuilt ? 1 : 0,
+          upgradeLevel(s, "blade"),
+          upgradeLevel(s, "soil"),
+        ].join(","));
+        opPrevEarned = earned;
+        opPrevSeep = seepCharge;
+        opPrevChip = chipCharge;
+        opPrevDescent = cadence.spentOnDescent;
+        opCeilInt = 0;
+      }
+    }
     if (args.depthLog) {
       const sid = s.shell.current;
       const rec = s.depthRecords[sid] ?? 0;
@@ -2139,6 +2213,12 @@ function main(): void {
     }
   }
   const wallMs = Date.now() - started;
+
+  if (args.opening) {
+    mkdirSync(dirname(args.opening), { recursive: true });
+    writeFileSync(args.opening, openingRows.join('\n'));
+    console.error(`opening -> ${args.opening} (${openingRows.length - 1} minutes)`);
+  }
 
   if (args.depthLog) {
     mkdirSync(dirname(args.depthLog), { recursive: true });
