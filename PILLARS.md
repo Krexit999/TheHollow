@@ -258,10 +258,23 @@ not silently ignore it.
 
 | Layer | Trigger | Resets | Gains | Cadence |
 |---|---|---|---|---|
-| Collapse | Any time | Face upgrades, shell currencies, depth | Cores | 30-60x/shell, 4-12 min |
+| Collapse | Any time | Face upgrades, shell currencies, depth | Cores | ~~30-60x/shell, 4-12 min~~ **VOID — see below** |
 | Breach | Reach shell floor | Cores, all shell systems, Core tree | Echoes + permanent carry of shell's signature mechanic | 7 per Recursion; 2-6h first, 25-40m later |
 | Recursion | Reach Core of the World | All shells, all Echoes, back to Shell I | Axioms (rewrite generation rules) | 4-6 total; 30h first, 5-8h later |
 | Spiral | Post-Recursion | Axioms | Spiral: challenges, parallel shells, Automation Grid | Endgame |
+
+**The Collapse cadence column is VOID (A.42).** "30-60×/shell, 4-12 min" was
+derived from a run that is limited by how fast you can descend. This build's run
+is limited by the SHOP: only 29-56% of a run's earnings reach the stair, the
+rest rebuilds the face upgrades the Collapse just wiped, and income climbs
+1.36-1.53× across a single run because of it. The corrected model —
+`run ≈ 12·T·(I_final/I_mean)/f` — predicts 29.2 min against a measured 29.2 for
+an active player, exactly. Measured Loam: **7-11 collapses at ~25-35 min.**
+
+The corrected TARGET lives in SPEC.md's pacing section. The ladder's STRUCTURE
+(what resets, what it pays, the formulas below) is untouched and still locked;
+only the empirical cadence figure was wrong, and it was wrong because its model
+was, not because the game drifted. Do not tune the game toward the void number.
 
 ```
 Cores  = floor( 2 * (Depth / 40)^1.5 )

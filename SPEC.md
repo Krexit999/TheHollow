@@ -219,7 +219,7 @@ with drills in hand. Drill bay gate at depth-record 35. THE SETTLING on.
 | Drill Bay | ~50 min | idle ~60 min at the gate | ✓ MEASURED |
 | Loam floor (d150), idle | 7.6–8.8 h | **3.6 h** (217 m, 3 seeds, gate 40) | ✓ MEASURED |
 | Loam floor (d150), active | 7.6–8.8 h | **~1.9 h** (115 m, 3 seeds, gate 40) | ✓ MEASURED |
-| Collapse cadence | 4–12 min | ~40 min (3–6 per 4 h) | ✓ MEASURED — **out of band, open** |
+| Collapse cadence | ~~4–12 min~~ **VOID** | **~25–35 min, 7–11 per Loam arc** — the corrected TARGET | ✓ MEASURED, model reconciled |
 | RTP, Collapse layer | ≤10% (one run at 30%) | **20%** (n=2, 95%-of-peak tolerance) | ✓ MEASURED — in band |
 | RTP, Breach / Recursion / Spiral | — | no samples yet | ? UNMEASURED |
 | Everything below the Loam floor | see void table | — | ? UNMEASURED |
@@ -246,8 +246,18 @@ wants 30–60 Collapses per shell and the Loam arc measures **7–11**. Cadence 
 over its band, count ~4–6× under the ladder — one finding, not two: the Collapse
 loop runs fewer, longer cycles than designed.
 
-NOT TUNED. Nudging T would hide it (reaching 12 min needs T ≈ 25 s, a run that
-stops while the next step still costs half a minute). This wants its own pass.
+**RULING (A.42 close-out): the TARGET was updated, not the game.** The 4–12
+minute band was derived from a descent-limited run, and this build is not one.
+Tuning the collapse rule to hit a number produced by a broken model is how a
+ghost gets built — and that rule had already been rewritten twice in the phase
+that found this. The corrected target is **~25–35 min, 7–11 collapses across
+the Loam arc**, which is what the build actually does and what the corrected
+model predicts. The old band is void, alongside the void pacing map above.
+
+This does NOT say the loop is right — a 30-minute Collapse is a chapter, not a
+pulse, and whether that is the game wanted is a design question. It says the
+question is "should the shop compete with the stair for the same purse", not
+"why is the cadence number off". Ledgered for a pass of its own.
 
 The old map follows, unchanged, as the record of what was believed.
 

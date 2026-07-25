@@ -4055,3 +4055,90 @@ named the missing input but not how much was held, which cost an hour of estimat
 `forgePlay` now prints held/needed per input. A controlled 160-drop haul yields 26–37 of
 each common against a need of 7, so a live sink is eating them (contracts fetch 21 at a
 time; gear takes 4–8) — ledgered with the instrument now able to name it.
+
+---
+
+# A.42 — THE IDLE PATH: CLOSE-OUT
+
+The phase was opened on a ruling to fix an exponentially widening descent curve.
+It closed having found that the curve was never the problem, that the instrument
+which said it was had been wrong for the project's whole history, and that the
+actual defect was a gate ordering nobody could see because it was not a number.
+
+## What shipped
+
+**THE SETTLING** (`systems/settle.ts`, save v24). An idle-only, depth-scaling
+erosion of the descend price: while no hand works the face the shaft banks quiet,
+and the bank erodes the next new-ground step as `soften^(-fill·depth)`, floored.
+Idle-only (a chip pauses the fill and never burns the bank), depth-scaling (grows
+as fast as the cost curve), self-limiting (a step spends the bank in proportion
+to the relief it used, so idle time-per-step is bounded by the refill clock
+instead of exponential, while a shallow post-Collapse rebuild spends almost
+none). Offline banks it; pillar 3 holds. Not a faucet — it reduces a spend.
+
+**THE DRILL-BAY GATE**, 55 → 35. The real fix. Drills are what lift an idle
+player off the ~10% seepage floor, and their unlock sat *behind* the tier-II
+hardness wall at depth 44 — the system that made the crossing possible was locked
+behind the crossing. An active player passed 55 in minutes, so the gate read as a
+45-minute beat and the code comment said so; an idle player sat at a tenth of
+ceiling income for eight and a half hours, forging a tier-II tool at a tenth of
+ceiling income, in order to unlock the machines that would have made the tool.
+
+**The descend buttons** stopped pricing the raw curve — both ignored the rail
+discount, so a railed step read at full fare and the button disabled on a step
+the engine would have sold.
+
+## The result
+
+R = t_idle / t_active across Loam, 3 seeds, medians, one binary:
+
+| depth | 45 | 80 | 100 | 130 | 150 |
+|---|---|---|---|---|---|
+| before | 25.5 | 21.6 | 16.6 | 9.4 | 5.2 |
+| after | 5.9 | 5.4 | 3.5 | 3.0 | 1.9 |
+
+Idle to the Loam floor: **617.9 min → 217.3 min**, and every idle seed now
+reaches it. **Pillar 1 holds from d40 down** — ~5× at the shallow end of that
+range converging to 1.9 at the floor, which is the shape pillar 1 asks for and
+the first time this project has measured it.
+
+## What the instruments cost, and what they were worth
+
+Four harness defects were found, each of which had been shaping findings:
+
+1. **The collapse rule fired on payout, never on progress.** `gain` first
+   reaches 2 at depth 40 — four steps below the wall at 44 — so every run, for
+   both policies, for this project's whole history, reset four steps short of
+   its own wall. Correcting it moved the ACTIVE Loam-floor beat from ~490 min to
+   ~115. It also never accounted for what the reset COSTS: the Collapse takes
+   the drill bay, so the fix under measurement measured as a *regression*.
+2. **The beats read live depth**, sampled once a second, while the corrected
+   policy collapses on arrival at the floor — so "loam floor" reported hundreds
+   of minutes late or never.
+3. **The pillar-2 gate could not fail honestly.** Four causes, three removed:
+   Collapse straddles (skipped and counted), non-field income (the Guild pays
+   chip from outside the field), and yield multipliers (currency ÷ dpsMax moved
+   both sides). It is charge ÷ charge now.
+4. **RTP read NO RETURNS** because the corrected policy collapses at the run's
+   maximum and 148-of-150 is not 150.
+
+Every pre-A.42 pacing number in this project is therefore VOID, and both PILLARS
+and SPEC now say so at the top rather than in a footnote. The cadence band went
+the same way: 4-12 min was derived from a descent-limited run, and this build is
+shop-limited — only 29-56% of a run's earnings reach the stair. The corrected
+model `run ≈ 12·T·(I_final/I_mean)/f` predicts 29.2 min against a measured 29.2,
+so the TARGET was updated to ~25-35 min rather than the game tuned toward a
+number a broken model produced.
+
+## What is open, named, and not touched
+
+- **The Kiln beat.** The one remaining pillar-1 gap: d15 → d20 costs idle 33
+  minutes against active's 3, because the face's starting charge runs out around
+  d15 and seepage is all there is until the Kiln at ~30 min. Not the bay — the
+  gate move proved that (d15-35 are bit-identical at gate 35 and gate 40).
+- **The seepage floor**, which is the general shape under both early gates.
+- **Pillar-2's 102% residual** — full-cap new cells, proven, bookkeeping only.
+- **The cadence**, parked with a trigger: if the Kiln pass moves `f`, re-measure.
+
+The idle path's structural work is done. What remains is the opening arc, and it
+is an arc, not a bug.
