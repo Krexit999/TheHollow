@@ -20,16 +20,42 @@ describe('prestige formulas (locked)', () => {
     expect(coresForDepth(200).toNumber()).toBe(Math.floor(2 * 5 ** 1.5));
   });
 
-  it('Echoes = floor(3 * (Cores/500)^0.6)', () => {
+  it('Echoes = floor(3 * (Cores/200)^0.6) — divisor re-rated A.44', () => {
     expect(echoesForCores(D(0)).toNumber()).toBe(0);
-    expect(echoesForCores(D(500)).toNumber()).toBe(3);
-    expect(echoesForCores(D(5000)).toNumber()).toBe(Math.floor(3 * 10 ** 0.6));
+    expect(echoesForCores(D(200)).toNumber()).toBe(3);
+    expect(echoesForCores(D(2000)).toNumber()).toBe(Math.floor(3 * 10 ** 0.6));
   });
 
-  it('Axioms = floor((TotalEchoes/25)^0.8)', () => {
+  it('Axioms = floor((TotalEchoes/8)^0.8) — divisor re-rated A.44', () => {
     expect(axiomsForEchoes(D(0)).toNumber()).toBe(0);
-    expect(axiomsForEchoes(D(25)).toNumber()).toBe(1);
-    expect(axiomsForEchoes(D(250)).toNumber()).toBe(Math.floor(10 ** 0.8));
+    expect(axiomsForEchoes(D(8)).toNumber()).toBe(1);
+    expect(axiomsForEchoes(D(80)).toNumber()).toBe(Math.floor(10 ** 0.8));
+  });
+
+  /**
+   * THE REGRESSION THAT MATTERS (A.44). The two divisors above were sized for
+   * a Collapse cadence of 30–60/shell, which A.42 voided; at the real cadence
+   * a COMPLETE FIRST RECURSION paid zero Axioms, and the Axioms are where the
+   * fold-down lives. The formulas were individually correct and individually
+   * tested the whole time — the tests asserted the shape and never asked what
+   * the shape PAID at the rate the game actually runs at.
+   *
+   * So this asserts the outcome, not the algebra: seven breaches at the
+   * measured Breach-1 haul must buy at least one Axiom, and must not buy ten.
+   */
+  it('a complete first Recursion earns its first Axiom (and not ten)', () => {
+    const perBreach = echoesForCores(D(508)); // measured, sim-out/a43
+    const firstRecursion = perBreach.mul(7);
+    const got = axiomsForEchoes(firstRecursion).toNumber();
+    expect(got).toBeGreaterThanOrEqual(1);
+    expect(got).toBeLessThanOrEqual(5);
+  });
+
+  /** The natural player breaches on REACHING the floor, not after farming to
+   *  500 — ~130 cores in Loam. That case used to pay its first Axiom at
+   *  Recursion FOUR, so it is the one worth pinning. */
+  it('even a light first Recursion (~130 cores/breach) earns an Axiom', () => {
+    expect(axiomsForEchoes(echoesForCores(D(130)).mul(7)).toNumber()).toBeGreaterThanOrEqual(1);
   });
 
   it('Spiral = floor(sqrt(TotalAxioms) * RecursionCount)', () => {

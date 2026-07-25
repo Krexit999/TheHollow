@@ -11,17 +11,40 @@ export function coresForDepth(depth: number): Decimal {
   return D(Math.floor(2 * Math.pow(depth / 40, 1.5)));
 }
 
-/** Echoes = floor(3 * (CoresEarnedThisBreach / 500)^0.6) — Phase 4+. */
+/**
+ * THE PRESTIGE LADDER RE-RATE (A.44 ruling 2). The divisors below were sized
+ * against a Collapse cadence of 30–60 per shell — the figure A.42 VOIDED. The
+ * real cadence is 7–11, so the two rungs above Collapse were starved by
+ * construction, not by drift:
+ *
+ *   3·(508/500)^0.6 = 3 echoes at the measured Breach 1 (sim-out/a43)
+ *   × 7 breaches    = 21 echoes per Recursion
+ *   floor((21/25)^0.8) = 0 AXIOMS FOR A COMPLETE FIRST RECURSION
+ *
+ * Twenty Axioms are authored and four were reachable in a whole playthrough;
+ * at natural play (breach on reaching the floor, ~130–250 cores) the first
+ * Axiom arrived at Recursion FOUR. The Axioms are where the fold-down lives —
+ * `firstWord` starts a Recursion with Kiln/Bay/Forge standing, `gentleFall`
+ * keeps twenty levels of every face upgrade through a Collapse — so the layer
+ * that makes a re-climb fast was the layer nobody could reach.
+ *
+ * The EXPONENTS do not move: they are the ladder's shape (diminishing returns
+ * on farming a rung), which is the locked part. Only the divisors are re-rated,
+ * and they are re-rated to the MEASURED cadence. Sized in scripts/a44-ladder.ts
+ * against a range of cores-per-breach rather than one assumed rate.
+ */
+
+/** Echoes = floor(3 * (CoresEarnedThisBreach / 200)^0.6). Was /500 — see above. */
 export function echoesForCores(coresThisBreach: Decimal): Decimal {
   if (coresThisBreach.lte(0)) return D(0);
-  const ratio = coresThisBreach.div(500);
+  const ratio = coresThisBreach.div(200);
   return Decimal.pow(ratio, 0.6).mul(3).floor();
 }
 
-/** Axioms = floor((TotalEchoes / 25)^0.8) — Phase 7+. */
+/** Axioms = floor((TotalEchoes / 8)^0.8). Was /25 — see above. */
 export function axiomsForEchoes(totalEchoes: Decimal): Decimal {
   if (totalEchoes.lte(0)) return D(0);
-  return Decimal.pow(totalEchoes.div(25), 0.8).floor();
+  return Decimal.pow(totalEchoes.div(8), 0.8).floor();
 }
 
 /** Spiral = floor(sqrt(TotalAxioms) * RecursionCount) — endgame. */

@@ -46,15 +46,45 @@ describe('the Spiral — reset layer 4', () => {
     expect(engine.dispatch({ type: 'spiral' }).ok).toBe(false);
   });
 
-  it('is a slot-gating currency: the lifetime budget buys a partial board', () => {
-    // The formula yields a SMALL lifetime total, so capacity must stay scarce
-    // enough that a full board is an endgame-long project.
+  /**
+   * THE ASSERTION THIS REPLACES WAS THE BUG (A.44). It pinned "40 Spiral must
+   * buy fewer than 16 slots" to keep capacity scarce — but never asked whether
+   * 40 Spiral was a number anyone could HOLD. Lifetime supply is
+   * sqrt(Axioms)·Recursions ≈ 21 across the spec's six Recursions, against a
+   * full board that cost 192. The test enforced scarcity on top of famine and
+   * read green, which is how sixteen authored modules stayed unreachable.
+   *
+   * The invariant that matters is REACHABILITY AGAINST THE ACTUAL SUPPLY, at
+   * both ends: a full board must fit a lifetime, and must not fit an evening.
+   */
+  const boardCost = (n: number): number => {
     let spent = 0;
-    let slots = 0;
-    while (spent + gridSlotCost(slots) <= 40) { spent += gridSlotCost(slots); slots++; }
-    expect(slots).toBeGreaterThan(4);   // 40 Spiral buys a workable board...
-    expect(slots).toBeLessThan(16);     // ...but stays a real project.
+    for (let i = 0; i < n; i++) spent += gridSlotCost(i);
+    return spent;
+  };
+  const slotsFor = (bank: number): number => {
+    let spent = 0, slots = 0;
+    while (slots < 16 && spent + gridSlotCost(slots) <= bank) { spent += gridSlotCost(slots); slots++; }
+    return slots;
+  };
+
+  it('a full Grid fits a lifetime Spiral budget, and only just', () => {
+    // Six Recursions holding ~13 Axioms — the re-rated ladder's own output.
+    const lifetime = spiralFromLifetime(13, 6);
+    expect(boardCost(16)).toBeLessThanOrEqual(lifetime);
+    // ...but it is still most of the purse: no full board without commitment.
+    expect(boardCost(16)).toBeGreaterThan(lifetime * 0.75);
+  });
+
+  it('a second Recursion seats a meaningful, partial board', () => {
+    const atR2 = spiralFromLifetime(5, 2);
+    expect(slotsFor(atR2)).toBeGreaterThanOrEqual(3); // enough to feel like a system
+    expect(slotsFor(atR2)).toBeLessThan(16); // and nowhere near done
+  });
+
+  it('licences trade against Grid depth for the same purse', () => {
     expect(licenceCost(0)).toBeLessThan(licenceCost(3));
+    expect(licenceCost(0)).toBeGreaterThan(0);
   });
 });
 

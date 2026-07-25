@@ -179,9 +179,10 @@ describe('recursion: the world resets and you do not', () => {
     expect(maul.sockets).toContain('bloodgarnet');
     expect(maul.alloys).toContain('greysteel');
     expect(maul.strikePower).toBeLessThan(20); // blunted, truly
-    // Axioms: floor((75/25)^0.8) = floor(2.41) = 2, awarded once.
-    expect(axiomsFromEchoes(75)).toBe(2);
-    expect(getCurrency(n, 'axiom').toNumber()).toBe(2);
+    // Axioms: floor((75/8)^0.8) = floor(5.93) = 5, awarded once (re-rated A.44;
+    // this is the LIVE grant path — it read 2 under the old /25 divisor).
+    expect(axiomsFromEchoes(75)).toBe(5);
+    expect(getCurrency(n, 'axiom').toNumber()).toBe(5);
     expect(n.recursion.count).toBe(1);
   });
 

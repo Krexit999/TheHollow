@@ -53,11 +53,11 @@ describe('the breach', () => {
     expect(canBreach(s)).toBe(true);
   });
 
-  it('Echoes = floor(3·(cores/500)^0.6): 800 cores -> 3 Echoes', () => {
-    expect(echoesForCores(D(800)).toNumber()).toBe(3);
+  it('Echoes = floor(3·(cores/200)^0.6): 800 cores -> 6 Echoes (re-rated A.44)', () => {
+    expect(echoesForCores(D(800)).toNumber()).toBe(6);
     const { engine, s } = atFloor();
     engine.dispatch({ type: 'breach' });
-    expect(s.currencies['echo']!.toNumber()).toBe(3);
+    expect(s.currencies['echo']!.toNumber()).toBe(6);
   });
 
   it('resets Cores, the Core tree, and every shell system', () => {

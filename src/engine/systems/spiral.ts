@@ -220,15 +220,32 @@ export function tickParallelShells(
 // ---------------------------------------------------------------------------
 // Capacity: what Spiral currency buys
 // ---------------------------------------------------------------------------
-/** Slots rise steeply — the lifetime Spiral budget is small by the formula, so
- * a full board is an endgame-long project rather than an afternoon's shopping. */
+/**
+ * THE GRID RE-RATE (A.44 ruling 2).
+ *
+ * The note this replaces was half right and that is what made it dangerous:
+ * "the lifetime Spiral budget is small by the formula, so a full board is an
+ * endgame-long project rather than an afternoon's shopping." The budget IS
+ * small — `spiralFor` pays sqrt(Axioms)·Recursions, about 21 across the spec's
+ * six Recursions — and the price was set steep ANYWAY, at 1+floor(1.5n), so a
+ * full sixteen-slot board cost **192 against a lifetime supply of ~12**. That
+ * is not endgame-long, it is unreachable by 16x, and the Automation Grid is
+ * precisely the "earlier systems run themselves" mechanism the game needs to
+ * make a re-climb fast. Sixteen modules were authored; nobody could seat four.
+ *
+ * Re-rated so a full board costs 20: a genuine endgame commitment that lands
+ * around Recursion 5–6, and competes with licences for the same purse rather
+ * than sitting outside the economy entirely. Sized in scripts/a44-ladder.ts.
+ */
 export function gridSlotCost(owned: number): number {
-  return 1 + Math.floor(owned * 1.5);
+  return 1 + Math.floor(owned / 12);
 }
 
-/** A licence lets one more world run beside the one in your hands. */
+/** A licence lets one more world run beside the one in your hands. Re-rated
+ *  with the slots above — parallel worlds now TRADE against Grid depth for a
+ *  shared Spiral purse, which is the choice the layer is supposed to offer. */
 export function licenceCost(owned: number): number {
-  return 2 + owned * 3;
+  return 1 + owned;
 }
 
 // ---------------------------------------------------------------------------

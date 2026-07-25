@@ -23,7 +23,7 @@ import { createEngine, fmt, type Decimal, type Engine, type GameState, type Moti
 import { D } from '../src/engine/decimal';
 import { CORE_NODES, coreNodeCost, coreNodeLevel } from '../src/engine/content/shell1/coreTree';
 import { currentDescendCost, effectiveDescendCost } from '../src/engine/systems/depthSys';
-import { coresForDepth } from '../src/engine/prestigeMath';
+import { coresForDepth, echoesForCores, axiomsForEchoes } from '../src/engine/prestigeMath';
 import { ModifierCache } from '../src/engine/modifiers';
 import { allUpgrades, upgradeLevel, nextCost } from '../src/engine/upgrades';
 import { boardCells, hexKey, inBoard, isSealed, LINE_AXES, neighborsOf, type Axial } from '../src/engine/systems/lattice/hex';
@@ -2031,7 +2031,15 @@ function main(): void {
     s.guild.discovered = true;
     s.forge.built = true;
     s.kiln.built = true;
-    s.totals['echo'] = D(120); // floor((120/25)^0.8) = 3 Axioms this recursion
+    // WHAT A FIRST RECURSION ACTUALLY PAYS, NOT WHAT IT NEEDED (A.44).
+    // This read `D(120)` with the note "= 3 Axioms this recursion" — but six
+    // breaches pay 6 x echoesForCores(cores at breach), which at the measured
+    // haul is nowhere near 120. The only harness that exercises a Recursion
+    // was HANDED the echoes the layer was supposed to earn, so the starvation
+    // (a complete first Recursion paying zero Axioms) could not be seen from
+    // here. Same family as the six precedents: the instrument asserted the
+    // conclusion it existed to test.
+    s.totals['echo'] = echoesForCores(D(508)).mul(s.shell.breachCount);
     s.forge.tools.push({
       id: 91, recipeId: 'cinderMaul', name: 'Cinder Maul', tier: 15,
       purity: 88, chipPower: 66, strikePower: 1500, sockets: ['bloodgarnet', 'cinderquartz'], alloys: ['greysteel'],
@@ -2505,6 +2513,19 @@ function main(): void {
       `RECURSIONS ${s.recursion.count} | axioms held ${s.recursion.axioms.length} [${s.recursion.axioms.join(',') || '—'}] | ` +
       `core touched ${s.aleph.coreTouched} | heirlooms ${s.forge.tools.filter((t) => t.heirloom).length}`,
   );
+  // THE LADDER, STATED (A.44). What this run's own Breach haul buys further up
+  // — reported every run so a starved rung shows itself instead of waiting for
+  // a scenario that has been handed its currency.
+  {
+    const perBreach = echoesForCores(s.shell.coresEarnedThisBreach);
+    const oneRecursion = perBreach.mul(7);
+    console.error(
+      `ladder: echoes/breach ${fmt(perBreach)} (from ${fmt(s.shell.coresEarnedThisBreach)} cores) | ` +
+        `a full 7-breach Recursion = ${fmt(oneRecursion)} echoes -> ` +
+        `${fmt(axiomsForEchoes(oneRecursion))} axioms | lifetime echoes ${fmt(s.totals['echo'] ?? 0)} ` +
+        `-> ${fmt(axiomsForEchoes(s.totals['echo'] ?? D(0)))} axioms`,
+    );
+  }
   console.error(
     `beats(late): BREACH 4 ${beats.tBreach4 ? min(beats.tBreach4) : '—'} | BREACH 5 ${beats.tBreach5 ? min(beats.tBreach5) : '—'} | ` +
       `face whole ${beats.tFaceWhole ? min(beats.tFaceWhole) : '—'} | BREACH 6 ${beats.tBreach6 ? min(beats.tBreach6) : '—'} | ` +

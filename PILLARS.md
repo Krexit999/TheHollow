@@ -14,9 +14,18 @@ and systems. You are not the first one down.
 Genre: incremental / idle with active depth. Browser. ~110 hours of content.
 
 ## Design pillars (LOCKED — never violate)
-1. **Idle-able AND interactive.** Idle is always viable. Active play is ~5x idle at
-   the start, converging to ~1.3x by mid-game. Active play matters most when the
-   player has least.
+1. **Idle-able AND interactive — ACTIVE-FIRST (amended A.44).** The game is played
+   ACTIVELY. Idle is a valid SLOWER fallback — "step away and come back to
+   progress" — not "leave it running and win". Idle stays VIABLE and is never
+   fully blocked; that half is locked and non-negotiable. But the economy is
+   tuned for the active loop first, and **~5x is a ceiling on how much harsher a
+   gate may be for an idle player, not a target to hit.** A gate running harsher
+   than ~5x is a violation; one running at 2x is fine, not "undertuned".
+   Convergence to ~1.3x by mid-game still describes the intended shape.
+
+   The prior wording ("active play is ~5x idle at the start") read as a target
+   and several phases tuned toward it, which is how the economy came to lean on
+   the idle ratio as its design centre. It is a bound.
 
    **The ratio is not about income alone (amended A.42).** It binds every gate the
    player has to cross: income, the DESCENT CURVE (time-to-depth), and the MATERIAL
@@ -278,10 +287,37 @@ was, not because the game drifted. Do not tune the game toward the void number.
 
 ```
 Cores  = floor( 2 * (Depth / 40)^1.5 )
-Echoes = floor( 3 * (CoresEarnedThisBreach / 500)^0.6 )
-Axioms = floor( (TotalEchoes / 25)^0.8 )
+Echoes = floor( 3 * (CoresEarnedThisBreach / 200)^0.6 )   // was /500 — A.44
+Axioms = floor( (TotalEchoes / 8)^0.8 )                   // was /25  — A.44
 Spiral = floor( sqrt(TotalAxioms) * RecursionCount )
 ```
+
+**THE RATE CONSTANTS ARE RE-RATED TO THE REAL CADENCE (A.44). The STRUCTURE is
+still locked.** Four layers, what each resets, what each pays, and the SHAPE of
+every formula (the exponents — diminishing returns on farming a rung) are
+unchanged and remain locked. Only the divisors moved, and they moved because
+they were sized against the **voided 30-60 collapses/shell**. At the real
+cadence of 7-11 they starved the two rungs above Collapse:
+
+- 3·(508/500)^0.6 = 3 echoes at the measured Breach 1, × 7 breaches = 21
+  echoes, and floor((21/25)^0.8) = **0 Axioms for a complete first Recursion**.
+  At natural play (breach on reaching the floor, ~130 cores) the first Axiom
+  arrived at **Recursion FOUR**. Twenty Axioms are authored; four were
+  reachable in an entire playthrough.
+- A full 16-slot Automation Grid cost **192 Spiral against a lifetime supply of
+  ~12** — the mechanism that makes a re-climb fast, priced 16x out of reach.
+
+The Axioms are where the fold-down lives (`firstWord` starts a Recursion with
+Kiln/Bay/Forge standing; `gentleFall` keeps twenty levels of every face upgrade
+through a Collapse), so **the layer that makes re-climbing fast was the layer
+nobody could reach.** Sized in `scripts/a44-ladder.ts` against a RANGE of
+cores-per-breach, not one assumed rate. Grid slots re-rated to
+`1+floor(n/12)` (full board 20) and licences to `1+n`, so a full board is an
+endgame commitment that competes with parallel worlds for one purse.
+
+**If the cadence moves again, these divisors move with it.** They are not
+taste; they are a function of collapses-per-shell, and that number has been
+wrong twice.
 
 **The Breach is the emotional core.** You permanently keep that shell's signature
 mechanic, weakened, in every future world. By Shell VI the mining face runs five
@@ -330,9 +366,24 @@ Cost curves — `totalCost(n) = base * (r^n - 1) / (r - 1)`
 Core tree: node base 2, r=1.55, 10 levels = 296 Cores. 28 nodes ~ 6,000 Cores to max.
 Player earns ~800 in Shell I, ~2,400 in Shell III -> tree completes around Shell V.
 
-Depth: `dustCost(d) = 25 * 1.09^d`
-d=40 -> 785 / d=100 -> 138K / d=200 -> 7.6e8 / d=300 -> 4.2e12 / d=400 -> 2.3e16
-Cumulative ~ 12x the final step, so the last stretch always dominates.
+Depth (**corrected A.44 — this document was stale, the code was right**):
+
+```
+dustCost(d) = 25 · 1.09^min(d,150) · 1.035^clamp(d−150, 0, 150) · 1.02^max(0, d−300)
+```
+
+The 1.09 spine holds for a shell's first 150 depths, then the DEEP TAPER (1.035)
+and the ABYSS TAPER (1.02) take over — amended in the code at A.16 and openly
+recorded there, while this file went on printing the un-tapered `25 · 1.09^d`
+for the better part of thirty phases. `prestigeMath.ts` is the authority.
+
+d=40 -> 785 / d=100 -> 138K. Cumulative ~ 12x the final step, so the last
+stretch always dominates.
+
+**Loam is on the raw 1.09 spine for its whole arc** (floor 150), which makes it
+the steepest shell in the game — and it is the shell every pacing number in this
+project comes from. A beat measured in Loam is an upper bound on the shells
+below it, not a representative sample.
 
 Sanity check (Shell IV, depth 300, 10-min run): need ~5e13 dust in 600s -> 8.3e10 DPS.
 Field 20x20 with Soil 80 = 680 charge/sec, so need Y ~ 1.2e8. Available:

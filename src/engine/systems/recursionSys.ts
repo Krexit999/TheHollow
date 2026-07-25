@@ -24,6 +24,7 @@
  *  vent pipes, ember grate), depth, wardens felled, contracts board.
  */
 import { D } from '../decimal';
+import { axiomsForEchoes } from '../prestigeMath';
 import type { ActionResult, EngineCtx, GameState, ToolInstance } from '../types';
 import { initialState } from '../state';
 import { getTotal } from '../resources';
@@ -33,9 +34,24 @@ import { purityMult } from './forge';
 
 export const CORE_DEPTH = 40; // Aleph is short: the Core sits at 40.
 
-/** The locked formula, on lifetime Echoes; awards the delta past the mark. */
+/**
+ * The locked formula, on lifetime Echoes; awards the delta past the mark.
+ *
+ * TWO COPIES, AND THE TESTED ONE WAS THE DEAD ONE (found A.44). This function
+ * carried its own hardcoded `(E/25)^0.8` while `prestigeMath.axiomsForEchoes`
+ * held an identical copy — and `axiomsForEchoes` was referenced by NOTHING but
+ * the "prestige formulas (locked)" test suite. So the whole project has been
+ * asserting the axiom curve against a function the game does not call, while
+ * `doRecursion` and the Hollow panel granted from this one. Re-rating the
+ * prestigeMath copy changed no behaviour whatsoever.
+ *
+ * That is the "a test that a function works is not a test that anything calls
+ * it" rule in its nastiest form: not a dead system, a LIVE system shadowed by
+ * a dead twin, where the tests guard the twin. Now delegated — one formula,
+ * one place, and the suite that guards it guards the live path.
+ */
 export function axiomsFromEchoes(totalEchoes: number): number {
-  return Math.floor((totalEchoes / 25) ** 0.8);
+  return axiomsForEchoes(D(totalEchoes)).toNumber();
 }
 
 export function canRecurse(state: GameState): boolean {
