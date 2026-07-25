@@ -3919,3 +3919,32 @@ the policy-vs-game diagnosis order.
 Both coverage checkers clean, curriculum audit exit-0 (Law 6), 804 tests, tsc + build
 clean, 0px @380px. Techniques III–VII remain stubbed per ruling — nothing here
 pre-empts the creative pass.
+
+### A.40 close-out addendum — the idle-pacing question, resolved
+
+The framework commit flagged "12h idle: depth 44, 0 tools forged from 346 drops" as a
+possible pillar-1 break. Diagnosed harness-first, as ruled. **Both halves came back
+clean, and the original reading was an artifact.**
+
+1. **Harness ruled out.** `shop()` runs every 2s regardless of policy and calls
+   `forgePlay`, which attempts `craftTool` for tier+1 unconditionally. Re-running the
+   same 12h idle WITHOUT `--quiet` produced the proof the first run could not: four
+   `wall-blocked at loam 44: loamironPick — Short of Loamiron` lines, then
+   `forged loamironPick (tier 2)` at 633m. The policy attempts, names its refusal, and
+   crosses.
+2. **Game path proven.** `scripts/probe-idle-forge.ts` replays the ENGINE'S OWN drop
+   roller for the observed haul: 346 rolls across loam depths → loamiron 16 / marl 63 /
+   ochre 70 against a recipe wanting 8/10/4 + 12 brick → craft succeeds. Walking it
+   down, the requirement floor is ≈200 drops. The idle haul was ~1.7× sufficient.
+3. **What actually differed:** RNG. Two 12h idle runs on identical code — one ended at
+   depth 44 with nothing forged, the other at depth 109 with 7 drills and a tier-2 pick.
+   The binding input is LOAMIRON (rich, minDepth 10) while every Collapse resets depth
+   to 0, so the rich band only earns during part of each cycle. That coupling — not drop
+   volume, not recipe cost — is what makes the first wall slow (~10.5h idle vs ~1h
+   active) and high-variance. Ledgered as a pacing question with the lever named; NOT
+   fixed, because nothing is broken and the fix would be a design change.
+
+**Harness lesson (the observability kind):** `--quiet` nulls the logger, so the run that
+raised the alarm had structurally discarded the evidence that would have answered it.
+The alarm cost a re-run to disprove. Balance runs that might get diagnosed should keep
+their event log.
