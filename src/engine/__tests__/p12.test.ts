@@ -212,7 +212,7 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(23);
+    expect(SAVE_VERSION).toBe(24); // A.42 — THE SETTLING added the shaft's quiet bank
     const st = out.state as Record<string, unknown>;
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();

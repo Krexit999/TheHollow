@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 23;
+export const SAVE_VERSION = 24;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -540,6 +540,19 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     ember['annealSec'] ??= 0;
     return { ...p, version: 23, state };
+  },
+
+  // v23 -> v24 — THE SETTLING (A.42). An idle-only, depth-scaling erosion of
+  // the descend price; see systems/settle.ts. An existing save starts with an
+  // empty bank and a chip watermark it will re-sync on the first tick, so the
+  // aid begins working the moment the player next leaves the face alone.
+  23: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const shaft = (state['shaft'] ??= {}) as Record<string, unknown>;
+    shaft['settle'] ??= 0;
+    shaft['settleChips'] ??= 0;
+    shaft['settleQuietSec'] ??= 0;
+    return { ...p, version: 24, state };
   },
 };
 

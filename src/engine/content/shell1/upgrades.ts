@@ -13,6 +13,24 @@ import { UNCOVER_MOTIF_GRANT } from './latticeSystem';
 const hasKiln = (s: GameState) => s.kiln.built;
 const hasBay = (s: GameState) => s.drills.bayBuilt;
 
+/**
+ * The Loam depth record that unlocks the DRILL BAY.
+ *
+ * Named, not inlined, because A.42 found it is the single most load-bearing
+ * number in the idle arc and nothing said so. Drills are what lift an idle
+ * player off the seepage floor (~10% of the field ceiling) to near it; until
+ * the bay exists, idle income is a tenth of what the same field pays a player
+ * with machines. 55 lands near the 45-minute beat for an ACTIVE player and
+ * eight and a half HOURS for an idle one, because the tier-II hardness wall
+ * sits at depth 44 — so the unlock that ends the starvation is behind the gate
+ * that the starvation makes unpassable.
+ *
+ * MEASURED, NOT FIXED (A.42): the value stays 55 pending a ruling; the sim can
+ * override it (`--bay N`) so the alternative is a measurement rather than an
+ * argument. See sim-out/descent-a42.md and the LEDGER row.
+ */
+export const BAY_DEPTH_UNLOCK = { depth: 55 };
+
 export function registerShell1Upgrades(): void {
   // --- Face upgrades (reset on Collapse) ----------------------------------
   registerUpgrade({
@@ -115,10 +133,10 @@ export function registerShell1Upgrades(): void {
     ratio: 1,
     maxLevel: 1,
     resetsOnCollapse: false,
-    // The bay's rails need deeper anchoring: Loam depth record 55 lands the
-    // unlock near the 45-minute beat. Once proven (or once you've breached),
-    // the technique is yours in every shell.
-    visible: (s) => hasKiln(s) && ((s.depthRecords['loam'] ?? 0) >= 55 || s.shell.breachCount > 0),
+    // The bay's rails need deeper anchoring. Once proven (or once you've
+    // breached), the technique is yours in every shell.
+    visible: (s) => hasKiln(s)
+      && ((s.depthRecords['loam'] ?? 0) >= BAY_DEPTH_UNLOCK.depth || s.shell.breachCount > 0),
     description: () => 'Rails, a winch, and a place to bolt down machines that dig while you think. The anchoring needed depth 55 to hold.',
     onPurchase: (s) => {
       s.drills.bayBuilt = true;

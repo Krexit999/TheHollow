@@ -80,10 +80,23 @@ export interface ShaftState {
   /** The depth a dig-shift was last worked at, so a site takes one shift per
    *  visit; reset to -1 the moment you move, forcing a climb-and-return. */
   lastDigDepth: number;
+  /** THE SETTLING (A.42, see systems/settle.ts) — banked seconds of quiet that
+   *  erode the price of the next step into new ground. The idle-only half of
+   *  the pillar-1 ratio. Survives Collapse: it is weather on the rock, not a
+   *  run's possession. */
+  settle: number;
+  /** Watermark of `stats.manualChips` — a change means hands are on the face. */
+  settleChips: number;
+  /** Seconds since the last manual chip; the fill starts past `quietSec`. */
+  settleQuietSec: number;
 }
 
 export function defaultShaftState(): ShaftState {
-  return { reached: 0, rail: {}, scars: [], caches: [], lift: {}, curesFound: [], curesHinted: [], digs: {}, lastDigDepth: -1 };
+  return {
+    reached: 0, rail: {}, scars: [], caches: [], lift: {}, curesFound: [],
+    curesHinted: [], digs: {}, lastDigDepth: -1,
+    settle: 0, settleChips: 0, settleQuietSec: 0,
+  };
 }
 
 export const MAX_CACHES_PER_SHELL = 4;

@@ -18,7 +18,9 @@ import { materialCount } from '../../engine/systems/forge';
 import {
   cachesOf, cacheInstallCost, cacheProgress, cacheReady, hasLift, railDepth, railExtendCost,
   digShifts, excavationDone, MAX_CACHES_PER_SHELL, CACHE_CAP, LIFT_CORE_COST, RAIL_DISCOUNT,
+  descendMultiplier,
 } from '../../engine/systems/shaftSys';
+import { settleRelief } from '../../engine/systems/settle';
 import { cureFor, CURE_RECIPES } from '../../engine/systems/curing';
 import { EXCAVATION_BY_ID } from '../../engine/content/excavations';
 import { WALL_BY_SHELL, wallReading } from '../../engine/content/shellWalls';
@@ -310,7 +312,12 @@ function DescendButton({ state }: { state: GameState }) {
   const needed = requiredTier(state, state.depth + 1);
   const atFloor = state.depth >= shell.floorDepth;
   const walled = tool.tier < needed;
-  const cost = descendCost(state.depth + 1).mul(computeBucket(state, 'descendCost'));
+  // The price the engine will actually charge: the rail discount and THE
+  // SETTLING included, so the button never disables on a step it would sell.
+  const cost = descendCost(state.depth + 1)
+    .mul(computeBucket(state, 'descendCost'))
+    .mul(descendMultiplier(state, state.depth + 1))
+    .mul(settleRelief(state, state.depth + 1));
   const chip = getCur(state, shell.chipCurrencyId);
   const canPay = chip.gte(cost);
   // Re-treading cleared rock is free (climb handles that); the button digs new ground.

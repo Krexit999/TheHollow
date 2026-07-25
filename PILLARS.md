@@ -17,6 +17,17 @@ Genre: incremental / idle with active depth. Browser. ~110 hours of content.
 1. **Idle-able AND interactive.** Idle is always viable. Active play is ~5x idle at
    the start, converging to ~1.3x by mid-game. Active play matters most when the
    player has least.
+
+   **The ratio is not about income alone (amended A.42).** It binds every gate the
+   player has to cross: income, the DESCENT CURVE (time-to-depth), and the MATERIAL
+   DROP ECONOMY. A depth gate or a material gate that runs harsher than ~5x is a
+   pillar violation even while income measures perfectly in band, because the player
+   experiences the gate, not the income. A.41 measured time-to-depth at 8.3x (d35)
+   and 18.7x (d44) and the drop economy at 11x while income sat where it should —
+   three ratios, one pillar, and two of them silently out of band for a whole phase.
+   Measure all three. `dustCost(d) = 25·1.09^d` is exponential and idle income is
+   not, so the descent gate WIDENS by default: anything that gates on depth must be
+   checked for that shape, not assumed to inherit income's ratio.
 2. **Field regen is the hard ceiling on income.** Drills can only harvest what the
    field produces. This is what makes uncapped offline progress mathematically safe
    and forces engagement with external multiplier systems.
@@ -128,6 +139,33 @@ past cut as settled; treat its stated reason as a claim to re-test.
 The mirror of the Phase 14 lesson (a reported FLAW that did not reproduce): here,
 a reported cost that a different approach did not incur. Both are the same
 discipline — re-measure the claim before you act on it, including your own.
+
+## Working rule: a sim result is a claim until the harness is verified
+Added A.42, after this failure bit three times in one session. The sim is the
+only instrument that can see pacing, which makes it the only instrument nobody
+checks — a number that arrives with a CSV attached reads as measurement even
+when it is an artifact of the play policy.
+
+Three from A.40–A.41, each of which looked like a game problem and was not:
+- Idle "could not cross the first hardness wall." The policy did attempt the
+  forge; the run crossed. The two 12h runs differed only by RNG — one ended at
+  depth 44, the other at 109. **One run is an anecdote.** Median across seeds.
+- The refusal that named no cause. `forgePlay` logged "wall-blocked" without
+  saying which input was short, so the diagnosis was guesswork for a phase.
+  A harness that cannot name its own failure produces confident wrong answers.
+- The policy that never upgraded within a tier. It crossed a wall on the
+  ladder's floor recipe and then ran a whole shell on a 0.95 spread instead of
+  1.15 — worth ~14% of the loam-floor beat. The sim was modelling a player who
+  does not exist.
+
+So: before a sim number becomes a finding, verify the harness produced it for
+the reason you think. Ask what the policy does at the moment being measured,
+whether the reading survives a re-run with different RNG, and whether the
+instrument can name its own failure. This is the same discipline as "the ledger
+is a claim" and "a number in this document is not evidence", pointed at the one
+source that feels most like evidence. It is also why the A.42 baseline arm is
+produced by the SAME binary as the treatment arm, one flag apart: a baseline
+measured by different code is not a baseline.
 
 ## Working rule: the ledger is a claim, not evidence
 Found at A.35, and the same family as the two rules above ("a number in this

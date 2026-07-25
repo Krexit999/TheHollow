@@ -2,6 +2,8 @@ import { currencyDef, currentShell, fmt, getCurrency } from '../../engine';
 import { computeBucket } from '../../engine';
 import { descendCost } from '../../engine';
 import { equippedTool, nextWall, requiredTier } from '../../engine/systems/forge';
+import { descendMultiplier } from '../../engine/systems/shaftSys';
+import { settleFill, settleRelief } from '../../engine/systems/settle';
 import { dispatch, useGame } from '../store';
 import { Amount, HoldButton } from './shared';
 
@@ -13,8 +15,17 @@ export function DepthBar() {
   if (!state) return null;
 
   const shell = currentShell(state);
-  const cost = descendCost(state.depth + 1).mul(computeBucket(state, 'descendCost'));
+  const target = state.depth + 1;
+  // What the step ACTUALLY costs — the rail discount and THE SETTLING included.
+  // This button used to price the raw curve, so railed and re-trod rock read at
+  // full fare and the button DISABLED on a step the engine would have sold.
+  const relief = settleRelief(state, target);
+  const cost = descendCost(target)
+    .mul(computeBucket(state, 'descendCost'))
+    .mul(descendMultiplier(state, target))
+    .mul(relief);
   const afford = getCurrency(state, shell.chipCurrencyId).gte(cost);
+  const fill = settleFill(state);
   const tool = equippedTool(state);
   const atFloor = state.depth >= shell.floorDepth;
   const wallBlocked = !atFloor && requiredTier(state, state.depth + 1) > tool.tier;
@@ -36,6 +47,19 @@ export function DepthBar() {
         <div>
           Depth Pressure: <span className="text-lamp-400">+{fmt(state.depth * 2)}% Dust</span>
         </div>
+        {/* THE SETTLING says what it is doing, in the price it is doing it to.
+            Silent below 5% relief — a 1% discount is noise, not information. */}
+        {relief < 0.95 ? (
+          <div className="text-[#8be9fd]/80">
+            The shaft has settled ({Math.round(fill * 100)}%) — this step is{' '}
+            <span className="font-semibold">{(1 / relief).toFixed(1)}× cheaper</span>. Working the
+            face by hand stops it building.
+          </div>
+        ) : fill > 0.15 ? (
+          <div className="text-cave-500">
+            Settling {Math.round(fill * 100)}% — quiet loosens the rock below. It pays off deep.
+          </div>
+        ) : null}
         {/* The wall is legible BEFORE you hit it. */}
         {atFloor ? (
           <div className="font-semibold text-[#8be9fd]">

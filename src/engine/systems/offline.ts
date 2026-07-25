@@ -30,6 +30,7 @@ import { tickGreenhouse } from '../content/shell3/greenhouse';
 import { tickMycelium } from '../content/shell3/mycelium';
 import { tickBrewing } from '../content/shell3/brews';
 import { lawNum, sealed } from '../laws';
+import { settleOffline } from './settle';
 
 export function currentOfflineEfficiency(state: GameState, mods: ModifierCache): number {
   // THE INSOMNIAC CAMP (law): the cap itself rises to 1.0. The formula's
@@ -46,6 +47,9 @@ export function applyOfflineProgress(
   // THE UNLIT (challenge): the world only runs while it is watched.
   const eff = sealed(state, 'sealOffline') ? 0 : currentOfflineEfficiency(state, mods);
   const levelBefore = state.delver.level;
+  // Nobody was on the face: the shaft settled the whole time (A.42). Depth
+  // still does not advance offline — this only cheapens the step you take.
+  settleOffline(state, seconds);
 
   // --- 1. Field: cells fill toward cap. -----------------------------------
   const cap = cellCap(state, mods);

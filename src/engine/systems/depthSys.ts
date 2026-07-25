@@ -14,6 +14,7 @@ import { equippedTool, requiredTier } from './forge';
 import { currentShell } from '../shells';
 import { lawFlag, lawNum, challengeNum } from '../laws';
 import { descendMultiplier, noteReached, clearDigStop } from './shaftSys';
+import { settleRelief, spendSettle } from './settle';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 
@@ -24,10 +25,15 @@ export function currentDescendCost(state: GameState, mods: ModifierCache): Decim
 
 /**
  * What the next step ACTUALLY costs right now: 0 for rock already cleared this
- * run (re-tread), a discount for railed rock, full otherwise. What the UI shows.
+ * run (re-tread), a discount for railed rock, a further discount for however
+ * much the shaft has SETTLED while nobody worked the face, full otherwise.
+ * What the UI shows.
  */
 export function effectiveDescendCost(state: GameState, mods: ModifierCache): Decimal {
-  return currentDescendCost(state, mods).mul(descendMultiplier(state, state.depth + 1));
+  const target = state.depth + 1;
+  return currentDescendCost(state, mods)
+    .mul(descendMultiplier(state, target))
+    .mul(settleRelief(state, target));
 }
 
 export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): ActionResult {
@@ -59,7 +65,12 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
     };
   }
   // Railed rock is cheaper to re-descend — the infrastructure carries you down.
-  let cost = currentDescendCost(state, mods).mul(mult);
+  // THE SETTLING (A.42) then erodes what is left, by however much quiet the
+  // shaft has banked. Charged BEFORE the wall-softness triple so the two
+  // compose the way the player reads them: a discount on the price, then the
+  // fare for going down under-tooled.
+  const relief = settleRelief(state, state.depth + 1);
+  let cost = currentDescendCost(state, mods).mul(mult).mul(relief);
   if (soft) cost = cost.mul(3);
   // THE WEIGHTLESS PURSE (law): the stair takes the converter currency when
   // that purse is deeper (1 conv counts for 4 chip — the Kiln's own ratio).
@@ -68,6 +79,7 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
     const convCost = cost.div(4);
     if ((state.currencies[shell.chipCurrencyId] ?? D(0)).lt(cost) && (state.currencies[convId] ?? D(0)).gte(convCost)) {
       if (spendCurrency(state, convId, convCost)) {
+        spendSettle(state, relief);
         return finishDescend(state, mods, ctx);
       }
     }
@@ -75,6 +87,9 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
   if (!spendCurrency(state, shell.chipCurrencyId, cost)) {
     return { ok: false, reason: `Not enough ${currencyDef(shell.chipCurrencyId).name}` };
   }
+  // The loose rock came down with you: cash the settling in proportion to the
+  // relief this step actually used, so the bank is spent where it mattered.
+  spendSettle(state, relief);
   return finishDescend(state, mods, ctx);
 }
 

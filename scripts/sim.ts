@@ -62,6 +62,8 @@ import {
   activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceSlotCap,
 } from '../src/engine/systems/confluence';
 import { serialize } from '../src/engine/save/codec';
+import { SETTLE_TUNING, settleFill } from '../src/engine/systems/settle';
+import { BAY_DEPTH_UNLOCK } from '../src/engine/content/shell1/upgrades';
 
 interface Args {
   hours: number;
@@ -76,6 +78,23 @@ interface Args {
    *  reaches snapBreach (echo-share.ts reads it). */
   snapBreach: number | null;
   snapOut: string | null;
+  /** THE DESCENT INSTRUMENT (A.42). CSV of `shell,depth,sec` — the first
+   *  moment each new depth RECORD is set, per shell. Time-to-depth is the
+   *  measure the idle/active ratio is actually made of; before this the only
+   *  readings were two hand-picked depths from a log. */
+  depthLog: string | null;
+  /** THE SETTLING knobs (A.42), so baseline and treatment come out of ONE
+   *  binary and a sweep needs no source edit between runs.
+   *    --settle off                  the pre-A.42 curve (relief disabled)
+   *    --settle <soften>:<cap>:<quiet>:<floor>
+   *  Omitted = the shipped values in systems/settle.ts. */
+  settle: string | null;
+  /** Attribute every common consumed to the action that took it (A.42). */
+  commons: boolean;
+  /** Override the Loam depth record that unlocks the DRILL BAY (A.42). The
+   *  shipped 55 sits BEHIND the tier-II wall at 44; this makes the alternative
+   *  a measurement instead of an argument. */
+  bay: number | null;
 }
 
 function parseArgs(): Args {
@@ -108,6 +127,10 @@ function parseArgs(): Args {
     quiet: argv.includes('--quiet'),
     snapBreach: get('snap-breach') !== undefined ? Number(get('snap-breach')) : null,
     snapOut: get('snap-out') ?? null,
+    depthLog: get('depthlog') ?? null,
+    settle: get('settle') ?? null,
+    commons: argv.includes('--commons'),
+    bay: get('bay') !== undefined ? Number(get('bay')) : null,
   };
 }
 
@@ -858,6 +881,24 @@ function forgePlay(engine: Engine, s: GameState, log: (msg: string) => void): bo
     lastCraftWhine = s.stats.playTimeSec;
     log(`wall-blocked at ${shell.id} ${s.depth} (tier ${target}) — ${refusals.join(' | ')}`);
   }
+  // UPGRADE WITHIN THE TIER. A real player who crossed a wall on the crude
+  // pick replaces it with the good one the moment the bank allows; the policy
+  // only ever crafted tier+1, so it crossed on the ladder's floor recipe and
+  // then ran the WHOLE SHELL on a 0.95 spread instead of 1.15. That is a
+  // harness artifact, and it cost ~14% of the loam-floor beat before it was
+  // caught — the sim was modelling a player who never upgrades.
+  const equipped = equippedTool(s);
+  const wornRecipe = TOOL_RECIPES.find((r) => r.id === equipped.recipeId);
+  if (wornRecipe) {
+    for (const better of TOOL_RECIPES.filter(
+      (r) => r.tier === wornRecipe.tier && r.chipSpread > wornRecipe.chipSpread,
+    ).sort((a, b) => b.chipSpread - a.chipSpread)) {
+      if (engine.dispatch({ type: 'craftTool', recipeId: better.id }).ok) {
+        log(`upgraded within tier ${better.tier}: ${wornRecipe.id} -> ${better.id}`);
+        break;
+      }
+    }
+  }
   void wallSoon;
   while (s.materials.geodes > 0) {
     if (!engine.dispatch({ type: 'crackGeode' }).ok) break;
@@ -1396,9 +1437,61 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// THE COMMONS LEDGER — who is actually eating the ladder's inputs
+// ---------------------------------------------------------------------------
+
+/** The four Loam commons the tier-II floor recipe and the early gear want. */
+const COMMONS = ['marl', 'ochre', 'bonechalk', 'graveclay'] as const;
+
+/** action type (or 'tick:<system>') -> material -> units consumed. */
+const commonsLedger: Record<string, Record<string, number>> = {};
+
+function noteCommons(label: string, before: number[], s: GameState): void {
+  for (let i = 0; i < COMMONS.length; i++) {
+    const spent = before[i]! - materialCount(s, COMMONS[i]!);
+    if (spent <= 0) continue;
+    (commonsLedger[label] ??= {})[COMMONS[i]!] =
+      (commonsLedger[label]?.[COMMONS[i]!] ?? 0) + spent;
+  }
+}
+
+/**
+ * Wrap dispatch and tick so every unit of a common that LEAVES the Hold is
+ * attributed to the action that took it. Dispatch names the action; the tick
+ * bucket catches whatever the engine consumes on its own (auto-refine, the
+ * Kiln's fuel, standing rules) — which is the half a call-site audit misses.
+ */
+function installCommonsLedger(engine: Engine): void {
+  const rawDispatch = engine.dispatch.bind(engine);
+  const rawTick = engine.tick.bind(engine);
+  const snap = (): number[] => {
+    const s = engine.getState() as GameState;
+    return COMMONS.map((m) => materialCount(s, m));
+  };
+  (engine as { dispatch: Engine['dispatch'] }).dispatch = (action) => {
+    const before = snap();
+    const r = rawDispatch(action);
+    noteCommons(action.type, before, engine.getState() as GameState);
+    return r;
+  };
+  (engine as { tick: Engine['tick'] }).tick = (dt) => {
+    const before = snap();
+    rawTick(dt);
+    noteCommons('tick (engine-side)', before, engine.getState() as GameState);
+  };
+}
+
 function main(): void {
   const args = parseArgs();
   const engine = createEngine({ nowMs: 0 });
+  // THE COMMONS LEDGER (A.41 ledger row → A.42). A controlled probe said 160
+  // drops yield 26–37 of each common against a need of 7, while live idle sat
+  // "Short of Graveclay" for an hour. Something eats them. Rather than guess at
+  // candidates, attribute every consumption to the ACTION that caused it: one
+  // choke point, no per-call-site bookkeeping to drift. Off unless asked for —
+  // it is four counter reads per dispatch and per tick.
+  if (args.commons) installCommonsLedger(engine);
   const totalSec = Math.round(args.hours * 3600);
   const logEverySec = Math.max(1, Math.round(args.logMin * 60));
 
@@ -1647,6 +1740,22 @@ function main(): void {
     for (const [id, purity, count] of bank7) addMaterial(s, id, purity, count);
   }
 
+  // THE SETTLING knobs. `off` reproduces the pre-A.42 descend curve exactly
+  // (relief clamps to 1 at soften 1.0), which is how the baseline arm of every
+  // A.42 measurement is produced — same binary, same policy, one flag apart.
+  if (args.settle === 'off') {
+    SETTLE_TUNING.soften = 1;
+    SETTLE_TUNING.floor = 1;
+  } else if (args.settle) {
+    const [soften, cap, quiet, floor] = args.settle.split(':').map(Number);
+    if (soften) SETTLE_TUNING.soften = soften;
+    if (cap) SETTLE_TUNING.capSec = cap;
+    if (quiet !== undefined && Number.isFinite(quiet)) SETTLE_TUNING.quietSec = quiet;
+    if (floor) SETTLE_TUNING.floor = floor;
+  }
+
+  if (args.bay !== null && Number.isFinite(args.bay)) BAY_DEPTH_UNLOCK.depth = args.bay;
+
   const started = Date.now();
   combatPolicy = args.combat;
   growthPolicy = args.growth;
@@ -1670,6 +1779,9 @@ function main(): void {
   let diagPrevCeiling = 0;
   let diagPrevHarvest = 0;
   let diagPrevDrip = 0;
+  // THE DESCENT INSTRUMENT: first-arrival time per depth record, per shell.
+  const depthRows: string[] = ['shell,depth,sec'];
+  const seenRecord: Record<string, number> = {};
   for (let sec = 1; sec <= totalSec; sec++) {
     const s = engine.getState();
     // balanced: fully active for the first hour AND for 45 min after a
@@ -1683,6 +1795,12 @@ function main(): void {
     if (active) chipFullest(engine, 2);
     else if (args.policy === 'balanced' && sec % 300 === 0) chipFullest(engine, 40);
     engine.tick(1);
+    if (args.depthLog) {
+      const sid = s.shell.current;
+      const rec = s.depthRecords[sid] ?? 0;
+      for (let d = (seenRecord[sid] ?? 0) + 1; d <= rec; d++) depthRows.push(`${sid},${d},${sec}`);
+      if (rec > (seenRecord[sid] ?? 0)) seenRecord[sid] = rec;
+    }
     if (sec % 2 === 0) shop(engine, args.quiet ? () => {} : log);
     if (sec % logEverySec === 0) snapshot();
     if (!beats.tLoamFloor && s.shell.current === 'loam' && s.depth >= 150) beats.tLoamFloor = sec;
@@ -1775,6 +1893,12 @@ function main(): void {
   }
   const wallMs = Date.now() - started;
 
+  if (args.depthLog) {
+    mkdirSync(dirname(args.depthLog), { recursive: true });
+    writeFileSync(args.depthLog, depthRows.join('\n'));
+    console.error(`depthlog -> ${args.depthLog} (${depthRows.length - 1} depths)`);
+  }
+
   const csv = rows.join('\n');
   if (args.out) {
     mkdirSync(dirname(args.out), { recursive: true });
@@ -1786,6 +1910,10 @@ function main(): void {
   const s = engine.getState();
   console.error('');
   console.error(`— sim: ${args.hours}h ${args.policy} in ${(wallMs / 1000).toFixed(2)}s wall —`);
+  console.error(
+    `settle: soften ${SETTLE_TUNING.soften} cap ${SETTLE_TUNING.capSec}s quiet ${SETTLE_TUNING.quietSec}s ` +
+      `floor ${SETTLE_TUNING.floor} | bank now ${(settleFill(engine.getState()) * 100).toFixed(0)}%`,
+  );
   if (!args.quiet) for (const e of events) console.error(e);
   console.error(
     `final: dust ${fmt(s.currencies['dust']!)} | brick ${fmt(s.currencies['brick']!)} | ` +
@@ -1800,6 +1928,9 @@ function main(): void {
   );
   const gemCount = Object.values(s.materials.gems).reduce((a, b) => a + b, 0);
   console.error(
+    // Commons accounting (A.41 ledger thread): drops IN versus stone still
+    // HELD, so a live sink that eats the ladder's inputs can be seen at all.
+    `commons held: ${COMMONS.map((m) => `${m} ${materialCount(s, m)}`).join(', ')}\n` +
     `materials: ${s.materials.totalDrops} drops | geodes cracked ${s.materials.geodesCracked} | ` +
       `gems ${gemCount} | tools forged ${s.stats.toolsForged} (equipped tier ${equippedTool(s).tier}, ` +
       `${equippedTool(s).name} ${equippedTool(s).purity}%) | assays ${s.assay.surveysDone}`,
@@ -1897,6 +2028,23 @@ function main(): void {
       `serra fallback buys ${spineMetrics.serraBuys} (cloth ${spineMetrics.clothBought}) | ` +
       `held: flux ${materialCount(s, 'kilnflux')} cloth ${materialCount(s, 'fibercloth')} glass ${materialCount(s, 'emberglass')}`,
   );
+  if (args.commons) {
+    const rows = Object.entries(commonsLedger)
+      .map(([label, per]) => ({ label, per, total: Object.values(per).reduce((a, b) => a + b, 0) }))
+      .sort((a, b) => b.total - a.total);
+    console.error(
+      `commons SINKS (units consumed, biggest first):\n` +
+        (rows.length === 0
+          ? '  (nothing consumed a common all run)'
+          : rows
+              .map(
+                (r) =>
+                  `  ${String(r.total).padStart(6)}  ${r.label} — ` +
+                  Object.entries(r.per).map(([m, n]) => `${m} ${n}`).join(', '),
+              )
+              .join('\n')),
+    );
+  }
   if (args.out) console.error(`csv -> ${args.out}`);
 }
 

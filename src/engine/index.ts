@@ -52,6 +52,7 @@ import { D } from './decimal';
 import { runFaceTick } from './signatures';
 import { checkAchievements } from './content/shell1/achievements';
 import { applyOfflineProgress } from './systems/offline';
+import { tickSettle } from './systems/settle';
 import { serialize, deserialize } from './save/codec';
 
 export const SIM_STEP = 0.1; // 100ms fixed timestep (locked)
@@ -230,6 +231,9 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       }
     }
     state.stats.playTimeSec += dt;
+    // THE SETTLING: the shaft banks quiet while no hand is on the face. Reads
+    // the manual-chip counter, so it needs no hook in the chip path.
+    tickSettle(state, dt);
     // A challenge ends the moment its goal is true. This call site did not
     // exist until Phase 13: every challenge could be STARTED and none could be
     // WON, so no Grid module could ever unlock and the whole automation half of
