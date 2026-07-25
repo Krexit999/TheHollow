@@ -2278,7 +2278,31 @@ function main(): void {
   //  once a second; the corrected collapse policy resets ON ARRIVAL at
   // the floor, so the sample almost never caught it and 'loam floor' reported
   // hundreds of minutes late or never while the depth log showed the arrival.
+  // THE HEARTBEAT (A.44). Every line this harness produces is buffered to exit,
+  // so a long run is completely unobservable while it runs — and that has now
+  // cost two write-and-exit runs that were killed without ever answering their
+  // question, because "is it nearly done or is it stuck?" had no answer. It
+  // also hid the reason: wall time is SUPERLINEAR in sim hours (measured 1h 9s,
+  // 2h 25s, 4h 80s — collections the tick iterates keep growing), so every
+  // linear estimate of a long run was wrong in the same direction.
+  //
+  // Unbuffered, on its own stream, one line per sim-hour: enough to see
+  // progress and rate, cheap enough to leave on always.
+  const heartbeatPath = args.out ? `${args.out}.progress` : null;
+  const startedAtMs = Date.now();
   for (let sec = 1; sec <= totalSec; sec++) {
+    if (heartbeatPath && sec % 3600 === 0) {
+      const st = engine.getState();
+      const wall = (Date.now() - startedAtMs) / 1000;
+      const simH = sec / 3600;
+      writeFileSync(
+        heartbeatPath,
+        `sim ${simH}h / ${(totalSec / 3600).toFixed(0)}h | wall ${wall.toFixed(0)}s | ` +
+          `${(wall / simH).toFixed(1)}s per sim-hour | ${st.shell.current} d${st.depth} ` +
+          `(rec ${st.maxDepthRecord}) | breaches ${st.shell.breachCount} | ` +
+          `collapses ${st.collapse.count} | recursions ${st.recursion.count}\n`,
+      );
+    }
     const s = engine.getState();
     // balanced: fully active for the first hour AND for 45 min after a
     // Breach (the biggest beat — nobody idles through it), else 5-min

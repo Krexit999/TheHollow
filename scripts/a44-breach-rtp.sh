@@ -6,7 +6,7 @@
 # 4x+: past Breach 1 the run enters Ferrite and beyond, where far more systems
 # tick per sim-second. So size to the BAND actually wanted.
 #
-# Breach 1 lands at ~11.8h (measured, sim-out/a43). 18h clears it with room for
+# Breach 1 lands at ~11.8h (measured, sim-out/a43). 16h clears it with room for
 # the arrival to resolve its return-to-peak, without paying for a Recursion the
 # run almost certainly cannot reach anyway (7 breaches). If a Recursion does
 # land, it is taken; the run is NOT stretched to force one.
@@ -27,7 +27,7 @@ rm -f "$OUT/DONE.txt"
 
 run() { # policy
   local policy="$1"
-  npx tsx scripts/sim.ts --hours 18 --policy "$policy" --combat optimal \
+  npx tsx scripts/sim.ts --hours 16 --policy "$policy" --combat optimal \
     --quiet --log 60 --income \
     --out "$OUT/$policy.csv" --depthlog "$OUT/$policy.depth.csv" \
     > /dev/null 2> "$OUT/$policy.log"
