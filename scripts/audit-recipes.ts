@@ -141,7 +141,13 @@ console.log('\nPULL-THROUGH:');
 // producible before the tier's own era: every refined workedId needs a chain
 // whose inputs are mineable at or before the recipe's wall shell.
 for (const r of TOOL_RECIPES) {
-  if (r.tier >= 4 && !r.refined) bad(`${r.id} (T${r.tier}) has no refined variant`);
+  // THE FLOOR IS EXEMPT, ON PURPOSE (A.44 A2). This law exists so the Refinery
+  // matters at every tier — and it still does, because every tier keeps its
+  // authored pick and that pick still requires one. The floor recipe is the
+  // crude path you take when you have nothing but common stone; giving it a
+  // worked-material variant would be giving the fallback a fallback. Taking it
+  // costs you the tier's whole spread advantage, which is the real price.
+  if (r.tier >= 4 && !r.refined && !r.floor) bad(`${r.id} (T${r.tier}) has no refined variant`);
   if (r.tier < 4 && r.refined) bad(`${r.id} (T${r.tier}) is refined below the mid band`);
   if (!r.refined) continue;
   if (Object.keys(r.inputs).length === 0) bad(`${r.id} refined variant has no raw fallback`);
@@ -177,6 +183,56 @@ for (const k of allKeystones()) {
   }
   for (const c of k.craft.currencies ?? []) {
     if (!allCurrencies().some((cur) => cur.id === c.id)) bad(`keystone ${k.shellId} wants unknown currency ${c.id}`);
+  }
+}
+
+// LAW 7 (A.44 A2) — EVERY WALL HAS A FLOOR, AND THE FLOOR IS PAYABLE AT ZERO.
+//
+// A Collapse resets depth to 0, and RARITY_GATES gives every band above common
+// a minDepth the reset takes away (rich 10, pure 40, flawless 70...). So a wall
+// whose only recipes bind on a banded material is gated on stone that earns
+// during part of a cycle — measured at ~10.5h to cross, or not, on the rolls.
+// A.42 fixed tier II by hand; this is the rule, checked rather than trusted.
+//
+// Three clauses, because the class has three separate ways to fail: the floor
+// can be missing, it can be secretly banded, or it can be so good it replaces
+// the pick it was meant to sit under.
+for (const tier of Object.keys(wallOf).map(Number).sort((a, b) => a - b)) {
+  const atTier = TOOL_RECIPES.filter((r) => r.tier === tier);
+  if (atTier.length === 0) continue; // no recipe at all is LAW 1's business
+  // Read the DECLARED flag, then prove the declaration true below — a recipe
+  // that merely happens to be commons-only is not the ladder's floor, and one
+  // that claims to be and is not is the failure this law exists to catch.
+  const floors = atTier.filter((r) => r.floor);
+  for (const r of atTier) {
+    const allCommon = Object.keys(r.inputs).every((id) => materialDef(id).rarity === 'common');
+    if (allCommon && !r.floor) {
+      bad(`${r.id} (T${r.tier}) is commons-only but not flagged \`floor\` — the two laws that read ` +
+        `that flag will not see it`);
+    }
+  }
+  if (floors.length === 0) {
+    bad(`tier ${tier} (wall ${wallOf[tier]!.shell} d${wallOf[tier]!.depth}) has no commons-only floor recipe — ` +
+      `every pick binds on a band a Collapse takes away`);
+    continue;
+  }
+  for (const f of floors) {
+    // Payable at the depth a reset drops you at.
+    for (const id of Object.keys(f.inputs)) {
+      const gate = RARITY_GATES[materialDef(id).rarity].minDepth;
+      if (gate > 0) bad(`floor recipe ${f.id} wants ${id} gated at depth ${gate} — not payable after a Collapse`);
+      if (materialDef(id).worked) bad(`floor recipe ${f.id} wants worked material ${id} — it cannot be dug`);
+      if (materialDef(id).source === 'combat') bad(`floor recipe ${f.id} wants combat drop ${id} — it cannot be dug`);
+    }
+    // Deliberately worst in tier: tier gates HARDNESS, spread is QUALITY.
+    const total = f.chipSpread + f.strikeSpread;
+    for (const sib of atTier) {
+      if (sib.id === f.id) continue;
+      if (total >= sib.chipSpread + sib.strikeSpread) {
+        bad(`floor recipe ${f.id} (${total.toFixed(2)}) is not worse than ${sib.id} ` +
+          `(${(sib.chipSpread + sib.strikeSpread).toFixed(2)}) — the floor must never be the best pick`);
+      }
+    }
   }
 }
 

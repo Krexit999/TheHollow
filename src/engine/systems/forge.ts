@@ -71,6 +71,17 @@ export interface ToolRecipe {
    *  The raw craft always stands at the plain spread — engaged gets a better
    *  tool, ignored still gets a usable one (pillar 4). */
   refined?: { workedId: string; count: number };
+  /**
+   * THE LADDER'S FLOOR (A.44 A2). This recipe is payable from the COMMON band
+   * alone, so it is craftable at the depth a Collapse drops you at — see the
+   * FLOOR_RECIPES block below for the rule and why every wall needs one.
+   *
+   * Declared rather than inferred from the inputs, because two separate laws
+   * read it (the floor must exist at every wall; the floor is exempt from the
+   * refined pull-through) and a property two rules depend on should be stated
+   * once, not re-derived and allowed to drift apart.
+   */
+  floor?: true;
 }
 
 /** What the worked material buys: both spreads, multiplicatively. */
@@ -95,7 +106,110 @@ export const TIER_BASE: Record<number, { chip: number; strike: number; sockets: 
   15: { chip: 48, strike: 720, sockets: 6 },
 };
 
-export const TOOL_RECIPES: ToolRecipe[] = [
+/**
+ * THE LADDER'S FLOOR, AS A RULE (A.44 A2) — one commons-only recipe per tier.
+ *
+ * A.42 gave tier II a floor recipe (`chalkhead`) because every other tier-II
+ * pick bound on a RICH-band material, rich cannot drop above depth 10, and every
+ * Collapse puts you back at depth 0 — so the first hardness wall was gated on a
+ * band that only earns during part of each cycle. That ruling was scoped to the
+ * FIRST wall. The A.44 Part A audit found the same coupling at every later wall
+ * and getting worse: recipe redundancy decays 4 (tier II) → 2 (tier III) → **1
+ * for tiers IV–XV**, and tier III binds on PURE band (depth 40), which earns
+ * during an even smaller slice of a cycle. Every wall from Ferrite d40 onward
+ * was a single-recipe gate: short its one input and there is no second path.
+ *
+ * The rule, applied here to tiers III–XV:
+ *
+ *  - INPUTS ARE COMMON BAND ONLY. `RARITY_GATES.common.minDepth` is 0, so a
+ *    floor recipe is payable at the depth a Collapse drops you at. This is the
+ *    whole mechanism; every other band has a minDepth the reset takes away.
+ *  - DELIBERATELY WORST IN TIER. Every floor recipe is 0.90 chip / 0.80 strike,
+ *    a total of 1.70 against a lowest sibling total of 1.95, so an engaged
+ *    player always wants the banded pick. Tier gates HARDNESS; spread is
+ *    QUALITY. The floor lets you cross the wall; it never makes crossing it the
+ *    best move.
+ *  - NO CONVERTER FUEL. `chalkhead` takes no marl because marl is a Kiln fuel
+ *    and the ladder's floor must not compete with the machine every player runs.
+ *    Only Loam has fuels today (`KILN_FUELS`: ash, marl, loam), so only the
+ *    tier-III entry has anything to dodge — but the rule stands for the shells
+ *    that add one later.
+ *  - PRICED LEVEL. Brick cost matches the tier's cheapest sibling, and unit
+ *    counts run ~1.15x its total: the same armful of stone, from the band that
+ *    pays at every depth.
+ *
+ * Kept as a separate array and concatenated in tier order so the rule reads in
+ * one place instead of being spread across thirteen sites.
+ */
+const FLOOR_RECIPES: ToolRecipe[] = [
+  {
+    id: 'chalkcutter', name: 'Chalkcutter', tier: 3, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { bonechalk: 10, graveclay: 9, ochre: 7 }, brick: 30, floor: true,
+    flavor: 'No jade in it, no worm-iron, no name worth carving. It goes through the hard seam anyway.',
+  },
+  {
+    id: 'bloomrake', name: 'Bloomrake', tier: 4, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { ironbloom: 8, scalechip: 7, rustmarrow: 6 }, brick: 60, floor: true,
+    flavor: 'Rust-bloom and shed scale, bound in a hurry. The Ferrite dark does not care what you brought.',
+  },
+  {
+    id: 'scalefang', name: 'Scalefang', tier: 5, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { scalechip: 9, greyflux: 8, ironbloom: 6 }, brick: 100, floor: true,
+    flavor: 'Chipped off things that were already dead. It holds, which is all that was asked.',
+  },
+  {
+    id: 'greyhammer', name: 'Greyflux Hammer', tier: 6, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { greyflux: 8, rustmarrow: 7, scalechip: 5 }, brick: 170, floor: true,
+    flavor: 'Heavy at the wrong end. Swing it twice and the seam gives before your shoulder does.',
+  },
+  {
+    id: 'sporescythe', name: 'Sporewood Scythe', tier: 7, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { sporewood: 11, mosscoal: 10, sapstone: 9 }, brick: 280, floor: true,
+    flavor: 'Green wood, black coal, grey stone. Everything the shallows give you and nothing they do not.',
+  },
+  {
+    id: 'barkmattock', name: 'Barkiron Mattock', tier: 8, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { barkiron: 9, sporewood: 9, mosscoal: 7 }, brick: 450, floor: true,
+    flavor: 'Bark that went to iron without being asked. It will not shine, and it will not stop.',
+  },
+  {
+    id: 'mossfalx', name: 'Mosscoal Falx', tier: 9, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { mosscoal: 7, sapstone: 6, barkiron: 5 }, brick: 700, floor: true,
+    flavor: 'A curved thing for a soft world. It leaves a black mark on everything it opens.',
+  },
+  {
+    id: 'sandpick', name: 'Frostsand Pick', tier: 10, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { frostsand: 11, silicash: 10, dimglass: 8 }, brick: 1100, floor: true,
+    flavor: 'Packed sand and dim glass. It scatters no light at all, which in Glassmere is nearly rude.',
+  },
+  {
+    id: 'dimwright', name: "Dimglass Wright", tier: 11, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { dimglass: 10, mirrorgrit: 10, frostsand: 8 }, brick: 1800, floor: true,
+    flavor: 'Ground from the panes nobody kept. It sees nothing and cuts regardless.',
+  },
+  {
+    id: 'gritedge', name: 'Mirrorgrit Edge', tier: 12, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { mirrorgrit: 7, silicash: 6, dimglass: 5 }, brick: 3000, floor: true,
+    flavor: 'Swept up off the bench floor and pressed into a blade. Every facet points a different way.',
+  },
+  {
+    id: 'slagsplitter', name: 'Slagrock Splitter', tier: 13, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { slagrock: 11, charstone: 10, ashgrit: 9 }, brick: 5000, floor: true,
+    flavor: 'Cooled waste, re-melted badly. Cinder makes better; Cinder also makes you wait.',
+  },
+  {
+    id: 'charpick', name: 'Charstone Pick', tier: 14, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { charstone: 9, emberflake: 8, slagrock: 7 }, brick: 8000, floor: true,
+    flavor: 'Black through and through. It has been in a fire longer than you have been down here.',
+  },
+  {
+    id: 'ashmaul', name: 'Ashgrit Maul', tier: 15, chipSpread: 0.9, strikeSpread: 0.8,
+    inputs: { ashgrit: 8, emberflake: 7, charstone: 7 }, brick: 15000, floor: true,
+    flavor: 'The Fifteenth, made of sweepings. Marrow will look at it, and say nothing, for a while.',
+  },
+];
+
+const AUTHORED_RECIPES: ToolRecipe[] = [
   // --- Tier I — anyone with a bench can make these -------------------------
   {
     id: 'marlsplitter', name: 'Marlsplitter', tier: 1, chipSpread: 1.1, strikeSpread: 0.8,
@@ -131,7 +245,7 @@ export const TOOL_RECIPES: ToolRecipe[] = [
    */
   {
     id: 'chalkhead', name: 'Chalkhead Pick', tier: 2, chipSpread: 0.95, strikeSpread: 0.7,
-    inputs: { bonechalk: 9, graveclay: 7, ochre: 5 }, brick: 12,
+    inputs: { bonechalk: 9, graveclay: 7, ochre: 5 }, brick: 12, floor: true,
     flavor: 'Crude, heavy, and honest. Every camp has three of them and nobody signs their name to one.',
   },
   {
@@ -231,6 +345,11 @@ export const TOOL_RECIPES: ToolRecipe[] = [
     flavor: 'The Fifteenth. Marrow says there is nothing to teach past it, and Marrow would know.',
   },
 ];
+
+/** Authored picks and the ladder's floor, in tier order — the UI iterates this
+ *  array directly, so the sort is part of the contract, not a convenience. */
+export const TOOL_RECIPES: ToolRecipe[] = [...AUTHORED_RECIPES, ...FLOOR_RECIPES]
+  .sort((a, b) => a.tier - b.tier);
 
 export function recipeDef(id: string): ToolRecipe {
   const def = TOOL_RECIPES.find((r) => r.id === id);

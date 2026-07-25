@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngine } from '../index';
 import type { GameState } from '../types';
-import { MATERIALS, materialDef, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
+import { MATERIALS, materialDef, RARITY_GATES, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
 import { addMaterial, materialCount, recipeDef, equippedTool } from '../systems/forge';
 import {
   CHAINS, findChain, refine, refinePreview, transmute, REFINE_RATIO,
@@ -174,10 +174,35 @@ describe('transmutation makes the 132 a graph', () => {
     const src = parts.join('\n');
     const wasOrphan = (id: string) => !new RegExp(`['"\`]${id}['"\`]|\\b${id}\\s*:`).test(src);
 
+    /**
+     * ADDS REACH, BY EITHER ROUTE (widened A.44).
+     *
+     * The orphan check was a PROXY for "this chain is not decoration", and it
+     * was exact while the Refinery was the only thing consuming commons. A.44's
+     * floor recipes (one commons-only pick per tier, so a hardness wall is
+     * passable at the depth a Collapse drops you at) gave several commons a
+     * second consumer — and `ashgritBinder` failed as "adds no reach" while
+     * doing exactly the job the phase wanted: ashgrit + slagrock, both common,
+     * become bindingclay, which is RICH and otherwise gated at depth 10.
+     *
+     * So test the meaning, not the proxy. A chain earns its place if it pulls an
+     * orphan back into the economy, OR if it reaches UP a band — turning cheap,
+     * always-available stone into something the depth gates would otherwise
+     * withhold. Both are reach; only one was being checked.
+     */
+    // Rank by the DEPTH GATE, not by a band index — `BANDS` is the PURITY axis
+    // (poor..exalted) and rarity is a different one (common..aberrant), so
+    // indexing rarity into it returns -1 for every material and the comparison
+    // silently comes out false for all of them. Depth is also the honest
+    // measure here: what a chain bypasses is the gate a Collapse re-imposes.
+    const gateOf = (id: string): number => RARITY_GATES[materialDef(id).rarity].minDepth;
     for (const c of CHAINS) {
+      const pullsOrphan = wasOrphan(c.a) || wasOrphan(c.b);
+      const reachesUp = gateOf(c.out) > Math.max(gateOf(c.a), gateOf(c.b));
       expect(
-        wasOrphan(c.a) || wasOrphan(c.b),
-        `chain '${c.id}' consumes ${c.a} + ${c.b}, neither of which was an orphan — it adds no reach`,
+        pullsOrphan || reachesUp,
+        `chain '${c.id}' consumes ${c.a} + ${c.b} (neither orphaned) and outputs ${c.out} ` +
+          `at or below their band — it adds no reach by either route`,
       ).toBe(true);
     }
   });
