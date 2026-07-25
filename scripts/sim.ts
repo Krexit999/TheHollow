@@ -41,6 +41,7 @@ import { matchAlloy } from '../src/engine/content/shell2/alloys';
 import { foundryUnlocked, FOUNDRY_MODULES } from '../src/engine/systems/foundry';
 import { GEAR_DEFS } from '../src/engine/combat/gear';
 import { COMPETENT_SKILL, resolveFight } from '../src/engine/combat/combat';
+import { canSpiral } from '../src/engine/systems/spiral';
 import { speciesDef, SPECIES } from '../src/engine/combat/species';
 import { rollSpecies } from '../src/engine/combat/species';
 import { contractProgress, contractSatisfied } from '../src/engine/guild/contracts';
@@ -401,12 +402,40 @@ const rtp = {
    *  the first is the pillar. */
   vsRun: [] as number[],
   runStartSec: 0,
-  /** First time the player ever stood at each depth, per shell. */
+  /** Shells whose pre-existing record has been marked unmeasurable. */
+  seededShells: new Set<string>(),
+  /** First time the player ever stood at each depth, per shell. 0 = the run
+   *  began already holding it, so pillar 6 cannot be read against it. */
   firstAt: {} as Record<string, Record<number, number>>,
-  pending: null as
-    | { peak: number; at: number; runLen: number; original: number; layer: string }
-    | null,
+  /**
+   * ONE UNRESOLVED CLAIM PER LAYER (A.44 checkpoint 4).
+   *
+   * This was a single global slot, and `noteRtpCollapse` opened with
+   * `if (rtp.pending) return`. The reason was sound — a player who collapses
+   * twice on the way back is still on the way back, so the OLDEST claim must
+   * survive — but one slot shared across four rungs means the layer that fires
+   * every ~15 minutes permanently starves the ones that fire every few hours.
+   * Pillar 6 was therefore verified for the Collapse layer and asserted for the
+   * other three. Each rung now keeps its own oldest claim, and they resolve
+   * independently.
+   */
+  pending: {} as Record<string, Claim | null>,
 };
+
+interface Claim {
+  /** The shell whose depth we are watching for the return. */
+  shell: string;
+  peak: number;
+  at: number;
+  runLen: number;
+  original: number;
+  layer: string;
+}
+
+/** What it originally took to first stand at `peak` in `shell`. 0 = never. */
+function rtpOriginal(shell: string, peak: number): number {
+  return rtp.firstAt[shell]?.[peak] ?? 0;
+}
 
 /**
  * Fill first-arrival times from the shell's depth RECORD, not from the depth
@@ -416,9 +445,24 @@ const rtp = {
  */
 function noteRtpDepth(shell: string, record: number, sec: number): void {
   const per = (rtp.firstAt[shell] ??= {});
+  // A DEPTH YOU WERE HANDED HAS NO "ORIGINAL TIME" (A.44, the ninth case).
+  //
+  // `--scenario recursion` primes depthRecords to 560 before the clock starts,
+  // so on the first tick this backfilled first-arrival for every depth 1..560 as
+  // sec≈1 — and pillar 6 divides by that. The layer readings came out at 433%
+  // and 813%, which look like catastrophic pillar violations and are in fact
+  // division by one second. The instrument was being fed the answer it exists to
+  // measure, exactly as the Recursion scenario's echo=120 injection was.
+  //
+  // Depths present before the run began are marked UNMEASURABLE (0), which
+  // `noteRtpCollapse` already treats as "no claim". RTP therefore reports only
+  // peaks this run actually earned — from a scenario start that means fewer
+  // samples, which is the correct answer rather than a confident wrong one.
+  const seeded = rtp.seededShells.has(shell);
+  if (!seeded) rtp.seededShells.add(shell);
   for (let d = record; d >= 1; d--) {
     if (per[d] !== undefined) break;
-    per[d] = sec;
+    per[d] = seeded ? sec : 0;
   }
 }
 
@@ -429,31 +473,55 @@ function noteRtpDepth(shell: string, record: number, sec: number): void {
  * into, capped at that world's floor — the comparable milestone when the old
  * peak's shell no longer exists to return to.
  */
-function noteRtpCollapse(shell: string, peak: number, sec: number, layer = 'collapse'): void {
+/**
+ * `watchShell`/`watchPeak` is what must be re-reached; `original` is what the
+ * peak cost the FIRST time, which for a cross-shell reset is measured in the
+ * shell you LEFT.
+ *
+ * THE SECOND DEFECT UNDER THE FIRST (A.44). This used to derive `original` as
+ * `firstAt[shell][peak]` on the shell being LANDED IN — and after a Breach or a
+ * Recursion you have by definition never stood at that depth in that shell, so
+ * `original` was 0, so the claim was discarded on the spot. Breach RTP was not
+ * merely starved by the global slot: it could not have recorded a sample even
+ * with the slot free. The honest comparison is "Loam d150 took you T; how long
+ * to stand at d150 in Ferrite?", so the caller supplies T from the old world.
+ */
+function noteRtpCollapse(
+  watchShell: string,
+  watchPeak: number,
+  sec: number,
+  layer = 'collapse',
+  original = rtpOriginal(watchShell, watchPeak),
+): void {
   const runLen = sec - rtp.runStartSec;
   rtp.runStartSec = sec;
-  const original = rtp.firstAt[shell]?.[peak] ?? 0;
-  // KEEP THE OLDEST UNRESOLVED CLAIM. Pillar 6 asks how long it takes to get
-  // back to your peak — not how long it takes within one cycle. A player who
-  // collapses twice on the way back is still on the way back, and overwriting
-  // the claim each time made every sample vanish (16 collapses, zero returns)
-  // while the run was in fact climbing steadily to the Loam floor.
-  if (rtp.pending) return;
+  // KEEP THE OLDEST UNRESOLVED CLAIM — PER LAYER. Pillar 6 asks how long it
+  // takes to get back to your peak, not how long within one cycle: a player who
+  // collapses twice on the way back is still on the way back. Overwriting made
+  // every sample vanish (16 collapses, zero returns). Sharing ONE slot across
+  // the four rungs made the rare rungs vanish instead.
+  if (rtp.pending[layer]) return;
   // A run that built nothing has no peak to return to.
-  rtp.pending = peak > 0 && runLen > 0 && original > 0
-    ? { peak, at: sec, runLen, original, layer }
+  rtp.pending[layer] = watchPeak > 0 && runLen > 0 && original > 0
+    ? { shell: watchShell, peak: watchPeak, at: sec, runLen, original, layer }
     : null;
 }
 
 function noteRtpTick(shell: string, record: number, depth: number, sec: number): void {
   noteRtpDepth(shell, record, sec);
-  const p = rtp.pending;
-  if (p && depth >= p.peak * rtp.tolerance) {
+  for (const [layer, p] of Object.entries(rtp.pending)) {
+    if (!p || p.shell !== shell) continue;
+    if (depth < p.peak * rtp.tolerance) continue;
     rtp.vsOriginal.push((sec - p.at) / p.original);
     rtp.vsRun.push((sec - p.at) / p.runLen);
-    (rtp.byLayer[p.layer] ??= []).push((sec - p.at) / p.original);
-    rtp.pending = null;
+    (rtp.byLayer[layer] ??= []).push((sec - p.at) / p.original);
+    rtp.pending[layer] = null;
   }
+}
+
+/** Any rung still owing a return at the end of the run. */
+function rtpUnresolved(): string[] {
+  return Object.entries(rtp.pending).filter(([, p]) => p).map(([l]) => l);
 }
 let lastCaravanAt = -1e9;
 /** Per-slot stall watch: reroll a job that hasn't moved in 40 minutes. */
@@ -838,6 +906,7 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
     }
     if (s.aleph.coreTouched) {
       const peakBefore = Math.max(s.depth, s.shaft.reached);
+      const leftShellId = currentShell(s).id;
       const r = engine.dispatch({ type: 'recurse' });
       if (r.ok) {
         const d = r.data as { count: number; axiomsGained: number };
@@ -849,7 +918,8 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
         // climb back is capped at Loam's floor, exactly as a Breach is.
         const landed = currentShell(engine.getState() as GameState);
         noteRtpCollapse(landed.id, Math.min(peakBefore, landed.floorDepth),
-          (engine.getState() as GameState).stats.playTimeSec, 'recursion');
+          (engine.getState() as GameState).stats.playTimeSec, 'recursion',
+          rtpOriginal(leftShellId, peakBefore));
         // `doRecursion` calls replaceState, so the `s` this function closed over
         // is now a DEAD OBJECT. Reading `s.recursion.axioms` off it reported an
         // empty list and every buyAxiom below silently did nothing — the run
@@ -867,6 +937,30 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
           }
         }
         tapeArmed = false;
+      }
+    }
+    // THE SPIRAL — rung four, and the sim has never once dispatched it (A.44).
+    // `type: 'spiral'` appeared nowhere in this file, so the Automation Grid,
+    // the parallel-world licences and Spiral RTP were all unreachable from the
+    // harness no matter how long a run went. The third of three independent
+    // blockers on four-layer pillar-6 coverage, and the only one that was a
+    // plain omission rather than a subtle defect.
+    if (canSpiral(s)) {
+      const before = currentShell(s);
+      const peakBefore = Math.max(s.depth, s.shaft.reached);
+      const leftId = before.id;
+      if (engine.dispatch({ type: 'spiral' }).ok) {
+        const now = engine.getState() as GameState;
+        const landed = currentShell(now);
+        noteRtpCollapse(landed.id, Math.min(peakBefore, landed.floorDepth),
+          now.stats.playTimeSec, 'spiral', rtpOriginal(leftId, peakBefore));
+        log(`*** SPIRAL ${now.spiral.count} | banked ${fmt(now.currencies['spiral'] ?? 0)} ***`);
+        // Capacity is the whole point of the rung: seat what the purse allows.
+        for (let i = 0; i < 4; i++) {
+          if (!engine.dispatch({ type: 'buyGridSlot' }).ok) break;
+        }
+        const after = engine.getState() as GameState;
+        if (after.spiral.slots > 0) log(`  grid slots ${after.spiral.slots}`);
       }
     }
   }
@@ -1520,6 +1614,7 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   if (canBreach(s) && s.shell.coresEarnedThisBreach.gte(500)) {
     const peakBefore = Math.max(s.depth, s.shaft.reached);
     const recursionsBefore = s.recursion.count;
+    const leftShellId = currentShell(s).id;
     const result = engine.dispatch({ type: 'breach' });
     if (result.ok) {
       // The old shell is gone, so "return to prior peak" is measured as the
@@ -1528,7 +1623,10 @@ function shop(engine: Engine, log: (msg: string) => void): void {
       // deeper rung — the ladder's cost is the rung you actually paid.
       const landed = currentShell(s);
       const layer = s.recursion.count > recursionsBefore ? 'recursion' : 'breach';
-      noteRtpCollapse(landed.id, Math.min(peakBefore, landed.floorDepth), s.stats.playTimeSec, layer);
+      // The original time comes from the world you LEFT — you have never stood
+      // at this depth in the one you are landing in.
+      noteRtpCollapse(landed.id, Math.min(peakBefore, landed.floorDepth),
+        s.stats.playTimeSec, layer, rtpOriginal(leftShellId, peakBefore));
       log(`*** BREACH -> ${s.shell.current.toUpperCase()} | echoes ${fmt(s.currencies['echo']!)} ***`);
     }
   }
@@ -2446,7 +2544,12 @@ function main(): void {
     const med = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)]!;
     const worst = (a: number[]) => Math.max(...a);
     console.error(
-      rtp.vsOriginal.length === 0
+      process.argv.includes('--scenario')
+        ? `RTP (pillar 6): NOT MEASURED — this run started from a stipulated ` +
+          `biography (--scenario), so "the original time" is a number the setup ` +
+          `handed it, not one the run earned. Reset-layer MECHANISMS can be ` +
+          `exercised from a scenario; pillar-6 RATIOS cannot. Use a real run.`
+      : rtp.vsOriginal.length === 0
         ? 'RTP (pillar 6): NO RETURNS — no reset peak was regained this run'
         : `RTP (pillar 6, want <=20-25% of the ORIGINAL time; back = ` +
           `${(rtp.tolerance * 100).toFixed(0)}% of peak): median ` +
@@ -2455,8 +2558,8 @@ function main(): void {
             .map((l) => `${l} ${rtp.byLayer[l]?.length ? `${pct(med(rtp.byLayer[l]!))} (n=${rtp.byLayer[l]!.length})` : 'no samples'}`)
             .join(', ')} | ` +
           `share of the following run spent re-treading: median ${pct(med(rtp.vsRun))} | ` +
-          `${rtp.vsOriginal.length} returns${rtp.pending ? ", 1 peak still unregained at the end" : ""}` +
-          `${rtp.pending ? ' | 1 peak never regained by the end' : ''}`,
+          `${rtp.vsOriginal.length} returns` +
+          `${rtpUnresolved().length ? ` | still owing a return at the end: ${rtpUnresolved().join(', ')}` : ''}`,
     );
   }
   if (!args.quiet) for (const e of events) console.error(e);
