@@ -361,10 +361,30 @@ Cost curves — `totalCost(n) = base * (r^n - 1) / (r - 1)`
 | Spam | 1.15 | 40-120 | Blade, Soil |
 | Standard | 1.25 | 20-45 | Drill count, Kiln rate |
 | Structural | 1.75 | 6-15 | Field expansion, Foundry slots |
-| Tree node | 1.55 | 10 | Core tree |
+| Tree node | ~~1.55~~ **1.40** (A.44) | 10 | Core tree |
 
-Core tree: node base 2, r=1.55, 10 levels = 296 Cores. 28 nodes ~ 6,000 Cores to max.
-Player earns ~800 in Shell I, ~2,400 in Shell III -> tree completes around Shell V.
+**Core tree — CORRECTED A.44. The old passage described a tree this game does
+not have.** It read: "node base 2, r=1.55, 10 levels = 296 Cores. 28 nodes ~
+6,000 Cores to max. Player earns ~800 in Shell I, ~2,400 in Shell III -> tree
+completes around Shell V." Three things were wrong, and the third is structural:
+
+- **14 nodes, not 28** (`CORE_NODES`), costing **7,562** at the old ratio, not 6,000.
+- **A Loam arc pays 478 Cores, not ~800** (measured, `sim-out/a44-confirm`).
+- **The tree CANNOT "complete around Shell V", because `doBreach` wipes it**
+  (`state.collapse.nodes = {}`, breach.ts:106). The reset ladder above says so;
+  this passage assumed accumulation across shells and contradicted it.
+
+The Core tree is a **PER-SHELL build**, rebought in every world out of that
+world's Cores, and tranche 2 is gated on `breachCount >= 1` so the first shell
+can only spend on tranche 1. At r=1.55 a Loam arc bought **26% of tranche 1** —
+not enough to max one node — while the descend curve compounded at 1.09/depth.
+Within a shell the Core tree IS the permanent income growth, which is why this
+was the deep-end residual after A.44's horizon fix took ~29%.
+
+Re-rated to **r = 1.40**: a Loam arc affords ~56% of tranche 1 (a real build,
+still a choice), rising to the full tree only in the last shell. Because
+`coresForDepth` scales with depth while this price is flat, any change here
+must be checked at BOTH ends — see `scripts/a44-coretree.ts`.
 
 Depth (**corrected A.44 — this document was stale, the code was right**):
 

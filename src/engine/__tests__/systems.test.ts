@@ -5,6 +5,7 @@ import { newDrill } from '../systems/drills';
 import { KILN_DUST_PER_BRICK } from '../systems/kiln';
 import type { GameState } from '../types';
 import { xpToLevel } from '../prestigeMath';
+import { CORE_NODES, coreNodeCost } from '../content/shell1/coreTree';
 
 describe('the kiln', () => {
   it('conserves dust: consumed * efficiency = progress + bricks fired', () => {
@@ -133,15 +134,37 @@ describe('collapse', () => {
     expect(s.kiln.heat).toBeCloseTo(0.45, 5);
   });
 
-  it('core node purchases follow the 2 * 1.55^n curve', () => {
+  it('core node purchases follow the 2 * 1.40^n curve (re-rated A.44)', () => {
     const { engine, s } = atDepth(200); // 22 cores
     engine.dispatch({ type: 'collapse' });
     expect(s.currencies['core']!.toNumber()).toBe(22);
     expect(engine.dispatch({ type: 'buyCoreNode', id: 'grit' }).ok).toBe(true);
     expect(s.currencies['core']!.toNumber()).toBe(20); // cost 2
     expect(engine.dispatch({ type: 'buyCoreNode', id: 'grit' }).ok).toBe(true);
-    expect(s.currencies['core']!.toNumber()).toBeCloseTo(20 - 3.1, 5); // cost 2*1.55
+    expect(s.currencies['core']!.toNumber()).toBeCloseTo(20 - 2.8, 5); // cost 2*1.40
     expect(s.collapse.nodes['grit']).toBe(2);
+  });
+
+  /**
+   * THE INVARIANT THE CURVE TEST ABOVE CANNOT SEE (A.44). Asserting the ratio
+   * says nothing about whether a shell's Cores BUY anything, which is the thing
+   * that was broken: the tree is wiped at every Breach (breach.ts:106), so it is
+   * a per-shell build, and a Loam arc's 478 Cores bought 26% of the only tranche
+   * it can reach — not enough to max one node. That was the deep-end residual.
+   *
+   * Pinned as an outcome at both ends, because `coresForDepth` scales with depth
+   * while this price is flat: a constant that rescues Loam must not hand the
+   * last shell the tree for free before it gets there.
+   */
+  it('a shell arc buys a real but partial tranche-1 build', () => {
+    const LOAM_ARC = 478; // measured, sim-out/a44-confirm
+    const t1 = CORE_NODES.filter((n) => (n as { tranche?: number }).tranche !== 2);
+    const t1Cost = t1.reduce(
+      (sum, n) => sum + Array.from({ length: n.maxLevel }, (_, l) => coreNodeCost(l).toNumber())
+        .reduce((a, b) => a + b, 0), 0);
+    const share = LOAM_ARC / t1Cost;
+    expect(share).toBeGreaterThan(0.4); // a build worth making
+    expect(share).toBeLessThan(0.85);   // and still a choice
   });
 });
 

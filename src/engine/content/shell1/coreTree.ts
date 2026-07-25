@@ -18,7 +18,30 @@ export interface CoreNodeDef {
 }
 
 export const CORE_NODE_BASE = 2;
-export const CORE_NODE_RATIO = 1.55;
+/**
+ * THE CORE TREE RE-RATE (A.44 checkpoint 5). Was 1.55.
+ *
+ * The tree is not a long-accumulating meta tree: `doBreach` sets
+ * `state.collapse.nodes = {}` (breach.ts:106), so it is WIPED every Breach and
+ * rebought in each world out of that world's Cores. PILLARS said "tree completes
+ * around Shell V", which assumes accumulation and cannot happen — the ladder
+ * table in the same document says Breach resets it, and the code follows the
+ * table. Sizing it as a per-playthrough tree was the error under the numbers.
+ *
+ * Measured against that shape: a Loam arc pays 478 Cores (sim-out/a44-confirm),
+ * tranche 2 is gated on breachCount>=1 so Loam can only spend on tranche 1, and
+ * tranche 1 cost 1,725 at r=1.55 — **26%**, not enough to max a single node.
+ * That is the deep-end residual: within a shell the Core tree IS the permanent
+ * income growth, and it was buying almost nothing while the descend curve
+ * compounded at 1.09/depth.
+ *
+ * At 1.40 a Loam arc affords ~56% of tranche 1 — a real build that is still a
+ * choice — rising to the full tree only in the last shell. Sized across all
+ * seven shells in scripts/a44-coretree.ts, because `coresForDepth` scales with
+ * depth while this price is flat, so a constant that fits Loam must be checked
+ * against Hollow or it just moves the starvation to the other end.
+ */
+export const CORE_NODE_RATIO = 1.4;
 
 export const CORE_NODES: CoreNodeDef[] = [
   {
