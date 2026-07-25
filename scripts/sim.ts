@@ -41,7 +41,7 @@ import { matchAlloy } from '../src/engine/content/shell2/alloys';
 import { foundryUnlocked, FOUNDRY_MODULES } from '../src/engine/systems/foundry';
 import { GEAR_DEFS } from '../src/engine/combat/gear';
 import { COMPETENT_SKILL, resolveFight } from '../src/engine/combat/combat';
-import { speciesDef } from '../src/engine/combat/species';
+import { speciesDef, SPECIES } from '../src/engine/combat/species';
 import { rollSpecies } from '../src/engine/combat/species';
 import { contractProgress, contractSatisfied } from '../src/engine/guild/contracts';
 import { strainDef } from '../src/engine/content/shell3/greenhouse';
@@ -837,15 +837,30 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
       }
     }
     if (s.aleph.coreTouched) {
+      const peakBefore = Math.max(s.depth, s.shaft.reached);
       const r = engine.dispatch({ type: 'recurse' });
       if (r.ok) {
         const d = r.data as { count: number; axiomsGained: number };
         p10Metrics.recursions += 1;
-        log(`*** RECURSION ${d.count} | +${d.axiomsGained} Axioms (total held ${fmt(s.currencies['axiom'] ?? 0)}) ***`);
+        // A RECURSION IS A RUNG OF THE LADDER, SO PILLAR 6 MEASURES IT (A.44).
+        // Nothing recorded it before, which is half of why RTP has only ever
+        // reported the Collapse layer: the other half was that no policy could
+        // reach the Core at all. A Recursion lands you back in Loam, so the
+        // climb back is capped at Loam's floor, exactly as a Breach is.
+        const landed = currentShell(engine.getState() as GameState);
+        noteRtpCollapse(landed.id, Math.min(peakBefore, landed.floorDepth),
+          (engine.getState() as GameState).stats.playTimeSec, 'recursion');
+        // `doRecursion` calls replaceState, so the `s` this function closed over
+        // is now a DEAD OBJECT. Reading `s.recursion.axioms` off it reported an
+        // empty list and every buyAxiom below silently did nothing — the run
+        // earned two Axioms and wrote none, so the fold-down laws this whole
+        // re-rate exists to unlock were never once exercised.
+        const now = engine.getState() as GameState;
+        log(`*** RECURSION ${d.count} | +${d.axiomsGained} Axioms (banked ${fmt(now.currencies['axiom'] ?? 0)}) ***`);
         // Write an Axiom if any are banked (a veteran's opening move).
         const wishlist = ['firstWord', 'earlyDoor', 'twoHands', 'unemptying', 'insomniac', 'heresy'];
         for (const id of wishlist) {
-          if (!s.recursion.axioms.includes(id) && engine.dispatch({ type: 'buyAxiom', id }).ok) {
+          if (!now.recursion.axioms.includes(id) && engine.dispatch({ type: 'buyAxiom', id }).ok) {
             p10Metrics.axiomsBought.push(id);
             log(`  wrote Axiom: ${id}`);
             break;
@@ -2056,9 +2071,42 @@ function main(): void {
     s.delver.skills['deepGrip'] = 5;
     s.delver.skills['heavyHands'] = 3;
     s.delver.level = 200;
-    for (const id of ['firstKill', 'wardenLoam', 'kills25', 'wardenGlassmere', 'wardenCinder']) s.achievements.unlocked[id] = true;
+    // THE BIOGRAPHY OF SOMEONE WHO REACHED THE CORE (A.44).
+    //
+    // This line used to hand-unlock FIVE achievements by id. That is a fifth of
+    // one percent of a 190-cell grid, handed to a player who has crossed six
+    // shells — and `strikePower` is a MODIFIER BUCKET that ~18 achievements
+    // feed. Measured: the old scenario carried strikePower x1.95 where a full
+    // grid gives x4.42, a 2.26x shortfall in the exact stat the final fight is
+    // decided by. The Author (tier 18, 88k hp) then won 200 out of 200, the
+    // sim could never touch the Core, and Breach/Recursion/Spiral RTP had no
+    // path at all. With the grid filled the same kit wins 43% of the time.
+    //
+    // So prime the CAUSES and let `checkAchievements` (which the engine already
+    // runs ~1/sec) do the unlocking for real reasons. A stipulated biography is
+    // honest; stipulating the REWARD while the game's own evaluator disagrees
+    // is how the echo=120 injection hid the ladder starvation.
+    s.combat.stats.wins = 600;
+    s.combat.stats.perfects = 250;
+    s.combat.stats.losses = 40;
+    s.combat.seen = SPECIES.map((sp) => sp.id);
+    for (const sp of SPECIES) s.combat.kills[sp.id] = 5;
+    s.materials.geodesCracked = 400;
+    s.materials.totalDrops = 20000;
+    s.stats.toolsForged = 30;
+    s.runes.pairsSeen = ['kel|thur', 'mol|kel', 'thur|mol', 'kel|sev', 'sev|mol',
+      'thur|sev', 'mol|ath', 'ath|kel', 'sev|ath', 'ath|thur',
+      'kel|ven', 'ven|mol', 'thur|ven', 'ven|sev', 'ath|ven',
+      'kel|orn', 'orn|mol', 'orn|thur', 'sev|orn', 'ven|orn'];
     engine.dispatch({ type: 'debug', op: 'grant', currency: 'fragment', amount: 5000 });
     engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 400 });
+    // A LAW IS WRITTEN IN RESONANCE (`buyAxiom`, AXIOM_RESONANCE). The scenario
+    // banked none, so every `buyAxiom` in the aleph policy failed silently and
+    // no run has EVER written an Axiom — the fold-down laws (firstWord,
+    // gentleFall, insomniac) that the whole prestige layer exists to deliver
+    // have never been exercised by the harness. Resonance survives a Recursion
+    // by design, so a Core-reaching player has banked plenty.
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'resonance', amount: 500 });
     const bank7: Array<[string, number, number]> = [
       ['firstiron', 60, 30], ['protolith', 58, 20], ['axiomite2', 60, 12], ['alephite', 62, 6],
       ['authorsInk', 62, 6], ['quietsinew', 55, 10], ['hollowplate', 55, 8], ['unheart', 60, 4],

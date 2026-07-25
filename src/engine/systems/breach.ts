@@ -5,7 +5,7 @@
  * Lattice, the Delver, achievements, materials, tools, gems — and, from any
  * shell that HAS one, its signature mechanic, carried forever.
  *
- *   Echoes = floor(3 * (CoresEarnedThisBreach / 500)^0.6)   (locked)
+ *   Echoes = floor(3 * (CoresEarnedThisBreach / 200)^0.6)   (divisor re-rated A.44)
  *
  * (Stale-comment fix, Part B: Loam DOES have a signature — Seepage was
  * promoted in Phase 5 and carries down like any other. The registry is the

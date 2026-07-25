@@ -57,7 +57,7 @@ export interface ShellDef {
 // ---------------------------------------------------------------------------
 
 export interface BreachSystem {
-  /** Locked: Echoes = floor(3 * (CoresEarnedThisBreach / 500)^0.6). */
+  /** Locked: Echoes = floor(3 * (CoresEarnedThisBreach / 200)^0.6). Divisor re-rated A.44. */
   echoesFor(coresThisBreach: Decimal): Decimal;
   canBreach(state: GameState): boolean;
   /** Resets Cores/Core tree/shell systems; records the carried mechanic. */

@@ -31,6 +31,7 @@
  *    double-pay the same lifetime figures.
  */
 import { D } from '../decimal';
+import { spiralFor } from '../prestigeMath';
 import type { ActionResult, EngineCtx, GameState, SpiralState, ToolInstance } from '../types';
 import { initialState } from '../state';
 import { purityMult } from './forge';
@@ -44,8 +45,20 @@ import { sealed } from '../laws';
 import type { ModifierCache } from '../modifiers';
 
 /** The locked formula, on lifetime figures. */
+/**
+ * THE SECOND DEAD TWIN (found A.44 twin audit). This carried its own
+ * `floor(sqrt(A)·R)` while `prestigeMath.spiralFor` held an identical copy —
+ * and `spiralFor` was referenced by nothing but the "prestige formulas
+ * (locked)" suite, exactly like `axiomsForEchoes` before it.
+ *
+ * Two of the five prestige formulas had twins, BOTH of the dead copies live in
+ * `prestigeMath.ts`, and BOTH were guarded by the same test file. That module
+ * is partly documentation the game does not call, and the locked-formula suite
+ * has been asserting the documentation. Delegated; see `prestige-live.test.ts`,
+ * which checks these curves through real dispatches into the purse instead.
+ */
 export function spiralFromLifetime(totalAxiomsEarned: number, recursionCount: number): number {
-  return Math.floor(Math.sqrt(Math.max(0, totalAxiomsEarned)) * Math.max(0, recursionCount));
+  return spiralFor(D(Math.max(0, totalAxiomsEarned)), Math.max(0, recursionCount)).toNumber();
 }
 
 /** A Spiral needs a Recursion behind it — you cannot administrate nothing. */

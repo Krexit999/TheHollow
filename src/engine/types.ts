@@ -62,7 +62,7 @@ export interface ToolInstance {
 export interface ShellState {
   current: string; // 'loam' | 'ferrite' | ...
   breachCount: number;
-  /** Feeds Echoes = floor(3·(cores/500)^0.6); resets on Breach. */
+  /** Feeds Echoes = floor(3·(cores/200)^0.6); resets on Breach. Re-rated A.44. */
   coresEarnedThisBreach: Decimal;
   /** Signature ids carried down, in breach order. Permanent. */
   signatures: string[];

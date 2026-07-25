@@ -78,7 +78,7 @@ export function BreachCard() {
       </p>
       <div className="mt-2 text-xs text-cave-400">
         Breaching yields <span className="tnum font-bold text-[#d8ccf0]">{fmt(echoes)} Echoes</span>
-        <span className="block text-[10px] opacity-80">⌊3 · (Cores earned this breach / 500)^0.6⌋ — collapse more first to raise it.</span>
+        <span className="block text-[10px] opacity-80">⌊3 · (Cores earned this breach / 200)^0.6⌋ — collapse more first to raise it.</span>
       </div>
       <KeystoneCard />
       <HoldButton
