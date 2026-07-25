@@ -17,6 +17,8 @@ import {
 } from '../systems/settle';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { applyOfflineProgress } from '../systems/offline';
+import { requiredTier } from '../systems/forge';
+import { BAY_DEPTH_UNLOCK } from '../content/shell1/upgrades';
 import type { EngineCtx } from '../types';
 
 const nullCtx: EngineCtx = { emit() {}, dirty() {} };
@@ -207,6 +209,33 @@ describe('offline is the purest quiet', () => {
     const st = s();
     applyOfflineProgress(st, new ModifierCache(), nullCtx, SETTLE_TUNING.quietSec - 1);
     expect(st.shaft.settle).toBe(0);
+  });
+});
+
+describe('a structural unlock never gates behind the wall it is needed to cross', () => {
+  // The A.42 working rule, made enforceable. The DRILL BAY is what lifts an
+  // idle player off the ~10% seepage floor; it unlocked at Loam depth record
+  // 55 while the first hardness wall sat at 44, so the system that made the
+  // crossing possible was locked behind the crossing. Nothing could see it: it
+  // is not a cost, a rate or a formula, and both halves were individually
+  // sensible. This asserts the ORDERING, which is the only thing that was ever
+  // wrong.
+  it('the drill bay opens strictly before Loam’s first hardness wall', () => {
+    const { s } = fresh();
+    const st = s();
+    let firstWall = Infinity;
+    for (let d = 1; d <= 150; d++) {
+      if (requiredTier(st, d) > 1) { firstWall = d; break; }
+    }
+    expect(firstWall).toBeLessThan(Infinity); // there IS a wall to be caught by
+    expect(BAY_DEPTH_UNLOCK.depth).toBeLessThan(firstWall);
+  });
+
+  it('and an idle player can actually reach the gate on seepage alone', () => {
+    // A gate below the wall is still wrong if it is out of reach. Depth-record
+    // 40 is inside the first hour at the seepage floor (measured, A.42); this
+    // pins the intent so a later "just move it a bit deeper" has to argue.
+    expect(BAY_DEPTH_UNLOCK.depth).toBeLessThanOrEqual(40);
   });
 });
 

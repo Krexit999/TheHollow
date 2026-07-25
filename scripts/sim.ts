@@ -22,7 +22,7 @@ import { dirname } from 'node:path';
 import { createEngine, fmt, type Decimal, type Engine, type GameState, type MotifShape } from '../src/engine';
 import { D } from '../src/engine/decimal';
 import { CORE_NODES, coreNodeCost, coreNodeLevel } from '../src/engine/content/shell1/coreTree';
-import { currentDescendCost } from '../src/engine/systems/depthSys';
+import { currentDescendCost, effectiveDescendCost } from '../src/engine/systems/depthSys';
 import { coresForDepth } from '../src/engine/prestigeMath';
 import { ModifierCache } from '../src/engine/modifiers';
 import { allUpgrades, upgradeLevel, nextCost } from '../src/engine/upgrades';
@@ -297,7 +297,70 @@ function sampleSpawnMix(engine: Engine, s: GameState): void {
 // ---------------------------------------------------------------------------
 
 const GUILD_HIRE_ORDER = ['sef', 'tally', 'pell', 'fenn', 'grist', 'brakka', 'hob', 'moth', 'ruta', 'jib'];
-const guildMetrics = { contractsDone: 0, contractScrip: 0, trades: 0, pillar2Max: 0, pillar2Samples: 0, pillar2Over: 0, rerolls: 0 };
+const guildMetrics = { contractsDone: 0, contractScrip: 0, trades: 0, pillar2Max: 0, pillar2Samples: 0, pillar2Over: 0, pillar2Straddled: 0, rerolls: 0 };
+
+/**
+ * RETURN-TO-PEAK (pillar 6: back to the prior peak in ≤20–25% of the original
+ * time). Measured, not argued — A.42 shipped an aid that touches the price of
+ * new ground and left RTP asserted from construction, which the ruling sent
+ * back. On each Collapse, remember the peak it paid out on and how long the run
+ * that built it took; when the depth reaches that peak again, the ratio of the
+ * two is one RTP sample.
+ */
+const rtp = {
+  /** Recovery ÷ the time it ORIGINALLY took to first stand at that depth.
+   *  This is pillar 6 read literally ("the original time"). */
+  vsOriginal: [] as number[],
+  /** Recovery ÷ the length of the run that just ended. The steady-state
+   *  reading: how much of each cycle is spent re-treading rather than digging.
+   *  Reported alongside because the two answer different questions and only
+   *  the first is the pillar. */
+  vsRun: [] as number[],
+  runStartSec: 0,
+  /** First time the player ever stood at each depth, per shell. */
+  firstAt: {} as Record<string, Record<number, number>>,
+  pending: null as { peak: number; at: number; runLen: number; original: number } | null,
+};
+
+/**
+ * Fill first-arrival times from the shell's depth RECORD, not from the depth
+ * sampled once a second: the policy descends several steps inside one tick, so
+ * sampling `state.depth` misses most depths and the peak a Collapse pays out on
+ * usually has no recorded original time at all.
+ */
+function noteRtpDepth(shell: string, record: number, sec: number): void {
+  const per = (rtp.firstAt[shell] ??= {});
+  for (let d = record; d >= 1; d--) {
+    if (per[d] !== undefined) break;
+    per[d] = sec;
+  }
+}
+
+function noteRtpCollapse(shell: string, peak: number, sec: number): void {
+  const runLen = sec - rtp.runStartSec;
+  rtp.runStartSec = sec;
+  const original = rtp.firstAt[shell]?.[peak] ?? 0;
+  // KEEP THE OLDEST UNRESOLVED CLAIM. Pillar 6 asks how long it takes to get
+  // back to your peak — not how long it takes within one cycle. A player who
+  // collapses twice on the way back is still on the way back, and overwriting
+  // the claim each time made every sample vanish (16 collapses, zero returns)
+  // while the run was in fact climbing steadily to the Loam floor.
+  if (rtp.pending) return;
+  // A run that built nothing has no peak to return to.
+  rtp.pending = peak > 0 && runLen > 0 && original > 0
+    ? { peak, at: sec, runLen, original }
+    : null;
+}
+
+function noteRtpTick(shell: string, record: number, depth: number, sec: number): void {
+  noteRtpDepth(shell, record, sec);
+  const p = rtp.pending;
+  if (p && depth >= p.peak) {
+    rtp.vsOriginal.push((sec - p.at) / p.original);
+    rtp.vsRun.push((sec - p.at) / p.runLen);
+    rtp.pending = null;
+  }
+}
 let lastCaravanAt = -1e9;
 /** Per-slot stall watch: reroll a job that hasn't moved in 40 minutes. */
 const contractWatch = new Map<number, { have: number; sinceSec: number }>();
@@ -1413,9 +1476,56 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   // reach (~2 minutes of ceiling income); otherwise they keep cycling.
   const frontierReachable = currentDescendCost(s, mods).lte(dpsMax(s, mods).mul(120));
   const pushingForFloor = s.shell.coresEarnedThisBreach.gte(500) && frontierReachable;
-  if (!pushingForFloor && gain >= Math.max(2, Math.min(12, earned * 0.25))) {
+  // A WALL IS NOT A REASON TO COLLAPSE — IT IS A REASON TO KEEP THE MACHINES.
+  //
+  // (A.42 harness fix, the fourth time an unverified policy shaped a finding.)
+  // The rule above asks only "is the payout worth the reset". It never asks
+  // what the reset COSTS, and the Collapse takes the drill bay with it. That
+  // was invisible while the bay unlocked at depth-record 55 — an idle player
+  // had no machines to lose for eight hours, so the run collapsed cheaply and
+  // often, which is correct. The moment the bay opened before the tier-II wall
+  // (`--bay 40`), the same rule collapsed FORTY-NINE times at depth 39: each
+  // cycle bought one drill, hit the wall at 44, took 2 cores, and wiped the
+  // drill that was the only thing shortening the material gap. The arm could
+  // never keep the bay it had just unlocked, so the fix under measurement
+  // measured as a regression.
+  //
+  // What a player actually does, in two parts:
+  //
+  //  (a) A RUN ENDS WHEN IT STOPS MAKING GROUND, not when it first turns a
+  //      profit. The bar alone fires at the FIRST profitable depth — 40, where
+  //      `gain` reaches 2 — and the run then resets four steps short of its own
+  //      wall at 44, forever. That is the second half of the same bug: with the
+  //      bay open early the run has the income to reach 44 and never gets the
+  //      chance, so whether a seed ever crosses comes down to whether the bar
+  //      happens to rise before the loop locks. Two attractors, one coin flip:
+  //      three seeds reached depth 130+ at four hours and three sat at 39 for
+  //      twelve. So collapse only when the next step is blocked by a wall, by
+  //      the floor, or by a price the run cannot pay in a few minutes.
+  //
+  //  (b) A WALL IS A REASON TO KEEP THE MACHINES. The Collapse takes the drill
+  //      bay with it, and at a wall the run's whole job is material
+  //      accumulation — you do not burn the machines doing it. With no drills
+  //      the reset costs nothing and collapsing is right, which is the pre-A.42
+  //      behaviour, preserved exactly.
+  const walled = equippedTool(s).tier < requiredTier(s, s.depth + 1);
+  const atFloor = s.depth >= currentShell(s).floorDepth;
+  const canPush = effectiveDescendCost(s, mods).lte(dpsMax(s, mods).mul(300));
+  const stalled = walled || atFloor || !canPush;
+  const holdForWall = walled && s.drills.units.length > 0;
+  if (!pushingForFloor && stalled && !holdForWall && gain >= Math.max(2, Math.min(12, earned * 0.25))) {
+    const at = s.depth;
+    const peak = Math.max(s.depth, s.shaft.reached);
     if (engine.dispatch({ type: 'collapse' }).ok) {
-      log(`COLLAPSE #${s.collapse.count} at depth -> +${gain} cores (bank ${fmt(s.currencies['core']!)})`);
+      noteRtpCollapse(currentShell(s).id, peak, s.stats.playTimeSec);
+      // Name the decision, not just the event: depth, payout, and the bar it
+      // cleared. A log line that cannot explain its own choice is how the last
+      // three harness artifacts survived a phase each.
+      log(
+        `COLLAPSE #${s.collapse.count} at depth ${at} -> +${gain} cores ` +
+          `(bar ${Math.max(2, Math.min(12, earned * 0.25)).toFixed(1)}, lifetime ${earned.toFixed(0)}, ` +
+          `drills ${s.drills.units.length}, bank ${fmt(s.currencies['core']!)})`,
+      );
     }
   }
 
@@ -1772,6 +1882,7 @@ function main(): void {
   let p2PrevChip = '';
   let snapDueSec = 0; // 0 = not armed, >0 = due at that sec, -1 = written
   let p2PrevManual = 0;
+  let p2PrevCollapses = 0;
   let p2CeilingIntegral = 0;
   let p2PrevCeiling = 0;
   // Hourly-diag deltas (realized income + the green ledger).
@@ -1795,6 +1906,7 @@ function main(): void {
     if (active) chipFullest(engine, 2);
     else if (args.policy === 'balanced' && sec % 300 === 0) chipFullest(engine, 40);
     engine.tick(1);
+    noteRtpTick(s.shell.current, s.depthRecords[s.shell.current] ?? 0, s.depth, sec);
     if (args.depthLog) {
       const sid = s.shell.current;
       const rec = s.depthRecords[sid] ?? 0;
@@ -1879,16 +1991,31 @@ function main(): void {
       const total = s.totals[chipId]?.toNumber() ?? 0;
       const untouched = s.stats.manualChips === p2PrevManual;
       const ceilingWindow = p2CeilingIntegral - p2PrevCeiling;
-      if (untouched && p2PrevChip === chipId && p2PrevTotal > 0 && ceilingWindow > 0) {
+      // A WINDOW THAT STRADDLES A COLLAPSE CANNOT BE READ (A.42).
+      // Integrating the ceiling per second was supposed to handle a collapse
+      // inside a window; it does not. A Collapse drops depth to 0, so the
+      // ceiling collapses with it — while the charge banked during the deep
+      // part of the window is still being harvested and paid. Earned/∫ceiling
+      // then reads above 1.0 with nothing wrong. That artifact was harmless
+      // while nothing moved the collapse cadence; A.42's settling and bay-gate
+      // work both do, so the straddle started firing (1/213 at 102%) and the
+      // gate could no longer fail honestly. Skipped, and COUNTED — a dropped
+      // sample that nobody reports is how a green number stops meaning
+      // anything.
+      const straddled = s.collapse.count !== p2PrevCollapses;
+      if (untouched && !straddled && p2PrevChip === chipId && p2PrevTotal > 0 && ceilingWindow > 0) {
         const ratio = (total - p2PrevTotal) / ceilingWindow;
         guildMetrics.pillar2Max = Math.max(guildMetrics.pillar2Max, ratio);
         if (ratio > 1) guildMetrics.pillar2Over += 1;
         guildMetrics.pillar2Samples += 1;
+      } else if (untouched && straddled) {
+        guildMetrics.pillar2Straddled += 1;
       }
       p2PrevTotal = total;
       p2PrevChip = chipId;
       p2PrevManual = s.stats.manualChips;
       p2PrevCeiling = p2CeilingIntegral;
+      p2PrevCollapses = s.collapse.count;
     }
   }
   const wallMs = Date.now() - started;
@@ -1914,6 +2041,20 @@ function main(): void {
     `settle: soften ${SETTLE_TUNING.soften} cap ${SETTLE_TUNING.capSec}s quiet ${SETTLE_TUNING.quietSec}s ` +
       `floor ${SETTLE_TUNING.floor} | bank now ${(settleFill(engine.getState()) * 100).toFixed(0)}%`,
   );
+  {
+    const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
+    const med = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)]!;
+    const worst = (a: number[]) => Math.max(...a);
+    console.error(
+      rtp.vsOriginal.length === 0
+        ? 'RTP (pillar 6): NO RETURNS — no reset peak was regained this run'
+        : `RTP (pillar 6, want <=20-25% of the ORIGINAL time): median ` +
+          `${pct(med(rtp.vsOriginal))} worst ${pct(worst(rtp.vsOriginal))} | ` +
+          `share of the following run spent re-treading: median ${pct(med(rtp.vsRun))} | ` +
+          `${rtp.vsOriginal.length} returns${rtp.pending ? ", 1 peak still unregained at the end" : ""}` +
+          `${rtp.pending ? ' | 1 peak never regained by the end' : ''}`,
+    );
+  }
   if (!args.quiet) for (const e of events) console.error(e);
   console.error(
     `final: dust ${fmt(s.currencies['dust']!)} | brick ${fmt(s.currencies['brick']!)} | ` +
@@ -1964,7 +2105,7 @@ function main(): void {
       (guildMetrics.pillar2Samples > 0
         ? `PILLAR 2 idle income/ceiling: max ${(guildMetrics.pillar2Max * 100).toFixed(0)}%, ` +
           `${guildMetrics.pillar2Over}/${guildMetrics.pillar2Samples} windows >100% ` +
-          `(storage drains after collapse ride above; SUSTAINED must not)`
+          `(${guildMetrics.pillar2Straddled} skipped: straddled a Collapse and cannot be read)`
         : 'PILLAR 2: no untouched windows this policy — see the idle run'),
   );
   console.error(

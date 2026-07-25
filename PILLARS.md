@@ -140,6 +140,35 @@ The mirror of the Phase 14 lesson (a reported FLAW that did not reproduce): here
 a reported cost that a different approach did not incur. Both are the same
 discipline — re-measure the claim before you act on it, including your own.
 
+## Working rule: a structural unlock must never gate behind the wall it is needed to cross
+Added A.42. The general form of the worst bug this project has shipped, and the
+one nothing could see: **the DRILL BAY — the only thing that lifts an idle
+player off the ~10% seepage floor to near the field ceiling — unlocked at Loam
+depth record 55, while the tier-II hardness wall sits at depth 44.** The system
+that makes the crossing possible was locked behind the crossing.
+
+An active player passes 55 in minutes, so the gate read as a 45-minute beat and
+the code comment said so. An idle player sat at a tenth of ceiling income for
+**eight and a half hours**, forging a tier-II tool at a tenth of ceiling income,
+in order to unlock the machines that would have made the tool. Every downstream
+measurement — descent time-to-depth, drop rate, the whole idle/active ratio —
+was reading that one inversion and blaming a curve.
+
+So, before shipping any gate:
+
+- **Name what the unlock is FOR.** If a system exists to make some stretch of
+  the game passable, its gate must sit BEFORE that stretch, not inside it.
+- **Check the gate against both players.** A depth, a currency total or a
+  material count means two very different things to a hands-on player and an
+  idle one; pillar 1 says both paths must exist. A gate tuned on one is
+  untested, not fine.
+- **Look for the cycle.** Draw the arrow: bay needs depth 55 → depth 45 needs
+  tier II → tier II needs materials → materials need the bay. Any such loop is
+  a structural bug, not a balance number, and no amount of tuning opens it.
+
+The tell is a system whose whole purpose is to make progress possible, gated on
+progress. When you find one, the fix is ordering, not cost.
+
 ## Working rule: a sim result is a claim until the harness is verified
 Added A.42, after this failure bit three times in one session. The sim is the
 only instrument that can see pacing, which makes it the only instrument nobody
@@ -157,6 +186,15 @@ Three from A.40–A.41, each of which looked like a game problem and was not:
   ladder's floor recipe and then ran a whole shell on a 0.95 spread instead of
   1.15 — worth ~14% of the loam-floor beat. The sim was modelling a player who
   does not exist.
+- **The collapse rule that never asked what the reset costs (A.42, the fourth).**
+  It fired on "is the payout worth it" and never on "what do I lose". While the
+  drill bay opened late that was invisible — an idle player had no machines to
+  lose. The moment the bay opened early, the same rule collapsed **49 times at
+  depth 39**, wiping the drills each cycle, so the arm under measurement could
+  never keep the bay it had just unlocked and the fix measured as a regression.
+  A harness bug can make a correct change look wrong, not only a wrong one look
+  right — which is the more dangerous direction, because nobody re-checks a
+  negative result.
 
 So: before a sim number becomes a finding, verify the harness produced it for
 the reason you think. Ask what the policy does at the moment being measured,

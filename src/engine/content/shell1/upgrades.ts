@@ -25,11 +25,17 @@ const hasBay = (s: GameState) => s.drills.bayBuilt;
  * sits at depth 44 — so the unlock that ends the starvation is behind the gate
  * that the starvation makes unpassable.
  *
- * MEASURED, NOT FIXED (A.42): the value stays 55 pending a ruling; the sim can
- * override it (`--bay N`) so the alternative is a measurement rather than an
- * argument. See sim-out/descent-a42.md and the LEDGER row.
+ * FIXED at A.42 (ruled): **40**, below the wall. A structural unlock that the
+ * idle path depends on must never gate behind the wall it is required to cross
+ * — that is now a working rule in PILLARS.md, because this is its general form.
+ * 40 leaves margin under the wall and an idle player reaches depth-record 40
+ * inside the first hour on seepage alone, so the bay arrives before the stall
+ * instead of eight hours into it.
+ *
+ * The sim overrides it (`--bay N`) so the old ordering stays measurable rather
+ * than merely remembered. See sim-out/descent-a42.md.
  */
-export const BAY_DEPTH_UNLOCK = { depth: 55 };
+export const BAY_DEPTH_UNLOCK = { depth: 40 };
 
 export function registerShell1Upgrades(): void {
   // --- Face upgrades (reset on Collapse) ----------------------------------
@@ -137,7 +143,7 @@ export function registerShell1Upgrades(): void {
     // breached), the technique is yours in every shell.
     visible: (s) => hasKiln(s)
       && ((s.depthRecords['loam'] ?? 0) >= BAY_DEPTH_UNLOCK.depth || s.shell.breachCount > 0),
-    description: () => 'Rails, a winch, and a place to bolt down machines that dig while you think. The anchoring needed depth 55 to hold.',
+    description: () => `Rails, a winch, and a place to bolt down machines that dig while you think. The anchoring needed depth ${BAY_DEPTH_UNLOCK.depth} to hold.`,
     onPurchase: (s) => {
       s.drills.bayBuilt = true;
       if (s.drills.units.length === 0) s.drills.units.push(newDrill(defaultDrillName(0)));
