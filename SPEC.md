@@ -226,14 +226,35 @@ the surplus. Drill bay gate at depth-record 35. THE SETTLING on.
 | First upgrade | ~4 s | ~4 s | ~4 s | ✓ unaffected (pre-collapse) |
 | Kiln raised | ~4 min | ~30 min | **~3 min** | ✓ MEASURED — the 30 was the latch |
 | Drill Bay | ~50 min | idle ~60 min | **idle ~20 min** | ✓ MEASURED (opening CSV) |
-| Loam floor (d150), idle | 7.6–8.8 h | 3.6 h | pending the 12 h run | ? in flight |
-| Loam floor (d150), active | 7.6–8.8 h | ~1.9 h | pending the 12 h run | ? in flight |
+| Loam floor (d150), idle | 7.6–8.8 h | 3.6 h | **5.3 h** (316.6 m) | ✓ MEASURED (12 h, n=1) |
+| Loam floor (d150), active | 7.6–8.8 h | ~1.9 h | **5.3 h** (320.1 m) | ✓ MEASURED (12 h, n=1) |
 | d125, idle | — | 177 min | **144 min** | ✓ MEASURED |
 | d125, active | — | 74 min | **59 min** | ✓ MEASURED |
-| Collapse cadence | ~~4–12 min~~ VOID | ~25–35 min | **~31–47 min** | ✓ MEASURED — see below |
-| RTP, Collapse layer | ≤10% (one run at 30%) | 20% (n=2) | **9%** (n=1) | ✓ MEASURED — in band |
+| Collapse cadence | ~~4–12 min~~ VOID | ~25–35 min | **25.6 min idle (n=24), 14.3 active (n=37)** | ✓ MEASURED — idle IN the target band |
+| RTP, Collapse layer | ≤10% (one run at 30%) | 20% (n=2) | **idle 5% med / 10% worst (n=17); active 3% / 22% (n=29)** | ✓ MEASURED — in band, real samples |
 | RTP, Breach / Recursion / Spiral | — | no samples | no samples | ? UNMEASURED |
-| Everything below the Loam floor | see void table | — | — | ? UNMEASURED |
+| First Breach | — | — | **11.8 h** (705 m) | ✓ MEASURED (12 h, n=1) |
+| Everything below the Breach | see void table | — | — | ? UNMEASURED |
+
+**The deep end converges past the pillar, and it is the tier-III wall doing it**
+(12 h confirmation, n=1 per arm, `sim-out/a43/`):
+
+| depth | 25 | 50 | 100 | 120 | 130 | 140 | 150 |
+|---|---|---|---|---|---|---|---|
+| idle | 10 m | 84 | 92 | 129 | 135 | 149 | **316** |
+| active | 3 m | 11 | 26 | 46 | 80 | 152 | **320** |
+| R | 3.3 | 7.6 | 3.5 | 2.8 | 1.7 | 0.98 | **0.99** |
+
+The last ten depths cost idle 167 minutes and active 168 — identical, and they
+are most of both runs. Pillar 1 asks for convergence to ~1.3× by mid-game and
+this is 1.0 at a shell floor, so the SHAPE is right and slightly overshot; but
+the cause is not the economy converging, it is both arms parked at the same
+material wall (tier III wants pure-band umberjade/wormsteel). Active's own
+faster cadence works against it here — 37 collapses against idle's 24, each one
+paying the re-descent — so its 10× income advantage buys 1× frontier progress.
+**n=1 per arm.** A second seed is the cheapest thing that would make this mean
+something; until then it is one run, and one run has been an anecdote in this
+project twice.
 
 **Cadence moved and the ledgered trigger did not fire the way it predicted.**
 The A.42 row parked cadence with a trigger: "if the Kiln pass moves `f`,
