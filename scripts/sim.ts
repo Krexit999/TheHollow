@@ -307,6 +307,36 @@ const guildMetrics = { contractsDone: 0, contractScrip: 0, trades: 0, pillar2Max
  * that built it took; when the depth reaches that peak again, the ratio of the
  * two is one RTP sample.
  */
+/**
+ * THE CADENCE DECOMPOSITION (A.42 close-out follow-up).
+ *
+ * The collapse horizon is derived: a run pushes until the next step costs T
+ * seconds of income, cumulative descend cost is ~12x the final step, so the
+ * run should take ~12T. T=60s predicts ~12 minutes. It measures ~40.
+ *
+ * A model and a measurement that disagree by 3.3x are not a number that needs
+ * nudging — one of the model's assumptions is false. It has exactly two that
+ * can be, and this measures both rather than arguing about them:
+ *
+ *   INCOME IS CONSTANT. It is not: a Collapse wipes the face upgrades, so a
+ *   run starts poor and ends rich. The 12T arithmetic divides the whole
+ *   cost by the FINAL income while most of it was actually earned at less.
+ *   Predicted stretch factor: I_final / I_mean.
+ *
+ *   ALL INCOME BUYS DEPTH. It does not: the policy also buys Blade, Soil,
+ *   Roots and the rest. Only a fraction f of the run's earnings reaches the
+ *   stair. Predicted stretch factor: 1/f.
+ *
+ * If (I_final/I_mean) / f lands near 3.3, the model is fully explained and the
+ * cadence number was never wrong — the derivation was.
+ */
+const cadence = {
+  runStartSec: 0,
+  earnedAtStart: 0,
+  spentOnDescent: 0,
+  rows: [] as Array<{ len: number; earned: number; descent: number; iMean: number; iFinal: number }>,
+};
+
 const rtp = {
   /**
    * THE TOLERANCE. "Back to your prior peak" is a statement about position,
@@ -1491,7 +1521,9 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     (s.kiln.built || currentDescendCost(s, mods).lt(100))
   ) {
     mods.invalidate();
+    const paid = effectiveDescendCost(s, mods).toNumber();
     if (!engine.dispatch({ type: 'descend' }).ok) break;
+    cadence.spentOnDescent += paid; // what the stair actually took
   }
 
   // Collapse when the yield is worth the reset — the bar rises with lifetime
@@ -1556,8 +1588,29 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   if (!pushingForFloor && stalled && !holdForWall && gain >= Math.max(2, Math.min(12, earned * 0.25))) {
     const at = s.depth;
     const peak = Math.max(s.depth, s.shaft.reached);
+    // The TERMINAL ceiling, read before the reset wipes the face upgrades that
+    // made it. Reading it after is how the first cut of this instrument
+    // reported I_final/I_mean = 0.01x: it was comparing the run to the ruins.
+    const iFinal = dpsMax(s, mods).toNumber();
     if (engine.dispatch({ type: 'collapse' }).ok) {
       noteRtpCollapse(currentShell(s).id, peak, s.stats.playTimeSec);
+      {
+        const now = s.stats.playTimeSec;
+        const len = now - cadence.runStartSec;
+        const earned = (s.totals[chipCurrencyId(s)]?.toNumber() ?? 0) - cadence.earnedAtStart;
+        if (len > 0 && earned > 0) {
+          cadence.rows.push({
+            len,
+            earned,
+            descent: cadence.spentOnDescent,
+            iMean: earned / len,
+            iFinal,
+          });
+        }
+        cadence.runStartSec = now;
+        cadence.earnedAtStart = s.totals[chipCurrencyId(s)]?.toNumber() ?? 0;
+        cadence.spentOnDescent = 0;
+      }
       // Name the decision, not just the event: depth, payout, and the bar it
       // cleared. A log line that cannot explain its own choice is how the last
       // three harness artifacts survived a phase each.
@@ -2108,6 +2161,25 @@ function main(): void {
     `settle: soften ${SETTLE_TUNING.soften} cap ${SETTLE_TUNING.capSec}s quiet ${SETTLE_TUNING.quietSec}s ` +
       `floor ${SETTLE_TUNING.floor} | bank now ${(settleFill(engine.getState()) * 100).toFixed(0)}%`,
   );
+  {
+    const rows = cadence.rows.filter((r) => r.iFinal > 0 && r.iMean > 0);
+    if (rows.length === 0) {
+      console.error('cadence: no completed runs to decompose');
+    } else {
+      const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]!;
+      const lens = rows.map((r) => r.len / 60);
+      const growth = rows.map((r) => r.iFinal / r.iMean);   // income is NOT constant
+      const share = rows.map((r) => r.descent / r.earned);  // not all income buys depth
+      const g = med(growth), f = med(share);
+      console.error(
+        `cadence: ${rows.length} runs | median ${med(lens).toFixed(1)}m ` +
+          `(model 12xT = 12.0m at T=60s) | income growth within a run ` +
+          `I_final/I_mean = ${g.toFixed(2)}x | share of earnings spent on the stair ` +
+          `f = ${(f * 100).toFixed(0)}% | model x growth / share = ` +
+          `${(12 * g / Math.max(f, 1e-9)).toFixed(1)}m`,
+      );
+    }
+  }
   {
     const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
     const med = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)]!;

@@ -224,13 +224,30 @@ with drills in hand. Drill bay gate at depth-record 35. THE SETTLING on.
 | RTP, Breach / Recursion / Spiral | — | no samples yet | ? UNMEASURED |
 | Everything below the Loam floor | see void table | — | ? UNMEASURED |
 
-The collapse cadence is the one re-measured beat that is **out of its stated
-band**, and it has now been moved twice in one phase (300 s horizon → 2 collapses
-in 4 h; 60 s horizon → 3–6). The horizon is derived rather than picked — the
-cumulative descend cost is ~12× the final step, so a run that pushes until a
-step costs T seconds runs about 12T — but the derivation predicts ~12 min and
-the measurement says ~40, so something else is padding the run. Open, and
-deliberately not tuned a third time inside the phase that broke it.
+**The cadence beat, diagnosed.** Measured ~29 min for BOTH policies, against a
+stated 4–12. The 12T derivation was wrong, not the number, and it was wrong in
+two measurable ways (`sim-out/a42-cadence.md`):
+
+- **Income is not constant within a run.** A Collapse wipes the face upgrades,
+  so a run starts poor and ends rich; 12T divides the whole cost by the FINAL
+  income. Measured I_final/I_mean = **1.36× active, 1.53× idle**.
+- **Not all income buys depth**, and this is the bigger term. Only **f = 56%
+  (active) / 29% (idle)** of a run's earnings reach the stair; the rest goes to
+  Blade, Soil, Roots and the rest of the shop.
+
+Corrected: `run ≈ 12·T·(I_final/I_mean)/f`. For active that predicts **29.2 min**
+against a measured **29.2**. For idle it over-predicts (64 vs 27.7) because an
+idle run is ended by the shell floor or a wall before the horizon binds, and
+railed re-descent halves its cumulative factor.
+
+So the design's 4–12 min assumed a **descent-limited** run; this build's run is
+**shop-limited**. And the same reading arrives from the other end: the ladder
+wants 30–60 Collapses per shell and the Loam arc measures **7–11**. Cadence ~2.4×
+over its band, count ~4–6× under the ladder — one finding, not two: the Collapse
+loop runs fewer, longer cycles than designed.
+
+NOT TUNED. Nudging T would hide it (reaching 12 min needs T ≈ 25 s, a run that
+stops while the next step still costs half a minute). This wants its own pass.
 
 The old map follows, unchanged, as the record of what was believed.
 
