@@ -25,17 +25,18 @@ const hasBay = (s: GameState) => s.drills.bayBuilt;
  * sits at depth 44 — so the unlock that ends the starvation is behind the gate
  * that the starvation makes unpassable.
  *
- * FIXED at A.42 (ruled): **40**, below the wall. A structural unlock that the
+ * FIXED at A.42 (ruled): **35**, below the wall. A structural unlock that the
  * idle path depends on must never gate behind the wall it is required to cross
  * — that is now a working rule in PILLARS.md, because this is its general form.
- * 40 leaves margin under the wall and an idle player reaches depth-record 40
- * inside the first hour on seepage alone, so the bay arrives before the stall
- * instead of eight hours into it.
+ * 35 leaves margin under the wall AND lands before the d15-45 stretch where
+ * the ratio still peaked at 7.4 with the gate at 40 — the residual was the
+ * same shape as the bug, one gate lower: R peaks immediately before whatever
+ * depth the bay waits at, because that is the last of the seepage-only run.
  *
  * The sim overrides it (`--bay N`) so the old ordering stays measurable rather
  * than merely remembered. See sim-out/descent-a42.md.
  */
-export const BAY_DEPTH_UNLOCK = { depth: 40 };
+export const BAY_DEPTH_UNLOCK = { depth: 35 };
 
 export function registerShell1Upgrades(): void {
   // --- Face upgrades (reset on Collapse) ----------------------------------

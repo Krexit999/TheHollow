@@ -70,6 +70,7 @@ export function applyOfflineProgress(
   const chipId = chipCurrencyId(state);
   let dust = D(0);
   let xp = D(0);
+  let harvestedCharge = 0; // pillar-2 numerator, charge domain
   const throughput = drillThroughput(state, mods); // charge/sec the bay wants
   if (state.drills.bayBuilt && throughput > 0) {
     const ceiling = cells.length * regen; // pillar 2: the hard ceiling
@@ -78,6 +79,7 @@ export function applyOfflineProgress(
     dust = chipYield(state, mods).mul(harvested);
     addCurrency(state, chipId, dust);
     state.stats.totalChargeChipped = state.stats.totalChargeChipped.add(harvested);
+    harvestedCharge = harvested;
     // Same XP-per-charge formula the live drills use.
     xp = D(0.12 * (1 + 0.08 * state.depth) * (harvested / 8));
   } else {
@@ -90,11 +92,16 @@ export function applyOfflineProgress(
         overflow += regen * Math.max(0, seconds - fillSec);
       }
       if (overflow > 0) {
-        dust = chipYield(state, mods).mul(overflow * SEEP_EFFICIENCY * strength * eff);
+        harvestedCharge = overflow * SEEP_EFFICIENCY * strength * eff;
+        dust = chipYield(state, mods).mul(harvestedCharge);
         addCurrency(state, chipId, dust);
       }
     }
   }
+
+  // Both branches above are field harvest, so both feed the pillar-2 numerator.
+  // Charge, not currency — no yield multiplier can inflate it.
+  state.stats.fieldChargeHarvested = state.stats.fieldChargeHarvested.add(harvestedCharge);
 
   // --- 3. The converter eats from the bank + fresh income. ----------------
   let brick = D(0);

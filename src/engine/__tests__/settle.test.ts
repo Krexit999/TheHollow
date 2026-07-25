@@ -239,6 +239,29 @@ describe('a structural unlock never gates behind the wall it is needed to cross'
   });
 });
 
+describe('the pillar-2 numerator counts the FIELD and nothing else', () => {
+  // Pillar 2's gate compared TOTAL chip income against the field ceiling, so
+  // every coin the Guild paid read as the field over-producing and the gate
+  // could not fail honestly. `fieldChargeHarvested` is the numerator it needs:
+  // CHARGE, so no yield multiplier can inflate it, and field paths only.
+  it('a manual chip adds the charge it took, in the charge domain', () => {
+    const { engine, s } = fresh();
+    const before = s().stats.fieldChargeHarvested.toNumber();
+    expect(engine.dispatch({ type: 'chip', cell: 0 }).ok).toBe(true);
+    const after = s().stats.fieldChargeHarvested.toNumber();
+    expect(after).toBeGreaterThan(before);
+    // Charge, not dust: it tracks totalChargeChipped for a struck cell.
+    expect(after).toBeCloseTo(s().stats.totalChargeChipped.toNumber(), 6);
+  });
+
+  it('chip currency arriving from any OTHER purse does not touch it', () => {
+    const { engine, s } = fresh();
+    const before = s().stats.fieldChargeHarvested.toNumber();
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e6 });
+    expect(s().stats.fieldChargeHarvested.toNumber()).toBe(before);
+  });
+});
+
 describe('the save carries it', () => {
   it('v23 migrates to a fresh, empty bank', () => {
     const payload = runMigrations({

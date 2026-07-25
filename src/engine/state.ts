@@ -143,6 +143,7 @@ export function initialState(nowMs: number): GameState {
       manualChips: 0,
       drillStrikes: 0,
       totalChargeChipped: D(0),
+      fieldChargeHarvested: D(0),
       bricksFired: D(0),
       upgradesBought: 0,
       descents: 0,

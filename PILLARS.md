@@ -169,6 +169,27 @@ So, before shipping any gate:
 The tell is a system whose whole purpose is to make progress possible, gated on
 progress. When you find one, the fix is ordering, not cost.
 
+## EVERY PACING NUMBER MEASURED BEFORE A.42 IS VOID
+Not "suspect" — void. The sim's collapse policy fired at the first profitable
+depth (40) instead of when a run stopped making ground, so **every run in this
+project's history reset four steps short of Loam's first hardness wall**, over
+and over, for both policies. It was not an idle-only distortion: correcting the
+rule moved the ACTIVE player's Loam-floor beat from ~490 minutes to ~115.
+
+That policy produced the numbers in SPEC.md's pacing map, in BUILD_LOG's phase
+reports, and in the "settled" active family this project has quoted for several
+phases. They measured a player who does not exist. The map's own marks — ✓
+MEASURED, ≈ DERIVED, ? UNMEASURED — are all downgraded by one: a ✓ from before
+A.42 means "measured against a broken policy", which is weaker than derived.
+
+Re-baselining is in flight (`sim-out/descent-a42.md` and the A.42 ledger rows).
+Until a row carries a post-A.42 reading, do not quote it, do not tune against
+it, and do not treat a discrepancy with it as a regression.
+
+The general lesson is the one below, in its most expensive form: the harness had
+been wrong the whole time, and every green number it produced agreed with every
+other green number it produced.
+
 ## Working rule: a sim result is a claim until the harness is verified
 Added A.42, after this failure bit three times in one session. The sim is the
 only instrument that can see pacing, which makes it the only instrument nobody

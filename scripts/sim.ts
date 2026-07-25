@@ -52,7 +52,7 @@ import { translationFee, FRAGMENTS } from '../src/engine/guild/sable';
 import { CARAVAN_ROUTES, drift } from '../src/engine/guild/caravan';
 import { TITLE_BY_ID } from '../src/engine/guild/titles';
 import { hiredCount } from '../src/engine/guild/hirelings';
-import { dpsMax } from '../src/engine/systems/face';
+import { dpsMax, cellRegen } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
 import { arrayUnlocked, openRows, ARRAY_SIZE } from '../src/engine/content/shell5/emberArray';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
@@ -308,9 +308,20 @@ const guildMetrics = { contractsDone: 0, contractScrip: 0, trades: 0, pillar2Max
  * two is one RTP sample.
  */
 const rtp = {
+  /**
+   * THE TOLERANCE. "Back to your prior peak" is a statement about position,
+   * not about a single integer. The corrected collapse policy resets AT the
+   * run's maximum, so demanding the exact same depth again is the hardest bar
+   * the measure could pick — two 12h idle arms read NO RETURNS while cycling
+   * at 144–149 of 150, which is back by any reading a player would recognise.
+   */
+  tolerance: 0.95,
   /** Recovery ÷ the time it ORIGINALLY took to first stand at that depth.
    *  This is pillar 6 read literally ("the original time"). */
   vsOriginal: [] as number[],
+  /** Samples per reset layer, so pillar 6 is answered for all four and not
+   *  just the one a 12h run happens to exercise. */
+  byLayer: {} as Record<string, number[]>,
   /** Recovery ÷ the length of the run that just ended. The steady-state
    *  reading: how much of each cycle is spent re-treading rather than digging.
    *  Reported alongside because the two answer different questions and only
@@ -319,7 +330,9 @@ const rtp = {
   runStartSec: 0,
   /** First time the player ever stood at each depth, per shell. */
   firstAt: {} as Record<string, Record<number, number>>,
-  pending: null as { peak: number; at: number; runLen: number; original: number } | null,
+  pending: null as
+    | { peak: number; at: number; runLen: number; original: number; layer: string }
+    | null,
 };
 
 /**
@@ -336,7 +349,14 @@ function noteRtpDepth(shell: string, record: number, sec: number): void {
   }
 }
 
-function noteRtpCollapse(shell: string, peak: number, sec: number): void {
+/**
+ * A reset happened. `layer` is the reset ladder rung ('collapse' | 'breach' |
+ * 'recursion' | 'spiral'); `shell` is the shell the player LANDS in, so a
+ * Breach or a Recursion measures the climb back in the world it dropped you
+ * into, capped at that world's floor — the comparable milestone when the old
+ * peak's shell no longer exists to return to.
+ */
+function noteRtpCollapse(shell: string, peak: number, sec: number, layer = 'collapse'): void {
   const runLen = sec - rtp.runStartSec;
   rtp.runStartSec = sec;
   const original = rtp.firstAt[shell]?.[peak] ?? 0;
@@ -348,16 +368,17 @@ function noteRtpCollapse(shell: string, peak: number, sec: number): void {
   if (rtp.pending) return;
   // A run that built nothing has no peak to return to.
   rtp.pending = peak > 0 && runLen > 0 && original > 0
-    ? { peak, at: sec, runLen, original }
+    ? { peak, at: sec, runLen, original, layer }
     : null;
 }
 
 function noteRtpTick(shell: string, record: number, depth: number, sec: number): void {
   noteRtpDepth(shell, record, sec);
   const p = rtp.pending;
-  if (p && depth >= p.peak) {
+  if (p && depth >= p.peak * rtp.tolerance) {
     rtp.vsOriginal.push((sec - p.at) / p.original);
     rtp.vsRun.push((sec - p.at) / p.runLen);
+    (rtp.byLayer[p.layer] ??= []).push((sec - p.at) / p.original);
     rtp.pending = null;
   }
 }
@@ -1409,8 +1430,17 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   // The Breach: fall through once the shell has paid out (~500+ cores this
   // breach -> 3 Echoes; DESIGN expects ~800 earned across Shell I).
   if (canBreach(s) && s.shell.coresEarnedThisBreach.gte(500)) {
+    const peakBefore = Math.max(s.depth, s.shaft.reached);
+    const recursionsBefore = s.recursion.count;
     const result = engine.dispatch({ type: 'breach' });
     if (result.ok) {
+      // The old shell is gone, so "return to prior peak" is measured as the
+      // climb back to the same depth in the world you land in, capped at that
+      // world's floor. A Breach that rolls the Recursion is logged as the
+      // deeper rung — the ladder's cost is the rung you actually paid.
+      const landed = currentShell(s);
+      const layer = s.recursion.count > recursionsBefore ? 'recursion' : 'breach';
+      noteRtpCollapse(landed.id, Math.min(peakBefore, landed.floorDepth), s.stats.playTimeSec, layer);
       log(`*** BREACH -> ${s.shell.current.toUpperCase()} | echoes ${fmt(s.currencies['echo']!)} ***`);
     }
   }
@@ -1510,7 +1540,17 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   //      behaviour, preserved exactly.
   const walled = equippedTool(s).tier < requiredTier(s, s.depth + 1);
   const atFloor = s.depth >= currentShell(s).floorDepth;
-  const canPush = effectiveDescendCost(s, mods).lte(dpsMax(s, mods).mul(300));
+  // THE HORIZON IS DERIVED, NOT PICKED. A run ends when the next step has
+  // slowed to a crawl; "a crawl" is one minute of ceiling income. That number
+  // is not taste: the cumulative descend cost is ~12× the final step (PILLARS,
+  // the cost-curve note), so a run that pushes until a step costs T seconds
+  // takes about 12T end to end. T = 60s puts the Collapse cadence at ~12
+  // minutes, the top of the reset ladder's stated 4–12 min band. At the 300s
+  // this first shipped with, runs ran an hour and a 4h sim collapsed TWICE
+  // against a design of 30–60 per shell — the opposite failure to the rule it
+  // replaced, and just as invisible without the cadence written down.
+  const RUN_END_HORIZON_SEC = 60;
+  const canPush = effectiveDescendCost(s, mods).lte(dpsMax(s, mods).mul(RUN_END_HORIZON_SEC));
   const stalled = walled || atFloor || !canPush;
   const holdForWall = walled && s.drills.units.length > 0;
   if (!pushingForFloor && stalled && !holdForWall && gain >= Math.max(2, Math.min(12, earned * 0.25))) {
@@ -1883,6 +1923,7 @@ function main(): void {
   let snapDueSec = 0; // 0 = not armed, >0 = due at that sec, -1 = written
   let p2PrevManual = 0;
   let p2PrevCollapses = 0;
+  let p2PrevStored = 0;
   let p2CeilingIntegral = 0;
   let p2PrevCeiling = 0;
   // Hourly-diag deltas (realized income + the green ledger).
@@ -1893,6 +1934,10 @@ function main(): void {
   // THE DESCENT INSTRUMENT: first-arrival time per depth record, per shell.
   const depthRows: string[] = ['shell,depth,sec'];
   const seenRecord: Record<string, number> = {};
+  // BEATS READ THE DEPTH RECORD, NOT THE LIVE DEPTH (A.42). They sampled
+  //  once a second; the corrected collapse policy resets ON ARRIVAL at
+  // the floor, so the sample almost never caught it and 'loam floor' reported
+  // hundreds of minutes late or never while the depth log showed the arrival.
   for (let sec = 1; sec <= totalSec; sec++) {
     const s = engine.getState();
     // balanced: fully active for the first hour AND for 45 min after a
@@ -1915,9 +1960,9 @@ function main(): void {
     }
     if (sec % 2 === 0) shop(engine, args.quiet ? () => {} : log);
     if (sec % logEverySec === 0) snapshot();
-    if (!beats.tLoamFloor && s.shell.current === 'loam' && s.depth >= 150) beats.tLoamFloor = sec;
+    if (!beats.tLoamFloor && (s.depthRecords['loam'] ?? 0) >= 150) beats.tLoamFloor = sec;
     if (!beats.tBreach && s.shell.breachCount > 0) beats.tBreach = sec;
-    if (!beats.tFerrite150 && s.shell.current === 'ferrite' && s.depth >= 150) beats.tFerrite150 = sec;
+    if (!beats.tFerrite150 && (s.depthRecords['ferrite'] ?? 0) >= 150) beats.tFerrite150 = sec;
     if (!beats.tGuild && s.guild.discovered) beats.tGuild = sec;
     // Hourly diagnosis: where does the time go? Income vs the descend curve,
     // and whether the Collapse ladder (core tree) has saturated.
@@ -1972,11 +2017,11 @@ function main(): void {
       snapDueSec = -1;
     }
     if (!beats.tBreach2 && s.shell.breachCount >= 2) beats.tBreach2 = sec;
-    if (!beats.tVerd150 && s.shell.current === 'verdance' && s.depth >= 150) beats.tVerd150 = sec;
+    if (!beats.tVerd150 && (s.depthRecords['verdance'] ?? 0) >= 150) beats.tVerd150 = sec;
     if (!beats.tBreach3 && s.shell.breachCount >= 3) beats.tBreach3 = sec;
-    if (!beats.tGlass150 && s.shell.current === 'glassmere' && s.depth >= 150) beats.tGlass150 = sec;
+    if (!beats.tGlass150 && (s.depthRecords['glassmere'] ?? 0) >= 150) beats.tGlass150 = sec;
     if (!beats.tBreach4 && s.shell.breachCount >= 4) beats.tBreach4 = sec;
-    if (!beats.tCinder150 && s.shell.current === 'cinder' && s.depth >= 150) beats.tCinder150 = sec;
+    if (!beats.tCinder150 && (s.depthRecords['cinder'] ?? 0) >= 150) beats.tCinder150 = sec;
     if (!beats.tBreach5 && s.shell.breachCount >= 5) beats.tBreach5 = sec;
     if (!beats.tBreach6 && s.shell.breachCount >= 6) beats.tBreach6 = sec;
     if (!beats.tFaceWhole && s.shell.current === 'hollow' && s.hollow.rebuilt.length >= s.face.cells.length) beats.tFaceWhole = sec;
@@ -1985,10 +2030,20 @@ function main(): void {
     // Pillar-2: integrate the ceiling every second (depth and buckets move —
     // collapses inside a window must not fake a violation), then compare
     // earned vs ∫ceiling over untouched 10-min windows.
-    p2CeilingIntegral += dpsMax(s, mods).toNumber();
+    // The pillar-2 denominator is the CHARGE the field can produce this second
+    // (cells x regen) — the ceiling as pillar 2 states it. It used to be dpsMax,
+    // which folds in every yield multiplier, so a crit or a Blade level moved
+    // both sides of the comparison and the ratio measured noise.
+    p2CeilingIntegral += s.face.cells.length * cellRegen(s, mods);
     if (sec % 600 === 0) {
       const chipId = chipCurrencyId(s);
-      const total = s.totals[chipId]?.toNumber() ?? 0;
+      // THE NUMERATOR IS FIELD INCOME, NOT ALL INCOME (A.42).
+      // This read `totals[chipId]` — every coin the Guild paid counted as the
+      // field over-producing, so a 12h idle run showed windows above 100% with
+      // nothing wrong and the pillar's gate could not fail honestly. Contracts,
+      // caravan trades, expedition hauls and wells are other purses; pillar 2
+      // is a claim about the FIELD bounding FIELD income.
+      const total = s.stats.fieldChargeHarvested.toNumber();
       const untouched = s.stats.manualChips === p2PrevManual;
       const ceilingWindow = p2CeilingIntegral - p2PrevCeiling;
       // A WINDOW THAT STRADDLES A COLLAPSE CANNOT BE READ (A.42).
@@ -2002,9 +2057,20 @@ function main(): void {
       // gate could no longer fail honestly. Skipped, and COUNTED — a dropped
       // sample that nobody reports is how a green number stops meaning
       // anything.
+      // STORED CHARGE IS PART OF THE SUPPLY, SO IT IS PART OF THE DENOMINATOR.
+      // The face holds cells x cap in storage. A window that starts fuller
+      // than it ends is spending that store, and harvest legitimately
+      // exceeds regen for its length. The harness has always known this --
+      // its own note said storage drains ride above -- and has always
+      // compared against regen alone anyway, so the gate read 101-102% with
+      // nothing wrong and could not fail honestly. Supply = regen produced +
+      // storage drained. Above 1.0 now means charge came from nowhere, which
+      // is the only thing pillar 2 actually forbids.
+      const stored = s.face.cells.reduce((x: number, y: number) => x + y, 0);
+      const drained = Math.max(0, p2PrevStored - stored);
       const straddled = s.collapse.count !== p2PrevCollapses;
       if (untouched && !straddled && p2PrevChip === chipId && p2PrevTotal > 0 && ceilingWindow > 0) {
-        const ratio = (total - p2PrevTotal) / ceilingWindow;
+        const ratio = (total - p2PrevTotal) / (ceilingWindow + drained);
         guildMetrics.pillar2Max = Math.max(guildMetrics.pillar2Max, ratio);
         if (ratio > 1) guildMetrics.pillar2Over += 1;
         guildMetrics.pillar2Samples += 1;
@@ -2016,6 +2082,7 @@ function main(): void {
       p2PrevManual = s.stats.manualChips;
       p2PrevCeiling = p2CeilingIntegral;
       p2PrevCollapses = s.collapse.count;
+      p2PrevStored = stored;
     }
   }
   const wallMs = Date.now() - started;
@@ -2048,8 +2115,12 @@ function main(): void {
     console.error(
       rtp.vsOriginal.length === 0
         ? 'RTP (pillar 6): NO RETURNS — no reset peak was regained this run'
-        : `RTP (pillar 6, want <=20-25% of the ORIGINAL time): median ` +
+        : `RTP (pillar 6, want <=20-25% of the ORIGINAL time; back = ` +
+          `${(rtp.tolerance * 100).toFixed(0)}% of peak): median ` +
           `${pct(med(rtp.vsOriginal))} worst ${pct(worst(rtp.vsOriginal))} | ` +
+          `by layer ${['collapse', 'breach', 'recursion', 'spiral']
+            .map((l) => `${l} ${rtp.byLayer[l]?.length ? `${pct(med(rtp.byLayer[l]!))} (n=${rtp.byLayer[l]!.length})` : 'no samples'}`)
+            .join(', ')} | ` +
           `share of the following run spent re-treading: median ${pct(med(rtp.vsRun))} | ` +
           `${rtp.vsOriginal.length} returns${rtp.pending ? ", 1 peak still unregained at the end" : ""}` +
           `${rtp.pending ? ' | 1 peak never regained by the end' : ''}`,
@@ -2103,7 +2174,7 @@ function main(): void {
       `(wearing ${s.guild.titles.equipped ?? 'none'}) | road trades ${guildMetrics.trades} | ` +
       `quests ${Object.values(s.guild.npcs).reduce((a, n) => a + n.questStep, 0)} steps | rerolls ${guildMetrics.rerolls} | ` +
       (guildMetrics.pillar2Samples > 0
-        ? `PILLAR 2 idle income/ceiling: max ${(guildMetrics.pillar2Max * 100).toFixed(0)}%, ` +
+        ? `PILLAR 2 idle CHARGE harvested / (regen + storage drained): max ${(guildMetrics.pillar2Max * 100).toFixed(0)}%, ` +
           `${guildMetrics.pillar2Over}/${guildMetrics.pillar2Samples} windows >100% ` +
           `(${guildMetrics.pillar2Straddled} skipped: straddled a Collapse and cannot be read)`
         : 'PILLAR 2: no untouched windows this policy — see the idle run'),

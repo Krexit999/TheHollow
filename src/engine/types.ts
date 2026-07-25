@@ -857,6 +857,18 @@ export interface GameState {
     manualChips: number;
     drillStrikes: number;
     totalChargeChipped: Decimal;
+    /**
+     * CHARGE taken out of the rock by every field path — manual chips,
+     * drills, seepage, offline harvest. Charge, not currency, on purpose.
+     *
+     * Pillar 2 says field regen is the hard ceiling on income. Until A.42 the
+     * only instrument for it compared TOTAL chip income against the field
+     * ceiling, so every coin the Guild paid read as the field over-producing:
+     * a 12h idle run showed windows above 100% with nothing wrong, and the
+     * pillar's gate could no longer fail honestly. This is the numerator that
+     * gate actually needs. Lifetime; never resets.
+     */
+    fieldChargeHarvested: Decimal;
     bricksFired: Decimal;
     upgradesBought: number;
     descents: number;

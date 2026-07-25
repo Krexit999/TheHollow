@@ -119,7 +119,12 @@ export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
     const strength = seepStrength(state);
     if (strength > 0) {
       const collected = overflow * SEEP_EFFICIENCY * strength;
-      addCurrency(state, chipCurrencyId(state), chipYield(state, mods).mul(collected));
+      const seeped = chipYield(state, mods).mul(collected);
+      addCurrency(state, chipCurrencyId(state), seeped);
+      // Seepage is field harvest (it rolls drops like any other), so it counts
+      // toward the pillar-2 numerator. It does NOT count as charge CHIPPED —
+      // nothing struck the rock — which is why the two stats differ.
+      state.stats.fieldChargeHarvested = state.stats.fieldChargeHarvested.add(collected);
       // Seepage is harvest: it rolls drops (and, faintly, encounters) like
       // any harvest — this is what lets a fully idle player forge past the
       // hardness walls instead of deadlocking at them (pillar 1).
@@ -216,6 +221,7 @@ export function harvestCell(
     addCurrency(state, deep.currencyId, D(charge * deep.perCharge));
   }
   state.stats.totalChargeChipped = state.stats.totalChargeChipped.add(charge);
+  state.stats.fieldChargeHarvested = state.stats.fieldChargeHarvested.add(charge); // pillar-2
   return { dust, charge };
 }
 

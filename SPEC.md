@@ -192,9 +192,47 @@ Token, Axiom Fragment, Sigil
 
 ## Pacing map (Phase 13 — the honest one)
 
-This map has been re-baselined three times and the previous version still
-carried fiction. This is what the build actually does, with every number marked
-by how it was obtained. It supersedes every earlier map in this document.
+> **⚠ VOID AS OF A.42. DO NOT QUOTE THESE NUMBERS.**
+>
+> Every ✓ MEASURED mark below was obtained from a sim whose collapse policy
+> fired at the first profitable depth (40) rather than when a run stopped making
+> ground — so every run reset four steps short of Loam's first hardness wall,
+> repeatedly, for both the idle and the active policy. Correcting it moved the
+> ACTIVE Loam-floor beat from ~490 minutes to ~115. The map is not off by a
+> little; its instrument was measuring a player who does not exist.
+>
+> Re-baselining is under way — see `sim-out/descent-a42.md`, the A.42 ledger
+> rows, and the re-measured table below this one. Rows without a post-A.42
+> reading are unknown, not approximate. See PILLARS.md, "every pacing number
+> measured before A.42 is void".
+
+### Re-measured against the corrected harness (A.42, in progress)
+
+Corrected policy: collapse only when the run is stalled (walled / at the floor /
+next step over a one-minute horizon of ceiling income) and never while walled
+with drills in hand. Drill bay gate at depth-record 35. THE SETTLING on.
+
+| Beat | Pre-A.42 (void) | Re-measured | Confidence |
+|---|---|---|---|
+| First upgrade | ~4 s | ~4 s | ✓ unaffected (pre-collapse) |
+| Kiln raised | ~4 min | ~30 min | ✓ MEASURED (A.42 short runs) |
+| Drill Bay | ~50 min | idle ~60 min at the gate | ✓ MEASURED |
+| Loam floor (d150), idle | 7.6–8.8 h | **3.6 h** (217 m, 3 seeds, gate 40) | ✓ MEASURED |
+| Loam floor (d150), active | 7.6–8.8 h | **~1.9 h** (115 m, 3 seeds, gate 40) | ✓ MEASURED |
+| Collapse cadence | 4–12 min | ~40 min (3–6 per 4 h) | ✓ MEASURED — **out of band, open** |
+| RTP, Collapse layer | ≤10% (one run at 30%) | **20%** (n=2, 95%-of-peak tolerance) | ✓ MEASURED — in band |
+| RTP, Breach / Recursion / Spiral | — | no samples yet | ? UNMEASURED |
+| Everything below the Loam floor | see void table | — | ? UNMEASURED |
+
+The collapse cadence is the one re-measured beat that is **out of its stated
+band**, and it has now been moved twice in one phase (300 s horizon → 2 collapses
+in 4 h; 60 s horizon → 3–6). The horizon is derived rather than picked — the
+cumulative descend cost is ~12× the final step, so a run that pushes until a
+step costs T seconds runs about 12T — but the derivation predicts ~12 min and
+the measurement says ~40, so something else is padding the run. Open, and
+deliberately not tuned a third time inside the phase that broke it.
+
+The old map follows, unchanged, as the record of what was believed.
 
 **How to read the marks.** ✓ MEASURED = observed in a sim run or a timed
 playthrough of this build. ≈ DERIVED = computed from measured segments that were

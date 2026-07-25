@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 24;
+export const SAVE_VERSION = 25;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -553,6 +553,18 @@ export const MIGRATIONS: Record<number, Migration> = {
     shaft['settleChips'] ??= 0;
     shaft['settleQuietSec'] ??= 0;
     return { ...p, version: 24, state };
+  },
+
+  // v24 -> v25 — the pillar-2 numerator (`stats.fieldChargeHarvested`).
+  // CHARGE taken by the field, apart from every purse and every multiplier. An existing save
+  // starts it at 0 rather than back-filling: the stat is a rate instrument
+  // read over windows, and a fabricated lifetime total would be worse than an
+  // honest zero that starts counting now.
+  24: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const stats = (state['stats'] ??= {}) as Record<string, unknown>;
+    stats['fieldChargeHarvested'] ??= 0;
+    return { ...p, version: 25, state };
   },
 };
 
