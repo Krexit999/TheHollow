@@ -98,6 +98,11 @@ interface Args {
    *  shipped 55 sits BEHIND the tier-II wall at 44; this makes the alternative
    *  a measurement instead of an argument. */
   bay: number | null;
+  /** Attribute every dust gained to the action that paid it (A.44 A0). */
+  income: boolean;
+  /** What the run-end horizon sizes pushing power against. `field` is the
+   *  pre-A.44 basis, kept so both arms come from ONE binary, one flag apart. */
+  horizon: 'income' | 'field';
 }
 
 function parseArgs(): Args {
@@ -133,6 +138,8 @@ function parseArgs(): Args {
     depthLog: get('depthlog') ?? null,
     settle: get('settle') ?? null,
     commons: argv.includes('--commons'),
+    income: argv.includes('--income'),
+    horizon: (get('horizon') ?? 'income') as 'income' | 'field',
     opening: get('opening') ?? null,
     bay: get('bay') !== undefined ? Number(get('bay')) : null,
   };
@@ -144,6 +151,38 @@ function parseArgs(): Args {
 // ---------------------------------------------------------------------------
 
 let combatPolicy: Args['combat'] = 'competent';
+
+// ---------------------------------------------------------------------------
+// THE INCOME INSTRUMENT (A.44 A0) — what a frontier minute is actually short of
+// ---------------------------------------------------------------------------
+/**
+ * The hourly diag reported `realized%` as `Δtotals[chip] / Δp2CeilingIntegral`
+ * and the two are not the same UNIT. A.42 corrected the pillar-2 denominator to
+ * charge (`cells × regen`, sim.ts:2164) and never touched this second reader, so
+ * the diag has been dividing DUST by CHARGE ever since: every yield multiplier
+ * (Blade, crits, temper) inflates the numerator alone. That is the 200–970%
+ * readings — roughly ~10x from non-field income and ~100x from the unit slip,
+ * multiplied. It is the same defect as A.42 cause #2, in a second code path,
+ * and it is the SEVENTH time an unverified harness produced a confident number.
+ *
+ * Three honest readings replace the one dishonest one:
+ *   field%     charge ÷ charge, field-only — the pillar-2 measure, reused
+ *   income/s   Δtotals[chip] ÷ window — every purse, which is what a player
+ *              actually has to spend on the stair
+ *   non-field  income/s minus what the field paid, attributed BY SOURCE with
+ *              --income (the commons-ledger pattern, one choke point)
+ *
+ * And the reading that changes behaviour: the run-end horizon below asked
+ * whether the next step costs more than 60s of CEILING income, i.e. it sized a
+ * run's pushing power by the field alone while ~90% of deep income comes from
+ * elsewhere. `--horizon field` keeps the old basis so the two arms are one
+ * flag apart (a baseline measured by different code is not a baseline).
+ */
+let horizonBasis: 'income' | 'field' = 'income';
+/** Measured total income, dust/sec, EMA over ~2 minutes. 0 = no history yet. */
+let measuredIncomeRate = 0;
+/** Per-source income attribution, `--income` only. */
+const incomeLedger: Record<string, number> = {};
 
 function fightManually(engine: Engine, s: GameState): void {
   const optimal = combatPolicy === 'optimal';
@@ -1607,8 +1646,21 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   // this first shipped with, runs ran an hour and a 4h sim collapsed TWICE
   // against a design of 30–60 per shell — the opposite failure to the rule it
   // replaced, and just as invisible without the cadence written down.
+  //
+  // A.44 A0: the horizon was measured against `dpsMax` — the FIELD ceiling —
+  // while a deep run's actual purse is ~10x that (Guild, wells, warrens,
+  // geodes, sales). So "the next step costs more than a minute of income"
+  // fired while the run still had ten minutes of real income in hand, and the
+  // collapse→re-tread→push-1-3-depths loop that reads as the deep-end crawl
+  // was partly the harness declaring a stall that had not happened. The basis
+  // is now MEASURED total income, with the field ceiling as the fallback until
+  // the EMA has history (the first seconds of a run, and every reset).
   const RUN_END_HORIZON_SEC = 60;
-  const canPush = effectiveDescendCost(s, mods).lte(dpsMax(s, mods).mul(RUN_END_HORIZON_SEC));
+  const horizonRate =
+    horizonBasis === 'income' && measuredIncomeRate > 0
+      ? D(measuredIncomeRate)
+      : dpsMax(s, mods);
+  const canPush = effectiveDescendCost(s, mods).lte(horizonRate.mul(RUN_END_HORIZON_SEC));
   const stalled = walled || atFloor || !canPush;
   const holdForWall = walled && s.drills.units.length > 0;
   if (!pushingForFloor && stalled && !holdForWall && gain >= Math.max(2, Math.min(12, earned * 0.25))) {
@@ -1711,6 +1763,42 @@ function installCommonsLedger(engine: Engine): void {
   };
 }
 
+/**
+ * THE INCOME LEDGER (A.44 A0) — attribute every dust gained to the action that
+ * paid it, so "non-field income" stops being a subtraction and becomes a list.
+ * Same choke-point pattern as the commons ledger: one wrapper, no per-call-site
+ * bookkeeping to drift. Off unless asked for.
+ *
+ * A Breach changes the chip currency, so a window that straddles one compares
+ * two different purses — those samples are dropped rather than counted wrong.
+ */
+function installIncomeLedger(engine: Engine): void {
+  const rawDispatch = engine.dispatch.bind(engine);
+  const rawTick = engine.tick.bind(engine);
+  const purse = (): { id: string; total: number } => {
+    const s = engine.getState() as GameState;
+    const id = chipCurrencyId(s);
+    return { id, total: s.totals[id]?.toNumber() ?? 0 };
+  };
+  const note = (label: string, before: { id: string; total: number }): void => {
+    const after = purse();
+    if (after.id !== before.id) return; // straddled a Breach — unreadable
+    const d = after.total - before.total;
+    if (d > 0) incomeLedger[label] = (incomeLedger[label] ?? 0) + d;
+  };
+  (engine as { dispatch: Engine['dispatch'] }).dispatch = (action) => {
+    const before = purse();
+    const r = rawDispatch(action);
+    note(action.type, before);
+    return r;
+  };
+  (engine as { tick: Engine['tick'] }).tick = (dt) => {
+    const before = purse();
+    rawTick(dt);
+    note('tick (seepage + drills + converters)', before);
+  };
+}
+
 function main(): void {
   const args = parseArgs();
   const engine = createEngine({ nowMs: 0 });
@@ -1721,6 +1809,8 @@ function main(): void {
   // choke point, no per-call-site bookkeeping to drift. Off unless asked for —
   // it is four counter reads per dispatch and per tick.
   if (args.commons) installCommonsLedger(engine);
+  if (args.income) installIncomeLedger(engine);
+  horizonBasis = args.horizon;
   const totalSec = Math.round(args.hours * 3600);
   const logEverySec = Math.max(1, Math.round(args.logMin * 60));
 
@@ -2008,6 +2098,10 @@ function main(): void {
   // Hourly-diag deltas (realized income + the green ledger).
   let diagPrevTotal = 0;
   let diagPrevCeiling = 0;
+  let diagPrevFieldCharge = 0;
+  // The measured-income EMA that the run-end horizon now reads (A.44 A0).
+  let incPrevTotal = 0;
+  let incPrevChip = '';
   let diagPrevHarvest = 0;
   let diagPrevDrip = 0;
   // THE OPENING ARC INSTRUMENT (A.43 A1). One row a minute: what the field
@@ -2103,13 +2197,23 @@ function main(): void {
         return def && lv >= def.maxLevel;
       }).length;
       const bladeLv = s.upgrades['blade'] ?? 0;
-      // Realized vs ceiling over the past hour (the sag detector), plus the
-      // green ledger while in Verdance: how much of the face is vined, and
-      // which route (harvest vs drip) the fruit actually left by.
+      // THREE READINGS, NOT ONE BROKEN ONE (A.44 A0). The old `realized%`
+      // divided DUST by CHARGE — see the instrument note at the top of this
+      // file. Split into the pillar-2 measure (charge÷charge, field-only), the
+      // total purse rate (what actually buys the stair), and the field's share
+      // of it. Plus the green ledger while in Verdance.
       const chipNow = s.totals[chipCurrencyId(s)]?.toNumber() ?? 0;
       const hourEarned = p2PrevChip === chipCurrencyId(s) ? chipNow - diagPrevTotal : NaN;
-      const hourCeiling = p2CeilingIntegral - diagPrevCeiling;
-      const realized = hourCeiling > 0 && Number.isFinite(hourEarned) ? hourEarned / hourCeiling : NaN;
+      const hourChargeCeiling = p2CeilingIntegral - diagPrevCeiling;
+      const hourFieldCharge = s.stats.fieldChargeHarvested.toNumber() - diagPrevFieldCharge;
+      const fieldPct = hourChargeCeiling > 0 ? hourFieldCharge / hourChargeCeiling : NaN;
+      const incomePerSec = Number.isFinite(hourEarned) ? hourEarned / 3600 : NaN;
+      // NO ESTIMATED FIELD SHARE HERE. The first cut of this line multiplied
+      // `chipYield × fieldCharge` to guess what the field's charge was worth
+      // and read 86–198% — because seepage, drills and takeCharge each carry
+      // multipliers that expression does not, so the "estimator" was a fourth
+      // unit slip in a note about unit slips. The exact split is `--income`,
+      // which attributes every dust to the action that paid it.
       let green = '';
       if (s.shell.current === 'verdance' || s.shell.signatures.includes('growth')) {
         const vined = s.growth.stage.filter((x: number) => x > 0).length;
@@ -2121,13 +2225,17 @@ function main(): void {
       }
       diagPrevTotal = chipNow;
       diagPrevCeiling = p2CeilingIntegral;
+      diagPrevFieldCharge = s.stats.fieldChargeHarvested.toNumber();
       diagPrevHarvest = s.growth.fruitHarvested;
       diagPrevDrip = s.growth.autoDropped;
+      const pct = (x: number): string => (Number.isFinite(x) ? `${(x * 100).toFixed(0)}%` : '—');
       log(
         `diag h${sec / 3600}: ${s.shell.current} d${s.depth} (rec ${s.maxDepthRecord}) | ` +
-          `ceiling ${income.toExponential(1)}/s | realized ${(realized * 100).toFixed(0)}% | ` +
+          `ceiling ${income.toExponential(1)}/s | field ${pct(fieldPct)} of regen | ` +
+          `income ${incomePerSec.toExponential(1)}/s | ` +
           `next descend ${nextCost.toExponential(1)} ` +
-          `(${(nextCost / Math.max(income, 1e-9)).toFixed(0)}s at ceiling) | ` +
+          `(${(nextCost / Math.max(income, 1e-9)).toFixed(0)}s at ceiling, ` +
+          `${(nextCost / Math.max(incomePerSec, 1e-9)).toFixed(0)}s at income) | ` +
           `core nodes maxed ${maxed}/${CORE_NODES.length} | blade L${bladeLv} | ` +
           `cores banked ${fmt(s.currencies['core'] ?? 0)}${green}`,
       );
@@ -2162,6 +2270,23 @@ function main(): void {
     // which folds in every yield multiplier, so a crit or a Blade level moved
     // both sides of the comparison and the ratio measured noise.
     p2CeilingIntegral += s.face.cells.length * cellRegen(s, mods);
+    // MEASURED INCOME, once a sim-second, EMA over ~2 minutes (A.44 A0). This
+    // is what the run-end horizon sizes pushing power against now. A Breach
+    // swaps the purse, so the sample is dropped and the EMA restarts rather
+    // than reading a currency change as income.
+    {
+      const chipId = chipCurrencyId(s);
+      const total = s.totals[chipId]?.toNumber() ?? 0;
+      if (incPrevChip === chipId) {
+        const gained = Math.max(0, total - incPrevTotal);
+        const alpha = 1 / 120;
+        measuredIncomeRate = measuredIncomeRate === 0 ? gained : measuredIncomeRate * (1 - alpha) + gained * alpha;
+      } else {
+        measuredIncomeRate = 0;
+      }
+      incPrevTotal = total;
+      incPrevChip = chipId;
+    }
     if (sec % 600 === 0) {
       const chipId = chipCurrencyId(s);
       // THE NUMERATOR IS FIELD INCOME, NOT ALL INCOME (A.42).
@@ -2392,6 +2517,22 @@ function main(): void {
       `serra fallback buys ${spineMetrics.serraBuys} (cloth ${spineMetrics.clothBought}) | ` +
       `held: flux ${materialCount(s, 'kilnflux')} cloth ${materialCount(s, 'fibercloth')} glass ${materialCount(s, 'emberglass')}`,
   );
+  if (args.income) {
+    const rows = Object.entries(incomeLedger).sort((a, b) => b[1] - a[1]);
+    const grand = rows.reduce((a, [, v]) => a + v, 0);
+    console.error(
+      `income SOURCES (dust earned, biggest first; horizon basis '${args.horizon}'):\n` +
+        (rows.length === 0
+          ? '  (nothing paid all run)'
+          : rows
+              .map(
+                ([label, v]) =>
+                  `  ${label.padEnd(34)} ${v.toExponential(2).padStart(11)}` +
+                  ` ${((v / Math.max(grand, 1e-9)) * 100).toFixed(1).padStart(5)}%`,
+              )
+              .join('\n')),
+    );
+  }
   if (args.commons) {
     const rows = Object.entries(commonsLedger)
       .map(([label, per]) => ({ label, per, total: Object.values(per).reduce((a, b) => a + b, 0) }))
