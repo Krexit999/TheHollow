@@ -2290,14 +2290,26 @@ function main(): void {
   // progress and rate, cheap enough to leave on always.
   const heartbeatPath = args.out ? `${args.out}.progress` : null;
   const startedAtMs = Date.now();
+  let lastBeatMs = startedAtMs;
   for (let sec = 1; sec <= totalSec; sec++) {
-    if (heartbeatPath && sec % 3600 === 0) {
+    // ON A WALL CLOCK TOO, NOT ONLY ON SIM-HOUR BOUNDARIES.
+    //
+    // The first cut of this beat fired only every 3600 sim-seconds — and the
+    // very first long run it was built for went SILENT for four minutes at the
+    // Breach, because crossing into the next shell makes a sim-hour several
+    // times more expensive and no boundary was reached. An instrument that
+    // stops reporting exactly when the run gets interesting cannot answer the
+    // question it was built for ("slow, or stuck?"), which is the question that
+    // had already cost two killed runs. Beat on whichever comes first.
+    const dueByWall = heartbeatPath !== null && Date.now() - lastBeatMs >= 30_000;
+    if (heartbeatPath && (sec % 3600 === 0 || dueByWall)) {
+      lastBeatMs = Date.now();
       const st = engine.getState();
       const wall = (Date.now() - startedAtMs) / 1000;
       const simH = sec / 3600;
       writeFileSync(
         heartbeatPath,
-        `sim ${simH}h / ${(totalSec / 3600).toFixed(0)}h | wall ${wall.toFixed(0)}s | ` +
+        `sim ${simH.toFixed(2)}h / ${(totalSec / 3600).toFixed(0)}h | wall ${wall.toFixed(0)}s | ` +
           `${(wall / simH).toFixed(1)}s per sim-hour | ${st.shell.current} d${st.depth} ` +
           `(rec ${st.maxDepthRecord}) | breaches ${st.shell.breachCount} | ` +
           `collapses ${st.collapse.count} | recursions ${st.recursion.count}\n`,
