@@ -97,7 +97,7 @@ export function initialState(nowMs: number): GameState {
     techniques: defaultTechniquesState(),
     keystones: defaultKeystonesState(),
     kiln: { built: false, heat: 0, feeding: false, progress: D(0) },
-    drills: { bayBuilt: false, units: [], alloys: [] },
+    drills: { bayBuilt: false, units: [], alloys: [], huntOres: true },
     depth: 0,
     maxDepthRecord: 0,
     depthRecords: {},

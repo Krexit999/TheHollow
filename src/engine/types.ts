@@ -224,6 +224,11 @@ export interface DrillState {
   /** AFFINITY: use-history per shell — a drill that worked a shell hits it
    *  harder. Invisible and automatic; nothing to manage. */
   use?: Record<string, number>;
+  /** The pocket this drill has committed to, and how long it has been at it.
+   *  A drill working an ore is doing nothing else — that time is what the
+   *  player buys when they leave one to the machines instead of digging it. */
+  oreCell?: number;
+  oreProgress?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -788,6 +793,20 @@ export interface GameState {
      *  charge units. Strictly ON TOP of the idle leak — an untouched pool
      *  changes nothing an idle player earns (tested, not promised). */
     seepPool: number;
+
+    /**
+     * ORES — richer pockets in the rock, parallel to `cells`. `''` is plain
+     * rock; anything else is an OreDef id. An ore raises that cell's CAP and
+     * nothing else, so the pillar-2 ceiling cannot move (systems/ores.ts).
+     */
+    ore?: string[];
+    /** Seconds of HAND work banked per cell. Persists if you let go. */
+    oreDug?: number[];
+    /** Seconds the face has been completely bare. Feeds the drought floor. */
+    oreDryFor?: number;
+    /** Ore types actually opened. The discovery record — nothing is listed
+     *  before one has come out of the rock (pillar 5). Survives a Breach. */
+    oreSeen?: string[];
   };
 
   /** Signature techniques — per-technique last-used play-seconds. */
@@ -837,6 +856,13 @@ export interface GameState {
      *  nothing is shown before it has been forged once (pillar 5). Survives a
      *  Breach; the physical alloys in the drills do not. */
     alloys: string[];
+    /**
+     * SEND THEM AT THE POCKETS. One toggle for the whole bay, on by default so
+     * an idle player gets ore value without ever opening this screen (pillar 1).
+     * Turning it OFF is the real use: pockets are richer by hand, so a player
+     * who wants them for themselves tells the machines to leave them alone.
+     */
+    huntOres?: boolean;
     /** Per-cell marks, parallel to face.cells, written by whichever drill
      *  carries the ability and read by ANY drill that comes to that cell.
      *  Created lazily, decayed on their own beat, resized with the face.
@@ -943,6 +969,8 @@ export interface GameState {
   stats: {
     manualChips: number;
     drillStrikes: number;
+    /** Pockets opened, by hand or by machine. */
+    oresOpened?: number;
     totalChargeChipped: Decimal;
     /**
      * CHARGE taken out of the rock by every field path — manual chips,
@@ -1208,6 +1236,10 @@ export type GameEvent =
   | { type: 'drillAlloyFound'; id: string }
   /** THE ARC: a strike jumped from one cell to these. The face draws it. */
   | { type: 'drillArc'; from: number; to: number[] }
+  /** ORES: a pocket formed, opened, or the drought floor seeded the face. */
+  | { type: 'oreAppeared'; cells: number[]; oreId: string }
+  | { type: 'oreOpened'; cell: number; oreId: string; charge: number; by: 'hand' | 'drill'; first: boolean }
+  | { type: 'oreDrought'; cells: number }
   | { type: 'relicFused'; relicId: string; rarity: string }
   | { type: 'expeditionReturned'; crewId: string; haul: number }
   | { type: 'caseCompleted'; caseId: string }
@@ -1411,6 +1443,9 @@ export type GameAction =
   | { type: 'renameDrill'; index: number; name: string }
   | { type: 'forgeDrillAlloy'; materialIds: string[]; drills: number[] }
   | { type: 'clearDrillAlloy'; index: number }
+  /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
+  | { type: 'workOre'; cell: number; seconds: number }
+  | { type: 'setHuntOres'; on: boolean }
   | { type: 'setKilnFuel'; fuelId: string | null }
   | { type: 'overstoke' }
   // --- IMPLEMENTS AND INSCRIPTION (v22) ---------------------------------

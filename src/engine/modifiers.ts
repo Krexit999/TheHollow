@@ -27,7 +27,9 @@ export type Bucket =
   | 'chainPower'     // multiplies polarity chain growth (the 0.35 term)
   | 'strikePower'    // multiplies tool strike power (combat)
   | 'scripGain'      // multiplies Caravan Scrip payouts (contracts, sales)
-  | 'offlineEffAdd'; // ADDS to offline efficiency (Persistence lives here)
+  | 'offlineEffAdd'  // ADDS to offline efficiency (Persistence lives here)
+  | 'oreChance'      // multiplies how often a richer pocket forms in the rock
+  | 'oreRarity';     // leans the pocket-type roll toward the rarer seams
 
 /**
  * Every bucket, enumerable. The union above is the compile-time truth; this is
@@ -37,6 +39,7 @@ export const ALL_BUCKETS = [
   'dustYield', 'brickYield', 'regen', 'cap', 'kilnRate', 'kilnHeatRamp',
   'drillSpeed', 'drillPower', 'xpGain', 'descendCost', 'motifGain', 'dropRate',
   'assaySpeed', 'chainPower', 'strikePower', 'scripGain', 'offlineEffAdd',
+  'oreChance', 'oreRarity',
 ] as const satisfies readonly Bucket[];
 
 const BUCKET_SET: ReadonlySet<string> = new Set<string>(ALL_BUCKETS);
@@ -77,6 +80,8 @@ const BUCKET_CONSUMERS: Record<Bucket, string> = {
   strikePower: 'combat/combat.ts — tool strike power',
   scripGain: 'guild/* — Scrip payouts',
   offlineEffAdd: 'systems/offline.ts — offline efficiency',
+  oreChance: 'systems/ores.ts — how often a pocket forms',
+  oreRarity: 'systems/ores.ts — the pocket-type roll',
 };
 
 /** Buckets that sum instead of multiply. */

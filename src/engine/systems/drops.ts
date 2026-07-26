@@ -98,6 +98,13 @@ export function rollForDrop(
   /** Which cell was struck. THE CALL (drill alloy) reads it: a cell that has
    *  gathered enough rolls its drop as if the seam there were deeper. */
   cell?: number,
+  /**
+   * An ORE's own depth bonus, when this roll is a pocket opening. Separate from
+   * THE CALL's because they stack honestly: the pocket was rich AND the cell
+   * had gathered. Both shift WHAT comes out, never how much charge the field
+   * gave — the drop table is outside the income path (pillar 2).
+   */
+  oreDepthBonus = 0,
 ): void {
   // Sable's pages ride the same harvest rhythm as everything else —
   // surfaced while mining, never a modal (Phase 6).
@@ -114,7 +121,51 @@ export function rollForDrop(
   // THE CALL rolls the table DEEPER for a cell that has gathered — richer
   // rarities, same drop chance. Drops sit outside the income path, so this
   // shifts what you find without touching the regen ceiling (pillar 2).
-  applyDrop(state, ctx, rollDrop(currentShell(state).id, state.depth + attractDepthBonus(state, cell)));
+  applyDrop(state, ctx, rollDrop(
+    currentShell(state).id,
+    state.depth + attractDepthBonus(state, cell) + oreDepthBonus,
+  ));
+}
+
+/**
+ * A POCKET OPENING. Two different things happen and they must not be confused:
+ *
+ *  1. the ordinary charge-proportional roll every harvest gets, because opening
+ *     an ore IS a harvest — same charge, same chance formula;
+ *  2. the pocket's own GUARANTEED pulls, on a table rolled `depthBonus` deeper.
+ *
+ * The second cannot go through `rollForDrop`, which gates on `dropChance` and
+ * would silently turn "guaranteed" into "usually nothing" — an ore is worth
+ * stopping for precisely because this part is certain.
+ *
+ * All of it is drop-table only. Charge came from the cell and is regen-bound
+ * (systems/ores.ts); rarity is outside the income path, which is what lets a
+ * rare pocket be worth a great deal without the ceiling moving (pillar 2).
+ */
+export function rollForOre(
+  state: GameState,
+  mods: ModifierCache,
+  ctx: EngineCtx,
+  charge: number,
+  weight: number,
+  rolls: number,
+  depthBonus: number,
+  by?: string,
+  cell?: number,
+): void {
+  rollForDrop(state, mods, ctx, charge, weight, by, cell, depthBonus);
+  if (sealed(state, 'sealDrops')) return; // THE THIN SEAM still seals everything
+  // FRACTIONAL ON PURPOSE. A drill opens on the order of a hundred pockets an
+  // hour, so a whole guaranteed roll each is an economy of its own — the first
+  // cut measured twenty-six times the baseline. Whole rolls for the hand (which
+  // is rate-limited by the player's attention and cannot be inflated), a
+  // fraction of one for the bay, resolved as a probability so the average is
+  // honest rather than rounded to nothing.
+  let n = Math.floor(rolls);
+  if (Math.random() < rolls - n) n += 1;
+  for (let i = 0; i < n; i++) {
+    applyDrop(state, ctx, rollDrop(currentShell(state).id, state.depth + depthBonus));
+  }
 }
 
 export { DRILL_DROP_FACTOR };

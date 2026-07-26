@@ -89,6 +89,8 @@ export const BUCKET_NAME: Record<Bucket, string> = {
   strikePower: 'strike power',
   scripGain: 'Scrip gain',
   offlineEffAdd: 'offline efficiency',
+  oreChance: 'how often pockets form',
+  oreRarity: 'how rich the pockets run',
 };
 
 /** Currency-colored amount. */

@@ -30,7 +30,7 @@
 import { D } from '../decimal';
 import type { ModifierCache } from '../modifiers';
 import type { DrillState, EngineCtx, GameState } from '../types';
-import { harvestCell, neighbors } from './face';
+import { cellCap, harvestCell, neighbors } from './face';
 import { grantXP } from './xp';
 import { DRILL_DROP_FACTOR, rollForDrop } from './drops';
 import { ENCOUNTER_DRILL_FACTOR, rollForEncounter } from '../combat/combat';
@@ -43,6 +43,8 @@ import { relicRule } from './relicPowers';
 import {
   drillAbility, arcTargets, residueBite, markResidue, markRichness, ARC_SHARE,
 } from './drillAlloys';
+import { DRILL_ORE_SPEED, ORE_WORTH_OPENING, oreAt, openOre } from './ores';
+import { oreRichness } from '../content/ores';
 
 export const MAX_DRILLS = 24;
 export const DRILL_BASE_INTERVAL = 2.0;
@@ -85,10 +87,14 @@ export function newDrill(name?: string): DrillState {
  */
 function pickTarget(state: GameState, skip: (i: number) => boolean): number {
   const cells = state.face.cells;
+  const ore = state.face.ore;
   let best = -1;
   let bestScore = -1;
   for (let i = 0; i < cells.length; i++) {
     if (skip(i)) continue;
+    // A pocket is never an ordinary target: it will not come away in one bite,
+    // and a drill that kept picking it would stand there striking nothing.
+    if (ore?.[i]) continue;
     const score = cells[i]! * residueBite(state, i);
     if (score > bestScore) {
       bestScore = score;
@@ -98,12 +104,65 @@ function pickTarget(state: GameState, skip: (i: number) => boolean): number {
   return best;
 }
 
+/**
+ * SEND THEM AT THE POCKETS. The whole of drill routing, on purpose: one
+ * bay-wide toggle, no per-drill areas, no pattern learning. A.52 proved what
+ * happens when the idle layer gets a configuration screen, and "which cells
+ * should the machines prefer" is exactly the shape of question that turns into
+ * one. `huntOres` defaults ON, so an idle player harvests pockets without ever
+ * opening the panel (pillar 1); turning it off is the interesting choice,
+ * because a pocket is richer by hand.
+ *
+ * The FULLEST unclaimed pocket that is worth the trip, so two drills never
+ * crowd one cell while another sits open and none of them wastes the job on a
+ * pocket that has barely started filling.
+ */
+function openPockets(
+  state: GameState, mods: ModifierCache, skip: (i: number) => boolean,
+): number[] | null {
+  const ore = state.face.ore;
+  if (!ore || state.drills.huntOres === false) return null;
+
+  // BUILT ONCE FOR THE WHOLE BAY, not once per drill, and this is a real cost
+  // rather than tidiness: the per-drill version scanned the face for every
+  // machine on every 100ms step — twelve drills over a two-hour catch-up is
+  // thirty-one million iterations, and it doubled the cost of a warp. Almost
+  // all of that work found nothing, because on a typical step every pocket
+  // worth taking is already claimed by somebody.
+  const claimedBy = new Set<number>();
+  for (const u of state.drills.units) if (u.oreCell !== undefined) claimedBy.add(u.oreCell);
+
+  let out: number[] | null = null;
+  const base = cellCap(state, mods);
+  for (let i = 0; i < ore.length; i++) {
+    const id = ore[i];
+    if (!id || claimedBy.has(i) || skip(i)) continue;
+    // A MACHINE WILL NOT SPEND SIX SECONDS ON AN EMPTY POCKET. Without this
+    // the sim's ore-heavy arm ran 0.82x of the control: pockets spawned faster
+    // than they filled, drills opened them barely started, and buying the
+    // spawn-rate upgrade made income go DOWN — a trap sold as an improvement.
+    // It also self-limits: crank spawning as hard as you like and the bay
+    // simply waits for them to be worth the trip.
+    if ((state.face.cells[i] ?? 0) < base * oreRichness(id) * ORE_WORTH_OPENING) continue;
+    (out ??= []).push(i);
+  }
+  // Fullest first, so the best pocket goes to the first free machine.
+  out?.sort((a, b) => (state.face.cells[b] ?? 0) - (state.face.cells[a] ?? 0));
+  return out;
+}
+
 export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: number): void {
   if (!state.drills.bayBuilt || state.drills.units.length === 0) return;
   // A drill never works a cultivated (vined) cell — the Growth automation law
   // leaves those for their own harvest.
   const skip = (i: number): boolean => (state.growth.stage[i] ?? 0) > 0;
   const shellId = currentShell(state).id;
+  // ORE BOOKKEEPING, once for the whole bay rather than once per drill. The
+  // claim set is mutated as drills take pockets, so two never crowd one.
+  // Every pocket free and worth taking, in one pass for the whole bay. `null`
+  // when there is nothing on offer, which is the overwhelmingly common case and
+  // costs one array read to establish.
+  const offered = openPockets(state, mods, skip);
 
   for (let d = 0; d < state.drills.units.length; d++) {
     const drill = state.drills.units[d]!;
@@ -111,6 +170,43 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
     // machine next to this one may be running something else entirely, which
     // is the whole decision the system is made of.
     const ability = drillAbility(drill);
+
+    // --- THE POCKET JOB -----------------------------------------------------
+    // A drill on an ore is doing NOTHING ELSE for the duration, and that is the
+    // cost the player is weighing when they leave one to the machines. It is
+    // also why this sits before the strike loop rather than inside it: the
+    // drill's strike timer does not advance while it is digging.
+    //
+    // A pocket already in hand is dropped if somebody else opened it (or a vine
+    // took the cell); otherwise, if the bay is hunting, take one now. CLAIMING
+    // AND DIGGING HAPPEN IN THE SAME TICK on purpose — an earlier cut spent the
+    // whole tick claiming, which is invisible at the engine's real step size and
+    // very visible in one big catch-up tick, where a drill would claim a pocket
+    // and then never touch it.
+    if (drill.oreCell !== undefined && (!oreAt(state, drill.oreCell) || skip(drill.oreCell))) {
+      delete drill.oreCell;
+      delete drill.oreProgress;
+    }
+    if (drill.oreCell === undefined && offered && offered.length > 0) {
+      const claim = offered.shift()!; // taken off the list, so nobody doubles up
+      drill.oreCell = claim;
+      drill.oreProgress = 0;
+      drill.lastCell = claim; // the face draws the arm reaching for it
+    }
+    if (drill.oreCell !== undefined) {
+      const cell = drill.oreCell;
+      const need = oreAt(state, cell)!.digSec * DRILL_ORE_SPEED;
+      drill.oreProgress = (drill.oreProgress ?? 0) + dt;
+      if (drill.oreProgress >= need) {
+        openOre(state, mods, ctx, cell, 'drill', DRILL_DROP_FACTOR, drill.name);
+        state.stats.drillStrikes += 1;
+        logImplementUse(drill, shellId, 1);
+        delete drill.oreCell;
+        delete drill.oreProgress;
+      }
+      continue; // busy either way
+    }
+
     drill.timer += dt;
     const interval = drillInterval(state, mods, drill);
     // A drill strikes at most a few times per tick even after catch-up; the

@@ -25,6 +25,7 @@ import { activeSignatures, registerSignature, runChipMult } from '../signatures'
 import { registerTechnique } from '../techniques';
 import { masteryLevel } from './mastery';
 import { lawNum, sealed, challengeNum } from '../laws';
+import { oreRichness } from '../content/ores';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -115,15 +116,27 @@ export function seepStrength(state: GameState): number {
 
 /** Refill cells from below; with Seepage active, full cells leak. */
 export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: number): void {
-  const cap = cellCap(state, mods);
+  const base = cellCap(state, mods);
   const regen = cellRegen(state, mods) * dt;
   const cells = state.face.cells;
+  // Only consult the pocket array if there IS one with something in it. This
+  // loop runs every cell every 100ms step, so a cross-module call per cell was
+  // measurable: it roughly doubled the cost of a two-hour warp, all of it paid
+  // by the overwhelmingly common case of a face made entirely of plain rock.
+  const ore = state.face.ore?.some(Boolean) ? state.face.ore : undefined;
   // THE HOLLOW: there is no rock. Only RECONSTRUCTED cells regen — each is a
   // real cell with the real ceiling (pillar 2 binds cell by rebuilt cell).
   const rebuilt = currentShell(state).id === 'hollow' ? new Set(state.hollow.rebuilt) : null;
   let overflow = 0;
   for (let i = 0; i < cells.length; i++) {
     if (rebuilt && !rebuilt.has(i)) continue; // absence does not regenerate
+    // A POCKET HOLDS MORE, and that is the entire mechanism. REGEN IS NOT
+    // TOUCHED here — the loop still adds exactly `regen` to every cell — so
+    // `dpsMax = W·H·regen·Y` cannot move. A richer cell just takes longer to
+    // fill and overflows later, which is why an ore reads as banking what
+    // would otherwise have seeped away rather than as a second faucet.
+    const oreId = ore === undefined ? undefined : ore[i];
+    const cap = oreId === undefined || oreId === '' ? base : base * oreRichness(oreId);
     const c = cells[i]!;
     if (c < cap) {
       const next = c + regen;
@@ -229,8 +242,9 @@ export function harvestCell(
 ): { dust: Decimal; charge: number } {
   // THE UNEMPTYING (law): cells never deplete below cap × floor-share. Only
   // charge ABOVE the floor can be taken — income stays regen-bound while no
-  // cell ever goes dark under the law.
-  const floor = cellCap(state, mods) * lawNum(state, 'regenFloorShare');
+  // cell ever goes dark under the law. A pocket's floor rides its own richer
+  // cap, so the law means the same proportion of the rock wherever it applies.
+  const floor = cellCap(state, mods) * oreRichness(state.face.ore?.[cell]) * lawNum(state, 'regenFloorShare');
   const held = state.face.cells[cell] ?? 0;
   const charge = Math.min(held * fraction, Math.max(0, held - floor));
   if (charge <= 0) return { dust: D(0), charge: 0 };
@@ -266,6 +280,14 @@ export function neighbors(state: GameState, cell: number): number[] {
  */
 export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx, cell: number): ChipResult {
   if (cell < 0 || cell >= state.face.cells.length) {
+    return { dust: D(0), charge: 0, crit: false, fractured: [] };
+  }
+  // A POCKET WILL NOT COME AWAY WITH ONE SWING. This refusal is what makes an
+  // ore a decision rather than a bigger tap: the only ways in are to WORK it
+  // (`workOre`, the hold gesture) or to leave it to a drill. Without this the
+  // whole feature collapses into "some cells pay more", and the time cost —
+  // the thing the drill is actually competing against — never exists.
+  if (state.face.ore?.[cell]) {
     return { dust: D(0), charge: 0, crit: false, fractured: [] };
   }
 
@@ -329,6 +351,9 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     seen.add(cell);
     // A cultivated (vined) cell is left for its own harvest, like the drills do.
     if ((state.growth.stage[cell] ?? 0) > 0) continue;
+    // ...and so is a pocket. A sweep is a fast pass across the face; it is
+    // exactly the gesture an ore is supposed to be immune to.
+    if (state.face.ore?.[cell]) continue;
     const before = state.face.cells[cell] ?? 0;
     const sigMult = runChipMult(state, mods, ctx, cell, true);
     const r = harvestCell(state, mods, cell, 1, D(sigMult));

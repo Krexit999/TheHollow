@@ -26,6 +26,7 @@ import { addToolMark } from './heirloom';
 import { faceWhole } from './absence';
 import { keystoneSatisfied } from './keystones';
 import { grantXP } from './xp';
+import { clearOres } from './ores';
 import { START_H, START_W } from '../state';
 
 /** Upgrades that are cross-shell infrastructure and survive the fall. */
@@ -115,7 +116,15 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   // and knowledge crosses a Breach the way every other codex does. The alloy
   // itself was physical and is gone — re-pour it from this world's materials
   // (every signature is forgeable in every shell, which is the reach rule).
-  state.drills = { bayBuilt: false, units: [], alloys: state.drills.alloys ?? [] };
+  state.drills = {
+    bayBuilt: false, units: [], alloys: state.drills.alloys ?? [],
+    huntOres: state.drills.huntOres ?? true,
+  };
+  // NEW WORLD, NEW ROCK. Whatever pockets were in the old face went with it —
+  // but the RECORD of which types you have opened is knowledge, and crosses
+  // like the alloys above. The next shell will seed its own within the minute
+  // (the drought floor guarantees it), so nothing strands here.
+  clearOres(state);
   state.assay.active = null;
   state.assay.boostChips = 0;
   state.assay.reportDepth = null;

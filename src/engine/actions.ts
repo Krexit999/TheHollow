@@ -32,6 +32,7 @@ import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
 import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount, addMaterial } from './systems/forge';
 import { forgeDrillAlloy, clearDrillAlloy } from './systems/drillAlloys';
+import { digComplete, openOre, workOre } from './systems/ores';
 import { lightOverstoke } from './systems/kiln';
 import { kilnFuel } from './content/kilnFuel';
 import { crackGeode, startAssay } from './systems/drops';
@@ -215,6 +216,23 @@ export function handleAction(
       if (r.ok) ctx.dirty();
       return r;
     }
+
+    // ORES. The hold gesture sends seconds of work; the engine decides when
+    // that is enough. Completing OPENS it here rather than in `workOre`, so
+    // there is exactly one place a pocket can pay out and it is the same one
+    // the drills go through.
+    case 'workOre': {
+      const r = workOre(state, ctx, action.cell, action.seconds);
+      if (!r.ok) return r;
+      if (!digComplete(state, action.cell)) return r;
+      const opened = openOre(state, mods, ctx, action.cell, 'hand', 1);
+      return opened ? { ok: true, data: { done: true, ...opened } } : r;
+    }
+
+    case 'setHuntOres':
+      state.drills.huntOres = action.on;
+      ctx.dirty();
+      return { ok: true };
 
     case 'descend':
       return descend(state, mods, ctx);

@@ -17,6 +17,8 @@ import { cellCap, type ChipResult } from '../../engine/systems/face';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
 import { residueLevel, richnessLevel } from '../../engine/systems/drillAlloys';
+import { digProgress } from '../../engine/systems/ores';
+import { oreDef } from '../../engine/content/ores';
 import { ModifierCache } from '../../engine/modifiers';
 import type { Engine } from '../../engine';
 import { fmt } from '../../engine';
@@ -185,6 +187,10 @@ interface TileEntry {
    *  forcing a repaint every frame: THE SET's warmth and THE CALL's gather. */
   setBand: number;
   callBand: number;
+  /** ORES: which pocket type sits in this cell (`''` for none), and the dig
+   *  ring's step. Both join the redraw gate — see drawTile. */
+  oreId: string;
+  digBand: number;
 }
 
 interface Particle {
@@ -256,6 +262,10 @@ export class FaceView {
   }
   private pointerDown = false;
   private cellCooldown = new Map<number, number>();
+  /** ORES: which pocket the finger is currently working, and when it last
+   *  billed the engine. -1 means the hand is not on one. */
+  private oreCell = -1;
+  private oreLastMs = 0;
   private destroyed = false;
   private resizeObserver!: ResizeObserver;
 
@@ -312,6 +322,10 @@ export class FaceView {
       }
       this.pointerDown = false;
       this.sweepCells = [];
+      // Letting go stops the dig where it stands. The progress KEEPS (the
+      // engine never decays it), so a slip costs nothing and coming back to a
+      // half-open pocket is a normal thing to do.
+      this.oreCell = -1;
     };
     this.app.stage.on('pointerup', up);
     this.app.stage.on('pointerupoutside', up);
@@ -346,7 +360,7 @@ export class FaceView {
     if (this.active === active || !this.app?.ticker) return;
     this.active = active;
     if (active) {
-      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.setBand = -1; t.callBand = -1; }
+      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.setBand = -1; t.callBand = -1; t.oreId = '?'; t.digBand = -1; }
       this.layout(); // the hero height differs between Shaft and Dig on phone
       // Start the ticker but do NOT render synchronously: this call runs inside
       // a React effect, in the same commit where the OTHER view is about to be
@@ -419,7 +433,9 @@ export class FaceView {
     this.tiles = state.face.cells.map(() => {
       const g = new Graphics();
       this.tileLayer.addChild(g);
-      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, setBand: -1, callBand: -1 };
+      // oreId starts as a string no def can ever have, so the first paint of a
+      // plain cell still counts as a change and the gate does not swallow it.
+      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, setBand: -1, callBand: -1, oreId: '?', digBand: -1 };
     });
     this.layout();
   }
@@ -441,14 +457,24 @@ export class FaceView {
     // frame, which is exactly what the gate exists to prevent.
     const setBand = Math.round(residueLevel(gstate, i) * 4);
     const callBand = Math.round(richnessLevel(gstate, i) * 4);
+    // ORES. The one thing in this phase that CANNOT be a hidden number — a
+    // pocket the player cannot see is not a place, it is a trap. The id joins
+    // the gate so a pocket forming or opening repaints exactly once, and the
+    // dig ring is banded to 12 steps: fine enough to read as filling, coarse
+    // enough not to repaint the tile every frame while somebody holds on it.
+    const oreId = gstate.face.ore?.[i] ?? '';
+    const digBand = oreId ? Math.round(digProgress(gstate, i) * 12) : 0;
     if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
-      && setBand === tile.setBand && callBand === tile.callBand && tile.flash <= 0) return;
+      && setBand === tile.setBand && callBand === tile.callBand
+      && oreId === tile.oreId && digBand === tile.digBand && tile.flash <= 0) return;
     tile.band = band;
     tile.crackStage = crackStage;
     tile.vine = vine;
     tile.fruitBand = fruitBand;
     tile.setBand = setBand;
     tile.callBand = callBand;
+    tile.oreId = oreId;
+    tile.digBand = digBand;
 
     const s = this.cellSize;
     const m = Math.max(1.5, s * 0.05); // grout gap
@@ -589,6 +615,50 @@ export class FaceView {
       // sprite is parked on the cell it is gathering under.
       g.circle(cx, cy, w * 0.2).fill({ color: 0xd9b64a, alpha: 0.08 + pull * 0.16 });
       g.circle(cx, cy, w * 0.06 + w * 0.05 * pull).fill({ color: 0xffefb0, alpha: 0.5 + pull * 0.5 });
+    }
+
+    // ------------------------------------------------------------------
+    // A POCKET. Drawn LAST of the rock marks and drawn heavily, because the
+    // whole feature rests on being able to tell at a glance that this cell is
+    // not the same as the one beside it. Three parts, each doing a job:
+    //   the SEAM     — a rough crystalline body in the ore's own colour, so
+    //                  different types read as different things, not tiers;
+    //   the RIM      — a bright outline, because a wash alone disappears
+    //                  against a full cell (the A.53 lesson, one phase on);
+    //   the RING     — how far the hand has got, only while it is being dug.
+    // ------------------------------------------------------------------
+    if (oreId) {
+      const def = oreDef(oreId);
+      const col = def?.colour ?? 0xc8a45a;
+      const cx = m + w / 2;
+      const cy = m + w / 2;
+      // A blocky, faceted body — deterministic per cell so a pocket does not
+      // shimmer, and lumpy so it reads as rock rather than a UI badge.
+      const orng = mulberry(i * 7717 + 13);
+      g.roundRect(m, m, w, w, r).fill({ color: col, alpha: 0.16 });
+      g.roundRect(m, m, w, w, r).stroke({ width: 2, color: col, alpha: 0.85 });
+      const facets = 5;
+      for (let f = 0; f < facets; f++) {
+        const a0 = (f / facets) * Math.PI * 2 + orng() * 0.5;
+        const rad = w * (0.16 + orng() * 0.2);
+        const px = cx + Math.cos(a0) * rad;
+        const py = cy + Math.sin(a0) * rad;
+        const size = w * (0.07 + orng() * 0.07);
+        g.moveTo(px, py - size)
+          .lineTo(px + size, py)
+          .lineTo(px, py + size)
+          .lineTo(px - size, py)
+          .closePath()
+          .fill({ color: col, alpha: 0.5 + orng() * 0.4 });
+      }
+      // THE DIG. A ring closing around the pocket as the hand works it, so
+      // "this is taking time" is a thing you watch rather than a number.
+      if (digBand > 0) {
+        const frac = digBand / 12;
+        g.circle(cx, cy, w * 0.42).stroke({ width: 2, color: 0x000000, alpha: 0.35 });
+        g.arc(cx, cy, w * 0.42, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
+          .stroke({ width: 3, color: 0xffffff, alpha: 0.9 });
+      }
     }
 
     // GROWTH: vines drawn by AGE — a sprout curls in from a corner, a
@@ -872,6 +942,33 @@ export class FaceView {
     }
     const cell = this.cellAt(px, py);
     if (cell < 0) return;
+
+    // A POCKET IS WORKED, NOT TAPPED. The hold loop already calls this every
+    // frame, so the gesture the player makes is simply "stay on it" — and the
+    // cost is honest, because while your finger is here it is not chipping
+    // anything else. That opportunity cost is the whole thing a drill competes
+    // against; make it free and the choice the feature is built on disappears.
+    //
+    // Real elapsed time, not a per-frame constant: a slow frame must not make
+    // the rock softer, and the engine takes seconds so it never learns what a
+    // frame is (pillar 8).
+    if (state.face.ore?.[cell]) {
+      const now = performance.now();
+      const dtSec = Math.min(0.25, Math.max(0, (now - (this.oreLastMs || now)) / 1000));
+      this.oreLastMs = now;
+      if (this.oreCell !== cell) { this.oreCell = cell; return; } // first touch just latches on
+      const r = this.engine.dispatch({ type: 'workOre', cell, seconds: dtSec });
+      const d = r.data as { done?: boolean; charge?: number } | undefined;
+      if (d?.done) {
+        this.oreCell = -1;
+        const at = this.cellCenter(cell);
+        this.spawnShards(at.x, at.y, 16, true);
+        this.addShake(8);
+      }
+      return;
+    }
+    this.oreCell = -1;
+
     const now = performance.now();
     const until = this.cellCooldown.get(cell) ?? 0;
     if (now < until) return;

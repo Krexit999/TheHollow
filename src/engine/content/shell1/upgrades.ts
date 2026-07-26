@@ -83,6 +83,32 @@ export function registerShell1Upgrades(): void {
     resetsOnCollapse: true,
     description: (l) => `You see more, so you learn more. +8% Delver XP (now +${8 * l}%).`,
   });
+  // ORE ROWS. Visible only once a pocket has actually been opened — before
+  // that there is nothing on screen to explain what they would even do, and a
+  // row offering to improve a thing the player has never seen is a locked list
+  // wearing a price tag (pillar 5).
+  registerUpgrade({
+    id: 'prospect',
+    name: "A Prospector's Eye",
+    currency: 'CHIP',
+    baseCost: D(400),
+    ratio: 1.3,
+    maxLevel: 25,
+    resetsOnCollapse: true,
+    visible: (s) => (s.face.oreSeen?.length ?? 0) > 0,
+    description: (l) => `You start seeing where the rock swells. +25% chance a pocket forms (now +${25 * l}%). It never fills the face — there is only ever room for so many.`,
+  });
+  registerUpgrade({
+    id: 'deepsense',
+    name: 'Deepsense',
+    currency: 'CONV',
+    baseCost: D(60),
+    ratio: 1.45,
+    maxLevel: 15,
+    resetsOnCollapse: true,
+    visible: (s) => (s.face.oreSeen?.length ?? 0) > 0,
+    description: (l) => `Some pockets are worth more than others and you are learning to tell. Leans the roll toward the richer seams (now ×${(1 + 0.18 * l).toFixed(2)}).`,
+  });
   registerUpgrade({
     id: 'expand',
     name: 'Widen the Face',
@@ -214,6 +240,24 @@ export function registerShell1Upgrades(): void {
 }
 
 export function registerShell1UpgradeModifiers(): void {
+  // ORES. Two rows, deliberately separate: HOW OFTEN pockets form is a
+  // different purchase from HOW RICH they run, and a player who wants more
+  // small ones is buying a different thing from a player waiting on a Heartrot.
+  // Neither touches regen or yield, so neither can move the ceiling — the
+  // frequency row is capped by ORE_CAP_SHARE and the rarity row only tilts a
+  // roll between types that were already forming (pillar 2, pillar 5).
+  registerModifier({
+    id: 'upgrade.prospect',
+    label: 'A Prospector\'s Eye',
+    bucket: 'oreChance',
+    value: (s) => 1 + 0.25 * upgradeLevel(s, 'prospect'),
+  });
+  registerModifier({
+    id: 'upgrade.deepsense',
+    label: 'Deepsense',
+    bucket: 'oreRarity',
+    value: (s) => 1 + 0.18 * upgradeLevel(s, 'deepsense'),
+  });
   registerModifier({
     id: 'upgrade.bellows',
     label: 'Twin Bellows',

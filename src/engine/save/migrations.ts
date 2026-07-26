@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 32;
+export const SAVE_VERSION = 33;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -711,6 +711,28 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     delete drills['equipped'];
     return { ...p, version: 32, state };
+  },
+
+  // v32 -> v33 — ORES IN THE GRID.
+  //
+  // The face gains its pocket arrays and the bay gains the hunt toggle. Nothing
+  // is seeded here: the drought floor puts ore in the rock within a minute of
+  // loading, which is a better first impression than a save that opens with a
+  // grid already full of timers the player never saw form.
+  //
+  // `huntOres` defaults ON so an existing bay starts harvesting pockets without
+  // the player having to find a switch they have never been told about.
+  32: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const face = (state['face'] ??= {}) as Record<string, unknown>;
+    const cells = (face['cells'] ?? []) as unknown[];
+    face['ore'] ??= new Array(cells.length).fill('');
+    face['oreDug'] ??= new Array(cells.length).fill(0);
+    face['oreDryFor'] ??= 0;
+    face['oreSeen'] ??= [];
+    const drills = (state['drills'] ??= {}) as Record<string, unknown>;
+    drills['huntOres'] ??= true;
+    return { ...p, version: 33, state };
   },
 };
 

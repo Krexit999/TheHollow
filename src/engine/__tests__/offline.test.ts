@@ -57,7 +57,11 @@ describe('offline calculation', () => {
     for (let i = 0; i < 24; i++) s.drills.units.push(newDrill());
     const start = performance.now();
     engine.dispatch({ type: 'applyOffline', seconds: 86400 * 365 });
-    expect(performance.now() - start).toBeLessThan(50); // closed-form, no loop
+    // Closed-form, not a loop. The margin is deliberately loose: a year stepped
+    // at 100ms is 315 MILLION iterations, so anything under a second proves the
+    // point, while a tight bound just measures how busy the machine running the
+    // suite happens to be — this flaked at 50ms under parallel load.
+    expect(performance.now() - start).toBeLessThan(1000);
     // ceiling 2.88 charge/s * 1yr * 0.55 — finite, no cap applied
     expect(s.offline!.dust.toNumber()).toBeCloseTo(2.88 * 86400 * 365 * 0.55, -3);
   });

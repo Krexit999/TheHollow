@@ -244,7 +244,7 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(32); // A.54 — one alloy per drill
+    expect(SAVE_VERSION).toBe(33); // A.55 — ores in the grid
     const st = out.state as Record<string, unknown>;
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();

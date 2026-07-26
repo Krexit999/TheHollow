@@ -13,6 +13,8 @@ import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '
 import { drillInterval, drillPower, MAX_DRILLS } from '../../engine/systems/drills';
 import { drillsCarrying, knownAbilities } from '../../engine/systems/drillAlloys';
 import { ABILITY_BY_ID } from '../../engine/content/drillAlloys';
+import { oreCount } from '../../engine/systems/ores';
+import { oreDef, oreOddsHint } from '../../engine/content/ores';
 import { materialCount } from '../../engine/systems/forge';
 import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
@@ -61,6 +63,49 @@ function FieldStats({ state, m }: { state: GameState; m: ModifierCache }) {
       <div className="mt-2 border-t border-cave-800 pt-1.5 text-[10px] leading-snug text-cave-500">
         The ceiling is the most you can ever earn per second. Drills and idle income press up against it; to earn more, raise it.
       </div>
+      <OreReadout state={state} />
+    </div>
+  );
+}
+
+/**
+ * WHAT IS IN THE ROCK. Deliberately part of THE FIELD rather than a room of its
+ * own: a pocket is not a system you visit, it is a property the face has, and
+ * the number that matters is "is there anything out there right now".
+ *
+ * PILLAR 5 lives in what this does NOT say. Types appear here only after one
+ * has been opened, the odds are a sentence rather than a table, and nothing
+ * hints that there are more to find — a counter reading "2 of 4" would be the
+ * locked list with extra steps.
+ */
+function OreReadout({ state }: { state: GameState }) {
+  const pockets = oreCount(state);
+  const seen = (state.face.oreSeen ?? []).map(oreDef).filter(Boolean);
+  if (pockets === 0 && seen.length === 0) return null;
+  return (
+    <div className="mt-2 border-t border-cave-800 pt-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-[#c8a45a]">In the rock</span>
+        <span className="tnum text-[10px] text-cave-400">
+          {pockets === 0 ? 'nothing right now' : `${pockets} pocket${pockets === 1 ? '' : 's'}`}
+        </span>
+      </div>
+      <p className="mt-1 text-[10px] leading-snug text-cave-500">
+        {pockets > 0
+          ? 'Hold on one to work it out by hand — slower, but you take it clean. A drill will open it faster and leave a little behind.'
+          : oreOddsHint(state.shell.current, state.depth)}
+      </p>
+      {seen.length > 0 && (
+        <div className="mt-1.5 space-y-1">
+          {seen.map((o) => (
+            <div key={o!.id} className="flex items-baseline gap-1.5">
+              <span className="mt-[3px] h-2 w-2 shrink-0 rounded-sm" style={{ background: `#${o!.colour.toString(16).padStart(6, '0')}` }} />
+              <span className="shrink-0 text-[10px] font-semibold" style={{ color: `#${o!.colour.toString(16).padStart(6, '0')}` }}>{o!.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[9px] italic text-cave-600">{o!.line}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -82,7 +127,11 @@ export function DigPanel() {
   const m = useFreshMods();
   if (!state) return null;
 
-  const ids = ['kilnBuild', 'latticeUncover', 'forgeBuild', 'blade', 'soil', 'roots', 'lantern', 'expand'];
+  // The two ORE rows sit with the face upgrades because that is what they are —
+  // they change the rock, not a machine. Both carry their own `visible` gate
+  // (nothing until a pocket has actually been opened), so listing them here
+  // does not put them on screen before the player knows what ore is.
+  const ids = ['kilnBuild', 'latticeUncover', 'forgeBuild', 'blade', 'soil', 'roots', 'lantern', 'prospect', 'deepsense', 'expand'];
   const defs = allUpgrades().filter(
     (u) => ids.includes(u.id) && (!u.visible || u.visible(state)) && !(u.id === 'kilnBuild' && state.kiln.built),
   );
@@ -339,6 +388,9 @@ export function DrillsPanel() {
     .map((a) => ({ def: a, on: drillsCarrying(state, a.id) }))
     .filter((x) => x.on.length > 0);
   const bare = state.drills.units.filter((u) => !u.alloy).length;
+  const hunting = state.drills.huntOres !== false;
+  const pockets = oreCount(state);
+  const orePocket = pockets === 0 ? 'Nothing' : `${pockets} pocket${pockets === 1 ? '' : 's'}`;
 
   return (
     <div className="space-y-2">
@@ -358,6 +410,33 @@ export function DrillsPanel() {
           <BucketInfo bucket="drillSpeed"><span className="text-[10px] text-cave-400">Speed bonuses</span></BucketInfo>
           <span className="text-cave-700">·</span>
           <BucketInfo bucket="drillPower"><span className="text-[10px] text-cave-400">Bite bonuses</span></BucketInfo>
+        </div>
+
+        {/* SEND THEM AT THE POCKETS — the whole of drill routing, on purpose.
+            One switch, no areas, no per-drill anything: A.52 proved what a
+            configuration screen does to the idle layer. It defaults ON so an
+            idle player never has to find it (pillar 1); turning it OFF is the
+            interesting move, because a pocket is richer worked by hand. */}
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-cave-800 pt-2">
+          <div className="min-w-0">
+            <div className="text-[11px] text-cave-200">Send them at the pockets</div>
+            <div className="text-[10px] leading-snug text-cave-500">
+              {hunting
+                ? `They open ore on their own — faster than you can, and they leave a little in the rock. ${orePocket} in the face now.`
+                : `They leave ore alone, so it keeps until you work it yourself. ${orePocket} waiting.`}
+            </div>
+          </div>
+          <button
+            role="switch"
+            aria-checked={hunting}
+            aria-label="Send drills at ore pockets"
+            className={`shrink-0 rounded border px-2 py-1 text-[10px] uppercase tracking-wider ${
+              hunting ? 'border-[#8fd8c0]/60 bg-[#8fd8c0]/10 text-[#8fd8c0]' : 'border-cave-700 text-cave-400 hover:bg-cave-800'
+            }`}
+            onClick={() => dispatch({ type: 'setHuntOres', on: !hunting })}
+          >
+            {hunting ? 'On' : 'Off'}
+          </button>
         </div>
       </div>
 

@@ -47,8 +47,17 @@ describe('signature techniques — the verb layer', () => {
     // A full fresh face: all regen overflows. 50 idle seconds must pay the
     // DOCUMENTED leak — 36 cells × 0.08 regen × 10% — with the pool banking
     // half that again ON TOP, in charge units, never subtracting from it.
+    //
+    // ORES ARE HELD OFF for this one, and the reason is worth stating because
+    // it is a real interaction and not test scaffolding: a pocket has a bigger
+    // cap, so it absorbs regen that a plain cell would have overflowed, and
+    // overflow is what seep is made of. The charge is DEFERRED, not lost —
+    // opening the pocket returns it at full yield instead of seep's 15%, so a
+    // player who opens pockets is far ahead — but while one sits unopened it
+    // does thin the leak. This test is about the leak's arithmetic, so the
+    // pockets are cleared each second to keep the two effects apart.
     const before = s.currencies['dust']!.toNumber();
-    for (let i = 0; i < 50; i++) engine.tick(1);
+    for (let i = 0; i < 50; i++) { engine.tick(1); s.face.ore = []; }
     const gained = s.currencies['dust']!.toNumber() - before;
     const expectedLeak = 36 * 0.08 * 50 * SEEP_EFFICIENCY; // = 14.4 at yield 1
     expect(gained).toBeGreaterThan(expectedLeak * 0.95);

@@ -55,7 +55,7 @@ describe('1. an invalid bucket name cannot be registered', () => {
     // ALL_BUCKETS is `satisfies readonly Bucket[]`, so the compiler already
     // rejects a name that is not in the union. This checks the other
     // direction: nothing in the union is missing from the runtime list.
-    expect(ALL_BUCKETS.length).toBe(17);
+    expect(ALL_BUCKETS.length).toBe(19);
     expect(new Set(ALL_BUCKETS).size).toBe(ALL_BUCKETS.length);
     for (const b of ALL_BUCKETS) expect(isBucket(b)).toBe(true);
   });
