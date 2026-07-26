@@ -179,12 +179,29 @@ export function caseComplete(state: GameState, caseId: string): boolean {
   return p.have >= p.need;
 }
 
+/** The halls a relic can actually stand in. */
+export const RELIC_HALLS = CASES.filter((c) => c.from === 'relic');
+
+/**
+ * IDENTIFY -> VALUE, made real (A.48). Studying used to buy story and exhibit
+ * eligibility and nothing you could point at on the bonus line, which read as
+ * "pay Scrip for flavour". A studied piece now makes the hall it stands in
+ * worth more, permanently and visibly: the case's own bonus grows with the
+ * research done inside it.
+ */
+export const STUDY_BONUS = 0.03;
+
+/** A case's live bonus — its authored figure plus the research standing in it. */
+export function caseBonusNow(state: GameState, def: MuseumCaseDef): number {
+  return def.bonus + STUDY_BONUS * piecesInCase(state, def.id).length;
+}
+
 /** Completed cases' contribution to a bucket. */
 export function museumBonus(state: GameState, bucket: Bucket): number {
   let total = 0;
   for (const id of state.museum.completed) {
     const def = CASE_BY_ID.get(id);
-    if (def && def.bucket === bucket) total += def.bonus;
+    if (def && def.bucket === bucket) total += caseBonusNow(state, def);
   }
   return total;
 }
@@ -305,15 +322,38 @@ export function identifyCost(piece: MuseumPiece): number {
  * to every exhibit, and its story stays unread. Scrip is the price, which gives
  * the Guild's currency a use that is not another purchase.
  */
+/**
+ * THE SECOND INPUT (A.48, the standing reach rule). Scrip is meta-tier and
+ * earnable in every shell, but a player who has just Breached and spent their
+ * purse would find the Museum's only verb live-but-dead. Relic SHARDS pay for
+ * the same work, and shards come out of the player's own pile in any world.
+ * Never a dead button: if you have relics at all, you can study one.
+ *
+ * Priced in the SHARD economy, not as a multiple of the Scrip price. A Rare
+ * renders down for 6 shards, so 8 per rarity step puts a study at three or four
+ * spare relics — comparable to a first fusion. Converting the Scrip figure
+ * instead (the first attempt) asked 240 shards for the same work, which is
+ * forty rendered relics: a second input that exists and cannot be paid is the
+ * same dead button in a different colour.
+ */
+export function identifyShardCost(piece: MuseumPiece): number {
+  return 8 * (piece.relic.rarity + 1);
+}
+
 export function identifyPiece(state: GameState, ctx: EngineCtx, uid: number): ActionResult {
   const piece = state.museum.pieces.find((p) => p.relic.uid === uid);
   if (!piece) return { ok: false, reason: 'Nothing of that name is on display' };
   if (piece.identified) return { ok: false, reason: 'That one has been studied already' };
   const cost = identifyCost(piece);
+  const shardCost = identifyShardCost(piece);
   if (!spendCurrency(state, 'scrip', D(cost))) {
-    return { ok: false, reason: `The work wants ${cost} Scrip` };
+    if (state.relics.shards < shardCost) {
+      return { ok: false, reason: `The work wants ${cost} Scrip, or ${shardCost} shards the hard way.` };
+    }
+    state.relics.shards -= shardCost;
   }
   piece.identified = true;
+  state.relics.floorBonus = museumFloorBonus(state);
   noteExhibits(state, ctx);
   ctx.dirty();
   return { ok: true, data: { uid } };
@@ -358,7 +398,10 @@ export function exhibitBonus(state: GameState, bucket: Bucket): number {
 }
 
 export function museumFloorBonus(state: GameState): number {
-  return Math.min(0.5, state.museum.completed.length * 0.08);
+  // Research lifts luck too (A.48), so studying is worth doing before a hall
+  // is anywhere near full — the old rule paid nothing until a case closed.
+  const studied = state.museum.pieces.filter((p) => p.identified).length;
+  return Math.min(0.5, state.museum.completed.length * 0.08 + studied * 0.01);
 }
 
 // ---------------------------------------------------------------------------

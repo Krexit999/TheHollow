@@ -127,6 +127,7 @@ function pickTarget(state: GameState, drill: DrillState): number {
 }
 
 import { lawNum } from '../laws';
+import { relicRule } from './relicPowers';
 
 export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: number): void {
   if (!state.drills.bayBuilt || state.drills.units.length === 0) return;
@@ -162,11 +163,19 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
         if (best < 0) continue;
         target = best;
       }
-      const power = drillPower(state, mods, drill);
+      // THE SECOND BITE (A.48 relic power) is the one rule change on this path.
+      // It is deliberately NOT the 'Two Hands' Axiom in cheaper clothes: the
+      // Axiom gives a second cell at FULL power, this splits the stroke and
+      // gives two at 65% each. Net 1.3x on a full face, worse than the Axiom,
+      // and worth MORE than the Axiom on a face where every cell is part-full,
+      // because the ceiling is regen and two shallow bites waste less of it.
+      // Still bounded by regen either way — pillar 2 is untouched.
+      const secondBite = relicRule(state, 'twinBite');
+      const power = drillPower(state, mods, drill) * (secondBite ? 0.65 : 1);
       // TWO HANDS (law): a stroke works this many cells. The second cell is
       // the next-fullest bare one — same power each, still regen-bound.
       const handCells: number[] = [target];
-      const hands = lawNum(state, 'drillStrokes');
+      const hands = Math.max(lawNum(state, 'drillStrokes'), secondBite ? 2 : 1);
       if (hands > 1) {
         let second = -1;
         let secondCharge = 0;

@@ -13,12 +13,14 @@ import { CHALLENGES, availableChallenges, CHALLENGE_BY_ID } from '../../engine/c
 import { GRID_MODULES, MODULE_BY_ID, GRID_W, GRID_CELLS, automationRate } from '../../engine/content/shell7/gridModules';
 import {
   RARITIES, RELIC_SLOTS, AFFIXES, SOURCE_BY_ID, fusionPreview,
-  RELIC_HOLD_CAP, RESONANCES, activeResonances, rollFloor, shardValue,
-  wakingOf, wakingStep, wakingNeed, fusionCost,
+  RESONANCES, activeResonances, rollFloor, shardValue, holdCap,
+  wakingOf, wakingStep, wakingNeed, fusionCost, fusionAfford,
 } from '../../engine/systems/relics';
+import { powerOf, powerLive, KIND_NAME } from '../../engine/systems/relicPowers';
 import {
   CASES, CASE_BY_ID, caseProgress, ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs,
-  EXHIBITS, activeExhibits, identifyCost,
+  EXHIBITS, activeExhibits, identifyCost, RELIC_HALLS, caseBonusNow,
+  identifyShardCost, piecesInCase,
 } from '../../engine/systems/museum';
 import { HIRELING_BY_NPC } from '../../engine/guild/hirelings';
 import { keyDisplayName } from '../../engine/content/keyNames';
@@ -378,9 +380,15 @@ export function RelicsPanel() {
             Shards <span className="tnum font-semibold text-[#d8b8ee]">{Math.floor(state.relics.shards)}</span>
           </span>
           <span className="text-cave-500">·</span>
-          <span className={held.length >= RELIC_HOLD_CAP ? 'text-amber-400' : 'text-cave-400'}>
-            Hold <span className="tnum">{held.length}/{RELIC_HOLD_CAP}</span>
-            {held.length >= RELIC_HOLD_CAP && ' — the weakest render themselves down'}
+          {/* The second price. A fusion is bought out of the same purse as the
+              Core tree, which is what stops it being a button you hold down. */}
+          <span className="text-cave-400">
+            Cores <span className="tnum font-semibold text-[#e8c98a]">{Math.floor(getCurrency(state, 'core').toNumber())}</span>
+          </span>
+          <span className="text-cave-500">·</span>
+          <span className={held.length >= holdCap(state) ? 'text-amber-400' : 'text-cave-400'}>
+            Hold <span className="tnum">{held.length}/{holdCap(state)}</span>
+            {held.length >= holdCap(state) && ' — the weakest render themselves down'}
           </span>
           {state.relics.floorBonus > 0 && (
             <>
@@ -393,19 +401,35 @@ export function RelicsPanel() {
         </div>
       </div>
 
-      {/* RESONANCE — found by wearing, never listed before it fires (pillar 5). */}
+      {/* RESONANCE — found by wearing, never listed before it fires (pillar 5).
+          The LIVE state is the headline now: a set bonus that is currently
+          firing has to be readable at a glance, not inferred from a border. */}
       {(activeResonances(state).length > 0 || state.relics.resonancesFound.length > 0) && (
-        <div className="panel p-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#d8b8ee]">They recognise each other</div>
+        <div className={`panel p-3 ${activeResonances(state).length > 0 ? 'border-[#d8b8ee]/50' : ''}`}>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#d8b8ee]">They recognise each other</span>
+            {activeResonances(state).length > 0 && (
+              <span className="shrink-0 rounded bg-[#d8b8ee]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#d8b8ee]">
+                Resonating · {activeResonances(state).length}
+              </span>
+            )}
+          </div>
           {RESONANCES.filter((res) => state.relics.resonancesFound.includes(res.id)).map((res) => {
             const on = activeResonances(state).some((a) => a.id === res.id);
+            const wearing = state.relics.equipped
+              .map((uid) => held.find((h) => h.uid === uid))
+              .filter((h) => h?.source === res.source).length;
             return (
               <div key={res.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${
                 on ? 'border-[#d8b8ee]/40 bg-[#d8b8ee]/5' : 'border-cave-800 opacity-60'}`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={`text-[12px] font-semibold ${on ? 'text-[#d8b8ee]' : 'text-cave-400'}`}>{res.name}</span>
-                  <span className="shrink-0 text-[10px] text-cave-500">
-                    {on ? `+${Math.round((res.mult - 1) * 100)}% to those lines` : `wear ${res.need} from ${SOURCE_BY_ID.get(res.source)?.name ?? res.source}`}
+                  <span className={`text-[12px] font-semibold ${on ? 'text-[#d8b8ee]' : 'text-cave-400'}`}>
+                    {on && <span className="mr-1">◆</span>}{res.name}
+                  </span>
+                  <span className={`tnum shrink-0 text-[10px] ${on ? 'text-[#d8b8ee]' : 'text-cave-500'}`}>
+                    {on
+                      ? `FIRING · +${Math.round((res.mult - 1) * 100)}% to every line on those ${wearing}`
+                      : `${wearing}/${res.need} from ${SOURCE_BY_ID.get(res.source)?.name ?? res.source} worn`}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{res.line}</div>
@@ -482,6 +506,41 @@ export function RelicsPanel() {
               </div>
               <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{wakingStep(r).line}</div>
             </div>
+
+            {/* THE POWER (A.48) — the half of a relic that is not a percentage,
+                and the reason six slots is a build rather than a sort. It is
+                INERT while the relic is Dormant and turns on at Stirring, which
+                is the visible change-over-time the waking bar was promising and
+                never delivering. Dormant names it and says nothing else
+                (pillar 5): what it does arrives when it wakes. */}
+            {(() => {
+              const pw = powerOf(r);
+              if (!pw) return null;
+              const live = powerLive(r);
+              return (
+                <div className={`mt-1.5 rounded-md border px-2 py-1.5 ${
+                  live ? 'border-[#e8c98a]/50 bg-[#e8c98a]/5' : 'border-cave-800 border-dashed'}`}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className={`text-[11px] font-semibold ${live ? 'text-[#e8c98a]' : 'text-cave-500'}`}>
+                      {pw.name}
+                    </span>
+                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+                      {live ? KIND_NAME[pw.kind] : 'sleeping'}
+                    </span>
+                  </div>
+                  {live ? (
+                    <>
+                      <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{pw.readout(state)}</div>
+                      <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{pw.line}</div>
+                    </>
+                  ) : (
+                    <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
+                      Something in it has not woken. Carry it and find out what.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <div className="mt-2 flex gap-1.5">
               {!worn ? (
                 <button
@@ -543,29 +602,50 @@ export function RelicsPanel() {
                   <span className="text-[10px] uppercase tracking-widest text-cave-500">
                     Feed into this one — the fed relic is consumed
                   </span>
-                  {/* The price, where the decision is. A fusion used to cost
-                      nothing but a spare, so the dominant play was to fuse
-                      everything into everything and the choice evaporated. */}
-                  <span className={`tnum shrink-0 text-[10px] ${
-                    state.relics.shards >= fusionCost(r) ? 'text-[#d8b8ee]' : 'text-amber-400'}`}>
-                    {fusionCost(r)} shards
-                  </span>
                 </div>
+                {/* THE PRICE, where the decision is. Two of them: shards climb
+                    with what has already been fused into THIS relic, Cores climb
+                    with every fusion you have ever done. The next-price line is
+                    the whole point — the player must be able to see the wall
+                    coming before they hit it. */}
+                {(() => {
+                  const af = fusionAfford(state, r);
+                  const next = fusionCost({ ...state, relics: { ...state.relics, fused: state.relics.fused + 1 } }, { ...r, fusedFrom: r.fusedFrom + 1 });
+                  return (
+                    <div className={`rounded-md border px-2 py-1.5 ${
+                      af.ok ? 'border-cave-700' : 'border-amber-500/40 bg-amber-500/5'}`}>
+                      <div className="flex flex-wrap items-baseline gap-x-3 text-[11px]">
+                        <span className={af.ok ? 'text-[#d8b8ee]' : 'text-amber-400'}>
+                          <span className="tnum font-semibold">{af.price.shards}</span> shards
+                        </span>
+                        <span className={af.ok ? 'text-[#e8c98a]' : 'text-amber-400'}>
+                          <span className="tnum font-semibold">{af.price.cores}</span> Cores
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
+                        {af.ok
+                          ? <>After this one, the next fusion into it wants <span className="tnum text-cave-400">{next.shards}</span> shards and <span className="tnum text-cave-400">{next.cores}</span> Cores. Every fusion makes the next dearer.</>
+                          : <span className="text-amber-400">Short {af.short.join(' and ')}. Render something down, or collapse the world for Cores.</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {/* A LOCKED relic is never offered as food — the engine refuses it
                     too, so this list can never present a choice that would fail. */}
                 {held.filter((o) => o.uid !== r.uid && !o.locked).map((o) => {
                   const pv = fusionPreview(state, r.uid, o.uid);
                   const worthIt = pv && (pv.gained.length > 0 || pv.improved.length > 0 || pv.rarityUp);
                   const oWorn = state.relics.equipped.includes(o.uid);
+                  const broke = !fusionAfford(state, r).ok;
                   return (
                     <button
                       key={o.uid}
                       className={`block w-full rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors ${
-                        worthIt && !pv?.gatedBy
+                        worthIt && !pv?.gatedBy && !broke
                           ? 'border-cave-700 hover:border-lamp-500/50 hover:bg-cave-800'
                           : 'border-cave-800 opacity-60 hover:bg-cave-800'
                       }`}
-                      disabled={!!pv?.gatedBy}
+                      disabled={!!pv?.gatedBy || broke}
                       onClick={() => {
                         dispatch({ type: 'fuseRelics', keepUid: r.uid, feedUid: o.uid });
                         setFusingInto(null);
@@ -583,6 +663,9 @@ export function RelicsPanel() {
                         ) : (
                           <>
                             {pv.rarityUp && !pv.gatedBy && <span className="mr-2 text-lamp-400">rarity up</span>}
+                            {pv.powerGained && (
+                              <span className="mr-2 text-[#e8c98a]">takes its power · {pv.powerGained}</span>
+                            )}
                             {/* B4: the museum gate, said BEFORE the attempt. */}
                             {pv.gatedBy && (
                               <span className="mr-2 text-[#d4a86a]">
@@ -626,27 +709,49 @@ export function RelicsPanel() {
 // The Museum
 // ---------------------------------------------------------------------------
 
+/**
+ * THE MUSEUM (rebuilt A.48) — the arrangement IS the verb.
+ *
+ * A.47 kept the donated relic whole and gave the halls exhibits to notice, and
+ * play still reported "a donate button", correctly: the panel picked WHICH
+ * relic to give (`held.find(r => !r.locked)`) and offered three arbitrary halls
+ * to move it to afterwards. The player was never asked the question the system
+ * is built around.
+ *
+ * So the halls are now a board. Each one shows its plinths — filled and empty —
+ * and placing is two deliberate choices: which piece, and where it stands. An
+ * exhibit forms out of what ends up next to what, is never listed before it
+ * forms (pillar 5), and is undone by moving a piece back out, which is what
+ * makes an arrangement a decision rather than a one-way donation.
+ */
 export function MuseumPanel() {
   const state = useLive();
+  const [placingIn, setPlacingIn] = useState<string | null>(null);
+  const [movingUid, setMovingUid] = useState<number | null>(null);
   if (!state) return null;
+
+  const pieceOf = (uid: number) => state.museum.pieces.find((p) => p.relic.uid === uid);
 
   return (
     <div className="space-y-2">
       {/* A.47 FOLLOW-UP: no panel-owned title card here. Museum has its own
           SystemHeader now (title, purpose, "X/Y cases" status, and the same
-          next-hint text this card used to restate) — the file's own header
-          comment says panels "carry the numbers and the controls and never
-          repeat their own title". This card duplicated all four fields; it
-          was invisible stacked under Relics and became the first thing on
-          screen the moment Museum got a tab of its own. */}
+          next-hint text this card used to restate). */}
 
       {/* WHAT THE ARRANGEMENT MEANS. Only formed exhibits appear — nothing is
           listed before it happens (pillar 5), so this whole panel is absent
           until the player's own placing makes one. */}
       {state.museum.exhibitsFound.length > 0 && (
-        <div className="panel p-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">
-            Exhibits · {state.museum.exhibitsFound.length} found
+        <div className={`panel p-3 ${activeExhibits(state).length > 0 ? 'border-[#e8c98a]/50' : ''}`}>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">
+              Exhibits · {state.museum.exhibitsFound.length} found
+            </span>
+            {activeExhibits(state).length > 0 && (
+              <span className="shrink-0 rounded bg-[#e8c98a]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#e8c98a]">
+                Standing · {activeExhibits(state).length}
+              </span>
+            )}
           </div>
           {EXHIBITS.filter((e) => state.museum.exhibitsFound.includes(e.id)).map((e) => {
             const live = activeExhibits(state).find((a) => a.def.id === e.id);
@@ -654,11 +759,13 @@ export function MuseumPanel() {
               <div key={e.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${
                 live ? 'border-[#e8c98a]/40 bg-[#e8c98a]/5' : 'border-cave-800 opacity-60'}`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={`text-[12px] font-semibold ${live ? 'text-[#e8c98a]' : 'text-cave-400'}`}>{e.name}</span>
+                  <span className={`text-[12px] font-semibold ${live ? 'text-[#e8c98a]' : 'text-cave-400'}`}>
+                    {live && <span className="mr-1">◆</span>}{e.name}
+                  </span>
                   <span className="shrink-0 text-[10px] text-cave-500">
                     {live
-                      ? `standing in ${CASE_BY_ID.get(live.caseId)?.name ?? live.caseId} · +${Math.round(e.bonus * 100)}% ${BUCKET_NAME[e.bucket]}`
-                      : 'not currently stood together'}
+                      ? `in ${CASE_BY_ID.get(live.caseId)?.name ?? live.caseId} · +${Math.round(e.bonus * 100)}% ${BUCKET_NAME[e.bucket]}`
+                      : 'taken apart — the pieces no longer stand together'}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{e.line}</div>
@@ -668,83 +775,194 @@ export function MuseumPanel() {
         </div>
       )}
 
-      {/* THE PIECES — where the relic's story lives on. One source of truth:
-          this reads the RelicInstance the hall was given, it does not restate
-          it. An unstudied piece is a shape under a cloth. */}
-      {state.museum.pieces.length > 0 && (
-        <div className="panel p-3">
-          <div className="flex items-baseline justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">On the plinths</span>
-            <span className="tnum text-[10px] text-cave-400">
-              {state.museum.pieces.filter((p) => p.identified).length}/{state.museum.pieces.length} studied
-            </span>
-          </div>
-          {state.museum.pieces.map((p) => {
-            const cost = identifyCost(p);
-            const canPay = getCurrency(state, 'scrip').gte(cost);
-            return (
-              <div key={p.relic.uid} className="mt-1.5 rounded-md border border-cave-800 px-2 py-1.5">
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[12px] text-cave-200">
-                    {p.identified ? `${RARITIES[p.relic.rarity]} relic` : 'Unidentified piece'}
-                    {p.identified && (p.relic.waking ?? 0) >= 2 && (
+      {/* THE HALLS. A relic case is a room with plinths in it, and which plinth
+          a thing stands on is the only question the Museum asks. */}
+      <div className="panel p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">The halls</span>
+          <span className="tnum shrink-0 text-[10px] text-cave-400">
+            {state.museum.pieces.filter((p) => p.identified).length}/{state.museum.pieces.length} studied
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+          Where a thing stands is the choice. Some arrangements are noticed; nobody will tell
+          you which. A piece under a cloth counts for its hall and is invisible to everything
+          else — study it and the hall grows worth as well as a story.
+        </p>
+      </div>
+
+      {RELIC_HALLS.map((c) => {
+        const p = caseProgress(state, c.id);
+        const done = state.museum.completed.includes(c.id);
+        const standing = state.museum.pieces.filter((x) => x.caseId === c.id);
+        const room = p.have < p.need;
+        const here = activeExhibits(state).filter((a) => a.caseId === c.id);
+        return (
+          <div key={c.id} className={`panel p-3 ${here.length > 0 ? 'border-[#e8c98a]/50' : done ? 'border-lamp-500/40' : ''}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold text-cave-200">{c.name}</span>
+              <span className="tnum shrink-0 text-[10px] text-cave-400">{p.have}/{p.need}</span>
+            </div>
+            <p className="mt-1 text-[11px] italic leading-snug text-cave-400">{c.blurb}</p>
+
+            {/* THE PLINTHS. Filled and empty both drawn, because an empty
+                plinth is the thing that makes the room ask a question. */}
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {Array.from({ length: c.need }, (_, i) => {
+                const piece = standing[i];
+                if (!piece) {
+                  return (
+                    <span key={`e${i}`} className="rounded border border-dashed border-cave-800 px-1.5 py-0.5 text-[10px] text-cave-600">
+                      empty
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    key={piece.relic.uid}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+                      piece.identified
+                        ? 'border-[#e8c98a]/50 text-[#e8c98a] hover:bg-[#e8c98a]/10'
+                        : 'border-cave-700 text-cave-400 hover:bg-cave-800'
+                    }`}
+                    title={piece.identified ? 'Studied — click for its story' : 'Under a cloth — click to study or move it'}
+                    onClick={() => setMovingUid(movingUid === piece.relic.uid ? null : piece.relic.uid)}
+                  >
+                    {piece.identified ? RARITIES[piece.relic.rarity] : '▨ unstudied'}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* What the room is currently paying, research included. */}
+            <div className="mt-1.5 text-[10px] text-cave-500">
+              {done ? 'Filled — ' : 'When filled — '}
+              <span className="text-lamp-400">
+                +{Math.round(caseBonusNow(state, c) * 100)}% {BUCKET_NAME[c.bucket]}
+              </span>
+              {piecesInCase(state, c.id).length > 0 && (
+                <span className="text-cave-500">
+                  {' '}(+{Math.round(c.bonus * 100)}% base, +{Math.round((caseBonusNow(state, c) - c.bonus) * 100)}% from {piecesInCase(state, c.id).length} studied)
+                </span>
+              )}
+            </div>
+            {here.map((a) => (
+              <div key={a.def.id} className="mt-1 text-[10px] text-[#e8c98a]">
+                ◆ {a.def.name} stands here — +{Math.round(a.def.bonus * 100)}% {BUCKET_NAME[a.def.bucket]}
+              </div>
+            ))}
+
+            {/* PLACE — the player picks WHICH relic. This used to pick for them
+                (`held.find(r => !r.locked)`), which is exactly why a system
+                built on arrangement played as a donate button. */}
+            {room && (
+              <button
+                className="btn mt-2 w-full py-1 text-[11px]"
+                disabled={state.relics.held.filter((r) => !r.locked).length === 0}
+                onClick={() => { setPlacingIn(placingIn === c.id ? null : c.id); setMovingUid(null); }}
+              >
+                {state.relics.held.some((r) => !r.locked)
+                  ? placingIn === c.id ? 'Never mind' : 'Stand something here…'
+                  : 'Nothing unlocked to place'}
+              </button>
+            )}
+            {placingIn === c.id && (
+              <div className="mt-1.5 space-y-1 border-t border-cave-700 pt-1.5">
+                <div className="text-[10px] uppercase tracking-widest text-cave-500">
+                  Which one stands in {c.name}
+                </div>
+                {state.relics.held.filter((r) => !r.locked).map((r) => (
+                  <button
+                    key={r.uid}
+                    className="block w-full rounded-md border border-cave-700 px-2 py-1.5 text-left text-[11px] transition-colors hover:border-lamp-500/50 hover:bg-cave-800"
+                    onClick={() => { dispatch({ type: 'donateRelic', uid: r.uid, caseId: c.id }); setPlacingIn(null); }}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-cave-200">{RARITIES[r.rarity]} · from {SOURCE_BY_ID.get(r.source)?.name ?? r.source}</span>
+                      {state.relics.equipped.includes(r.uid) && (
+                        <span className="shrink-0 text-[9px] uppercase tracking-wider text-amber-400">worn</span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
+                      {r.found
+                        ? <>depth {r.found.depth} · {r.found.shell} · run {r.found.run + 1}{r.found.by ? ` · ${r.found.by}` : ''}</>
+                        : <span className="italic">no record of where this came from</span>}
+                      {(r.waking ?? 0) >= 2 && <span className="ml-1 text-[#9fd8c0]">awake</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* The piece detail, opened from its plinth. Study and re-place both
+                live here, so the arrangement is reversible by construction. */}
+            {standing.some((x) => x.relic.uid === movingUid) && (() => {
+              const piece = pieceOf(movingUid!)!;
+              const cost = identifyCost(piece);
+              const shardCost = identifyShardCost(piece);
+              const canScrip = getCurrency(state, 'scrip').gte(cost);
+              const canShard = state.relics.shards >= shardCost;
+              return (
+                <div className="mt-1.5 rounded-md border border-cave-700 px-2 py-1.5">
+                  <div className="text-[11px] text-cave-200">
+                    {piece.identified ? `${RARITIES[piece.relic.rarity]} relic` : 'Unidentified piece'}
+                    {piece.identified && (piece.relic.waking ?? 0) >= 2 && (
                       <span className="ml-1 text-[10px] text-[#9fd8c0]">awake</span>
                     )}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-cave-500">
-                    {CASE_BY_ID.get(p.caseId)?.name ?? p.caseId}
-                  </span>
-                </div>
-                {p.identified ? (
-                  p.relic.found ? (
-                    <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
-                      Found at depth <span className="tnum text-cave-400">{p.relic.found.depth}</span>
-                      {' '}in {p.relic.found.shell}, run <span className="tnum text-cave-400">{p.relic.found.run + 1}</span>
-                      {p.relic.found.by && <> — turned up by <span className="text-cave-400">{p.relic.found.by}</span></>}
-                    </div>
+                  </div>
+                  {piece.identified ? (
+                    piece.relic.found ? (
+                      <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
+                        Found at depth <span className="tnum text-cave-400">{piece.relic.found.depth}</span>
+                        {' '}in {piece.relic.found.shell}, run <span className="tnum text-cave-400">{piece.relic.found.run + 1}</span>
+                        {piece.relic.found.by && <> — turned up by <span className="text-cave-400">{piece.relic.found.by}</span></>}
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
+                        Nobody wrote down where this came from.
+                      </div>
+                    )
                   ) : (
                     <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
-                      Nobody wrote down where this came from.
+                      Under a cloth until somebody does the reading. It counts for this hall, and
+                      no exhibit can recognise it.
                     </div>
-                  )
-                ) : (
-                  <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
-                    Under a cloth until somebody does the reading. An unstudied piece counts for
-                    its case, but no exhibit can recognise it.
-                  </div>
-                )}
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {!p.identified && (
-                    <button
-                      className="btn px-2 py-1 text-[11px]"
-                      disabled={!canPay}
-                      title={`Study it — ${cost} Scrip`}
-                      onClick={() => dispatch({ type: 'identifyPiece', uid: p.relic.uid })}
-                    >
-                      Study · {cost} Scrip
-                    </button>
                   )}
-                  {/* Moving is what makes placement a DECISION rather than a
-                      trap: an arrangement you cannot change is a mistake you
-                      made once. */}
-                  {CASES.filter((c) => c.from === 'relic' && c.id !== p.caseId).slice(0, 3).map((c) => (
-                    <button
-                      key={c.id}
-                      className="btn px-2 py-1 text-[11px]"
-                      title={`Move it to ${c.name}`}
-                      onClick={() => dispatch({ type: 'movePiece', uid: p.relic.uid, caseId: c.id })}
-                    >
-                      → {c.name}
-                    </button>
-                  ))}
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {!piece.identified && (
+                      <button
+                        className="btn px-2 py-1 text-[11px]"
+                        disabled={!canScrip && !canShard}
+                        title={canScrip ? `Study it — ${cost} Scrip` : `Study it the hard way — ${shardCost} shards`}
+                        onClick={() => dispatch({ type: 'identifyPiece', uid: piece.relic.uid })}
+                      >
+                        {canScrip ? `Study · ${cost} Scrip` : `Study · ${shardCost} shards`}
+                      </button>
+                    )}
+                    {/* Every hall with room, not an arbitrary three. */}
+                    {RELIC_HALLS.filter((h) => h.id !== c.id
+                      && (state.museum.donated[h.id]?.length ?? 0) < h.need).map((h) => (
+                      <button
+                        key={h.id}
+                        className="btn px-2 py-1 text-[11px]"
+                        title={`Move it to ${h.name}`}
+                        onClick={() => { dispatch({ type: 'movePiece', uid: piece.relic.uid, caseId: h.id }); setMovingUid(null); }}
+                      >
+                        → {h.name}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })()}
+          </div>
+        );
+      })}
 
-      {CASES.map((c) => {
+      {/* The cases that want something other than a relic. These are shelves,
+          not halls — there is nothing to arrange, so they keep the plain
+          mount-the-next-thing control they have always had. */}
+      {CASES.filter((c) => c.from !== 'relic').map((c) => {
         const p = caseProgress(state, c.id);
         const done = state.museum.completed.includes(c.id);
         return (
@@ -760,30 +978,9 @@ export function MuseumPanel() {
             </div>
             <div className="mt-1 text-[10px] text-cave-500">
               {done ? 'Filled — ' : 'When filled — '}
-              <span className="text-lamp-400">
-                +{Math.round(c.bonus * 100)}% {BUCKET_NAME[c.bucket]}
-              </span>
-              , permanently.
+              <span className="text-lamp-400">+{Math.round(c.bonus * 100)}% {BUCKET_NAME[c.bucket]}</span>, permanently.
             </div>
-            {/* Until Phase 13 only relic cases had a button, so the four cases
-                that want teeth, gems and Codex pages could never be filled at
-                all — four of six exhibits permanently empty. */}
-            {/* A case keeps the relic for good, so it only ever offers an UNLOCKED
-                one. Lock anything you mean to keep and this can never eat it. */}
-            {!done && c.from === 'relic' && state.relics.held.length > 0 && (() => {
-              const giveable = state.relics.held.find((r) => !r.locked);
-              return (
-                <button
-                  className="btn mt-2 w-full py-1 text-[11px]"
-                  disabled={!giveable}
-                  title={giveable ? undefined : 'Every relic you hold is locked'}
-                  onClick={() => giveable && dispatch({ type: 'donateRelic', uid: giveable.uid, caseId: c.id })}
-                >
-                  {giveable ? 'Give the case a relic' : 'Every relic is locked'}
-                </button>
-              );
-            })()}
-            {!done && c.from !== 'relic' && (() => {
+            {!done && (() => {
               const owned = museumCandidates(state, c.from);
               const given = state.museum.donated[c.id] ?? [];
               const next = owned.find((k) => !given.includes(k.key));

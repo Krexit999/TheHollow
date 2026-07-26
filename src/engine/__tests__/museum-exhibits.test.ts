@@ -12,10 +12,11 @@ import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { EngineCtx, GameState, RelicInstance } from '../types';
 import { D } from '../decimal';
-import { addRelic } from '../systems/relics';
+import { addRelic, shardValue } from '../systems/relics';
 import {
   donateToCase, identifyPiece, identifyCost, movePiece, EXHIBITS,
   activeExhibits, exhibitBonus, piecesInCase, CASE_BY_ID,
+  caseBonusNow, museumBonus, STUDY_BONUS, identifyShardCost,
 } from '../systems/museum';
 
 const ctx: EngineCtx = { emit() {}, dirty() {} };
@@ -134,6 +135,63 @@ describe('exhibits form from the arrangement, and are found not listed', () => {
     const r = give(s, 'firstFinds', {});
     expect(movePiece(s, ctx, r.uid, 'teeth').ok).toBe(false); // bestiary hall
     expect(movePiece(s, ctx, r.uid, 'firstFinds').ok).toBe(false); // already there
+  });
+});
+
+/**
+ * IDENTIFY -> VALUE (A.48). Studying used to buy story and exhibit eligibility
+ * and nothing on the bonus line, which reads as "pay Scrip for flavour". And
+ * the ONLY input was Scrip, so a player who had just Breached and spent their
+ * purse met a live-but-dead button — the standing reach rule, in the Museum.
+ */
+describe('identify → value, and a study that can always be paid for', () => {
+  it('a studied piece makes the hall it stands in permanently worth more', () => {
+    const { s } = fresh();
+    const def = CASE_BY_ID.get('firstFinds')!;
+    const rs = Array.from({ length: def.need }, () => give(s, 'firstFinds', {}));
+    expect(caseBonusNow(s, def)).toBeCloseTo(def.bonus, 6);
+    const bucketBefore = museumBonus(s, def.bucket);
+    study(s, rs[0]!.uid);
+    expect(caseBonusNow(s, def)).toBeCloseTo(def.bonus + STUDY_BONUS, 6);
+    // ...and it reaches the modifier layer, not just the card.
+    expect(museumBonus(s, def.bucket)).toBeGreaterThan(bucketBefore);
+  });
+
+  it('research lifts the relic floor before any case is anywhere near full', () => {
+    const { s } = fresh();
+    const r = give(s, 'deepHoard', {}); // need 10 — nowhere near complete
+    expect(s.museum.completed).not.toContain('deepHoard');
+    const before = s.relics.floorBonus;
+    study(s, r.uid);
+    expect(s.relics.floorBonus).toBeGreaterThan(before);
+  });
+
+  /** REACH: with zero Scrip anywhere, the player's own pile still pays. */
+  it('studies on SHARDS when there is no Scrip at all', () => {
+    const { s } = fresh();
+    const r = give(s, 'firstFinds', {});
+    s.currencies['scrip'] = D(0);
+    const piece = s.museum.pieces.find((p) => p.relic.uid === r.uid)!;
+
+    s.relics.shards = 0;
+    const broke = identifyPiece(s, ctx, r.uid);
+    expect(broke.ok).toBe(false);
+    expect(broke.reason).toMatch(/shards/); // and it NAMES the second input
+
+    s.relics.shards = identifyShardCost(piece);
+    expect(identifyPiece(s, ctx, r.uid).ok).toBe(true);
+    expect(s.relics.shards).toBe(0);
+    expect(piece.identified).toBe(true);
+  });
+
+  /** A second input that cannot be paid is the same dead button in a new colour. */
+  it('prices the shard route in the SHARD economy, not as a multiple of Scrip', () => {
+    const { s } = fresh();
+    const r = give(s, 'firstFinds', {}, { rarity: 2 });
+    const piece = s.museum.pieces.find((p) => p.relic.uid === r.uid)!;
+    // A Rare renders down for 6 shards, so a study must be a few spare relics.
+    expect(identifyShardCost(piece)).toBeLessThan(shardValue(r) * 6);
+    expect(identifyShardCost(piece)).toBeLessThan(identifyCost(piece));
   });
 });
 

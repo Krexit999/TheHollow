@@ -599,6 +599,12 @@ export interface RelicInstance {
    *  can never be consumed — not fed into a fusion, not given to a Museum case.
    *  Absent means unlocked, so old saves load correctly with no migration. */
   locked?: boolean;
+  /** POWER OVERRIDE (A.48). Normally absent: `powerOf` DERIVES the power from
+   *  (uid, source, rarity), so every relic in every existing save already has
+   *  one and nothing needed migrating. This field exists only for the case
+   *  where a power has to move — a fusion carrying the fed relic's power onto
+   *  a keeper that had none. */
+  power?: string;
 }
 
 export interface RelicsState {

@@ -28,6 +28,11 @@
  */
 import type { EngineCtx, GameState, RelicInstance, RelicsState } from '../types';
 import { registerModifier, foldBonus, type Bucket } from '../modifiers';
+import { spendCurrency, getCurrency } from '../resources';
+import { D } from '../decimal';
+import {
+  POWER_BUCKETS, pairMultiplier, powerOf, relicPowerBonus, relicRule,
+} from './relicPowers';
 
 export const RELIC_SLOTS = 6;
 export const RARITIES = ['Common', 'Uncommon', 'Rare', 'Fabled', 'Mythic'] as const;
@@ -170,6 +175,12 @@ export function mintRelic(state: GameState, sourceId: string, seed: number): Rel
  */
 export const RELIC_HOLD_CAP = 40;
 
+/** DEEP POCKETS is a rule power: it moves the cap itself rather than paying a
+ *  percentage of something. Every read of the cap goes through here. */
+export function holdCap(state: GameState): number {
+  return RELIC_HOLD_CAP + (relicRule(state, 'deepPockets') ? 25 : 0);
+}
+
 /** What a relic is worth rendered down. Rarity is most of it. */
 export function shardValue(relic: RelicInstance): number {
   return (relic.rarity + 1) * 2 + relic.fusedFrom;
@@ -208,7 +219,7 @@ export function addRelic(state: GameState, relic: RelicInstance): RelicInstance 
   state.relics.found += 1;
   // Over the cap, the pile renders itself — weakest first, never the locked,
   // never what you are carrying, and never the one that just arrived.
-  while (state.relics.held.length > RELIC_HOLD_CAP) {
+  while (state.relics.held.length > holdCap(state)) {
     const victim = renderCandidates(state).find((r) => r.uid !== held.uid);
     if (!victim) break; // every spare is locked or worn — keep the overflow
     state.relics.shards += shardValue(victim);
@@ -237,15 +248,56 @@ export function fusionGate(state: GameState, rarity: number): { need: number; ha
 }
 
 /**
- * WHAT A FUSION COSTS (A.46). It used to cost nothing but a spare relic, so
- * the dominant play was to fuse everything into everything and the choice
- * evaporated. Shards price it — and note this is STRICTLY a superset of the
- * old requirement: you still need the fed relic, and now also the shards. A
- * fusion can only ever be harder to reach than it was, never easier, which is
- * why this needs no re-baselining of anything the sim measures.
+ * WHAT A FUSION COSTS (A.46, re-priced A.48).
+ *
+ * A.46 put a shard price on fusion and play reported it as still free, which
+ * it effectively was: 4 shards for a Common keeper against a hold that renders
+ * its own overflow down at 2-10 shards a relic. The price existed and never
+ * arrived.
+ *
+ * Two prices now, and the second is the one that bites:
+ *
+ *  - SHARDS ride the KEEPER, geometric in how much has already been fused into
+ *    it. Stacking eight relics into one favourite is meant to become absurd.
+ *  - CORES ride the WORKING, linear in how many fusions you have done at all.
+ *    This is the wall the brief asked for: the second fusion in a row costs
+ *    more than the first did, and the tenth costs ten times the first. Cores
+ *    are also what the Core tree eats, so a fusion is now bought out of the
+ *    same purse as permanent income — which is what makes it a choice and not
+ *    a button.
+ *
+ * WHY CORES AND NOT RESONANCE. The brief said "Cores+Resonance". Resonance is
+ * SHELL VI's chip currency (`content/shell6/chamber.ts`) and is unobtainable
+ * before the sixth world, so pricing fusion in it would strand the entire
+ * system for ~90% of a playthrough — the exact shape of the standing reach
+ * rule (the Silica problem). Cores are earned by the Collapse, which happens
+ * in EVERY shell, ~7-11 times each, so this price is payable everywhere the
+ * player can be. Shards are earned from the player's own pile. Both inputs
+ * reach.
  */
-export function fusionCost(keep: RelicInstance): number {
-  return (keep.rarity + 1) * 4 + keep.fusedFrom * 2;
+export interface FusionPrice {
+  shards: number;
+  cores: number;
+}
+
+export function fusionCost(state: GameState, keep: RelicInstance): FusionPrice {
+  return {
+    shards: Math.round(10 * (keep.rarity + 1) * Math.pow(1.45, keep.fusedFrom)),
+    cores: (keep.rarity + 1) * (state.relics.fused + 1),
+  };
+}
+
+/** Everything the price refuses, named. The panel shows this BEFORE the click. */
+export function fusionAfford(state: GameState, keep: RelicInstance): { ok: boolean; price: FusionPrice; short: string[] } {
+  const price = fusionCost(state, keep);
+  const short: string[] = [];
+  if (state.relics.shards < price.shards) {
+    short.push(`${price.shards - Math.floor(state.relics.shards)} more shards`);
+  }
+  if (getCurrency(state, 'core').lt(price.cores)) {
+    short.push(`${price.cores - Math.floor(getCurrency(state, 'core').toNumber())} more Cores`);
+  }
+  return { ok: short.length === 0, price, short };
 }
 
 export function fuseRelics(state: GameState, keepUid: number, feedUid: number): { ok: boolean; reason?: string } {
@@ -253,16 +305,18 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
   const keep = state.relics.held.find((r) => r.uid === keepUid);
   const feed = state.relics.held.find((r) => r.uid === feedUid);
   if (!keep || !feed) return { ok: false, reason: 'No such relic' };
-  const cost = fusionCost(keep);
-  if (state.relics.shards < cost) {
-    return {
-      ok: false,
-      reason: `The bench wants ${cost} shards for work this fine — you have ${Math.floor(state.relics.shards)}. Render something you will not miss.`,
-    };
-  }
   // A LOCKED relic is never consumed. Note it is only ever the FED one that is
   // eaten, so a locked relic can still be the KEEPER and be improved by a fusion.
+  // Checked BEFORE the price (A.48): "you are short 20 shards" is a wrong answer
+  // to "that one is locked", and the player would go and earn the shards.
   if (feed.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
+  const afford = fusionAfford(state, keep);
+  if (!afford.ok) {
+    return {
+      ok: false,
+      reason: `The bench wants ${afford.price.shards} shards and ${afford.price.cores} Cores for work this fine. You are short ${afford.short.join(' and ')}.`,
+    };
+  }
   if (feed.rarity > keep.rarity) {
     const gate = fusionGate(state, feed.rarity);
     if (gate.have < gate.need) {
@@ -276,13 +330,23 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
   for (const [k, v] of Object.entries(feed.affixes)) {
     keep.affixes[k] = Math.max(keep.affixes[k] ?? 0, v);
   }
+  // THE POWER CROSSES OVER (A.48). A relic that had none takes the fed one's,
+  // and a relic that already has one keeps its own — so a fusion can never
+  // silently replace the power a build was chosen around. This is also the
+  // only writer of `power`: everywhere else it is derived.
+  const keepPower = powerOf(keep);
+  const feedPower = powerOf(feed);
+  if (!keepPower && feedPower) keep.power = feedPower.id;
+  else if (keepPower) keep.power = keepPower.id;
+
   // The keeper's rarity rises to the better of the two; fusing never demotes.
   keep.rarity = Math.max(keep.rarity, feed.rarity);
   keep.fusedFrom += 1 + feed.fusedFrom;
 
   state.relics.held = state.relics.held.filter((r) => r.uid !== feedUid);
   state.relics.equipped = state.relics.equipped.filter((u) => u !== feedUid);
-  state.relics.shards -= cost;
+  state.relics.shards -= afford.price.shards;
+  spendCurrency(state, 'core', D(afford.price.cores));
   state.relics.fused += 1;
   return { ok: true };
 }
@@ -306,6 +370,8 @@ export interface FusionPreview {
   wasted: Array<{ key: string; label: string }>;
   /** Whether the keeper's rarity would rise. */
   rarityUp: boolean;
+  /** A power the keeper does not have and would take from the fed relic. */
+  powerGained?: string;
   /** B4: set when the rise is museum-gated and the cases are short — the UI
    *  must say so BEFORE the attempt, not after. */
   gatedBy?: { need: number; have: number };
@@ -318,6 +384,8 @@ export function fusionPreview(state: GameState, keepUid: number, feedUid: number
   if (!keep || !feed) return null;
 
   const out: FusionPreview = { gained: [], improved: [], wasted: [], rarityUp: feed.rarity > keep.rarity };
+  const fedPower = powerOf(feed);
+  if (!powerOf(keep) && fedPower) out.powerGained = fedPower.name;
   if (out.rarityUp) {
     const gate = fusionGate(state, feed.rarity);
     if (gate.have < gate.need) out.gatedBy = gate;
@@ -390,10 +458,14 @@ export function wakingNeed(r: RelicInstance): number | null {
  * `relicDeed`. Kept off the hot path: six relics, one number each.
  */
 export function tickRelics(state: GameState, ctx: EngineCtx, dt: number): void {
-  for (const uid of state.relics.equipped) {
-    const r = state.relics.held.find((x) => x.uid === uid);
-    if (!r || wakingOf(r) >= WAKING_STEPS.length - 1) continue;
-    r.charge = (r.charge ?? 0) + dt;
+  // THE PATIENT STONE is a rule power: it changes WHERE waking happens, not
+  // how fast. With it carried, the drawer wakes too, at half rate.
+  const drawer = relicRule(state, 'patientStone');
+  const worn = new Set(state.relics.equipped);
+  for (const r of state.relics.held) {
+    const share = worn.has(r.uid) ? 1 : drawer ? 0.5 : 0;
+    if (share === 0 || wakingOf(r) >= WAKING_STEPS.length - 1) continue;
+    r.charge = (r.charge ?? 0) + dt * share;
     const next = WAKING_STEPS[wakingOf(r) + 1];
     if (next && (r.charge ?? 0) >= next.at) {
       r.waking = wakingOf(r) + 1;
@@ -482,6 +554,10 @@ export function activeResonances(state: GameState): ResonanceDef[] {
  *  new source of income, so pillar 2's argument above is untouched. */
 export function relicBonus(state: GameState, bucket: Bucket): number {
   const active = activeResonances(state);
+  // THE LEFT HAND (A.48) is a PAIR power: it contributes nothing of its own and
+  // instead multiplies what every other worn relic gives. It lands here rather
+  // than in a bucket because that is literally what it does.
+  const pair = pairMultiplier(state);
   let total = 0;
   for (const uid of state.relics.equipped) {
     const r = state.relics.held.find((x) => x.uid === uid);
@@ -489,7 +565,7 @@ export function relicBonus(state: GameState, bucket: Bucket): number {
     const base = r.affixes[bucket] ?? 0;
     if (base === 0) continue;
     const res = active.filter((x) => x.source === r.source).reduce((m, x) => m * x.mult, 1);
-    total += base * wakingStep(r).mult * res;
+    total += base * wakingStep(r).mult * res * pair;
   }
   return total;
 }
@@ -514,6 +590,18 @@ export function registerRelicModifiers(): void {
       label: 'Relics',
       bucket,
       value: (s) => foldBonus(bucket, relicBonus(s, bucket)),
+    });
+  }
+  // POWERS register APART from affixes (A.48) so the breakdown popover can say
+  // which of the two a number came from. A power's contribution is computed
+  // live from state — a scaling power's value is whatever the board says right
+  // now — and may be NEGATIVE, which is the whole point of a trade.
+  for (const bucket of POWER_BUCKETS) {
+    registerModifier({
+      id: `relicPowers.${bucket}`,
+      label: 'Relic powers',
+      bucket,
+      value: (s) => foldBonus(bucket, relicPowerBonus(s, bucket)),
     });
   }
 }

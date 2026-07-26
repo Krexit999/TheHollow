@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
+import { D } from '../decimal';
 import type { GameState } from '../types';
 import { spiralFromLifetime, spiralPending, gridSlotCost, licenceCost } from '../systems/spiral';
 import { mintRelic, addRelic, fuseRelics, relicBonus, equipRelic, RELIC_SLOTS, AFFIXES, SOURCE_BY_ID, SOURCES, fusionPreview } from '../systems/relics';
@@ -166,6 +167,7 @@ describe('relics cannot punish bad luck', () => {
   it('fusion keeps the better of each affix and never destroys value', () => {
     const { s } = fresh();
     s.relics.shards = 999; // A.46: a fusion costs shards now
+s.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
     const a = addRelic(s, mintRelic(s, 'depth', 3));
     const b = addRelic(s, mintRelic(s, 'depth', 9));
     const bestBefore: Record<string, number> = {};
@@ -400,6 +402,7 @@ describe('bonus definitions point at REAL modifier buckets', () => {
 
     const before = { ...a.affixes };
     s.relics.shards = 999; // A.46: a fusion costs shards now
+s.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
     expect(fuseRelics(s, a.uid, b.uid).ok).toBe(true);
     const after = s.relics.held.find((r) => r.uid === a.uid)!;
 
