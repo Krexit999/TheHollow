@@ -92,6 +92,14 @@ interface UIStore {
    * so both entry paths land in the same place.
    */
   alloyTargets: number[];
+  /**
+   * Bumped only by `openAlloyBench` (the drill-card jump), never by manual
+   * toggles in the bench itself. The bench scrolls itself into view on this
+   * changing, not on `alloyTargets.length` — that used to auto-scroll on
+   * every checkbox click inside the bench too, which read as the page
+   * fighting the player each time they picked a second or third drill.
+   */
+  alloyJumpSeq: number;
   setTab: (tab: TabId) => void;
   /** Jump to the Forge's alloy bench with these drills already selected. */
   openAlloyBench: (drills: number[]) => void;
@@ -127,12 +135,16 @@ export const useGame = create<UIStore>((set, get) => ({
   bulkMode: loadBulk(),
   numberFormat: loadNumberFormat(),
   alloyTargets: [],
+  alloyJumpSeq: 0,
   setRunSummaryOpen: (open: boolean) => set({ runSummaryOpen: open }),
   setTab: (tab) =>
     set((s) => ({ tab, freshTabs: s.freshTabs.filter((t) => t !== tab) })),
   setAlloyTargets: (drills) => set({ alloyTargets: drills }),
   openAlloyBench: (drills) =>
-    set((s) => ({ tab: 'forge', alloyTargets: drills, freshTabs: s.freshTabs.filter((t) => t !== 'forge') })),
+    set((s) => ({
+      tab: 'forge', alloyTargets: drills, alloyJumpSeq: s.alloyJumpSeq + 1,
+      freshTabs: s.freshTabs.filter((t) => t !== 'forge'),
+    })),
   setOpticsMode: (on) => set({ opticsMode: on }),
   setFaceMode: (m) => set({ faceMode: m, ...(m !== 'technique' ? { armedTechnique: null } : {}) }),
   armTechnique: (id) => set(id ? { armedTechnique: id, faceMode: 'technique' } : { armedTechnique: null, faceMode: 'chip' }),

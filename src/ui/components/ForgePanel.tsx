@@ -442,12 +442,17 @@ function AlloyBench({ state }: { state: GameState }) {
   const hint = alloyHint(picks);
   const known = knownAbilities(state);
 
+  const jumpSeq = useGame((s) => s.alloyJumpSeq);
   // Arriving from a drill's ALLOY button: bring the bench into view. It lives
   // below the tools now, so a jump that only switched tabs would land the
-  // player at the top of a long screen with nothing obviously different.
+  // player at the top of a long screen with nothing obviously different. Keyed
+  // on the JUMP, not on targets.length — that used to re-fire on every manual
+  // toggle inside the bench too, so picking a second or third drill kept
+  // yanking the screen back to the same spot it was already sitting at.
   useEffect(() => {
-    if (targets.length > 0) box.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  }, [targets.length]);
+    if (jumpSeq > 0) box.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpSeq]);
 
   // Only a KNOWN mix shows its price — see the note above.
   const wouldMake = matchDrillAlloy(picks);
