@@ -11,6 +11,7 @@ import {
 } from '../../engine/content/shell1/achievements';
 import { exportSave, importSave } from '../../engine/save/exportSave';
 import { serialize } from '../../engine/save/codec';
+import { allCurrencies } from '../../engine/resources';
 import { dispatch, useGame } from '../store';
 import { HoldButton } from './shared';
 import { AutoResolveRow } from './combat';
@@ -196,11 +197,25 @@ export function VaultPanel() {
   );
 }
 
+/** 999Qa in this game's own suffix scale (decimal.ts SUFFIXES: Qa = 10^15). */
+const GIVE_ALL_AMOUNT = 999e15;
+
 function DebugPanel() {
   return (
     <div className="panel space-y-1.5 p-3">
       <div className="text-xs font-semibold uppercase tracking-wider text-core">Debug (dev build)</div>
       <div className="grid grid-cols-2 gap-1.5">
+        <button
+          className="btn btn-warm col-span-2 py-1 text-[11px]"
+          title={`Grants ${GIVE_ALL_AMOUNT.toExponential(2)} (999Qa) of every registered currency`}
+          onClick={() => {
+            for (const c of allCurrencies()) {
+              dispatch({ type: 'debug', op: 'grant', currency: c.id, amount: GIVE_ALL_AMOUNT });
+            }
+          }}
+        >
+          Give All · 999Qa every currency
+        </button>
         <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e4 })}>
           +10K Dust
         </button>
