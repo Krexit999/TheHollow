@@ -74,6 +74,18 @@ export interface OreDef {
   minDepth: number;
   /** What the face draws it as. */
   colour: number;
+  /**
+   * HOW the face draws it, and this is not decoration. Colour alone was not
+   * enough: at 380px a tile is about 55 pixels across, and four crystals in
+   * four hues read as "that is an ore" rather than as four different things.
+   * Each pattern is a different SHAPE, so the type is legible at a glance —
+   * and still legible to someone who cannot separate the hues.
+   *   bands   — flat strata, a seam that swelled
+   *   cluster — round nodules gathered in the dark
+   *   core    — a soft hollow middle with cracks running out of it
+   *   needles — spikes all leaning inward, filings around a magnet
+   */
+  pattern: 'bands' | 'cluster' | 'core' | 'needles';
   /** Shown only after one has been opened (pillar 5). */
   line: string;
 }
@@ -83,19 +95,19 @@ export const ORES: OreDef[] = [
   {
     id: 'fatseam', name: 'Fat Seam', shell: null,
     richness: 1.8, digSec: 8, depthMult: 0.6, rolls: 1, weight: 62, minDepth: 0,
-    colour: 0xc8a45a,
+    colour: 0xe0b552, pattern: 'bands',
     line: 'The rock swells here. Something took its time about it.',
   },
   {
     id: 'blindglut', name: 'Blind Glut', shell: null,
     richness: 2.6, digSec: 12, depthMult: 1.4, rolls: 2, weight: 26, minDepth: 25,
-    colour: 0x9fd6c0,
+    colour: 0x5fe0b4, pattern: 'cluster',
     line: 'No seam runs to it and none runs away. It simply gathered, in the dark, alone.',
   },
   {
     id: 'heartrot', name: 'Heartrot', shell: null,
     richness: 3.6, digSec: 16, depthMult: 3.0, rolls: 3, weight: 9, minDepth: 60,
-    colour: 0xd2779a,
+    colour: 0xe85f9c, pattern: 'core',
     line: 'The stone went soft at its middle and kept everything it ever held.',
   },
   // --- per-shell types sit alongside them ------------------------------------
@@ -106,7 +118,7 @@ export const ORES: OreDef[] = [
   {
     id: 'lodeknot', name: 'Lodeknot', shell: 'ferrite',
     richness: 3.0, digSec: 14, depthMult: 1.8, rolls: 2, weight: 22, minDepth: 0,
-    colour: 0x8fb4e8,
+    colour: 0x74a6f5, pattern: 'needles',
     line: 'Every filing in the drift leans at it. Cut it out and the compasses settle again.',
   },
 ];

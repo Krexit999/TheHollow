@@ -177,13 +177,22 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
     // also why this sits before the strike loop rather than inside it: the
     // drill's strike timer does not advance while it is digging.
     //
-    // A pocket already in hand is dropped if somebody else opened it (or a vine
-    // took the cell); otherwise, if the bay is hunting, take one now. CLAIMING
-    // AND DIGGING HAPPEN IN THE SAME TICK on purpose — an earlier cut spent the
-    // whole tick claiming, which is invisible at the engine's real step size and
-    // very visible in one big catch-up tick, where a drill would claim a pocket
-    // and then never touch it.
-    if (drill.oreCell !== undefined && (!oreAt(state, drill.oreCell) || skip(drill.oreCell))) {
+    // ONCE IT STARTS, IT FINISHES. A drill releases a pocket for exactly one
+    // reason — the pocket is not there any more, because the player opened it
+    // by hand first. Nothing else may interrupt a dig: half-mined ore left
+    // behind because a machine changed its mind is the worst kind of waste,
+    // since the time was already spent and bought nothing.
+    //
+    // It used to release on `skip(cell)` too, so a vine spreading onto the cell
+    // threw the work away. That is fixed where it belongs instead (growth no
+    // longer grows on a pocket), which leaves this rule with one clause and no
+    // room for a second to creep back in.
+    //
+    // CLAIMING AND DIGGING HAPPEN IN THE SAME TICK on purpose — an earlier cut
+    // spent the whole tick claiming, which is invisible at the engine's real
+    // step size and very visible in one big catch-up tick, where a drill would
+    // claim a pocket and then never touch it.
+    if (drill.oreCell !== undefined && !oreAt(state, drill.oreCell)) {
       delete drill.oreCell;
       delete drill.oreProgress;
     }

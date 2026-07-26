@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
-import { cellCap, dpsMax, manualChip, sweep, tickFace } from '../systems/face';
+import { applyFieldSize, cellCap, dpsMax, manualChip, sweep, tickFace } from '../systems/face';
 import { newDrill, tickDrills } from '../systems/drills';
 import {
   DRILL_ORE_SHARE, DRILL_ORE_SPEED, ORE_CAP_SHARE, ORE_DROUGHT_SEC, ORE_DROUGHT_SHARE,
@@ -271,6 +271,86 @@ describe('the drills: hunting is on by default, and it is one switch', () => {
     const strikes = s.stats.drillStrikes;
     tickDrills(s, mods(), ctx, 1);   // still digging
     expect(s.stats.drillStrikes).toBe(strikes);
+  });
+
+  /**
+   * ONCE IT STARTS, IT FINISHES. Half-mined ore abandoned because a machine
+   * changed its mind is the worst kind of waste — the time was already spent
+   * and bought nothing. Two real abandonment paths were found by probing the
+   * live engine rather than by reading it, and each gets a test here.
+   */
+  it('will not be lured off a half-dug pocket by a fatter one appearing', () => {
+    const { s } = fresh();
+    bay(s);
+    put(s, 3);
+    tickDrills(s, mods(), ctx, 2);
+    expect(s.drills.units[0]!.oreCell).toBe(3);
+    // A far richer pocket turns up mid-dig, brim full.
+    put(s, 20, 'heartrot');
+    s.face.cells[20] = 99999;
+    tickDrills(s, mods(), ctx, 1);
+    expect(s.drills.units[0]!.oreCell).toBe(3);
+    expect(s.drills.units[0]!.oreProgress).toBeGreaterThan(2);
+  });
+
+  it('keeps its pocket AND its progress when the face is widened', () => {
+    const { s } = fresh();
+    const m = mods();
+    bay(s);
+    put(s, 10);
+    tickDrills(s, m, ctx, 3);
+    const progress = s.drills.units[0]!.oreProgress!;
+    expect(s.drills.units[0]!.oreCell).toBe(10);
+
+    // Buying "Widen the Face" used to rebuild `cells` and leave `ore` at the
+    // old length, so the next read replaced the whole array with empties: an
+    // upgrade purchase wiped every pocket on the grid and abandoned the dig.
+    s.upgrades['expand'] = 2;
+    applyFieldSize(s, m);
+    expect(oreCount(s)).toBe(1);
+    // ...and the cell was RENUMBERED by the wider rows, so the drill's
+    // reference has to move with it or it is digging the wrong rock.
+    const moved = s.drills.units[0]!.oreCell!;
+    expect(isOre(s, moved)).toBe(true);
+    expect(moved).not.toBe(10);
+    tickDrills(s, m, ctx, 1);
+    expect(s.drills.units[0]!.oreProgress).toBeGreaterThan(progress);
+  });
+
+  /**
+   * Settled at the SOURCE. A vine taking a cell mid-dig used to make the drill
+   * let go and bin the work, so nothing grows on a pocket at all — which keeps
+   * the drill's release rule down to its single clause with no second condition
+   * that can quietly fire. No drills in this test on purpose: the claim is
+   * about GROWTH, and a drill would open the pocket and hand the cell back.
+   */
+  it('nothing sprouts on a pocket, so a dig can never be interrupted by one', () => {
+    const { engine, s } = fresh();
+    s.shell.current = 'verdance';
+    s.shell.signatures = ['growth'];
+    put(s, 4);
+    // Cells pinned at cap — exactly the condition a vine sprouts from — and
+    // long enough that every neighbour goes feral and tries to creep across.
+    for (let i = 0; i < 400; i++) {
+      s.face.cells = s.face.cells.map(() => 1e6);
+      engine.tick(1);
+    }
+    expect(isOre(s, 4)).toBe(true);
+    expect(s.growth.stage[4] ?? 0).toBe(0);
+    // ...and the rest of the face DID grow, so this is a refusal and not a
+    // test that quietly proved growth was switched off.
+    expect(s.growth.stage.filter((v) => (v ?? 0) > 0).length).toBeGreaterThan(0);
+  });
+
+  it('lets go only when the pocket is gone — the player got there first', () => {
+    const { s } = fresh();
+    bay(s);
+    put(s, 6);
+    tickDrills(s, mods(), ctx, 2);
+    expect(s.drills.units[0]!.oreCell).toBe(6);
+    openOre(s, mods(), ctx, 6, 'hand', 1); // the hand takes it
+    tickDrills(s, mods(), ctx, 0.5);
+    expect(s.drills.units[0]!.oreCell).toBeUndefined();
   });
 
   it('never targets a pocket for an ordinary strike — it would stand there hitting nothing', () => {

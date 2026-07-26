@@ -632,24 +632,58 @@ export class FaceView {
       const col = def?.colour ?? 0xc8a45a;
       const cx = m + w / 2;
       const cy = m + w / 2;
-      // A blocky, faceted body — deterministic per cell so a pocket does not
-      // shimmer, and lumpy so it reads as rock rather than a UI badge.
+      // The wash and rim say POCKET; the pattern says WHICH ONE. Deterministic
+      // per cell (mulberry on the index) so a pocket never shimmers.
       const orng = mulberry(i * 7717 + 13);
       g.roundRect(m, m, w, w, r).fill({ color: col, alpha: 0.16 });
       g.roundRect(m, m, w, w, r).stroke({ width: 2, color: col, alpha: 0.85 });
-      const facets = 5;
-      for (let f = 0; f < facets; f++) {
-        const a0 = (f / facets) * Math.PI * 2 + orng() * 0.5;
-        const rad = w * (0.16 + orng() * 0.2);
-        const px = cx + Math.cos(a0) * rad;
-        const py = cy + Math.sin(a0) * rad;
-        const size = w * (0.07 + orng() * 0.07);
-        g.moveTo(px, py - size)
-          .lineTo(px + size, py)
-          .lineTo(px, py + size)
-          .lineTo(px - size, py)
-          .closePath()
-          .fill({ color: col, alpha: 0.5 + orng() * 0.4 });
+
+      if (def?.pattern === 'bands') {
+        // A SEAM THAT SWELLED: flat strata across the cell, thick in the middle
+        // and thinning out — it should read as layers, horizontal and calm.
+        for (let b = 0; b < 4; b++) {
+          const t = (b + 0.5) / 4;
+          const thick = w * (0.055 + 0.05 * Math.sin(t * Math.PI));
+          const inset = w * (0.08 + 0.06 * Math.abs(t - 0.5) * 2);
+          g.roundRect(m + inset, m + w * t - thick / 2, w - inset * 2, thick, thick / 2)
+            .fill({ color: col, alpha: 0.55 + 0.3 * Math.sin(t * Math.PI) });
+        }
+      } else if (def?.pattern === 'cluster') {
+        // GATHERED IN THE DARK: round nodules of different sizes, touching.
+        // Circles against the bands' rectangles reads instantly.
+        const spots: [number, number, number][] = [
+          [0.38, 0.40, 0.19], [0.62, 0.36, 0.13], [0.55, 0.62, 0.16],
+          [0.32, 0.66, 0.10], [0.72, 0.58, 0.08],
+        ];
+        for (const [sx, sy, sr] of spots) {
+          g.circle(m + w * sx, m + w * sy, w * sr).fill({ color: col, alpha: 0.75 });
+          g.circle(m + w * (sx - sr * 0.25), m + w * (sy - sr * 0.25), w * sr * 0.4)
+            .fill({ color: 0xffffff, alpha: 0.22 });
+        }
+      } else if (def?.pattern === 'core') {
+        // WENT SOFT AT ITS MIDDLE: a bright heart with cracks running out of
+        // it, and a dark ring so the middle reads as hollow rather than solid.
+        for (let k = 0; k < 6; k++) {
+          const a0 = (k / 6) * Math.PI * 2 + orng() * 0.4;
+          g.moveTo(cx + Math.cos(a0) * w * 0.16, cy + Math.sin(a0) * w * 0.16)
+            .lineTo(cx + Math.cos(a0) * w * 0.44, cy + Math.sin(a0) * w * 0.44)
+            .stroke({ width: Math.max(1, w * 0.035), color: col, alpha: 0.7 });
+        }
+        g.circle(cx, cy, w * 0.24).fill({ color: 0x000000, alpha: 0.3 });
+        g.circle(cx, cy, w * 0.19).fill({ color: col, alpha: 0.9 });
+        g.circle(cx, cy, w * 0.08).fill({ color: 0xffffff, alpha: 0.4 });
+      } else {
+        // EVERY FILING LEANS AT IT: spikes pointing inward from the edges.
+        // All line, no fill — the opposite silhouette to the cluster.
+        for (let k = 0; k < 8; k++) {
+          const a0 = (k / 8) * Math.PI * 2;
+          const ox = cx + Math.cos(a0) * w * 0.46;
+          const oy = cy + Math.sin(a0) * w * 0.46;
+          g.moveTo(ox, oy)
+            .lineTo(cx + Math.cos(a0) * w * 0.14, cy + Math.sin(a0) * w * 0.14)
+            .stroke({ width: Math.max(1, w * 0.045), color: col, alpha: 0.8 });
+        }
+        g.circle(cx, cy, w * 0.09).fill({ color: col, alpha: 0.95 });
       }
       // THE DIG. A ring closing around the pocket as the hand works it, so
       // "this is taking time" is a thing you watch rather than a number.

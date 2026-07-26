@@ -389,13 +389,48 @@ export function applyFieldSize(state: GameState, mods: ModifierCache): void {
   if (w === state.face.w && h === state.face.h) return;
   const cap = cellCap(state, mods);
   const next: number[] = new Array(w * h).fill(cap);
+  // ORES AND THEIR DIGS MOVE WITH THE ROCK. Widening the face used to wipe
+  // every pocket and abandon every dig in progress: `applyFieldSize` rebuilt
+  // `cells` and left `ore` at the old length, so the next read saw a mismatch
+  // and replaced the whole array with empties. Buying an upgrade destroyed the
+  // contents of the grid, which is about as bad as a purchase can be.
+  //
+  // The remap is by COORDINATE, not by index — a wider grid renumbers every
+  // row, so copying the array straight across would slide every pocket.
+  const oldOre = state.face.ore;
+  const oldDug = state.face.oreDug;
+  const nextOre: string[] = new Array(w * h).fill('');
+  const nextDug: number[] = new Array(w * h).fill(0);
+  /** Old index -> new index, for anything holding a cell reference. */
+  const remap = new Map<number, number>();
   // Preserve existing charges in the overlapping region.
   for (let y = 0; y < Math.min(h, state.face.h); y++) {
     for (let x = 0; x < Math.min(w, state.face.w); x++) {
-      next[y * w + x] = state.face.cells[y * state.face.w + x] ?? cap;
+      const from = y * state.face.w + x;
+      const to = y * w + x;
+      next[to] = state.face.cells[from] ?? cap;
+      nextOre[to] = oldOre?.[from] ?? '';
+      nextDug[to] = oldDug?.[from] ?? 0;
+      remap.set(from, to);
+    }
+  }
+  // A drill mid-dig keeps its pocket across the resize. If its cell fell
+  // outside the new grid (only possible if the face ever shrinks) it lets go,
+  // which is the one case where there is genuinely nothing to stay on.
+  for (const drill of state.drills.units) {
+    if (drill.oreCell === undefined) continue;
+    const to = remap.get(drill.oreCell);
+    if (to === undefined) {
+      delete drill.oreCell;
+      delete drill.oreProgress;
+    } else {
+      drill.oreCell = to;
+      drill.lastCell = to;
     }
   }
   state.face.w = w;
   state.face.h = h;
   state.face.cells = next;
+  state.face.ore = nextOre;
+  state.face.oreDug = nextDug;
 }

@@ -107,6 +107,12 @@ function tickGrowth(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: n
   for (let i = 0; i < cells.length; i++) {
     const stage = g.stage[i]!;
     if (stage === 0) {
+      // NOTHING GROWS ON A POCKET. Ore and Growth both want to own a cell, and
+      // when a vine took one mid-dig the drill let go and threw the work away
+      // (found by probing, A.55 follow-up). Settling it here rather than at the
+      // drill is the honest fix: the drill's rule is now simply "stay until it
+      // is open", with no second condition that can quietly fire.
+      if (state.face.ore?.[i]) { g.fullSince[i] = 0; continue; }
       // Bare: count time at cap toward sprouting.
       if (cells[i]! >= cap - 0.01) {
         g.fullSince[i]! += aging;
@@ -144,6 +150,7 @@ function tickGrowth(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: n
     // Feral spread: colonize one near-full bare neighbor.
     if (spreadPass && stage >= 4) {
       for (const n of orthNeighbors(state, i)) {
+        if (state.face.ore?.[n]) continue; // ...and it cannot creep onto one either
         if (g.stage[n] === 0 && cells[n]! >= cap * 0.8) {
           g.stage[n] = 1;
           g.age[n] = 0;

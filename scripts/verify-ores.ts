@@ -6,6 +6,8 @@
  *   2  the 20% cap, and the 60s anti-drought floor actually firing
  *   3  hand-mining a pocket (slower, cleaner) vs a drill (faster, leaves some)
  *   4  drills routed at pockets harvesting them while the face is chipped by hand
+ *   5  each ore TYPE drawn as its own shape, not four hues of one crystal
+ *   6  a drill locked to its pocket through a lure and a face-widen
  *   5  (the sim, run separately: sim-out/a55-ore-ceiling.md)
  *
  * The visible checks read the LIVE renderer's own tiles — what it has actually
@@ -261,7 +263,7 @@ async function main(): Promise<void> {
   // Hold until it opens. Heartrot is 16s by hand — the time cost is the point.
   const t0 = Date.now();
   let opened = false;
-  while (Date.now() - t0 < 26000) {
+  while (Date.now() - t0 < 60000) {
     await page.mouse.move(px + (Date.now() % 2), py); // keep the pointer live
     await page.waitForTimeout(400);
     const f = await face(page);
@@ -366,6 +368,147 @@ async function main(): Promise<void> {
     return !!s.face.ore[5];
   });
   check(kept, 'and with it off, a pocket sits there untouched for a full minute');
+
+
+  // === 5. EACH TYPE LOOKS LIKE ITS OWN THING =============================
+  console.log('\n5 — four types, four different-looking pockets');
+  await setup(page, `
+    const st = engine.getState();
+    st.shell.current = 'ferrite'; st.depth = 120;
+    st.upgrades['soil'] = 10; st.upgrades['roots'] = 4;
+    st.drills.units = []; st.drills.bayBuilt = false;
+    st.face.ore = new Array(st.face.cells.length).fill('');
+    st.face.oreDug = new Array(st.face.cells.length).fill(0);
+    st.face.ore[7] = 'fatseam';
+    st.face.ore[9] = 'blindglut';
+    st.face.ore[19] = 'heartrot';
+    st.face.ore[21] = 'lodeknot';
+    st.face.oreSeen = ['fatseam','blindglut','heartrot','lodeknot'];
+  `);
+  await dismiss(page);
+  await tab(page, 'dig');
+  await dismiss(page);
+  await page.waitForTimeout(1600);
+  /**
+   * Read the PIXELS the renderer produced, not the defs. Four rows in a table
+   * saying `pattern: 'bands' | 'cluster'` proves nothing about what a player
+   * sees; a 7x7 sample grid over each tile gives a coarse silhouette, and two
+   * types that draw the same shape produce the same one.
+   */
+  const looks = await page.evaluate(async () => {
+    const w = window as unknown as Record<string, any>;
+    const v = w['__faceView'];
+    const px = await v['app'].renderer.extract.pixels(v['app'].stage);
+    const data: Uint8Array = px.pixels ?? px;
+    const cw = px.width as number;
+    const res = v['app'].renderer.resolution as number;
+    const out: { cell: number; sig: string; ink: number; hue: string }[] = [];
+    for (const c of [7, 9, 19, 21]) {
+      const at = v['cellCenter'](c);
+      const size = v['cellSize'];
+      // TWO PASSES, and the second one is the point. A pocket's wash lights
+      // the WHOLE tile, so an absolute brightness cut marked 42 of 49 samples
+      // on every type and reported four identical silhouettes. The pattern is
+      // what is brighter than the tile's OWN average, so the threshold has to
+      // be relative to that.
+      const lums: number[] = [];
+      const rgb: number[][] = [];
+      for (let yy = -3; yy <= 3; yy++) {
+        for (let xx = -3; xx <= 3; xx++) {
+          const sx = Math.round((at.x + (xx / 8) * size) * res);
+          const sy = Math.round((at.y + (yy / 8) * size) * res);
+          const i4 = (sy * cw + sx) * 4;
+          rgb.push([data[i4]!, data[i4 + 1]!, data[i4 + 2]!]);
+          lums.push((data[i4]! + data[i4 + 1]! + data[i4 + 2]!) / 3);
+        }
+      }
+      const avg = lums.reduce((x, y) => x + y, 0) / lums.length;
+      let bits = '';
+      let ink = 0, r = 0, g = 0, b = 0;
+      for (let k = 0; k < lums.length; k++) {
+        const lit = lums[k]! > avg + 18;
+        bits += lit ? '1' : '0';
+        if (lit) { ink++; r += rgb[k]![0]!; g += rgb[k]![1]!; b += rgb[k]![2]!; }
+      }
+      const n = Math.max(1, ink);
+      out.push({
+        cell: c, sig: bits, ink,
+        hue: `${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)}`,
+      });
+    }
+    return out;
+  });
+  const sigs = looks.map((l) => l.sig);
+  check(new Set(sigs).size === sigs.length,
+    'all four pockets render a DIFFERENT shape on screen',
+    `${new Set(sigs).size} distinct silhouettes of ${sigs.length}`);
+  const hues = looks.map((l) => l.hue);
+  check(new Set(hues).size === hues.length, 'and a different colour each', hues.join('  |  '));
+  for (const l of looks) {
+    check(l.ink > 4, `cell ${l.cell} carries real ink, not a tint`, `${l.ink}/49 samples lit`);
+  }
+  await overflow(page, 'four types');
+  await shot(page, '8-four-types');
+
+  // === 6. ONCE A DRILL STARTS, IT FINISHES ===============================
+  console.log('\n6 — a drill locks to its pocket through everything');
+  const locked = await page.evaluate(async () => {
+    const d = await import(/* @vite-ignore */ '/src/engine/systems/drills' + '.ts');
+    const f = await import(/* @vite-ignore */ '/src/engine/systems/face' + '.ts');
+    const m = await import(/* @vite-ignore */ '/src/engine/modifiers' + '.ts');
+    const w = window as unknown as Record<string, any>;
+    const s = w['__engine'].getState();
+    const mods = new m.ModifierCache();
+    const ctx = { emit() {}, dirty() {} };
+    s.drills.bayBuilt = true; s.drills.huntOres = true;
+    s.drills.units = [d.newDrill('Bess')];
+    s.face.ore = new Array(s.face.cells.length).fill('');
+    s.face.oreDug = new Array(s.face.cells.length).fill(0);
+    s.face.ore[10] = 'heartrot';
+    s.face.cells = s.face.cells.map(() => 99999);
+    const opened0 = s.stats.oresOpened ?? 0;
+    const trail: (number | null)[] = [];
+    let progressAtLure = 0, progressAfterWiden = 0;
+    for (let t = 0; t < 300; t++) {
+      d.tickDrills(s, mods, ctx, 0.1);
+      const u = s.drills.units[0];
+      trail.push(u.oreCell ?? null);
+      // Halfway through: dangle a far richer, brim-full pocket beside it.
+      if (t === 40) { s.face.ore[30] = 'heartrot'; progressAtLure = u.oreProgress ?? 0; }
+      // Then widen the face underneath it, which used to wipe every pocket
+      // and abandon the dig.
+      if (t === 70) { s.upgrades['expand'] = 2; f.applyFieldSize(s, mods); progressAfterWiden = u.oreProgress ?? 0; }
+      if ((s.stats.oresOpened ?? 0) > opened0) break;
+    }
+    const held = trail.filter((x) => x !== null) as number[];
+    // RELEASING is the signal that matters, not "the number changed": widening
+    // the grid renumbers every row, so a drill that correctly KEEPS its pocket
+    // reports a different index afterwards. Abandonment looks like a null.
+    const released = trail.some((x, k) => x === null && k < trail.length - 1);
+    const changes = trail.filter(
+      (x, k) => k > 0 && x !== null && trail[k - 1] !== null && x !== trail[k - 1],
+    ).length;
+    return {
+      released, changes,
+      distinct: [...new Set(held)], ticksHeld: held.length,
+      opened: (s.stats.oresOpened ?? 0) - opened0,
+      progressAtLure, progressAfterWiden,
+      pockets: (s.face.ore ?? []).filter(Boolean).length,
+      dug: (s.face.oreDug ?? []).filter((x: number) => x > 0).length,
+    };
+  });
+  check(locked.opened > 0, 'the drill saw a pocket through to the end', `${locked.opened} opened`);
+  check(!locked.released,
+    'and NEVER let go of it — no wandering, no half-mined ore abandoned',
+    `held for all ${locked.ticksHeld} ticks without once releasing`);
+  check(locked.changes <= 1,
+    'the one time its cell number moved was the widen renumbering the grid',
+    `${locked.changes} change(s): cells ${locked.distinct.join(' -> ')}`);
+  check(locked.progressAfterWiden > locked.progressAtLure,
+    'its progress survived the face being widened mid-dig',
+    `${locked.progressAtLure.toFixed(1)}s at the lure -> ${locked.progressAfterWiden.toFixed(1)}s after the widen`);
+  check(locked.pockets >= 1, 'and the other pocket survived the widen too',
+    `${locked.pockets} still in the rock`);
 
   await browser.close();
   console.log(`\nshots:\n  ${shots.join('\n  ')}`);
