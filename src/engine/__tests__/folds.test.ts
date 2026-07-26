@@ -4,8 +4,9 @@
  *    never ambiently;
  *  - a tapped well runs faster and an untapped one is exactly as before;
  *  - a closed sky grinds into a lens that PAYS through the pipeline;
- *  - the nav fold: wells and museum are rooms inside other rooms now, and
- *    the codex surfaces are flagged, not deleted.
+ *  - the nav fold: wells are a room inside vents; museum was too (B5) and
+ *    was unfolded back to its own tab in A.47 once it grew a real loop. The
+ *    codex surfaces are flagged, not deleted.
  */
 import { describe, expect, it } from 'vitest';
 import { D } from '../decimal';
@@ -109,12 +110,26 @@ describe('star charts are lens blueprints', () => {
 });
 
 describe('the nav fold', () => {
-  it('wells and museum are no longer tabs; their panels live inside vents and the collection', () => {
+  it('wells are still no tab; their panel lives inside vents', () => {
     const ids = ALL_SYSTEMS.map((sys) => sys.id);
     expect(ids).not.toContain('wells');
-    expect(ids).not.toContain('museum');
     expect(ids).toContain('vents');
     expect(ids).toContain('relics');
+  });
+
+  /**
+   * MUSEUM UNFOLDED (A.47). The B5 fold reasoned that curation gates fusion,
+   * so keeping and curating were "one decision" and belonged under one header.
+   * That reason held while the Museum was a donate button; it dissolved when
+   * A.47 gave it its own arrange-and-discover loop (exhibits, identify,
+   * curated halls) and stacking both full panels under one header buried the
+   * exhibits below a long relic list. Same discipline as "a cut is
+   * provisional, and its reason can dissolve" (PILLARS) — the fold's cause
+   * is re-checked here, not assumed permanent.
+   */
+  it('museum is its own tab again', () => {
+    const ids = ALL_SYSTEMS.map((sys) => sys.id);
+    expect(ids).toContain('museum');
   });
 
   it('exactly three codex surfaces: bestiary, journal, parallel', () => {
@@ -122,8 +137,8 @@ describe('the nav fold', () => {
     expect(codex).toEqual(['bestiary', 'journal', 'parallel']);
   });
 
-  it('the counted-system number is 32', () => {
-    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(32);
+  it('the counted-system number is 33 (was 32 before Museum unfolded)', () => {
+    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(33);
     expect(CLUSTERS.length).toBe(5); // the five rooms stand
   });
 });

@@ -61,17 +61,12 @@ async function main(): Promise<void> {
     });
     await setup(page, SEED);
     await dismiss(page);
-    await tab(page, 'relics'); // the Museum shares the Collection room
+    await tab(page, 'museum'); // A.47 follow-up: Museum has its own tab again
     await dismiss(page);
     await page.waitForTimeout(9000);
     await dismiss(page);
     // The room scrolls INSIDE a container, so fullPage equals the viewport —
     // scroll to the Museum half or the shot only ever shows the Relics half.
-    // Scroll the Exhibits block into view — it sits above the long case list,
-    // so scrolling to the bottom shows the wrong half of the room.
-    await page.getByText('On the plinths', { exact: false }).first()
-      .scrollIntoViewIfNeeded().catch(() => {});
-    await page.waitForTimeout(400);
     await page.screenshot({ path: `${OUT}/museum-${name}.png` });
     console.log(`  wrote ${OUT}/museum-${name}.png`);
 

@@ -632,19 +632,13 @@ export function MuseumPanel() {
 
   return (
     <div className="space-y-2">
-      <div className="panel guild-warm p-3">
-        <div className="flex items-baseline justify-between">
-          <span className="font-display text-sm font-semibold text-[#e8c98a]">The long room</span>
-          <span className="tnum text-[10px] text-cave-300">
-            {state.museum.completed.length}/{CASES.length} cases filled
-          </span>
-        </div>
-        <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-          Built onto the back of the Lamphouse, where the crews muster. Every case asks for
-          something specific — filling one is a hunt, not a shelf. What you put WHERE is the
-          other half: some things, stood together, turn out to mean something.
-        </p>
-      </div>
+      {/* A.47 FOLLOW-UP: no panel-owned title card here. Museum has its own
+          SystemHeader now (title, purpose, "X/Y cases" status, and the same
+          next-hint text this card used to restate) — the file's own header
+          comment says panels "carry the numbers and the controls and never
+          repeat their own title". This card duplicated all four fields; it
+          was invisible stacked under Relics and became the first thing on
+          screen the moment Museum got a tab of its own. */}
 
       {/* WHAT THE ARRANGEMENT MEANS. Only formed exhibits appear — nothing is
           listed before it happens (pillar 5), so this whole panel is absent

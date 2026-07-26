@@ -92,14 +92,8 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
       {only('automation') && <AutomationPanel />}
-      {/* B5 FOLD: one collection screen — what you keep and what you curate,
-          side by side, because curation now GATES fusion (B4). */}
-      {only('relics') && (
-        <>
-          <RelicsPanel />
-          <MuseumPanel />
-        </>
-      )}
+      {only('relics') && <RelicsPanel />}
+      {only('museum') && <MuseumPanel />}
       {only('expeditions') && <ExpeditionsPanel />}
     </>
   );

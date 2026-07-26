@@ -15,6 +15,7 @@ import type { GameState } from '../engine';
 import { fmt } from '../engine';
 import { MAX_DRILLS } from '../engine/systems/drills';
 import { spiralPending } from '../engine/systems/spiral';
+import { CASES } from '../engine/systems/museum';
 import type { TabId } from './store';
 
 export interface SystemCopy {
@@ -439,10 +440,17 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
   museum: {
     title: 'The Museum',
     purpose:
-      'The long room off the back of the Lamphouse, where the crews muster. Every other screen shows what you can do; this one shows what you did. The cases ask for specific things, so filling one is a hunt — and a filled case pays, permanently, forever.',
-    status: (s) => `${s.museum.completed.length}/6 cases`,
+      'The long room off the back of the Lamphouse, where the crews muster. Every other screen shows what you can do; this one shows what you did. The cases ask for specific things, so filling one is a hunt — and a filled case pays, permanently, forever. What you put where is the other half: some things, stood together, turn out to mean something.',
+    // CASES.length was hardcoded to 6 while the case list grew to 20 behind
+    // it — a stale count exactly like the "a number in this document is not
+    // evidence" rule warns about, dormant until this tab was reachable to see
+    // it. Read the registry instead of restating it.
+    status: (s) => `${s.museum.completed.length}/${CASES.length} cases`,
     next: (s) => {
-      if (s.museum.completed.length === 6) return 'Every case filled. The room is finished, and so, more or less, are you.';
+      if (s.museum.completed.length === CASES.length) return 'Every case filled. The room is finished, and so, more or less, are you.';
+      if (s.museum.exhibitsFound.length === 0 && s.museum.pieces.length >= 2) {
+        return 'A few things are on display now. Where you put them is not settled — try standing some together.';
+      }
       if (s.relics.held.length > 0) return 'You are holding something a case wants. Giving it up is how it starts paying.';
       return 'Nothing to give yet. Cases take relics, teeth, gems and Codex pages — bring back anything.';
     },

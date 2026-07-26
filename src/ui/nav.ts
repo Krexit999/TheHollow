@@ -75,9 +75,12 @@ export const CLUSTERS: ClusterDef[] = [
       { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
       { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
       { id: 'brew', label: 'Still', visible: (s) => rec(s, 'verdance', 60) },
-      // B5 FOLD: Museum lives inside the collection screen — curation gates
-      // fusion (B4), so keeping and curating are one decision now.
-      { id: 'relics', label: 'Collection', visible: (s) => s.relics.found > 0 || s.museum.completed.length > 0 },
+      { id: 'relics', label: 'Relics', visible: (s) => s.relics.found > 0 },
+      // A.47 UNFOLDED: Museum split back into its own room. It became a real
+      // arrange-and-discover screen (exhibits, identify, curated halls) rather
+      // than a sidecar to Relics, and stacking two full panels under one
+      // header buried the exhibits below a long relic list.
+      { id: 'museum', label: 'Museum', visible: (s) => s.relics.found > 0 || s.museum.completed.length > 0 },
     ],
   },
   {
