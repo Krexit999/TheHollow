@@ -425,7 +425,7 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
   relics: {
     title: 'Relics',
     purpose:
-      'The things you carried up. Six can be worn at once, and only a worn relic does anything — its power wakes in your hand and nowhere else. What a relic can carry is decided by where you found it, so you can hunt the shape you want instead of praying at a slot machine, and fusing one into another keeps the better of every line and never destroys. The only thing that can take a relic out of your hands is a fusion; LOCK one and not even that.',
+      'The things you carried up. Six settings, and only a set relic does anything — its power wakes in your hand and nowhere else. Fusing keeps the better of every line and never destroys; a LOCK makes even that impossible.',
     status: (s) => {
       const locked = s.relics.held.filter((r) => r.locked).length;
       return `${s.relics.equipped.length}/6 worn · ${s.relics.held.length} held${locked > 0 ? ` · ${locked} locked` : ''}`;

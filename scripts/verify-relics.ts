@@ -1,5 +1,5 @@
 /**
- * A.50 — RELICS AND THE MUSEUM, back as panels. Verified by reading TEXT.
+ * RELICS + MUSEUM — the standing verifier for both panels. Reads TEXT.
  *
  * A.49's driver read pixels out of a Pixi renderer, which was the right tool
  * for a canvas and is the wrong tool for this: there is no canvas any more.
@@ -7,7 +7,11 @@
  * here reads the rendered text, and every behavioural check drives a real
  * control and then reads the ENGINE back to prove the click meant something.
  *
- *   npx tsx scripts/verify-a50.ts [port] [outDir]
+ * Named for the SURFACE, not the phase: it was verify-a49 (pixel probes into a
+ * Pixi canvas), then verify-a50 (the panel that replaced it), and renaming it
+ * every restyle is how a project ends up with four stale drivers.
+ *
+ *   npx tsx scripts/verify-relics.ts [port] [outDir]
  */
 import { chromium, type Page } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -45,8 +49,8 @@ const relics = async (page: Page) =>
   });
 
 async function shot(page: Page, name: string): Promise<void> {
-  await page.screenshot({ path: `${OUT}/a50-${name}.png`, fullPage: true });
-  shots.push(`${OUT}/a50-${name}.png`);
+  await page.screenshot({ path: `${OUT}/relics-${name}.png`, fullPage: true });
+  shots.push(`${OUT}/relics-${name}.png`);
 }
 
 async function overflow(page: Page, name: string): Promise<void> {
@@ -80,14 +84,16 @@ async function main(): Promise<void> {
     st.depth = 300; st.maxDepthRecord = 428; st.collapse.count = 6;
     st.relics.shards = 200;
     st.currencies['core'] = window.__D(40);
-    const a = window.__mk(st, { source: 'depth', power: 'twinBite',   waking: 2, charge: 9000 });
+    const a = window.__mk(st, { source: 'depth', power: 'twinBite',   waking: 2, charge: 9000, rarity: 4 });
     const b = window.__mk(st, { source: 'depth', power: 'glassLung',  waking: 0, charge: 10 });
-    const c = window.__mk(st, { source: 'warren', power: 'longTally', waking: 1, charge: 2200 });
+    const c = window.__mk(st, { source: 'warren', power: 'longTally', waking: 1, charge: 2200, rarity: 2 });
     st.relics.equipped = [a.uid, b.uid, c.uid];
     // Mid-depth finds with distinct runs and hands, so NOTHING here forms a
     // set and the Museum's "nothing named yet" check has something to be true
     // about. Deliberately between 100 and 200: shallower and The First Hundred
     // fires off the spares, deeper and Out of the Deep does.
+    window.__mk(st, { rarity: 3, source: 'depth',
+      found: { depth: 180, shell: 'loam', run: 20, playSec: 9, by: 'Molly' } });
     for (let i = 0; i < 5; i++) window.__mk(st, { rarity: 1, source: 'well',
       found: { depth: 120 + i * 4, shell: 'loam', run: 10 + i, playSec: 9, by: 'Hand ' + i } });
   `);
@@ -97,100 +103,130 @@ async function main(): Promise<void> {
   await page.waitForTimeout(900);
   await dismiss(page);
 
-  // === 1. THE RELICS PANEL RENDERS, AND IT IS NOT A CANVAS =================
+  // === 1. THE PANEL RENDERS, AND IT IS NOT A CANVAS ========================
   console.log('\n1 — the Relics panel renders');
   const t0 = await text(page);
   check((await page.locator('canvas:visible').count()) === 0, 'no canvas on this screen any more',
     `${await page.locator('canvas:visible').count()} visible`);
   for (const probe of [
-    'Carried', 'In the hold', 'Shards', 'Cores', 'Hold',
-    'Fabled relic', 'from the deep shaft', 'Found at depth', 'The Badger',
+    'RELICS', 'Equipped', 'Held', 'Fusion', 'Auto-scrap',
+    'Empty setting', 'the deep shaft', 'The Badger',
   ]) check(has(t0, probe), `renders: "${probe}"`);
+  // The header carries both purses as glyphs, not sentences.
+  check(/◆\s?[\d,]+/.test(t0) && /✦\s?\d+/.test(t0), 'the header states shards and Cores',
+    t0.match(/◆\s?[\d,]+\s*✦\s?\d+/)?.[0] ?? '');
   await page.waitForTimeout(7000); // let the seeding achievement toasts clear
   await shot(page, '1-relics');
 
-  console.log('\n2 — equipped relics show their power, kind and awakening');
+  console.log('\n2 — a relic reads as its power, its band and its awakening');
   for (const probe of [
-    'The Second Bite', 'It changes the rule', 'TWO cells instead of one',
-    'Glass Lung', 'dormant', 'Something in it has not woken',
-    'Awake', 'Dormant', 'Stirring', 'carried to go',
+    'The Second Bite', 'TWO cells instead of one',
+    'Glass Lung', 'Something in it has not woken',
+    'Awake', 'Dormant', 'Stirring',
   ]) check(has(t0, probe), `renders: "${probe}"`);
-  check(has(t0, 'Firing'), 'a live resonance says so');
-  check(has(t0, 'The Deep Chord'), 'and names itself');
+  check(/\d+:\d\d/.test(t0), 'awakening shows a clock, not a sentence', t0.match(/\d+:\d\d(:\d\d)?/)?.[0] ?? '');
+  check(has(t0, 'held'), 'and a fully awake relic reads "held"');
+  check(has(t0, 'Firing') && has(t0, 'The Deep Chord'), 'a live resonance names itself and says it is firing');
+  // RARITY IS A COLOURED EDGE. Asserted from the DOM, because "it looks right"
+  // is exactly the claim that failed twice on these screens.
+  const edges = await page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>('div[style*="border-left"]'))) {
+      const w = getComputedStyle(el).borderLeftWidth;
+      if (parseFloat(w) >= 2) out.push(getComputedStyle(el).borderLeftColor);
+    }
+    return out;
+  });
+  check(edges.length >= 3, 'every setting carries a rarity-coloured left edge', `${edges.length} edges`);
+  check(new Set(edges).size >= 2, 'and the bands are genuinely different colours',
+    `${new Set(edges).size} distinct`);
 
-  // === 3. EQUIP MOVES ENGINE STATE ========================================
+  // === 3. WEAR / TAKE OFF MOVE ENGINE STATE ================================
   console.log('\n3 — a control actually moves the engine');
   const before = await relics(page);
-  await page.getByRole('button', { name: /^Wear it$/ }).first().click();
+  await page.getByRole('button', { name: /^Wear$/ }).first().click();
   await page.waitForTimeout(400);
   const afterWear = await relics(page);
-  check(afterWear.equipped === before.equipped + 1, 'Wear it equips a relic',
+  check(afterWear.equipped === before.equipped + 1, 'Wear equips a relic',
     `${before.equipped} → ${afterWear.equipped}`);
-  await page.getByRole('button', { name: /^Take it off$/ }).last().click();
+  await page.getByRole('button', { name: /^Take off$/ }).last().click();
   await page.waitForTimeout(400);
-  check((await relics(page)).equipped === before.equipped, 'Take it off unequips again');
+  check((await relics(page)).equipped === before.equipped, 'Take off unequips again');
 
-  // === 4. FUSE: THE COST IS SHOWN, AND THE FUSION HAPPENS ==================
-  console.log('\n4 — fusion states its price and does the work');
-  await page.getByRole('button', { name: /Fuse one in/ }).last().click();
-  await page.waitForTimeout(400);
-  const tFuse = await text(page);
-  const price = tFuse.match(/(\d+) shards/g) ?? [];
-  check(has(tFuse, 'the fed relic is consumed'), 'the chooser explains what it eats');
-  check(price.length > 0, 'and each candidate states its shard price', price.slice(0, 3).join(', '));
-  // Read the CHOOSER, not the body: the panel header prints the Cores BALANCE
-  // in the same word, and a body-wide probe can never tell a balance from a price.
-  //
-  // The rule under test is the A.49 re-price: shards always, Cores ONLY on a
-  // fusion that lifts the keeper into Fabled or Mythic. The keeper here is an
-  // Uncommon, so a same-band feed must be shard-only and a Fabled feed must
-  // ask for Cores — both, from the same open chooser.
-  const rows = await page.locator('text=the fed relic is consumed').locator('xpath=..').locator('button').all();
-  const rowText: string[] = [];
-  for (const r of rows) rowText.push((await r.innerText()).replace(/\s+/g, ' '));
-  const plain = rowText.filter((r) => !/Fabled|Mythic/.test(r));
-  const lifting = rowText.filter((r) => /Fabled|Mythic/.test(r));
-  check(plain.length > 0 && plain.every((r) => !/\d+ Cores/.test(r)),
-    'a same-band fusion is shards only — no Cores', plain[0]?.slice(0, 44) ?? 'none offered');
-  check(lifting.length === 0 || lifting.every((r) => /\d+ Cores/.test(r)),
-    'a fusion that lifts into the top band DOES ask for Cores', lifting[0]?.slice(0, 44) ?? 'none offered');
-  await shot(page, '2-fuse');
+  // === 4. THE BENCH: STAGE, PRICE, FUSE ====================================
+  console.log('\n4 — the fusion bench');
+  const bench = () => page.locator('text=Cores are spent only when').locator('xpath=..');
+  check(has(t0, 'tap FUSE on a held relic') && has(t0, 'consumed on fuse'),
+    'the bench shows an empty keeper and feeder slot');
+
+  await page.getByRole('button', { name: /^Fuse$/ }).first().click();   // keeper
+  await page.waitForTimeout(350);
+  await page.getByRole('button', { name: /^Fuse$/ }).nth(1).click();    // feeder
+  await page.waitForTimeout(350);
+  const tBench = (await bench().innerText()).replace(/\s+/g, ' ');
+  for (const probe of ['Keeper', 'Feeder', 'Rarity', 'Lines', 'Power', 'Awakening']) {
+    check(has(tBench, probe), `the bench compares: ${probe}`);
+  }
+  check(/◆\s?\d+/.test(tBench), 'and states the shard price', tBench.match(/◆\s?\d+\s*·\s*✦\s?\d+/)?.[0] ?? '');
+  await shot(page, '2-bench');
 
   const f0 = await relics(page);
-  const fedUid = await page.evaluate(() => {
+  const uidsBefore = await page.evaluate(() => {
     const s = (window as unknown as Record<string, any>)['__engine'].getState();
     return s.relics.held.map((r: any) => r.uid);
   });
-  await page.getByRole('button', { name: /· (a Magma Well|the deep shaft|a Warren)/ }).first().click();
+  await bench().getByRole('button', { name: /^Fuse$/ }).click();
   await page.waitForTimeout(500);
   const f1 = await relics(page);
-  const gone = await page.evaluate((before: number[]) => {
+  const gone = await page.evaluate((uids: number[]) => {
     const s = (window as unknown as Record<string, any>)['__engine'].getState();
     const now = new Set(s.relics.held.map((r: any) => r.uid));
-    return before.filter((u) => !now.has(u)).length;
-  }, fedUid);
+    return uids.filter((u) => !now.has(u)).length;
+  }, uidsBefore);
   // The COUNT is not the assertion: a live game can grant a relic underneath us
-  // (it did, on the first pass, and read as 'the fusion did not happen').
+  // (it did, on an earlier pass, and read as 'the fusion did not happen').
   check(f1.fused === f0.fused + 1 && gone === 1, 'the fusion lands: the fed relic is gone, one more fusion',
     `${gone} consumed, fused ${f0.fused} → ${f1.fused}`);
   check(f1.shards < f0.shards, 'and it was paid for', `${f0.shards} → ${f1.shards} shards`);
 
+  // CORES ARE A LATE SINK. Under the rarity sort the hold runs high → low, so
+  // the LAST row is the weakest keeper and the FIRST is the strongest feeder —
+  // which is exactly a lift into the top band.
+  await page.getByRole('button', { name: /^Clear$/ }).click();
+  await page.waitForTimeout(300);
+  const heldFuse = page.getByRole('button', { name: /^Fuse$/ });
+  const nFuse = await heldFuse.count();
+  if (nFuse >= 3) {
+    await heldFuse.nth(nFuse - 2).click();   // last HELD row (the bench Fuse is last)
+    await page.waitForTimeout(300);
+    await heldFuse.first().click();          // strongest held row
+    await page.waitForTimeout(350);
+  }
+  const liftText = (await bench().innerText()).replace(/\s+/g, ' ');
+  const cores = Number(liftText.match(/✦\s?(\d+)/)?.[1] ?? -1);
+  // innerText returns RENDERED text, so the label comes back as 'RARITY'.
+  const lifting = /Rarity .*→/i.test(liftText);
+  check(!lifting || cores > 0, 'a fusion that LIFTS a rarity is charged Cores',
+    lifting ? `lift priced ✦${cores}` : 'no lift available to stage');
+  check(has(liftText, 'Cores are spent only when the feeder lifts the keeper a rarity'),
+    'and the bench states the rule in words');
   // === 5. AUTO-SCRAP: RULES SET, AND A FIND IS TURNED AWAY =================
   console.log('\n5 — the standing order');
-  await page.getByRole('button', { name: /^Standing order/ }).first().click();
-  await page.waitForTimeout(300);
   const tScrap = await text(page);
-  check(has(tScrap, 'Render down anything up to'), 'the rules open');
-  check(has(tScrap, 'only ever refuses a NEW find'), 'and say they are never retroactive');
-  await page.getByRole('button', { name: /^Standing order is off$/ }).click();
+  check(has(tScrap, 'Scrap at or below'), 'the bands are on screen, not behind a disclosure');
+  check(has(tScrap, 'Keep powered relics'), 'and so is the power exemption');
+  // The ON pill, the band, and the exemption — three separate writes.
+  await page.getByRole('button', { name: /^Off$/ }).click();
   await page.waitForTimeout(250);
-  await page.getByRole('button', { name: /^Uncommon$/ }).click();
+  await page.getByRole('button', { name: /^Scrap at or below Uncommon$/ }).click();
   await page.waitForTimeout(250);
-  await page.getByRole('button', { name: /^Always keep one that has a power$/ }).click();
+  await page.getByRole('button', { name: /^Kept$/ }).click();
   await page.waitForTimeout(300);
   const rule = (await relics(page)).autoScrap;
   check(rule.on === true && rule.maxRarity === 1 && rule.keepPowered === false,
     'all three controls write to the engine', JSON.stringify(rule));
+  check(has(await text(page), 'Scrapping Uncommon and below on pickup'),
+    'and the panel restates the live rule in words');
   await shot(page, '3-standing-order');
 
   const s0 = await relics(page);
