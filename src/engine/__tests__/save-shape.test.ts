@@ -60,8 +60,10 @@ describe('hydrate fills every missing slice from the default shape', () => {
     // The reported sequence, on the loaded save.
     expect(engine.dispatch({ type: 'upgradeDrill', index: 0 }).ok).toBe(true);
     // A.53: the reported sequence's second step was fitting a head; heads are
-    // gone, so the equivalent bay verb is the one that replaced them.
-    expect(engine.dispatch({ type: 'equipDrillAlloy', id: null }).ok).toBe(true);
+    // gone, so the equivalent bay verb is the one that replaced them. A.54 made
+    // it per drill — a bare drill has nothing to pull out, and saying so is the
+    // correct answer, not a crash.
+    expect(engine.dispatch({ type: 'clearDrillAlloy', index: 0 }).ok).toBe(false);
     expect(() => engine.tick(5)).not.toThrow();
     // And chipping still pays afterward.
     const before = s.currencies['dust']!.toNumber();

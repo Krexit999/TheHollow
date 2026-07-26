@@ -3,13 +3,13 @@
  * reason visible: a preview of the whole game. One item, two stat blocks;
  * strike power is displayed but sleeps until combat arrives.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { convCurrencyId, currencyDef, fmtNum, getCurrency, maxToolTier } from '../../engine';
 import type { GameState, Stack } from '../../engine';
 import { GEMS, gemDef, materialDef, MATERIALS } from '../../engine/materials';
-import { ABILITY_BY_ID, alloyHint } from '../../engine/content/drillAlloys';
+import { ABILITY_BY_ID, alloyHint, matchDrillAlloy } from '../../engine/content/drillAlloys';
 import {
-  ALLOY_POUR_COST, POUR_SLOTS, equippedAbility, knownAbilities,
+  POUR_SLOTS, alloyCost, drillsCarrying, knownAbilities, slagCost,
 } from '../../engine/systems/drillAlloys';
 import {
   equippedTool,
@@ -55,7 +55,6 @@ export function ForgePanel() {
 
   return (
     <div className="space-y-2">
-      <AlloyBench state={state} />
       {obsolete.length > 1 && (
         <div className="panel flex flex-wrap items-center justify-between gap-2 p-2 text-[11px]">
           <span className="min-w-0 flex-1 text-cave-400">{obsolete.length} tools below Tier {ROMAN[equipped.tier]} sitting idle.</span>
@@ -274,6 +273,13 @@ export function ForgePanel() {
       {/* Gear — the second bench (Phase 5) */}
       <GearBench />
 
+      {/* THE ALLOY BENCH — a subsection of the Forge, not a floating panel of
+          its own. It sits with the other benches because that is what it is:
+          another thing this room does. (A.54 moved it down here from the top,
+          where it was the first thing a player saw on a screen that is mostly
+          about tools.) */}
+      <AlloyBench state={state} />
+
       {/* The locked preview */}
       <div className="px-1 pt-1 text-xs font-semibold uppercase tracking-wider text-cave-400">
         Deeper patterns
@@ -401,7 +407,7 @@ function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
 }
 
 /**
- * THE ALLOY BENCH (A.53) — where the drill bay's ability is decided.
+ * THE ALLOY BENCH — where a drill's ability is decided.
  *
  * The discovery loop, in three moves, and the panel is built around them:
  *   HINT     — pick materials and the bench reads their TRAITS back at you. It
@@ -411,18 +417,46 @@ function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
  *              what the mix leaned toward, which is the teaching move.
  *   CONFIRM  — a hit names the ability, states what it does, and records it
  *              forever. After that it is readable, not a secret.
+ *
+ * AND ONE MORE MOVE SINCE A.54: pick WHO GETS IT. An alloy goes into named
+ * drills, not into the bay, so this bench has a target row. Both entry paths
+ * land here — the ALLOY button on a drill's card in the bay preselects that
+ * one, and you can also just pick the drills from this screen.
+ *
+ * THE PRICE IS NOT QUOTED FOR A MIX NOBODY HAS MADE. A known ability shows what
+ * it costs, because you know what you are buying. An unknown mix says so and
+ * pours at whatever it turns out to want — quoting it would be a free scanner
+ * (read the price, learn whether it is slag, and never pay to find out).
  */
 function AlloyBench({ state }: { state: GameState }) {
   const [picks, setPicks] = useState<string[]>([]);
   const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null);
+  const targets = useGame((s) => s.alloyTargets);
+  const setTargets = useGame((s) => s.setAlloyTargets);
+  const box = useRef<HTMLDivElement>(null);
 
+  const units = state.drills.units;
   const owned = MATERIALS.filter((m) => materialCount(state, m.id) > 0);
   const conv = convCurrencyId(state);
   const convName = currencyDef(conv).name;
-  const canPay = getCurrency(state, conv).gte(ALLOY_POUR_COST);
   const hint = alloyHint(picks);
   const known = knownAbilities(state);
-  const equipped = equippedAbility(state);
+
+  // Arriving from a drill's ALLOY button: bring the bench into view. It lives
+  // below the tools now, so a jump that only switched tabs would land the
+  // player at the top of a long screen with nothing obviously different.
+  useEffect(() => {
+    if (targets.length > 0) box.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [targets.length]);
+
+  // Only a KNOWN mix shows its price — see the note above.
+  const wouldMake = matchDrillAlloy(picks);
+  const priced = wouldMake && state.drills.alloys.includes(wouldMake.id) ? wouldMake : null;
+  const price = priced ? alloyCost(state, priced, Math.max(1, targets.length)) : null;
+  const affordable = price
+    ? getCurrency(state, conv).gte(price.conv) && picks.every((id) => materialCount(state, id) >= price.materials)
+    : getCurrency(state, conv).gte(slagCost(state).conv);
+  const ready = picks.length > 0 && targets.length > 0 && affordable;
 
   const toggle = (id: string) => {
     setLast(null);
@@ -432,32 +466,84 @@ function AlloyBench({ state }: { state: GameState }) {
       return [...cur, id];
     });
   };
+  const toggleDrill = (i: number) => {
+    setLast(null);
+    setTargets(targets.includes(i) ? targets.filter((x) => x !== i) : [...targets, i]);
+  };
 
   const pour = () => {
-    const before = state.drills.alloys.length;
-    const r = dispatch({ type: 'forgeDrillAlloy', materialIds: picks });
+    const r = dispatch({ type: 'forgeDrillAlloy', materialIds: picks, drills: targets });
     if (!r.ok) { setLast({ ok: false, text: r.reason ?? 'The pour would not take' }); return; }
-    const data = r.data as { alloy: string | null; known?: boolean; reason?: string } | undefined;
+    const data = r.data as { alloy: string | null; known?: boolean; drills?: number; reason?: string } | undefined;
     if (!data?.alloy) {
       setLast({ ok: false, text: data?.reason ?? 'Slag.' });
     } else {
       const def = ABILITY_BY_ID.get(data.alloy)!;
-      const fresh = state.drills.alloys.length > before || !data.known;
-      setLast({ ok: true, text: `${fresh ? 'It took — ' : 'Poured again — '}${def.name}. ${def.effect}` });
+      const n = data.drills ?? 1;
+      setLast({
+        ok: true,
+        text: `${data.known ? 'Poured again' : 'It took'} — ${def.name}, into ${n} drill${n === 1 ? '' : 's'}. ${def.effect}`,
+      });
     }
     setPicks([]);
   };
 
   return (
-    <div className="panel p-3">
+    <div ref={box} className="panel p-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#8fd8c0]">Drill alloys</span>
         <span className="tnum text-[10px] text-cave-400">{known.length} known</span>
       </div>
       <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-        Pour two or three materials together and the drill bay takes whatever behaviour the mix
-        sets into. Nobody wrote down which mixes make what — the traits are the clue.
+        Pour two or three materials together and the drill you pour it into takes whatever
+        behaviour the mix sets into. Nobody wrote down which mixes make what — the traits are
+        the clue.
       </p>
+
+      {units.length === 0 ? (
+        <p className="mt-2 text-[11px] italic text-cave-600">
+          No drills on the rails yet. Assemble the bay first — an alloy needs somewhere to go.
+        </p>
+      ) : (
+        <>
+          {/* WHO GETS IT. The bay's current mix is written on these chips, so
+              the decision is made while looking at what is already fitted. */}
+          <div className="mt-2 flex items-baseline justify-between gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-cave-500">
+              Into which drill · {targets.length} picked
+            </span>
+            {units.length > 1 && (
+              <button
+                className="text-[10px] text-cave-400 underline decoration-dotted hover:text-cave-200"
+                onClick={() => setTargets(targets.length === units.length ? [] : units.map((_, i) => i))}
+              >
+                {targets.length === units.length ? 'none' : 'all'}
+              </button>
+            )}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {units.map((u, i) => {
+              const on = targets.includes(i);
+              const fitted = u.alloy ? ABILITY_BY_ID.get(u.alloy) : null;
+              return (
+                <button
+                  key={i}
+                  className={`min-w-0 rounded border px-1.5 py-1 text-left text-[10px] ${
+                    on ? 'border-[#8fd8c0]/60 bg-[#8fd8c0]/10 text-[#8fd8c0]' : 'border-cave-800 text-cave-300 hover:bg-cave-800'
+                  }`}
+                  title={fitted ? `${u.name ?? `Drill ${i + 1}`} — running ${fitted.name}` : `${u.name ?? `Drill ${i + 1}`} — bare`}
+                  onClick={() => toggleDrill(i)}
+                >
+                  <span className="block truncate">{u.name ?? `Drill ${i + 1}`}</span>
+                  <span className={`block truncate text-[9px] ${fitted ? 'text-[#c7a35a]' : 'text-cave-600'}`}>
+                    {fitted ? fitted.name : 'bare'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* PICK — the pool is everything you actually hold, traits on the card. */}
       <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">
@@ -484,13 +570,37 @@ function AlloyBench({ state }: { state: GameState }) {
         </p>
       )}
 
+      {/* WHAT IT WILL COST, when the player already knows what they are making. */}
+      {picks.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-2 text-[10px]">
+          <span className="text-cave-500">The pour wants</span>
+          {price ? (
+            <span className="tnum text-cave-300">
+              <span className={getCurrency(state, conv).gte(price.conv) ? 'text-lamp-300' : 'text-red-400'}>
+                {fmtNum(price.conv, 0)} {convName}
+              </span>
+              {' · '}
+              {price.materials} of each material
+              {price.drills > 1 && <span className="text-cave-500"> (×{price.drills} drills)</span>}
+            </span>
+          ) : (
+            <span className="italic text-cave-500">no telling, until you have made one</span>
+          )}
+        </div>
+      )}
+
       <button
-        className={`btn mt-2 w-full py-1 text-[11px] ${picks.length > 0 && canPay ? 'btn-warm' : ''}`}
-        disabled={picks.length === 0 || !canPay}
-        title={canPay ? `Pour — costs ${ALLOY_POUR_COST} ${convName} and the materials` : `Wants ${ALLOY_POUR_COST} ${convName}`}
+        className={`btn mt-2 w-full py-1 text-[11px] ${ready ? 'btn-warm' : ''}`}
+        disabled={!ready}
+        title={
+          targets.length === 0 ? 'Pick a drill to pour it into'
+            : picks.length === 0 ? 'Put something in the crucible'
+            : affordable ? 'Fire the bench'
+            : 'You cannot cover this pour'
+        }
         onClick={pour}
       >
-        Pour the alloy · {ALLOY_POUR_COST} {convName}
+        {targets.length === 0 ? 'Pick a drill first' : `Pour it into ${targets.length} drill${targets.length === 1 ? '' : 's'}`}
       </button>
       {last && (
         <p className={`mt-1 text-[11px] leading-snug ${last.ok ? 'text-[#8fd8c0]' : 'text-cave-400'}`}>{last.text}</p>
@@ -523,25 +633,35 @@ function AlloyBench({ state }: { state: GameState }) {
       </div>
 
       {/* WHAT YOU HAVE MADE. Nothing appears here until it has been poured
-          once — the list IS the discovery record. */}
+          once — the list IS the discovery record. Once it is on the list the
+          SIGNATURE is shown too: re-pouring a known alloy for a second drill is
+          ordinary work, not a memory test. */}
       {known.length > 0 && (
         <>
           <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">Made</div>
           {known.map((a) => {
-            const on = equipped?.id === a.id;
+            const carrying = drillsCarrying(state, a.id);
+            const cost = alloyCost(state, a, 1);
             return (
-              <div key={a.id} className={`mt-1 rounded border px-2 py-1.5 ${on ? 'border-[#8fd8c0]/50 bg-[#8fd8c0]/5' : 'border-cave-800'}`}>
+              <div key={a.id} className={`mt-1 rounded border px-2 py-1.5 ${carrying.length > 0 ? 'border-[#8fd8c0]/50 bg-[#8fd8c0]/5' : 'border-cave-800'}`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={`text-[12px] font-semibold ${on ? 'text-[#8fd8c0]' : 'text-cave-200'}`}>{a.name}</span>
-                  <button
-                    className={`btn shrink-0 px-2 py-0.5 text-[10px] ${on ? 'btn-warm' : ''}`}
-                    onClick={() => dispatch({ type: 'equipDrillAlloy', id: on ? null : a.id })}
-                  >
-                    {on ? 'Fitted' : 'Fit it'}
-                  </button>
+                  <span className={`text-[12px] font-semibold ${carrying.length > 0 ? 'text-[#8fd8c0]' : 'text-cave-200'}`}>{a.name}</span>
+                  <span className="tnum shrink-0 text-[10px] text-cave-500">
+                    {fmtNum(cost.conv, 0)} {convName} + {cost.materials} each
+                  </span>
                 </div>
                 <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{a.effect}</div>
                 <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{a.line}</div>
+                <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[9px]">
+                  <span className="uppercase tracking-wider text-cave-600">
+                    from {Object.entries(a.needs).map(([t, n]) => `${n}× ${t}`).join(' + ')}
+                  </span>
+                  <span className={carrying.length > 0 ? 'text-[#8fd8c0]' : 'text-cave-600'}>
+                    {carrying.length === 0
+                      ? 'in no drill'
+                      : `in ${carrying.map((i) => units[i]?.name ?? `Drill ${i + 1}`).join(', ')}`}
+                  </span>
+                </div>
               </div>
             );
           })}

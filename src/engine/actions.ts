@@ -31,7 +31,7 @@ import {
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
 import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount, addMaterial } from './systems/forge';
-import { forgeDrillAlloy, equipDrillAlloy } from './systems/drillAlloys';
+import { forgeDrillAlloy, clearDrillAlloy } from './systems/drillAlloys';
 import { lightOverstoke } from './systems/kiln';
 import { kilnFuel } from './content/kilnFuel';
 import { crackGeode, startAssay } from './systems/drops';
@@ -203,15 +203,15 @@ export function handleAction(
       return { ok: true };
     }
 
-    // DRILL ALLOYS (A.53) — the two verbs that replaced the whole per-drill
-    // configuration layer. Pouring happens at the Forge; equipping is
-    // bay-wide, because one alloy for the whole bay is what keeps the drills
-    // furniture instead of a screen full of dropdowns.
+    // DRILL ALLOYS — pouring happens at the Forge and fits the result into the
+    // named drills. There is deliberately no free equip verb: fitting an
+    // ability is always a pour, so swapping is a decision (A.54). Pulling one
+    // out costs nothing, because stopping should never be a purchase.
     case 'forgeDrillAlloy':
-      return forgeDrillAlloy(state, ctx, action.materialIds);
+      return forgeDrillAlloy(state, ctx, action.materialIds, action.drills);
 
-    case 'equipDrillAlloy': {
-      const r = equipDrillAlloy(state, action.id);
+    case 'clearDrillAlloy': {
+      const r = clearDrillAlloy(state, action.index);
       if (r.ok) ctx.dirty();
       return r;
     }

@@ -1,8 +1,10 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { Bucket } from '../../engine';
 import { breakdown, fmt, D } from '../../engine';
 import { TRAITS, traitLeanText, type TraitId } from '../../engine/traits';
 import { useGame } from '../store';
+import { tooltipPlacement } from './tooltipPlacement';
 
 /**
  * A small self-fading toast for a single spot — the "+340 Scrip" / "Bought —
@@ -101,31 +103,84 @@ export function Amount({ value, color, className = '' }: { value: Parameters<typ
 /**
  * The introspection affordance: hover/tap shows every named source feeding a
  * modifier bucket — the player can always see where a number comes from.
+ *
+ * IT IS PORTALLED, AND IT HAS TO BE. The first version was an `absolute` panel
+ * inside a `relative` span, which every browser clips to the nearest scrolling
+ * ancestor — and every panel in this game lives inside `overflow-y-auto`. On a
+ * 380px screen the "Speed bonuses" breakdown was cut off on both sides and at
+ * the top: the affordance whose entire job is "you can always see where a
+ * number comes from" could not show the number it came from. Same fix and the
+ * same reasoning as `Select` (A.37): render to the body, position `fixed`
+ * against the viewport, flip when there is no room above, clamp to the edges.
+ *
+ * The placement arithmetic lives in `tooltipPlacement` so it can be tested —
+ * the flip-down branch cannot be produced through any room today (the face
+ * canvas owns the top of every screen), and an unexercisable guard needs a test
+ * rather than a comment.
  */
 export function BucketInfo({ bucket, base, children }: { bucket: Bucket; base?: { label: string; value: string }[]; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<{ left: number; top: number; bottom: number; width: number } | null>(null);
+  const anchor = useRef<HTMLSpanElement>(null);
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
+
+  const measure = () => {
+    const b = anchor.current?.getBoundingClientRect();
+    if (b) setRect({ left: b.left, top: b.top, bottom: b.bottom, width: b.width });
+  };
+
+  // Follow the anchor while open — these labels sit in scrolling panels, so a
+  // tooltip pinned to stale coordinates detaches the moment the list moves.
+  useEffect(() => {
+    if (!open) return;
+    const onMove = () => measure();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+  }, [open]);
+
   if (!state) return <>{children}</>;
   const entries = breakdown(state, bucket);
+
+  const { left, width, flipDown } = tooltipPlacement(
+    rect ?? { left: 0, top: 1e6, width: 0 },
+    { width: typeof window === 'undefined' ? 380 : window.innerWidth,
+      height: typeof window === 'undefined' ? 900 : window.innerHeight },
+  );
+
+  const show = () => { measure(); setOpen(true); };
+
   return (
     <span
-      className="relative inline-block cursor-help border-b border-dotted border-cave-600"
-      onMouseEnter={() => setOpen(true)}
+      ref={anchor}
+      className="inline-block cursor-help border-b border-dotted border-cave-600"
+      onMouseEnter={show}
       onMouseLeave={() => setOpen(false)}
-      onClick={() => setOpen((o) => !o)}
+      onClick={() => (open ? setOpen(false) : show())}
     >
       {children}
-      {open && (
+      {open && rect && createPortal(
         // pointer-events-none: this panel opens directly above the cursor and
         // would otherwise swallow the click meant for whatever sits behind it.
         // It is pure readout — nothing in here is interactive.
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-60 -translate-x-1/2 rounded-lg border border-cave-600 bg-cave-900 p-3 text-left text-xs shadow-xl">
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-[110] max-h-[60vh] overflow-y-auto rounded-lg border border-cave-600 bg-cave-900 p-3 text-left text-xs shadow-xl scroll-thin"
+          style={{
+            left,
+            width,
+            ...(flipDown ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - rect.top + 6 }),
+          }}
+        >
           <div className="mb-1.5 font-semibold text-lamp-300">Where this comes from</div>
           {base?.map((b) => (
-            <div key={b.label} className="flex justify-between py-0.5 text-cave-300">
-              <span>{b.label}</span>
-              <span className="tnum">{b.value}</span>
+            <div key={b.label} className="flex justify-between gap-2 py-0.5 text-cave-300">
+              <span className="min-w-0 flex-1 break-words">{b.label}</span>
+              <span className="tnum shrink-0">{b.value}</span>
             </div>
           ))}
           {entries.length === 0 && !base?.length && (
@@ -133,13 +188,16 @@ export function BucketInfo({ bucket, base, children }: { bucket: Bucket; base?: 
           )}
           {entries.map((e) => (
             <div key={e.id} className="flex justify-between gap-2 py-0.5 text-cave-200">
-              <span className="truncate">{e.label}</span>
-              <span className="tnum text-lamp-400">
+              {/* break-words, not truncate: a clipped source name is the same
+                  defect as a clipped tooltip, one level down. */}
+              <span className="min-w-0 flex-1 break-words">{e.label}</span>
+              <span className="tnum shrink-0 text-lamp-400">
                 {e.value.gte(1) || e.value.lt(0.999) ? `×${fmt(e.value)}` : `+${fmt(e.value.mul(100))}%`}
               </span>
             </div>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </span>
   );

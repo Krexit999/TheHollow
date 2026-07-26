@@ -85,7 +85,17 @@ interface UIStore {
   compendiumEntry: string | null;
   /** A big spend awaiting the player's nod (confirm-on-big-spend). */
   pendingSpend: PendingSpend | null;
+  /**
+   * WHICH DRILLS THE ALLOY BENCH IS AIMED AT (A.54). UI state, not saved — it
+   * is a cursor, not a setting. The Drill Bay's per-drill ALLOY button writes
+   * it and jumps to the Forge; the bench also lets you pick the drills there,
+   * so both entry paths land in the same place.
+   */
+  alloyTargets: number[];
   setTab: (tab: TabId) => void;
+  /** Jump to the Forge's alloy bench with these drills already selected. */
+  openAlloyBench: (drills: number[]) => void;
+  setAlloyTargets: (drills: number[]) => void;
   setRunSummaryOpen: (open: boolean) => void;
   markFresh: (tab: TabId) => void;
   setOpticsMode: (on: boolean) => void;
@@ -116,9 +126,13 @@ export const useGame = create<UIStore>((set, get) => ({
   armedTechnique: null,
   bulkMode: loadBulk(),
   numberFormat: loadNumberFormat(),
+  alloyTargets: [],
   setRunSummaryOpen: (open: boolean) => set({ runSummaryOpen: open }),
   setTab: (tab) =>
     set((s) => ({ tab, freshTabs: s.freshTabs.filter((t) => t !== tab) })),
+  setAlloyTargets: (drills) => set({ alloyTargets: drills }),
+  openAlloyBench: (drills) =>
+    set((s) => ({ tab: 'forge', alloyTargets: drills, freshTabs: s.freshTabs.filter((t) => t !== 'forge') })),
   setOpticsMode: (on) => set({ opticsMode: on }),
   setFaceMode: (m) => set({ faceMode: m, ...(m !== 'technique' ? { armedTechnique: null } : {}) }),
   armTechnique: (id) => set(id ? { armedTechnique: id, faceMode: 'technique' } : { armedTechnique: null, faceMode: 'chip' }),

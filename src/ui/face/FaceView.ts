@@ -1056,10 +1056,12 @@ export class FaceView {
   private syncDrills(): void {
     const st = this.engine.getState();
     const units = st.drills.units;
-    const look = st.drills.equipped ?? 'plain';
+    // ONE ALLOY PER DRILL (A.54): each machine wears its OWN livery, so a mixed
+    // bay reads as a mixed bay from across the room — three colours on the rails
+    // is the picture of the decision the player made at the Forge.
     while (this.drillSprites.length < units.length) {
       const unit = units[this.drillSprites.length]!;
-      const sprite = this.makeDrillSprite(look);
+      const sprite = this.makeDrillSprite(unit.alloy ?? 'plain');
       const at = this.cellCenter(unit.lastCell);
       sprite.root.position.set(at.x, at.y - this.cellSize * 0.18);
       this.drillSprites.push(sprite);
@@ -1070,6 +1072,7 @@ export class FaceView {
     }
     for (let i = 0; i < units.length; i++) {
       const sprite = this.drillSprites[i]!;
+      const look = units[i]!.alloy ?? 'plain';
       if (sprite.look !== look) {
         sprite.look = look;
         this.drawDrillBody(sprite.body, look);

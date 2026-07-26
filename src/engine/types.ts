@@ -218,6 +218,9 @@ export interface DrillState {
   lastCell: number;
   /** A name the player gave it. An individual, not "drill 3". */
   name?: string;
+  /** DRILL ALLOY (A.54) — the ability poured into THIS drill, or absent for a
+   *  bare one. Per drill on purpose: the bay's mix is the decision. */
+  alloy?: string;
   /** AFFINITY: use-history per shell — a drill that worked a shell hits it
    *  harder. Invisible and automatic; nothing to manage. */
   use?: Record<string, number>;
@@ -826,18 +829,18 @@ export interface GameState {
     bayBuilt: boolean;
     units: DrillState[];
     /**
-     * DRILL ALLOYS (A.53) — abilities forged at the Forge, equipped BAY-WIDE.
-     * One slot on purpose: a per-drill alloy would rebuild the configuration
-     * screen this phase tore out.
+     * DRILL ALLOYS — abilities forged at the Forge. A.53 fitted one bay-wide;
+     * A.54 moved the fitting onto the individual drill (`DrillState.alloy`), so
+     * what lives here is only the KNOWLEDGE and the marks left on the rock.
      */
     /** Ability ids the player has actually made. The discovery record —
-     *  nothing is shown before it has been forged once (pillar 5). */
+     *  nothing is shown before it has been forged once (pillar 5). Survives a
+     *  Breach; the physical alloys in the drills do not. */
     alloys: string[];
-    /** The one in the bay, or null. */
-    equipped: string | null;
-    /** Per-cell marks the equipped ability writes, parallel to face.cells.
-     *  Owned by the alloy feature: created lazily, cleared on a swap, resized
-     *  with the face. THE SET writes `residue`; THE CALL writes `richness`. */
+    /** Per-cell marks, parallel to face.cells, written by whichever drill
+     *  carries the ability and read by ANY drill that comes to that cell.
+     *  Created lazily, decayed on their own beat, resized with the face.
+     *  THE SET writes `residue`; THE CALL writes `richness`. */
     residue?: number[];
     richness?: number[];
   };
@@ -1406,8 +1409,8 @@ export type GameAction =
   | { type: 'sweep'; cells: number[] }
   // --- THE FACE CLUSTER (v21) — Drill Bay -------------------------------
   | { type: 'renameDrill'; index: number; name: string }
-  | { type: 'forgeDrillAlloy'; materialIds: string[] }
-  | { type: 'equipDrillAlloy'; id: string | null }
+  | { type: 'forgeDrillAlloy'; materialIds: string[]; drills: number[] }
+  | { type: 'clearDrillAlloy'; index: number }
   | { type: 'setKilnFuel'; fuelId: string | null }
   | { type: 'overstoke' }
   // --- IMPLEMENTS AND INSCRIPTION (v22) ---------------------------------

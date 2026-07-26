@@ -11,7 +11,8 @@ import { cellCap, cellRegen, chipYield, dpsMax } from '../../engine/systems/face
 import { kilnRate, kilnEfficiency, KILN_DUST_PER_BRICK, overstokeActive, overstokeReady, overstokeCost } from '../../engine/systems/kiln';
 import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '../../engine/content/kilnFuel';
 import { drillInterval, drillPower, MAX_DRILLS } from '../../engine/systems/drills';
-import { equippedAbility } from '../../engine/systems/drillAlloys';
+import { drillsCarrying, knownAbilities } from '../../engine/systems/drillAlloys';
+import { ABILITY_BY_ID } from '../../engine/content/drillAlloys';
 import { materialCount } from '../../engine/systems/forge';
 import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
@@ -311,6 +312,7 @@ const KILN_PREVIEW: PreviewStat[] = [
  */
 export function DrillsPanel() {
   const state = useGame((s) => s.state);
+  const openAlloyBench = useGame((s) => s.openAlloyBench);
   const m = useFreshMods();
   if (!state) return null;
 
@@ -327,10 +329,16 @@ export function DrillsPanel() {
   const conv = convCurrencyId(state);
   const convName = currencyDef(conv).name;
   const convColor = currencyDef(conv).color;
-  const ability = equippedAbility(state);
   const throughput = state.drills.units.reduce(
     (sum, u) => sum + drillPower(state, m, u) / drillInterval(state, m, u), 0,
   );
+  // THE BAY'S MIX (A.54): one line per ability actually on the rails. This is
+  // the readout that replaced "the alloy" — there is no single answer any more,
+  // and a bay running three things should say so.
+  const fitted = knownAbilities(state)
+    .map((a) => ({ def: a, on: drillsCarrying(state, a.id) }))
+    .filter((x) => x.on.length > 0);
+  const bare = state.drills.units.filter((u) => !u.alloy).length;
 
   return (
     <div className="space-y-2">
@@ -342,8 +350,9 @@ export function DrillsPanel() {
           </span>
         </div>
         <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-          They work the fullest cell on their own and never need telling. What they DO to the
-          rock is decided at the Forge — one drill alloy, worn by the whole bay.
+          They work the fullest cell on their own and never need telling. What each one DOES to
+          the rock is decided at the Forge — an alloy poured into that drill, and no two need
+          be the same.
         </p>
         <div className="mt-1.5 flex items-center gap-2">
           <BucketInfo bucket="drillSpeed"><span className="text-[10px] text-cave-400">Speed bonuses</span></BucketInfo>
@@ -352,24 +361,52 @@ export function DrillsPanel() {
         </div>
       </div>
 
-      {/* WHAT THE BAY IS RUNNING. The alloy is made at the Forge; this is the
-          readout and the only place the bay says what it is doing. */}
-      <div className={`panel p-3 ${ability ? 'border-[#8fd8c0]/40' : ''}`}>
+      {/* THE MIX. Alloys are made at the Forge and poured into named drills;
+          this is the readout of what the bay is actually running. */}
+      <div className={`panel p-3 ${fitted.length > 0 ? 'border-[#8fd8c0]/40' : ''}`}>
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#8fd8c0]">The alloy</span>
-          <span className="text-[10px] text-cave-500">{ability ? 'running' : 'none fitted'}</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#8fd8c0]">The mix</span>
+          <span className="text-[10px] text-cave-500">
+            {fitted.length === 0
+              ? 'nothing fitted'
+              : `${fitted.length} ${fitted.length === 1 ? 'ability' : 'abilities'} · ${bare} bare`}
+          </span>
         </div>
-        {ability ? (
+        {fitted.length > 0 ? (
           <>
-            <div className="mt-1 text-[13px] font-semibold text-[#8fd8c0]">{ability.name}</div>
-            <div className="mt-0.5 text-[11px] leading-snug text-cave-300">{ability.effect}</div>
-            <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{ability.line}</div>
+            {fitted.map(({ def, on }) => (
+              <div key={def.id} className="mt-1.5 border-t border-cave-800 pt-1.5 first:border-t-0 first:pt-0">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[12px] font-semibold text-[#8fd8c0]">{def.name}</span>
+                  <span className="tnum shrink-0 text-[10px] text-cave-500">×{on.length}</span>
+                </div>
+                <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{def.effect}</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-wider text-cave-600">
+                  {on.map((i) => state.drills.units[i]?.name ?? `Drill ${i + 1}`).join(' · ')}
+                </div>
+              </div>
+            ))}
+            <button
+              className="mt-1.5 w-full rounded border border-cave-700 py-1 text-[10px] text-cave-300 hover:bg-cave-800"
+              title="Pour another alloy at the Forge"
+              onClick={() => openAlloyBench([])}
+            >
+              Change the mix at the Forge
+            </button>
           </>
         ) : (
-          <p className="mt-1 text-[11px] italic leading-snug text-cave-500">
-            The drills run bare. Pour an alloy at the Forge and the whole bay takes its
-            behaviour — nothing here is required, and a bare bay mines perfectly well.
-          </p>
+          <>
+            <p className="mt-1 text-[11px] italic leading-snug text-cave-500">
+              Every drill runs bare. Pour an alloy at the Forge and the drill you pour it into
+              takes its behaviour — nothing here is required, and a bare bay mines perfectly well.
+            </p>
+            <button
+              className="mt-1.5 w-full rounded border border-cave-700 py-1 text-[10px] text-cave-300 hover:bg-cave-800"
+              onClick={() => openAlloyBench([])}
+            >
+              Go to the alloy bench
+            </button>
+          </>
         )}
       </div>
 
@@ -381,30 +418,62 @@ export function DrillsPanel() {
         {state.drills.units.map((unit, i) => {
           const upCost = D(5).mul(Math.pow(1.25, unit.level));
           const canUp = unit.level < 25 && getCurrency(state, conv).gte(upCost);
+          const carried = unit.alloy ? ABILITY_BY_ID.get(unit.alloy) : null;
           return (
-            <div key={i} className="mt-1 flex items-center gap-2 border-t border-cave-800 pt-1 first:border-t-0 first:pt-0">
-              <button
-                className="min-w-0 flex-1 text-left"
-                title="Rename this drill"
-                onClick={() => {
-                  const name = window.prompt('Name this drill', unit.name ?? '')?.trim();
-                  if (name !== undefined) dispatch({ type: 'renameDrill', index: i, name });
-                }}
-              >
-                <span className="truncate text-[11px] text-cave-200">{unit.name ?? `Drill ${i + 1}`}</span>
-                <span className="tnum ml-1.5 text-[10px] text-cave-500">Lv {unit.level}</span>
-              </button>
-              <span className="tnum shrink-0 text-[10px] text-cave-500">
-                {fmtNum(drillPower(state, m, unit), 1)} / {fmtNum(drillInterval(state, m, unit), 2)}s
-              </span>
-              <button
-                className={`btn shrink-0 px-2 py-1 text-[11px] ${canUp ? 'btn-warm' : ''}`}
-                disabled={!canUp}
-                title={unit.level >= 25 ? 'This drill is at its ceiling' : `Upgrade — costs ${fmtNum(upCost.toNumber(), 0)} ${convName}`}
-                onClick={() => dispatch({ type: 'upgradeDrill', index: i })}
-              >
-                {unit.level >= 25 ? 'Max' : <>▲ <Amount value={upCost} color={convColor} /></>}
-              </button>
+            <div key={i} className="mt-1 border-t border-cave-800 pt-1 first:border-t-0 first:pt-0">
+              <div className="flex items-center gap-2">
+                <button
+                  className="min-w-0 flex-1 text-left"
+                  title="Rename this drill"
+                  onClick={() => {
+                    const name = window.prompt('Name this drill', unit.name ?? '')?.trim();
+                    if (name !== undefined) dispatch({ type: 'renameDrill', index: i, name });
+                  }}
+                >
+                  <span className="truncate text-[11px] text-cave-200">{unit.name ?? `Drill ${i + 1}`}</span>
+                  <span className="tnum ml-1.5 text-[10px] text-cave-500">Lv {unit.level}</span>
+                </button>
+                <span className="tnum shrink-0 text-[10px] text-cave-500">
+                  {fmtNum(drillPower(state, m, unit), 1)} / {fmtNum(drillInterval(state, m, unit), 2)}s
+                </span>
+                <button
+                  className={`btn shrink-0 px-2 py-1 text-[11px] ${canUp ? 'btn-warm' : ''}`}
+                  disabled={!canUp}
+                  title={unit.level >= 25 ? 'This drill is at its ceiling' : `Upgrade — costs ${fmtNum(upCost.toNumber(), 0)} ${convName}`}
+                  onClick={() => dispatch({ type: 'upgradeDrill', index: i })}
+                >
+                  {unit.level >= 25 ? 'Max' : <>▲ <Amount value={upCost} color={convColor} /></>}
+                </button>
+              </div>
+              {/* THE ALLOY LINE (A.54). What this ONE machine is running, and
+                  the way to change it: the button carries the drill through to
+                  the Forge's bench with this drill already picked, so the two
+                  screens are one gesture apart rather than a hunt. */}
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <button
+                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                    carried
+                      ? 'border-[#8fd8c0]/50 bg-[#8fd8c0]/10 text-[#8fd8c0]'
+                      : 'border-cave-700 text-cave-400 hover:bg-cave-800'
+                  }`}
+                  title={carried ? `Running ${carried.name} — re-pour at the Forge` : 'Pour an alloy into this drill at the Forge'}
+                  onClick={() => openAlloyBench([i])}
+                >
+                  Alloy
+                </button>
+                <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500">
+                  {carried ? carried.effect : 'runs bare'}
+                </span>
+                {carried && (
+                  <button
+                    className="shrink-0 text-[9px] uppercase tracking-wider text-cave-600 hover:text-cave-300"
+                    title="Take the alloy out. Free — but putting one back is another pour."
+                    onClick={() => dispatch({ type: 'clearDrillAlloy', index: i })}
+                  >
+                    strip
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}

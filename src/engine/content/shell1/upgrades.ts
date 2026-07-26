@@ -204,7 +204,7 @@ export function registerShell1Upgrades(): void {
     maxLevel: 23, // bay build grants the 1st; 24 total (locked cap)
     resetsOnCollapse: false,
     visible: hasBay,
-    description: () => 'Another chassis on the rails. They work the fullest cell without being told; the only decision is how many.',
+    description: () => 'Another chassis on the rails. It works the best cell without being told — and it is one more machine you could pour an alloy into.',
     onPurchase: (s, levels) => {
       for (let i = 0; i < levels; i++) {
         if (s.drills.units.length < 24) s.drills.units.push(newDrill(defaultDrillName(s.drills.units.length)));

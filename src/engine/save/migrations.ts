@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 31;
+export const SAVE_VERSION = 32;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -687,6 +687,30 @@ export const MIGRATIONS: Record<number, Migration> = {
     drills['alloys'] ??= [];
     drills['equipped'] ??= null;
     return { ...p, version: 31, state };
+  },
+
+  // v31 -> v32 — ONE ALLOY PER DRILL (A.54).
+  //
+  // A.53 fitted a single alloy bay-wide (`drills.equipped`); the fitting now
+  // lives on the individual machine. A save that had one running gets it
+  // copied onto EVERY drill, so nothing a player had stops working the moment
+  // they load — they end up exactly where they were, with the new freedom to
+  // pull it out of some of them.
+  //
+  // The knowledge list is untouched, and no drill that was bare becomes
+  // alloyed. Re-fitting costs a pour now, so silently handing out extra
+  // abilities here would be giving away the thing the phase just priced.
+  31: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const drills = (state['drills'] ??= {}) as Record<string, unknown>;
+    const wasFitted = drills['equipped'];
+    if (typeof wasFitted === 'string') {
+      for (const u of (drills['units'] ?? []) as Array<Record<string, unknown>>) {
+        u['alloy'] = wasFitted;
+      }
+    }
+    delete drills['equipped'];
+    return { ...p, version: 32, state };
   },
 };
 

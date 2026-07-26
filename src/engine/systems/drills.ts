@@ -10,10 +10,14 @@
  * are elsewhere.
  *
  * The A.52 puzzle was not badly built; it was built in the wrong place. What
- * replaced it is DRILL ALLOYS (content/drillAlloys.ts): you forge an alloy at
- * the Forge and it grants the whole bay an ABILITY that visibly changes how
- * the drills work the grid. The interesting decision moved to a screen you
- * visit on purpose, and the drills went back to being furniture.
+ * replaced it is DRILL ALLOYS (content/drillAlloys.ts): you pour an alloy into
+ * a drill at the Forge and THAT DRILL gains an ABILITY that visibly changes how
+ * it works the grid. The interesting decision moved to a screen you visit on
+ * purpose, and the drills went back to being furniture — a drill with no alloy
+ * needs nothing and mines fine, which is the line A.52 crossed and this does
+ * not. A.54 moved the fitting from one bay-wide slot onto the individual
+ * machine, so a bay can run three abilities at once and the question is which
+ * drill gets which.
  *
  * Drills can only harvest what the field produces (pillar 2): they take charge
  * from cells, so regen is the ceiling. Every alloy ability obeys the same rule
@@ -37,7 +41,7 @@ import { affinityMult, logImplementUse } from './affinity';
 import { lawNum } from '../laws';
 import { relicRule } from './relicPowers';
 import {
-  equippedAbility, arcTargets, residueBite, markResidue, markRichness, ARC_SHARE,
+  drillAbility, arcTargets, residueBite, markResidue, markRichness, ARC_SHARE,
 } from './drillAlloys';
 
 export const MAX_DRILLS = 24;
@@ -100,10 +104,13 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // leaves those for their own harvest.
   const skip = (i: number): boolean => (state.growth.stage[i] ?? 0) > 0;
   const shellId = currentShell(state).id;
-  const ability = equippedAbility(state);
 
   for (let d = 0; d < state.drills.units.length; d++) {
     const drill = state.drills.units[d]!;
+    // ONE ALLOY PER DRILL (A.54). Read here rather than once for the bay: the
+    // machine next to this one may be running something else entirely, which
+    // is the whole decision the system is made of.
+    const ability = drillAbility(drill);
     drill.timer += dt;
     const interval = drillInterval(state, mods, drill);
     // A drill strikes at most a few times per tick even after catch-up; the
@@ -147,16 +154,18 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
         // bite, never a bigger yield — the cell still only holds what regen put
         // in it, which is why this cannot lift the ceiling.
         strike(state, mods, ctx, drill, hit, power * residueBite(state, hit), d);
-        if (ability) {
-          markResidue(state, hit);
-          markRichness(state, hit);
-        }
+        // The MARK is left by this drill's own alloy, but it is left on the
+        // ROCK — the drill that comes to this cell next gets the benefit
+        // whatever it is carrying. That is what makes a mixed bay worth
+        // assembling instead of twenty-four of the same thing.
+        markResidue(state, hit, ability);
+        markRichness(state, hit, ability);
       }
 
       // THE ARC (alloy ability): the strike jumps to neighbouring cells and
       // takes their charge too. Faster to the ceiling, never past it.
       if (ability?.kind === 'arc') {
-        const jumped = arcTargets(state, target, skip);
+        const jumped = arcTargets(state, target, skip, ability);
         for (const j of jumped) strike(state, mods, ctx, drill, j, power * ARC_SHARE, d);
         if (jumped.length > 0) ctx.emit({ type: 'drillArc', from: target, to: jumped });
       }

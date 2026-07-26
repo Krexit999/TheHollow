@@ -109,7 +109,7 @@ describe('drills — furniture, not a configuration screen (A.53)', () => {
     expect(s().drills.units[0]!.name).toBe('Gnash');
   });
 });
-describe('the save chain, v21 through A.53', () => {
+describe('the save chain, v21 through A.54', () => {
   it('gives implements a history, then strips the configuration layer back off', () => {
     const payload = {
       version: 20, savedAtMs: 0,
@@ -133,6 +133,44 @@ describe('the save chain, v21 through A.53', () => {
     // ...and no ability is handed out: an alloy is DISCOVERED, and granting one
     // would spend the discovery on the player's behalf.
     expect(bay['alloys']).toEqual([]);
-    expect(bay['equipped']).toBeNull();
+    // A.54 (v32): the bay-wide slot is gone entirely — the fitting lives on the
+    // drill now, and a save that had nothing fitted still has nothing fitted.
+    expect(bay['equipped']).toBeUndefined();
+    for (const u of st.drills.units) expect(u['alloy']).toBeUndefined();
+  });
+
+  /**
+   * THE ONE THING A PLAYER MUST NOT LOSE ON LOAD. A save that was running an
+   * alloy bay-wide had every drill doing that thing; after the move to
+   * per-drill fitting it must still have every drill doing that thing. Fitting
+   * costs a pour now, so a migration that dropped the alloy would be silently
+   * charging an existing player for what they already owned.
+   */
+  it('a bay-wide alloy lands on every drill, not on none of them', () => {
+    const payload = {
+      version: 31, savedAtMs: 0,
+      state: {
+        drills: {
+          bayBuilt: true, alloys: ['arcvein'], equipped: 'arcvein',
+          units: [{ level: 3, timer: 0, lastCell: 0 }, { level: 1, timer: 0, lastCell: 0 }],
+        },
+      },
+    } as never;
+    const out = runMigrations(payload);
+    const bay = (out.state as { drills: Record<string, unknown> }).drills;
+    const units = bay['units'] as Array<Record<string, unknown>>;
+    for (const u of units) expect(u['alloy']).toBe('arcvein');
+    expect(bay['alloys']).toEqual(['arcvein']);
+    expect(bay['equipped']).toBeUndefined();
+  });
+
+  it('a bay that had nothing fitted gains nothing', () => {
+    const payload = {
+      version: 31, savedAtMs: 0,
+      state: { drills: { bayBuilt: true, alloys: ['arcvein'], equipped: null, units: [{ level: 0, timer: 0, lastCell: 0 }] } },
+    } as never;
+    const out = runMigrations(payload);
+    const units = (out.state as { drills: { units: Array<Record<string, unknown>> } }).drills.units;
+    expect(units[0]!['alloy']).toBeUndefined();
   });
 });

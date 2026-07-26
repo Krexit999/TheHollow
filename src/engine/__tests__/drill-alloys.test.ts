@@ -1,29 +1,31 @@
 /**
- * DRILL ALLOYS (A.53) — abilities, not stats.
+ * DRILL ALLOYS — abilities, not stats.
  *
- * The thing under test is not "does the number apply". It is the three claims
+ * The thing under test is not "does the number apply". It is the four claims
  * the system is FOR:
  *   1. an ability changes a RULE the drills work by, and every one of them is
  *      still bounded by regen (pillar 2);
  *   2. a player with no alloy mines fine (pillar 1);
  *   3. what makes what is hinted, then confirmed on the make, and never listed
- *      before that (pillar 5).
+ *      before that (pillar 5);
+ *   4. an alloy belongs to ONE DRILL, so a bay is a mix and not a setting
+ *      (A.54) — and fitting one is always a pour, never a free toggle.
  */
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { EngineCtx, GameState } from '../types';
 import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
-import { addMaterial } from '../systems/forge';
+import { addMaterial, materialCount } from '../systems/forge';
 import { newDrill, tickDrills } from '../systems/drills';
 import {
-  ARC_SHARE, ALLOY_POUR_COST, POUR_SLOTS,
-  arcTargets, attractDepthBonus, equipDrillAlloy, equippedAbility, forgeDrillAlloy,
-  knownAbilities, markResidue, markRichness, residueBite, residueLevel, richnessLevel,
-  setEquippedAlloy, tickAlloys,
+  ARC_SHARE, ALLOY_POUR_BASE, POUR_SLOTS,
+  alloyCost, arcTargets, attractDepthBonus, bayAbility, clearDrillAlloy, drillAbility,
+  drillsCarrying, forgeDrillAlloy, knownAbilities, markResidue, markRichness,
+  residueBite, residueLevel, richnessLevel, tickAlloys,
 } from '../systems/drillAlloys';
 import {
-  DRILL_ABILITIES, alloyHint, matchDrillAlloy, traitPool,
+  ABILITY_BY_ID, DRILL_ABILITIES, alloyHint, matchDrillAlloy, traitPool,
 } from '../content/drillAlloys';
 import { MATERIAL_TRAITS } from '../traits';
 import { MATERIALS } from '../materials';
@@ -39,10 +41,16 @@ const fresh = () => {
   s.currencies['brick'] = D(10_000);
   return { engine, s };
 };
-/** A bay of one drill on a full face — the smallest thing that can strike. */
-const bay = (s: GameState) => {
-  s.drills.units.push(newDrill('Bess'));
+/** A bay of `n` drills on a full face — the smallest thing that can strike. */
+const bay = (s: GameState, n = 1) => {
+  for (let i = 0; i < n; i++) s.drills.units.push(newDrill(`D${i}`));
   s.face.cells = s.face.cells.map(() => 8);
+};
+/** Put an ability straight into a drill, bypassing the bench, for the mechanism
+ *  tests. The PRICED path is exercised separately in the discovery block. */
+const fit = (s: GameState, id: string, index = 0) => {
+  if (!s.drills.alloys.includes(id)) s.drills.alloys.push(id);
+  s.drills.units[index]!.alloy = id;
 };
 
 // ---------------------------------------------------------------------------
@@ -53,6 +61,7 @@ describe('the framework', () => {
       expect(['arc', 'attract', 'residue']).toContain(a.kind);
       expect(a.effect.length).toBeGreaterThan(10);
       expect(Object.keys(a.needs).length).toBeGreaterThan(0);
+      expect(a.weight).toBeGreaterThan(0);
     }
   });
 
@@ -99,6 +108,96 @@ describe('the framework', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('the price is a decision (A.54)', () => {
+  /**
+   * A.53 charged a flat 20 for every ability, which is three drill upgrades —
+   * so an ability that changes how the whole grid behaves cost less than the
+   * chassis it went into, and swapping was a free toggle. The price now has to
+   * read the ability's measured worth and the world you are standing in.
+   */
+  it('a stronger ability costs more than a weaker one', () => {
+    const { s } = fresh();
+    const arc = alloyCost(s, ABILITY_BY_ID.get('arcvein')!);
+    const call = alloyCost(s, ABILITY_BY_ID.get('lodecall')!);
+    expect(arc.conv).toBeGreaterThan(call.conv);
+    expect(arc.materials).toBeGreaterThan(call.materials);
+    // ...and it is a real spend, not a rounding error on a drill upgrade.
+    expect(arc.conv).toBeGreaterThanOrEqual(ALLOY_POUR_BASE * 2);
+  });
+
+  it('a deeper shell pays more for the same ability', () => {
+    const { s } = fresh();
+    const loam = alloyCost(s, ABILITY_BY_ID.get('arcvein')!).conv;
+    s.shell.current = 'ferrite';
+    expect(alloyCost(s, ABILITY_BY_ID.get('arcvein')!).conv).toBeGreaterThan(loam);
+  });
+
+  it('every drill in the pour is paid for separately', () => {
+    const { s } = fresh();
+    const def = ABILITY_BY_ID.get('arcvein')!;
+    const one = alloyCost(s, def, 1);
+    const four = alloyCost(s, def, 4);
+    expect(four.conv).toBe(one.conv * 4);
+    expect(four.materials).toBe(one.materials * 4);
+  });
+
+  /** The load-bearing one: swapping is NOT free, and the brief said so. */
+  it('re-alloying a drill that already has one costs the full price again', () => {
+    const { s } = fresh();
+    bay(s);
+    const def = ABILITY_BY_ID.get('arcvein')!;
+    const price = alloyCost(s, def, 1);
+    for (const id of ['rootglass', 'umberjade']) addMaterial(s, id, 60, price.materials * 2);
+
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0]).ok).toBe(true);
+    const brickAfterFirst = s.currencies['brick']!.toNumber();
+    const heldAfterFirst = materialCount(s, 'rootglass');
+
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0]).ok).toBe(true);
+    expect(s.currencies['brick']!.toNumber()).toBe(brickAfterFirst - price.conv);
+    expect(materialCount(s, 'rootglass')).toBe(heldAfterFirst - price.materials);
+  });
+
+  /** But STOPPING is never a purchase. */
+  it('pulling an alloy out costs nothing', () => {
+    const { s } = fresh();
+    bay(s);
+    fit(s, 'arcvein');
+    const brick = s.currencies['brick']!.toNumber();
+    expect(clearDrillAlloy(s, 0).ok).toBe(true);
+    expect(s.drills.units[0]!.alloy).toBeUndefined();
+    expect(s.currencies['brick']!.toNumber()).toBe(brick);
+  });
+
+  it('a pour you cannot cover spends nothing at all', () => {
+    const { s } = fresh();
+    bay(s);
+    addMaterial(s, 'rootglass', 60, 1);
+    addMaterial(s, 'umberjade', 60, 1);
+    s.currencies['brick'] = D(1);
+    const before = materialCount(s, 'rootglass');
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0]).ok).toBe(false);
+    expect(materialCount(s, 'rootglass')).toBe(before);
+    expect(s.currencies['brick']!.toNumber()).toBe(1);
+  });
+
+  /** A miss is one firing of the bench however many drills were selected —
+   *  experimenting must not be priced like committing. */
+  it('a miss costs one pour, not one per drill', () => {
+    const { s } = fresh();
+    bay(s, 4);
+    addMaterial(s, 'marl', 60, 20);
+    addMaterial(s, 'wormsilk', 60, 20);
+    const brick = s.currencies['brick']!.toNumber();
+    const r = forgeDrillAlloy(s, ctx, ['marl', 'wormsilk'], [0, 1, 2, 3]);
+    expect(r.ok).toBe(true);
+    expect((r.data as { alloy: string | null }).alloy).toBeNull();
+    expect(brick - s.currencies['brick']!.toNumber()).toBeLessThan(ALLOY_POUR_BASE * 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('discovery — hinted, confirmed on the make, never listed', () => {
   it('the hint describes the MIX and names no ability (pillar 5)', () => {
     const hint = alloyHint(['rootglass', 'umberjade'])!;
@@ -111,54 +210,70 @@ describe('discovery — hinted, confirmed on the make, never listed', () => {
 
   it('nothing is known until it has actually been poured', () => {
     const { s } = fresh();
+    bay(s);
     expect(knownAbilities(s)).toEqual([]);
     expect(s.drills.alloys).toEqual([]);
 
-    addMaterial(s, 'rootglass', 60, 2);
-    addMaterial(s, 'umberjade', 60, 2);
-    const r = forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade']);
+    addMaterial(s, 'rootglass', 60, 8);
+    addMaterial(s, 'umberjade', 60, 8);
+    const r = forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0]);
     expect(r.ok).toBe(true);
     expect((r.data as { alloy: string }).alloy).toBe('arcvein');
     expect(s.drills.alloys).toContain('arcvein');
     expect(knownAbilities(s).map((a) => a.id)).toEqual(['arcvein']);
   });
 
-  it('a first alloy fits itself — a discovery should not need a second click', () => {
+  it('the pour goes into the drill you aimed it at, and only that one', () => {
     const { s } = fresh();
-    addMaterial(s, 'chthonite', 60, 2);
-    addMaterial(s, 'temperash', 60, 2);
-    forgeDrillAlloy(s, ctx, ['chthonite', 'temperash']);
-    expect(equippedAbility(s)?.id).toBe('emberset');
+    bay(s, 3);
+    addMaterial(s, 'chthonite', 60, 8);
+    addMaterial(s, 'temperash', 60, 8);
+    forgeDrillAlloy(s, ctx, ['chthonite', 'temperash'], [1]);
+    expect(drillAbility(s.drills.units[1]!)?.id).toBe('emberset');
+    expect(drillAbility(s.drills.units[0]!)).toBeNull();
+    expect(drillAbility(s.drills.units[2]!)).toBeNull();
+    expect(drillsCarrying(s, 'emberset')).toEqual([1]);
+  });
+
+  it('one pour can fill several drills at once', () => {
+    const { s } = fresh();
+    bay(s, 4);
+    addMaterial(s, 'chthonite', 60, 40);
+    addMaterial(s, 'temperash', 60, 40);
+    expect(forgeDrillAlloy(s, ctx, ['chthonite', 'temperash'], [0, 2, 3]).ok).toBe(true);
+    expect(drillsCarrying(s, 'emberset')).toEqual([0, 2, 3]);
   });
 
   it('a miss still teaches: it names what the mix leaned toward', () => {
     const { s } = fresh();
-    addMaterial(s, 'marl', 60, 1);
-    addMaterial(s, 'wormsilk', 60, 1);
-    const r = forgeDrillAlloy(s, ctx, ['marl', 'wormsilk']);
+    bay(s);
+    addMaterial(s, 'marl', 60, 8);
+    addMaterial(s, 'wormsilk', 60, 8);
+    const r = forgeDrillAlloy(s, ctx, ['marl', 'wormsilk'], [0]);
     expect(r.ok).toBe(true);
     expect((r.data as { alloy: string | null }).alloy).toBeNull();
     expect((r.data as { reason: string }).reason).toMatch(/springy|light/);
     expect(s.drills.alloys).toEqual([]);
+    expect(s.drills.units[0]!.alloy).toBeUndefined();
   });
 
-  it('the pour spends the materials and the fee, and refuses what you do not hold', () => {
+  it('refuses what you do not hold, and refuses a pour with nowhere to go', () => {
     const { s } = fresh();
-    addMaterial(s, 'rootglass', 60, 1);
-    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade']).ok).toBe(false);
-    addMaterial(s, 'umberjade', 60, 1);
-    const brick = s.currencies['brick']!.toNumber();
-    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade']).ok).toBe(true);
-    expect(s.currencies['brick']!.toNumber()).toBe(brick - ALLOY_POUR_COST);
-    // Both went in the crucible.
-    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade']).ok).toBe(false);
+    bay(s);
+    addMaterial(s, 'rootglass', 60, 8);
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0]).ok).toBe(false);
+    addMaterial(s, 'umberjade', 60, 8);
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], []).ok).toBe(false);
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [99]).ok).toBe(false);
+    expect(forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0]).ok).toBe(true);
   });
 
   it('refuses more than the crucible holds', () => {
     const { s } = fresh();
+    bay(s);
     const ids = ['rootglass', 'umberjade', 'palegold', 'starmarl'];
-    for (const id of ids) addMaterial(s, id, 60, 1);
-    expect(forgeDrillAlloy(s, ctx, ids).ok).toBe(false);
+    for (const id of ids) addMaterial(s, id, 60, 8);
+    expect(forgeDrillAlloy(s, ctx, ids, [0]).ok).toBe(false);
     expect(ids.length).toBeGreaterThan(POUR_SLOTS);
   });
 });
@@ -166,19 +281,18 @@ describe('discovery — hinted, confirmed on the make, never listed', () => {
 // ---------------------------------------------------------------------------
 
 describe('THE ARC — the strike jumps', () => {
-  const arced = (s: GameState) => { s.drills.alloys.push('arcvein'); setEquippedAlloy(s, 'arcvein'); };
+  const arc = () => ABILITY_BY_ID.get('arcvein')!;
 
-  it('does nothing at all with no alloy fitted', () => {
+  it('does nothing at all for a drill with no alloy', () => {
     const { s } = fresh();
     bay(s);
-    expect(arcTargets(s, 0, () => false)).toEqual([]);
+    expect(arcTargets(s, 0, () => false, null)).toEqual([]);
   });
 
   it('picks charged neighbours, and only as many as the alloy allows', () => {
     const { s } = fresh();
     bay(s);
-    arced(s);
-    const t = arcTargets(s, 7, () => false);
+    const t = arcTargets(s, 7, () => false, arc());
     expect(t.length).toBeGreaterThan(0);
     expect(t.length).toBeLessThanOrEqual(2);
     for (const i of t) expect(i).not.toBe(7);
@@ -187,18 +301,15 @@ describe('THE ARC — the strike jumps', () => {
   it('never arcs into dead rock — an arc you cannot see is not an arc', () => {
     const { s } = fresh();
     bay(s);
-    arced(s);
     s.face.cells = s.face.cells.map(() => 0);
     s.face.cells[7] = 8;
-    expect(arcTargets(s, 7, () => false)).toEqual([]);
+    expect(arcTargets(s, 7, () => false, arc())).toEqual([]);
   });
 
   it('never arcs into a vined cell — the Growth law still owns those', () => {
     const { s } = fresh();
     bay(s);
-    arced(s);
-    const skip = () => true;
-    expect(arcTargets(s, 7, skip)).toEqual([]);
+    expect(arcTargets(s, 7, () => true, arc())).toEqual([]);
   });
 
   /**
@@ -209,7 +320,7 @@ describe('THE ARC — the strike jumps', () => {
   it('cannot pull more charge out of the field than the field contained', () => {
     const { s } = fresh();
     bay(s);
-    arced(s);
+    fit(s, 'arcvein');
     s.upgrades['soil'] = 0;
     s.face.cells = s.face.cells.map(() => 8);
     const stored = s.face.cells.reduce((a, b) => a + b, 0);
@@ -225,14 +336,14 @@ describe('THE ARC — the strike jumps', () => {
 // ---------------------------------------------------------------------------
 
 describe('THE CALL — worked cells draw the richer seam', () => {
-  const called = (s: GameState) => { s.drills.alloys.push('lodecall'); setEquippedAlloy(s, 'lodecall'); };
+  const call = () => ABILITY_BY_ID.get('lodecall')!;
 
   it('gathers on the cell that is worked, and pays out on a threshold', () => {
     const { s } = fresh();
     bay(s);
-    called(s);
+    fit(s, 'lodecall');
     expect(attractDepthBonus(s, 3)).toBe(0);
-    for (let i = 0; i < 6; i++) markRichness(s, 3);
+    for (let i = 0; i < 6; i++) markRichness(s, 3, call());
     expect(richnessLevel(s, 3)).toBe(1);
     const bonus = attractDepthBonus(s, 3);
     expect(bonus).toBeGreaterThan(0);
@@ -244,19 +355,18 @@ describe('THE CALL — worked cells draw the richer seam', () => {
   it('is per-cell: working one does nothing for its neighbour', () => {
     const { s } = fresh();
     bay(s);
-    called(s);
-    for (let i = 0; i < 6; i++) markRichness(s, 3);
+    fit(s, 'lodecall');
+    for (let i = 0; i < 6; i++) markRichness(s, 3, call());
     expect(attractDepthBonus(s, 4)).toBe(0);
   });
 
-  it('does nothing with a different alloy fitted, or none', () => {
+  it('does nothing when nothing in the bay carries it', () => {
     const { s } = fresh();
     bay(s);
-    for (let i = 0; i < 20; i++) markRichness(s, 3);
+    for (let i = 0; i < 20; i++) markRichness(s, 3, null);
     expect(attractDepthBonus(s, 3)).toBe(0);
-    s.drills.alloys.push('arcvein');
-    setEquippedAlloy(s, 'arcvein');
-    for (let i = 0; i < 20; i++) markRichness(s, 3);
+    fit(s, 'arcvein');
+    for (let i = 0; i < 20; i++) markRichness(s, 3, drillAbility(s.drills.units[0]!));
     expect(attractDepthBonus(s, 3)).toBe(0);
   });
 
@@ -273,14 +383,14 @@ describe('THE CALL — worked cells draw the richer seam', () => {
 // ---------------------------------------------------------------------------
 
 describe('THE SET — worked rock stays soft', () => {
-  const setAlloy = (s: GameState) => { s.drills.alloys.push('emberset'); setEquippedAlloy(s, 'emberset'); };
+  const set = () => ABILITY_BY_ID.get('emberset')!;
 
   it('a marked cell gives a bigger BITE, and cools back to normal', () => {
     const { s } = fresh();
     bay(s);
-    setAlloy(s);
+    fit(s, 'emberset');
     expect(residueBite(s, 5)).toBe(1);
-    markResidue(s, 5);
+    markResidue(s, 5, set());
     expect(residueBite(s, 5)).toBeGreaterThan(1);
     expect(residueLevel(s, 5)).toBe(1);
     tickAlloys(s, 100);
@@ -299,21 +409,20 @@ describe('THE SET — worked rock stays soft', () => {
     expect(Object.keys(def.params).sort()).toEqual(['bite', 'decay']);
     const { s } = fresh();
     bay(s);
-    setAlloy(s);
+    fit(s, 'emberset');
     s.face.cells = s.face.cells.map(() => 8);
     const stored = s.face.cells.reduce((a, b) => a + b, 0);
-    for (const i of s.face.cells.keys()) markResidue(s, i);
+    for (const i of s.face.cells.keys()) markResidue(s, i, set());
     const before = s.stats.totalChargeChipped.toNumber();
     tickDrills(s, mods(), ctx, 2);
     expect(s.stats.totalChargeChipped.toNumber() - before).toBeLessThanOrEqual(stored);
   });
 
-  it('does nothing with a different alloy fitted', () => {
+  it('a mark is not left by a drill that is not carrying it', () => {
     const { s } = fresh();
     bay(s);
-    s.drills.alloys.push('arcvein');
-    setEquippedAlloy(s, 'arcvein');
-    markResidue(s, 5);
+    fit(s, 'arcvein');
+    markResidue(s, 5, drillAbility(s.drills.units[0]!));
     expect(residueBite(s, 5)).toBe(1);
   });
 
@@ -328,7 +437,7 @@ describe('THE SET — worked rock stays soft', () => {
   it('the bay comes BACK to rock it softened — otherwise the ability is a lie', () => {
     const { s } = fresh();
     bay(s);
-    setAlloy(s);
+    fit(s, 'emberset');
     const drill = s.drills.units[0]!;
     drill.level = 20;
     const seen = new Set<number>();
@@ -345,53 +454,93 @@ describe('THE SET — worked rock stays soft', () => {
 
 // ---------------------------------------------------------------------------
 
+describe('the bay is a MIX, not a setting (A.54)', () => {
+  it('two drills can carry two different abilities at the same time', () => {
+    const { s } = fresh();
+    bay(s, 2);
+    fit(s, 'arcvein', 0);
+    fit(s, 'lodecall', 1);
+    expect(drillAbility(s.drills.units[0]!)?.id).toBe('arcvein');
+    expect(drillAbility(s.drills.units[1]!)?.id).toBe('lodecall');
+    expect(drillsCarrying(s, 'arcvein')).toEqual([0]);
+    expect(drillsCarrying(s, 'lodecall')).toEqual([1]);
+    // And both are live at once, which the bay-wide slot could never do.
+    expect(bayAbility(s, 'arc')?.id).toBe('arcvein');
+    expect(bayAbility(s, 'attract')?.id).toBe('lodecall');
+  });
+
+  /**
+   * THE MARK IS ON THE ROCK, and this is the property that makes a mix worth
+   * assembling rather than a bay of clones: one drill softens a cell, and the
+   * bare machine that comes to it next gets the bigger bite.
+   */
+  it('one drill softens rock that ANY drill then bites harder', () => {
+    const { s } = fresh();
+    bay(s, 2);
+    fit(s, 'emberset', 0);
+    expect(drillAbility(s.drills.units[1]!)).toBeNull();
+    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    // The reader does not ask who is biting — the rock is soft, full stop.
+    expect(residueBite(s, 5)).toBeGreaterThan(1);
+  });
+
+  it('the marks stop meaning anything once nothing carries the ability', () => {
+    const { s } = fresh();
+    bay(s);
+    fit(s, 'emberset');
+    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    expect(residueBite(s, 5)).toBeGreaterThan(1);
+    clearDrillAlloy(s, 0);
+    expect(residueBite(s, 5)).toBe(1);
+    expect(residueLevel(s, 5)).toBe(0);
+  });
+
+  it('a mark cools even after the alloy that made it is gone', () => {
+    const { s } = fresh();
+    bay(s);
+    fit(s, 'emberset');
+    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    clearDrillAlloy(s, 0);
+    tickAlloys(s, 100);
+    expect(s.drills.residue?.[5]).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('the pillars', () => {
   /** PILLAR 1: no alloy is ever required. */
   it('a bay with no alloy mines perfectly well', () => {
     const { s } = fresh();
     bay(s);
-    expect(equippedAbility(s)).toBeNull();
+    expect(drillAbility(s.drills.units[0]!)).toBeNull();
     const before = s.totals['dust']?.toNumber() ?? 0;
     tickDrills(s, mods(), ctx, 30);
     expect((s.totals['dust']?.toNumber() ?? 0)).toBeGreaterThan(before);
   });
 
-  it('swapping an alloy clears the marks the last one left', () => {
+  it('a bay where only SOME drills are alloyed runs fine', () => {
     const { s } = fresh();
-    bay(s);
-    s.drills.alloys.push('emberset', 'arcvein');
-    setEquippedAlloy(s, 'emberset');
-    markResidue(s, 2);
-    expect(s.drills.residue?.[2]).toBeGreaterThan(0);
-    expect(equipDrillAlloy(s, 'arcvein').ok).toBe(true);
-    expect(s.drills.residue).toEqual([]);
-  });
-
-  it('refuses to equip an ability that has not been made', () => {
-    const { s } = fresh();
-    expect(equipDrillAlloy(s, 'arcvein').ok).toBe(false);
-    expect(equippedAbility(s)).toBeNull();
-  });
-
-  it('taking the alloy out is always allowed — nothing here is a commitment', () => {
-    const { s } = fresh();
-    s.drills.alloys.push('arcvein');
-    setEquippedAlloy(s, 'arcvein');
-    expect(equipDrillAlloy(s, null).ok).toBe(true);
-    expect(equippedAbility(s)).toBeNull();
+    bay(s, 4);
+    fit(s, 'arcvein', 0);
+    const before = s.totals['dust']?.toNumber() ?? 0;
+    tickDrills(s, mods(), ctx, 30);
+    expect((s.totals['dust']?.toNumber() ?? 0)).toBeGreaterThan(before);
   });
 
   /** THE REACH RULE, at the verb: the pour is priced in the shell's own coin. */
   it('the pour is paid in whatever world you are standing in', () => {
     const { s } = fresh();
+    bay(s);
     s.shell.current = 'ferrite';
     s.currencies['brick'] = D(0);
-    s.currencies['flux'] = D(500);
-    addMaterial(s, 'lodestone', 60, 1);
-    addMaterial(s, 'polarite', 60, 1);
-    const r = forgeDrillAlloy(s, ctx, ['lodestone', 'polarite']);
+    s.currencies['flux'] = D(5_000);
+    const price = alloyCost(s, ABILITY_BY_ID.get('arcvein')!, 1);
+    addMaterial(s, 'lodestone', 60, price.materials);
+    addMaterial(s, 'polarite', 60, price.materials);
+    const r = forgeDrillAlloy(s, ctx, ['lodestone', 'polarite'], [0]);
     expect(r.ok).toBe(true);
     expect((r.data as { alloy: string }).alloy).toBe('arcvein');
-    expect(s.currencies['flux']!.toNumber()).toBe(500 - ALLOY_POUR_COST);
+    expect(s.currencies['flux']!.toNumber()).toBe(5_000 - price.conv);
   });
 });

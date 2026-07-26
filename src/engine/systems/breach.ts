@@ -115,7 +115,7 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   // and knowledge crosses a Breach the way every other codex does. The alloy
   // itself was physical and is gone — re-pour it from this world's materials
   // (every signature is forgeable in every shell, which is the reach rule).
-  state.drills = { bayBuilt: false, units: [], alloys: state.drills.alloys ?? [], equipped: null };
+  state.drills = { bayBuilt: false, units: [], alloys: state.drills.alloys ?? [] };
   state.assay.active = null;
   state.assay.boostChips = 0;
   state.assay.reportDepth = null;

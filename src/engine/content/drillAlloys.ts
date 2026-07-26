@@ -30,6 +30,21 @@
  * bench can HINT at what a mix leans toward, and the ability is named and
  * recorded the moment you actually make it. Hint, try, confirm-and-remember.
  *
+ * ONE ALLOY PER DRILL (A.54). The first cut fitted a single alloy bay-wide,
+ * on the theory that anything per-drill would rebuild A.52's configuration
+ * screen. That was the wrong lesson from the right reversal: what made A.52 a
+ * chore was that every drill needed a SETUP before it would work properly.
+ * Here a drill works fine bare, and an alloy is an optional thing you pour into
+ * one — so the choice is which of your drills gets which ability, and the
+ * answer is a MIX rather than a setting to clone across twenty-four rows.
+ *
+ * THE MARKS BELONG TO THE ROCK, NOT THE DRILL. A cell softened by an emberset
+ * drill is soft for whatever bites it next, and a cell gathered under by a
+ * lodecall drill drops richer whoever empties it. That is what makes a mix
+ * worth assembling instead of a bay of clones, and it is the honest reading of
+ * the copy — the ability changes the ROCK, and the rock does not know which
+ * machine touched it.
+ *
  * ADDING ONE IS DATA. A new ability is a row in DRILL_ABILITIES plus a runtime
  * hook keyed on its `kind`. The later-shell kinds are declared in the union and
  * deliberately have no rows yet.
@@ -58,6 +73,14 @@ export interface DrillAbilityDef {
   /** Flavour. Shown only after discovery. */
   line: string;
   /**
+   * WHAT IT IS WORTH, AND THEREFORE WHAT IT COSTS. Set from the measured
+   * alloy-vs-bare readings in `sim-out/a53-alloy-rtp.md`, not by feel: ARC ran
+   * 1.74x income in the power-bound regime, THE SET 1.24x, and THE CALL moved
+   * the drop table rather than the income at all. Pricing reads this so a
+   * stronger ability is a bigger commitment (see `alloyCost`).
+   */
+  weight: number;
+  /**
    * The trait signature. Matched against the POOLED traits of everything fed
    * in, so two `charged` materials and one three-trait `charged` material both
    * satisfy `{ charged: 2 }` — the player reasons about the mix, not a recipe.
@@ -79,6 +102,7 @@ export const DRILL_ABILITIES: DrillAbilityDef[] = [
     line: 'It will not sit still in the head. The stroke lands and then keeps going.',
     needs: { charged: 2 },
     params: { jumps: 2 },
+    weight: 3,
   },
   {
     id: 'lodecall', name: 'Lodecall', kind: 'attract', shell: 'loam',
@@ -86,6 +110,7 @@ export const DRILL_ABILITIES: DrillAbilityDef[] = [
     line: 'The rock leans in. Whatever is down there would rather be here.',
     needs: { dense: 2 },
     params: { every: 6, depthBonus: 30 },
+    weight: 2,
   },
   {
     id: 'emberset', name: 'Emberset', kind: 'residue', shell: 'loam',
@@ -93,6 +118,7 @@ export const DRILL_ABILITIES: DrillAbilityDef[] = [
     line: 'It leaves the heat behind in the stone. The stone gives up quicker for it.',
     needs: { warm: 2 },
     params: { bite: 0.5, decay: 9 },
+    weight: 2,
   },
 ];
 

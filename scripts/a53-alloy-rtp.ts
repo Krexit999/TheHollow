@@ -1,5 +1,5 @@
 /**
- * A.53 — DO THE DRILL ALLOYS MOVE THE CEILING?
+ * A.53/A.54 — DO THE DRILL ALLOYS MOVE THE CEILING?
  *
  * The brief said "sim-verify if it touches yield". By design none of the three
  * abilities is a yield multiplier — the argument is written per-ability in
@@ -45,15 +45,23 @@ import { ModifierCache } from '../src/engine/modifiers';
 import { descendCost } from '../src/engine/prestigeMath';
 import { applyFieldSize, cellCap, cellRegen } from '../src/engine/systems/face';
 import { newDrill } from '../src/engine/systems/drills';
-import { setEquippedAlloy } from '../src/engine/systems/drillAlloys';
 import { DRILL_ABILITIES } from '../src/engine/content/drillAlloys';
 
 const HOURS = Number(process.argv[2] ?? 6);
 const CHECKPOINT_SEC = 900;
 const START_DEPTH = 40;
 
-/** Bare first, so every arm is compared against the same baseline. */
-const ARMS: (string | null)[] = [null, ...DRILL_ABILITIES.map((a) => a.id)];
+/**
+ * Bare first, so every arm is compared against the same baseline.
+ *
+ * THE 'mix' ARM IS THE ONE A.54 ADDED, and it is the interesting one. Alloys
+ * are per drill now, and the marks they leave belong to the ROCK — an emberset
+ * drill softens cells that the arc drill beside it then bites. Every earlier
+ * arm measures a uniform bay, so none of them can see whether the abilities
+ * COMPOUND. If a mixed bay is worth more than the best single ability by a wide
+ * margin, that is a pillar-1 reading nobody has taken.
+ */
+const ARMS: (string | null)[] = [null, ...DRILL_ABILITIES.map((a) => a.id), 'mix'];
 
 /**
  * THREE SEEDS, AND WHY THE FIRST DRAFT OF THIS SCRIPT NEEDED THEM.
@@ -122,11 +130,16 @@ function build(cfg: ScenarioConfig, alloy: string | null, seed: number): Arm {
   const cells = s.face.w * s.face.h;
   const chargeCeiling = cells * cellRegen(s, mods);
   const startStock = cells * cellCap(s, mods);
-  for (let i = 0; i < cfg.drills; i++) s.drills.units.push({ ...newDrill(`D${i}`), level: cfg.level });
-  if (alloy) {
-    s.drills.alloys = [alloy];
-    setEquippedAlloy(s, alloy);
+  // A.54: alloys are per drill. A named arm fits that one ability to EVERY
+  // drill, which keeps the single-ability comparison what it always was. The
+  // 'mix' arm deals the three abilities round-robin instead, which is what a
+  // player who spread their pours actually ends up with.
+  const ids = DRILL_ABILITIES.map((a) => a.id);
+  for (let i = 0; i < cfg.drills; i++) {
+    const worn = alloy === 'mix' ? ids[i % ids.length]! : alloy;
+    s.drills.units.push({ ...newDrill(`D${i}`), level: cfg.level, ...(worn ? { alloy: worn } : {}) });
   }
+  if (alloy) s.drills.alloys = alloy === 'mix' ? ids : [alloy];
   const log: { sec: number; dust: number }[] = [];
   const totalSec = Math.round(HOURS * 3600);
   for (let elapsed = 0; elapsed < totalSec; elapsed += CHECKPOINT_SEC) {
