@@ -209,10 +209,9 @@ describe('the Museum and the expeditions', () => {
   it('a completed case pays a permanent bucket bonus', () => {
     const { engine, s } = fresh();
     const c = CASES[0]!;
-    for (let i = 0; i < c.need; i++) {
-      const r = addRelic(s, mintRelic(s, 'depth', i + 1));
-      engine.dispatch({ type: 'donateRelic', uid: r.uid, caseId: c.id });
-    }
+    // A.49: a hall fills from what you HOLD; the 1Hz beat notices.
+    for (let i = 0; i < c.need; i++) addRelic(s, mintRelic(s, 'depth', i + 1));
+    engine.tick(2);
     expect(caseComplete(s, c.id)).toBe(true);
     expect(s.museum.completed).toContain(c.id);
     expect(museumBonus(s, c.bucket)).toBeGreaterThan(0);
@@ -245,7 +244,7 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(28); // A.47 — museum pieces + exhibits
+    expect(SAVE_VERSION).toBe(29); // A.49 — donation gone; the pieces come home
     const st = out.state as Record<string, unknown>;
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();
@@ -254,6 +253,11 @@ describe('save v12', () => {
     // A returning player has done none of it.
     expect((st['spiral'] as { count: number }).count).toBe(0);
     expect((st['relics'] as { held: unknown[] }).held).toHaveLength(0);
+    // A.49: the standing order arrives OFF, so a load can never eat a find.
+    expect((st['relics'] as { autoScrap: { on: boolean } }).autoScrap.on).toBe(false);
+    // ...and the donation bookkeeping is gone with the verb.
+    expect((st['museum'] as Record<string, unknown>)['donated']).toBeUndefined();
+    expect((st['museum'] as Record<string, unknown>)['pieces']).toBeUndefined();
   });
 
   it('migrates a v12 save by adding the confluence ledger', () => {

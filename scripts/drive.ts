@@ -128,7 +128,11 @@ export async function setup(page: Page, fn: string): Promise<void> {
 export async function dismiss(page: Page): Promise<void> {
   for (let i = 0; i < 6; i++) {
     let clicked = false;
-    for (const label of [/Begin again/, /One at a time/, /^Got it$/, /^Continue$/, /^Close$/]) {
+    // 'Go on, then' is the SINGLE-item wording of the same gate button, and it
+    // was missing here for several phases: any run that revealed exactly one
+    // new system hit a full-screen modal this helper could not close, and the
+    // failure surfaced as an unrelated click timing out 57 times.
+    for (const label of [/Begin again/, /One at a time/, /Go on, then/, /^Got it$/, /^Continue$/, /^Close$/]) {
       const b = page.getByRole('button', { name: label }).first();
       if ((await b.count()) > 0 && !(await b.isDisabled().catch(() => true))) {
         await b.click({ timeout: 700 }).catch(() => {});

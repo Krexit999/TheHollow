@@ -11,12 +11,10 @@
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import { D } from '../decimal';
-import type { Engine, EngineCtx, GameState, RelicInstance } from '../types';
+import type { Engine, GameState, RelicInstance } from '../types';
 import { fuseRelics, toggleRelicLock, equipRelic } from '../systems/relics';
-import { donateToCase } from '../systems/museum';
 import { serialize, deserialize } from '../save/codec';
 
-const nullCtx: EngineCtx = { emit() {}, dirty() {} };
 function fresh(): { engine: Engine; s: () => GameState } {
   const engine = createEngine({ nowMs: 0 });
   return { engine, s: () => engine.getState() as GameState };
@@ -30,7 +28,7 @@ describe('the relic lock — a locked relic can never be consumed', () => {
     const { s } = fresh();
     const state = s();
     state.relics.shards = 999; // A.46: a fusion costs shards now
-state.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
+state.currencies['core'] = D(9999); // A.48/A.49: and Cores, on the fusions that lift a rarity
     state.relics.held = [relic(1), relic(2, { locked: true })];
     const r = fuseRelics(state, 1, 2);
     expect(r.ok).toBe(false);
@@ -39,28 +37,18 @@ state.currencies['core'] = D(9999); // A.48: and Cores — the price that escala
     expect(state.relics.held.map((x) => x.uid)).toEqual([1, 2]);
   });
 
-  it('refuses to give a locked relic to a Museum case', () => {
-    const { s } = fresh();
-    const state = s();
-    state.relics.shards = 999; // A.46: a fusion costs shards now
-state.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
-    state.relics.held = [relic(1, { locked: true })];
-    const r = donateToCase(state, nullCtx, 'firstFinds', 'relic:1', 1);
-    expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/locked/i);
-    expect(state.relics.held).toHaveLength(1);
-  });
+  // A.49: the Museum's donate verb is gone — a relic is never handed over, so
+  // FUSION is now the only path that consumes one and the lock guards exactly
+  // that. The 'given to a case' half of this suite went with the verb.
 
-  it('still lets an UNLOCKED relic be fused away and donated (the lock is not a global block)', () => {
+  it('still lets an UNLOCKED relic be fused away (the lock is not a global block)', () => {
     const { s } = fresh();
     const state = s();
     state.relics.shards = 999; // A.46: a fusion costs shards now
-state.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
+state.currencies['core'] = D(9999); // A.48/A.49: and Cores, on the fusions that lift a rarity
     state.relics.held = [relic(1), relic(2)];
     expect(fuseRelics(state, 1, 2).ok).toBe(true);
     expect(state.relics.held.map((x) => x.uid)).toEqual([1]);
-    expect(donateToCase(state, nullCtx, 'firstFinds', 'relic:1', 1).ok).toBe(true);
-    expect(state.relics.held).toHaveLength(0);
   });
 });
 
@@ -69,7 +57,7 @@ describe('the relic lock — it costs nothing', () => {
     const { s } = fresh();
     const state = s();
     state.relics.shards = 999; // A.46: a fusion costs shards now
-state.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
+state.currencies['core'] = D(9999); // A.48/A.49: and Cores, on the fusions that lift a rarity
     // The keeper is locked; the food is not. Fusion improves the locked one.
     state.relics.held = [relic(1, { locked: true, affixes: { regen: 0.1 } }), relic(2, { affixes: { dropRate: 0.3 } })];
     const r = fuseRelics(state, 1, 2);
@@ -84,7 +72,7 @@ state.currencies['core'] = D(9999); // A.48: and Cores — the price that escala
     const { s } = fresh();
     const state = s();
     state.relics.shards = 999; // A.46: a fusion costs shards now
-state.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
+state.currencies['core'] = D(9999); // A.48/A.49: and Cores, on the fusions that lift a rarity
     state.relics.held = [relic(1, { locked: true })];
     expect(equipRelic(state, 1, 0).ok).toBe(true);
     expect(state.relics.equipped).toContain(1);
@@ -96,7 +84,7 @@ describe('the relic lock — toggling', () => {
     const { s } = fresh();
     const state = s();
     state.relics.shards = 999; // A.46: a fusion costs shards now
-state.currencies['core'] = D(9999); // A.48: and Cores — the price that escalates
+state.currencies['core'] = D(9999); // A.48/A.49: and Cores, on the fusions that lift a rarity
     state.relics.held = [relic(1)];
     expect(state.relics.held[0]!.locked).toBeFalsy();
     expect(toggleRelicLock(state, 1).data).toEqual({ locked: true });

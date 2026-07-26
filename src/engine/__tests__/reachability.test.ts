@@ -85,7 +85,6 @@ describe('every content-granting function is called', () => {
     ['tickParallelShells', 'engine/systems/spiral.ts'],
     ['tickExpeditions', 'engine/systems/museum.ts'],
     ['claimExpedition', 'engine/systems/museum.ts'],
-    ['donateToCase', 'engine/systems/museum.ts'],
     ['registerRelicModifiers', 'engine/systems/relics.ts'],
     ['registerMuseumModifiers', 'engine/systems/museum.ts'],
     ['doSpiral', 'engine/systems/spiral.ts'],

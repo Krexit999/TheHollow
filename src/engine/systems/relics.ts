@@ -212,11 +212,34 @@ export function renderRelic(state: GameState, uid: number): { ok: boolean; reaso
   return { ok: true, data: { shards: gained } };
 }
 
+/**
+ * AUTO-SCRAP (A.49) — the standing order, checked at the door.
+ *
+ * Deliberately a decision about the ARRIVING relic and nothing else: it never
+ * sweeps the hold, so switching it on can never eat something you already
+ * decided to keep. A relic that carries a power is spared by default, because
+ * a power is the whole reason a relic is worth a slot and scrapping one by a
+ * rarity rule would be the system fighting the player.
+ */
+export function autoScrapVerdict(state: GameState, relic: RelicInstance): boolean {
+  const rule = state.relics.autoScrap;
+  if (!rule?.on) return false;
+  if (relic.locked) return false;
+  if (rule.keepPowered && powerOf(relic)) return false;
+  return relic.rarity <= rule.maxRarity;
+}
+
 export function addRelic(state: GameState, relic: RelicInstance): RelicInstance {
   const held = { ...relic, uid: state.relics.nextUid };
   state.relics.nextUid += 1;
-  state.relics.held.push(held);
   state.relics.found += 1;
+  // Turned away at the door and rendered straight down. It still COUNTS as
+  // found — the standing order is about the pile, not about the record.
+  if (autoScrapVerdict(state, held)) {
+    state.relics.shards += shardValue(held);
+    return held;
+  }
+  state.relics.held.push(held);
   // Over the cap, the pile renders itself — weakest first, never the locked,
   // never what you are carrying, and never the one that just arrived.
   while (state.relics.held.length > holdCap(state)) {
@@ -248,53 +271,64 @@ export function fusionGate(state: GameState, rarity: number): { need: number; ha
 }
 
 /**
- * WHAT A FUSION COSTS (A.46, re-priced A.48).
+ * WHAT A FUSION COSTS (A.46 · A.48 · RE-PRICED A.49).
  *
- * A.46 put a shard price on fusion and play reported it as still free, which
- * it effectively was: 4 shards for a Common keeper against a hold that renders
- * its own overflow down at 2-10 shards a relic. The price existed and never
- * arrived.
+ * A.48 over-corrected and the correction was worse than the fault. It priced
+ * Cores linearly in LIFETIME fusions, so the twentieth fusion wanted ~320
+ * Cores against a Loam arc that pays 478 in total — which does not make fusion
+ * a choice, it ends fusion. Shaping relics is supposed to be the thing you do
+ * constantly and feel improve; a price that terminates the verb is not a wall,
+ * it is a wall in the wrong place.
  *
- * Two prices now, and the second is the one that bites:
+ * So the price is re-cut around WHAT the fusion is, not how many you have done:
  *
- *  - SHARDS ride the KEEPER, geometric in how much has already been fused into
- *    it. Stacking eight relics into one favourite is meant to become absurd.
- *  - CORES ride the WORKING, linear in how many fusions you have done at all.
- *    This is the wall the brief asked for: the second fusion in a row costs
- *    more than the first did, and the tenth costs ten times the first. Cores
- *    are also what the Core tree eats, so a fusion is now bought out of the
- *    same purse as permanent income — which is what makes it a choice and not
- *    a button.
+ *  - SHARDS are the base cost, and they are CHEAP. A first fusion is about
+ *    three rendered spares. The gentle 1.18 ramp on the keeper means stacking
+ *    a dozen relics into one favourite is a project, not a free lunch — but
+ *    the tenth fusion of your life into a fresh relic costs the same as the
+ *    first, because it should.
+ *  - CORES are a LATE SINK and are ZERO for almost every fusion. They are
+ *    charged only when a fusion lifts a relic into the top band — Fabled or
+ *    Mythic — which is the rare, deliberate act worth a prestige price.
  *
- * WHY CORES AND NOT RESONANCE. The brief said "Cores+Resonance". Resonance is
- * SHELL VI's chip currency (`content/shell6/chamber.ts`) and is unobtainable
- * before the sixth world, so pricing fusion in it would strand the entire
- * system for ~90% of a playthrough — the exact shape of the standing reach
- * rule (the Silica problem). Cores are earned by the Collapse, which happens
- * in EVERY shell, ~7-11 times each, so this price is payable everywhere the
- * player can be. Shards are earned from the player's own pile. Both inputs
- * reach.
+ * WHY CORES AND NOT RESONANCE (unchanged from A.48). Resonance is SHELL VI's
+ * chip currency (`content/shell6/chamber.ts`) and is unobtainable before the
+ * sixth world, so pricing fusion in it would strand the system for ~90% of a
+ * playthrough — the exact shape of the standing reach rule (the Silica
+ * problem). Cores come from the Collapse, which happens in EVERY shell.
  */
 export interface FusionPrice {
   shards: number;
   cores: number;
 }
 
-export function fusionCost(state: GameState, keep: RelicInstance): FusionPrice {
+/** The rarity a fusion would leave the keeper at. */
+export const fusedRarity = (keep: RelicInstance, feed: RelicInstance): number =>
+  Math.max(keep.rarity, feed.rarity);
+
+/** Cores are charged only for a lift INTO the top band, and only for the lift. */
+export function fusionCoreCost(keep: RelicInstance, feed: RelicInstance): number {
+  const to = fusedRarity(keep, feed);
+  if (to <= keep.rarity || to < 3) return 0;
+  return to === 4 ? 12 : 4;
+}
+
+export function fusionCost(state: GameState, keep: RelicInstance, feed?: RelicInstance): FusionPrice {
+  void state;
   return {
-    shards: Math.round(10 * (keep.rarity + 1) * Math.pow(1.45, keep.fusedFrom)),
-    cores: (keep.rarity + 1) * (state.relics.fused + 1),
+    shards: Math.round(6 * (keep.rarity + 1) * Math.pow(1.18, keep.fusedFrom)),
+    cores: feed ? fusionCoreCost(keep, feed) : 0,
   };
 }
 
 /** Everything the price refuses, named. The panel shows this BEFORE the click. */
-export function fusionAfford(state: GameState, keep: RelicInstance): { ok: boolean; price: FusionPrice; short: string[] } {
-  const price = fusionCost(state, keep);
+export function fusionAfford(state: GameState, keep: RelicInstance, feed?: RelicInstance): { ok: boolean; price: FusionPrice; short: string[] } {
+  const price = fusionCost(state, keep, feed);
   const short: string[] = [];
   if (state.relics.shards < price.shards) {
     short.push(`${price.shards - Math.floor(state.relics.shards)} more shards`);
   }
-  if (getCurrency(state, 'core').lt(price.cores)) {
+  if (price.cores > 0 && getCurrency(state, 'core').lt(price.cores)) {
     short.push(`${price.cores - Math.floor(getCurrency(state, 'core').toNumber())} more Cores`);
   }
   return { ok: short.length === 0, price, short };
@@ -310,12 +344,12 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
   // Checked BEFORE the price (A.48): "you are short 20 shards" is a wrong answer
   // to "that one is locked", and the player would go and earn the shards.
   if (feed.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
-  const afford = fusionAfford(state, keep);
+  const afford = fusionAfford(state, keep, feed);
   if (!afford.ok) {
-    return {
-      ok: false,
-      reason: `The bench wants ${afford.price.shards} shards and ${afford.price.cores} Cores for work this fine. You are short ${afford.short.join(' and ')}.`,
-    };
+    const wants = afford.price.cores > 0
+      ? `${afford.price.shards} shards and ${afford.price.cores} Cores`
+      : `${afford.price.shards} shards`;
+    return { ok: false, reason: `The bench wants ${wants}. You are short ${afford.short.join(' and ')}.` };
   }
   if (feed.rarity > keep.rarity) {
     const gate = fusionGate(state, feed.rarity);
@@ -339,6 +373,11 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
   if (!keepPower && feedPower) keep.power = feedPower.id;
   else if (keepPower) keep.power = keepPower.id;
 
+  // THE MARK (A.49). The keeper carries what it ate — one notch per meal, in
+  // the character of the thing eaten, so the reliquary can SHOW a much-fused
+  // relic instead of printing a number next to it. Capped: past a dozen the
+  // object is already unmistakably scarred and the array would only grow.
+  keep.ate = [...(keep.ate ?? []), feed.source, ...(feed.ate ?? [])].slice(0, 12);
   // The keeper's rarity rises to the better of the two; fusing never demotes.
   keep.rarity = Math.max(keep.rarity, feed.rarity);
   keep.fusedFrom += 1 + feed.fusedFrom;
@@ -549,6 +588,32 @@ export function activeResonances(state: GameState): ResonanceDef[] {
   return RESONANCES.filter((res) => worn.filter((r) => r.source === res.source).length >= res.need);
 }
 
+/**
+ * THE LINES THAT MATTER (A.49). A relic that carries a POWER keeps exactly one
+ * affix line — its strongest — and the rest are noise.
+ *
+ * The test the brief set is "does cutting this change how the relic plays?".
+ * On a relic whose whole identity is that drills now work two cells a stroke,
+ * a stapled-on +3% converter intake changes nothing about how it plays; it
+ * only makes the card longer and the comparison between two relics harder. A
+ * relic with NO power is untouched, because its lines are all it has and
+ * stripping those would be cutting to hit a count.
+ *
+ * This is a READ rule, applied in the one place the bonus is computed and the
+ * one place it is drawn, so the panel can never disagree with the engine. It
+ * deliberately does not mutate the relic: the roll is still the roll, and if
+ * this rule is ever reversed nothing has been destroyed.
+ */
+export function effectiveAffixes(relic: RelicInstance): Record<string, number> {
+  if (!powerOf(relic)) return relic.affixes;
+  let bestKey: string | null = null;
+  let best = -Infinity;
+  for (const [k, v] of Object.entries(relic.affixes)) {
+    if (v > best) { best = v; bestKey = k; }
+  }
+  return bestKey === null ? {} : { [bestKey]: relic.affixes[bestKey]! };
+}
+
 /** The equipped set's contribution to a bucket — read by the modifier layer.
  *  Waking and resonance both scale what a worn relic gives; neither creates a
  *  new source of income, so pillar 2's argument above is untouched. */
@@ -562,7 +627,7 @@ export function relicBonus(state: GameState, bucket: Bucket): number {
   for (const uid of state.relics.equipped) {
     const r = state.relics.held.find((x) => x.uid === uid);
     if (!r) continue;
-    const base = r.affixes[bucket] ?? 0;
+    const base = effectiveAffixes(r)[bucket] ?? 0;
     if (base === 0) continue;
     const res = active.filter((x) => x.source === r.source).reduce((m, x) => m * x.mult, 1);
     total += base * wakingStep(r).mult * res * pair;
@@ -661,5 +726,11 @@ export function relicChanceForDepth(state: GameState): number {
 }
 
 export function defaultRelicsState(): RelicsState {
-  return { held: [], equipped: [], nextUid: 1, found: 0, fused: 0, floorBonus: 0, shards: 0, resonancesFound: [] };
+  return {
+    held: [], equipped: [], nextUid: 1, found: 0, fused: 0, floorBonus: 0, shards: 0,
+    resonancesFound: [],
+    // OFF, and set to the weakest band, so switching it on is a small step and
+    // never a surprise. `keepPowered` on by default for the same reason.
+    autoScrap: { on: false, maxRarity: 0, keepPowered: true },
+  };
 }

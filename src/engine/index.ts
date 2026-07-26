@@ -33,7 +33,7 @@ import { tickDrills } from './systems/drills';
 import { tickAssay } from './systems/drops';
 import { tickCombat } from './combat/combat';
 import { tickGuild } from './guild/guild';
-import { tickExpeditions } from './systems/museum';
+import { tickExpeditions, noteMuseum } from './systems/museum';
 import { noticeConfluences } from './systems/confluence';
 import { tickAutoRefine } from './systems/refinery';
 import { doCollapse } from './systems/collapseSys';
@@ -249,6 +249,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // construction (wearing one is the whole requirement — pillar 1).
       tickRelics(state, ctx, 1);
       noteResonances(state, ctx);
+      // A.49: the halls fill from what you OWN, so nothing dispatches when a
+      // case completes or a set forms — the beat has to notice. Two array
+      // scans over ~20 cases and ~8 sets, once a second.
+      noteMuseum(state, ctx);
       checkAchievements(state, ctx);
     }
   }

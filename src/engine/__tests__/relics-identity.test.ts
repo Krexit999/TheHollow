@@ -14,14 +14,13 @@ import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { EngineCtx, GameState, RelicInstance } from '../types';
 import {
-  addRelic, mintRelic, fuseRelics, fusionCost, renderRelic, shardValue,
+  addRelic, mintRelic, fuseRelics, fusionCost, renderRelic, shardValue, effectiveAffixes,
   RELIC_HOLD_CAP, RESONANCES, activeResonances, relicBonus, equipRelic,
   wakingOf, wakingStep, WAKING_STEPS, tickRelics, relicDeed, grantRelic, holdCap,
 } from '../systems/relics';
 import {
   POWERS, powerOf, powerLive, relicRule, relicPowerBonus, pairMultiplier,
 } from '../systems/relicPowers';
-import { getCurrency } from '../resources';
 import { D } from '../decimal';
 
 const ctx: EngineCtx = { emit() {}, dirty() {} };
@@ -44,34 +43,55 @@ describe('the economy half — the pile is the resource', () => {
     // Both relics still there — a refused fusion consumes nothing.
     expect(s.relics.held).toHaveLength(2);
 
-    const price = fusionCost(s, a);
+    const price = fusionCost(s, a, b);
     s.relics.shards = price.shards;
-    s.currencies['core'] = D(price.cores);
     expect(fuseRelics(s, a.uid, b.uid).ok).toBe(true);
     expect(s.relics.shards).toBe(0); // and it was actually spent
-    expect(getCurrency(s, 'core').toNumber()).toBe(0);
   });
 
   /**
-   * THE WALL (A.48). The A.46 price existed and never arrived: 4 shards for a
-   * Common keeper against a hold that renders its own overflow down at 2-10
-   * shards a relic. Play reported fusion as "still free and spammable" and was
-   * right. What must be true now is that the SECOND fusion costs more than the
-   * first, and the price is payable in things earnable in every shell.
+   * THE RE-PRICE (A.49). A.48 charged Cores linearly in LIFETIME fusions, so
+   * the twentieth fusion wanted ~320 Cores against a Loam arc that pays 478 in
+   * total — a price that does not make fusion a choice, it ENDS fusion.
+   * Shaping relics is meant to be constant and to feel like improvement.
+   *
+   * So: cheap in shards, a gentle ramp on the KEEPER (a dozen into one
+   * favourite is a project), and flat in how many you have done overall.
    */
-  it('the price rises with every fusion — the second in a row costs more than the first', () => {
+  it('is cheap, and the price rides the keeper rather than your history', () => {
     const { s } = fresh();
-    const keep = put(s, { rarity: 2 });
+    const keep = put(s, { rarity: 1 });
     const first = fusionCost(s, keep);
+    // About three rendered spares — the thing you do constantly.
+    expect(first.shards).toBeLessThanOrEqual(shardValue(keep) * 4);
+    expect(first.cores).toBe(0);
+
     for (const feed of [put(s), put(s), put(s)]) {
-      const price = fusionCost(s, keep);
+      const price = fusionCost(s, keep, feed);
       s.relics.shards = price.shards;
-      s.currencies['core'] = D(price.cores);
       expect(fuseRelics(s, keep.uid, feed.uid).ok).toBe(true);
     }
-    const fourth = fusionCost(s, keep);
-    expect(fourth.cores).toBeGreaterThan(first.cores * 3);
-    expect(fourth.shards).toBeGreaterThan(first.shards * 2);
+    const after = fusionCost(s, keep);
+    expect(after.shards).toBeGreaterThan(first.shards);        // the keeper ramps
+    expect(after.shards).toBeLessThan(first.shards * 2.5);     // and stays sane
+
+    // A FRESH relic is priced as a first fusion however many you have done —
+    // the A.48 failure mode, asserted against.
+    const brandNew = put(s, { rarity: 1 });
+    expect(fusionCost(s, brandNew).shards).toBe(first.shards);
+  });
+
+  /** Cores are a LATE SINK: charged only for a lift into the top band. */
+  it('charges Cores only when a fusion lifts a relic into Fabled or Mythic', () => {
+    const { s } = fresh();
+    const common = put(s, { rarity: 0 });
+    expect(fusionCost(s, common, put(s, { rarity: 2 })).cores).toBe(0); // up to Rare — free
+    expect(fusionCost(s, common, put(s, { rarity: 3 })).cores).toBeGreaterThan(0);
+    expect(fusionCost(s, common, put(s, { rarity: 4 })).cores)
+      .toBeGreaterThan(fusionCost(s, common, put(s, { rarity: 3 })).cores);
+    // A sideways fusion at the top band is NOT a lift, so it is not charged.
+    const mythic = put(s, { rarity: 4 });
+    expect(fusionCost(s, mythic, put(s, { rarity: 4 })).cores).toBe(0);
   });
 
   /** Both inputs must be earnable wherever the player is — the reach rule. */
@@ -81,7 +101,30 @@ describe('the economy half — the pile is the resource', () => {
     const r = fuseRelics(s, a.uid, b.uid);
     expect(r.ok).toBe(false);
     expect(r.reason).toMatch(/shards/);
-    expect(r.reason).toMatch(/Cores/);
+
+    const big = put(s, { rarity: 0 }), lift = put(s, { rarity: 4 });
+    s.relics.shards = 9999;
+    s.museum.completed = ['a', 'b', 'c', 'd', 'e'];
+    const gated = fuseRelics(s, big.uid, lift.uid);
+    expect(gated.ok).toBe(false);
+    expect(gated.reason).toMatch(/Cores/);
+  });
+
+  /**
+   * THE MARK (A.49). A fused relic must LOOK fused — the reliquary cuts one
+   * notch per meal, in the character of what was eaten, so the renderer needs
+   * the record rather than a count.
+   */
+  it('the keeper carries a mark for everything it has eaten', () => {
+    const { s } = fresh();
+    const keep = put(s, { rarity: 1 });
+    s.relics.shards = 9999;
+    for (const src of ['warren', 'well', 'warden']) {
+      const feed = put(s, { source: src });
+      expect(fuseRelics(s, keep.uid, feed.uid).ok).toBe(true);
+    }
+    const marked = s.relics.held.find((r) => r.uid === keep.uid)!;
+    expect(marked.ate).toEqual(['warren', 'well', 'warden']);
   });
 
   it('rendering a relic down pays shards and never touches a locked or worn one', () => {
@@ -118,6 +161,87 @@ describe('the economy half — the pile is the resource', () => {
     const { s } = fresh();
     for (let i = 0; i < RELIC_HOLD_CAP + 3; i++) put(s, { locked: true });
     expect(s.relics.held.length).toBeGreaterThan(RELIC_HOLD_CAP);
+  });
+
+  /**
+   * AUTO-SCRAP (A.49) — the standing order, and the two things it must never do.
+   * It is checked at the DOOR (a new arrival), so it can never sweep the hold,
+   * which means turning it on is safe by construction rather than by care.
+   */
+  describe('the standing order', () => {
+    it('is off by default, and turns an arriving relic straight into shards', () => {
+      const { s } = fresh();
+      expect(s.relics.autoScrap.on).toBe(false);
+      put(s, { rarity: 0 });
+      expect(s.relics.held).toHaveLength(1);
+
+      s.relics.autoScrap = { on: true, maxRarity: 1, keepPowered: true };
+      const before = s.relics.shards;
+      put(s, { rarity: 1 });
+      expect(s.relics.held).toHaveLength(1);            // it never landed
+      expect(s.relics.shards).toBeGreaterThan(before);  // it landed as shards
+      expect(s.relics.found).toBe(2);                   // and still COUNTS as found
+    });
+
+    it('keeps anything above the band, anything locked, and anything with a power', () => {
+      const { s } = fresh();
+      s.relics.autoScrap = { on: true, maxRarity: 2, keepPowered: true };
+      put(s, { rarity: 3 });                       // above the band
+      put(s, { rarity: 2 });                       // inside it, but Rare+ always
+      put(s, { rarity: 1, locked: true });         // derives a power, so spared
+      expect(s.relics.held).toHaveLength(3);
+      put(s, { rarity: 1 });                       // ...and this one goes
+      expect(s.relics.held).toHaveLength(3);
+    });
+
+    /** The exemption is not a nicety: EVERY Rare and above derives a power, so
+     *  `keepPowered` really does mean "nothing that could be a build". Turning
+     *  it off is how a player says they meant it. */
+    it('the power exemption spares every Rare and above until it is turned off', () => {
+      const { s } = fresh();
+      s.relics.autoScrap = { on: true, maxRarity: 4, keepPowered: true };
+      put(s, { rarity: 4 });
+      expect(s.relics.held).toHaveLength(1);
+      s.relics.autoScrap.keepPowered = false;
+      put(s, { rarity: 4 });
+      expect(s.relics.held).toHaveLength(1);
+    });
+
+    it('never sweeps what is already held — switching it on cannot eat anything', () => {
+      const { s } = fresh();
+      for (let i = 0; i < 5; i++) put(s, { rarity: 0 });
+      s.relics.autoScrap = { on: true, maxRarity: 4, keepPowered: false };
+      expect(s.relics.held).toHaveLength(5);
+    });
+  });
+
+  /**
+   * THE LINES THAT MATTER (A.49). A relic whose whole identity is a rule change
+   * kept a stapled-on +3% rider next to it, which made the card longer and the
+   * comparison between two relics harder without changing how either plays.
+   */
+  describe('rider noise', () => {
+    it('a powered relic keeps only its strongest line', () => {
+      const { s } = fresh();
+      const r = put(s, { rarity: 4, power: 'twinBite', affixes: { regen: 0.2, dropRate: 0.03, xpGain: 0.01 } });
+      expect(Object.keys(effectiveAffixes(r))).toEqual(['regen']);
+      equipRelic(s, r.uid, 0);
+      expect(relicBonus(s, 'dropRate')).toBe(0);   // the rider is gone from the engine too
+      expect(relicBonus(s, 'regen')).toBeGreaterThan(0);
+    });
+
+    it('a relic with NO power keeps every line — its lines are all it has', () => {
+      const { s } = fresh();
+      const r = put(s, { rarity: 0, affixes: { regen: 0.2, dropRate: 0.03 } });
+      expect(Object.keys(effectiveAffixes(r)).sort()).toEqual(['dropRate', 'regen']);
+    });
+
+    it('does not mutate the relic — the roll is still the roll', () => {
+      const { s } = fresh();
+      const r = put(s, { rarity: 4, power: 'twinBite', affixes: { regen: 0.2, dropRate: 0.03 } });
+      effectiveAffixes(r);
+      expect(Object.keys(r.affixes).sort()).toEqual(['dropRate', 'regen']);
+    });
   });
 });
 

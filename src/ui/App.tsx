@@ -26,7 +26,8 @@ import { DisclosureGate } from './components/DisclosureGate';
 import { SystemHeader } from './components/SystemHeader';
 import { PanelErrorBoundary } from './components/ErrorBoundary';
 import { SYSTEM_COPY } from './systemCopy';
-import { SpiralPanel, AutomationPanel, RelicsPanel, MuseumPanel, ExpeditionsPanel } from './components/longtail';
+import { SpiralPanel, AutomationPanel, ExpeditionsPanel } from './components/longtail';
+import { ReliquaryCanvas } from './relics/ReliquaryCanvas';
 import { Compendium, CompendiumButton } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 
@@ -92,8 +93,14 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
       {only('automation') && <AutomationPanel />}
-      {only('relics') && <RelicsPanel />}
-      {only('museum') && <MuseumPanel />}
+      {/* THE RELIQUARY (A.49). Relics and the Museum are two SCENES of one Pixi
+          application, so this host stays mounted across both tabs and is only
+          CSS-hidden elsewhere — the Lattice's documented exception, for the
+          same reason: destroying a renderer poisons Pixi's shared batch pools.
+          It must never be wrapped in `only(...)`. */}
+      <div className={tab === 'relics' || tab === 'museum' ? '' : 'hidden'}>
+        <ReliquaryCanvas mode={tab === 'museum' ? 'museum' : 'relics'} active={tab === 'relics' || tab === 'museum'} />
+      </div>
       {only('expeditions') && <ExpeditionsPanel />}
     </>
   );

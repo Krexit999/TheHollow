@@ -9,7 +9,7 @@ import { addCurrency, getCurrency, spendCurrency } from './resources';
 import { doSpiral, gridSlotCost, licenceCost, startChallenge, abandonChallenge } from './systems/spiral';
 import { GRID_CELLS } from './content/shell7/gridModules';
 import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from './systems/relics';
-import { donateToCase, claimExpedition, identifyPiece, movePiece, ROUTE_BY_ID , routeDurationMs } from './systems/museum';
+import { claimExpedition, ROUTE_BY_ID, routeDurationMs } from './systems/museum';
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
@@ -779,11 +779,16 @@ export function handleAction(
       return r;
     }
 
-    case 'identifyPiece':
-      return identifyPiece(state, ctx, action.uid);
-
-    case 'movePiece':
-      return movePiece(state, ctx, action.uid, action.caseId);
+    // AUTO-SCRAP (A.49) — the standing order. Partial so each control writes
+    // only its own field and cannot clobber the others.
+    case 'setAutoScrap': {
+      const rule = state.relics.autoScrap;
+      if (action.on !== undefined) rule.on = action.on;
+      if (action.maxRarity !== undefined) rule.maxRarity = Math.max(0, Math.min(4, action.maxRarity));
+      if (action.keepPowered !== undefined) rule.keepPowered = action.keepPowered;
+      ctx.dirty();
+      return { ok: true };
+    }
 
     case 'renderRelic': {
       const r = renderRelic(state, action.uid);
@@ -796,12 +801,6 @@ export function handleAction(
       if (r.ok) ctx.dirty();
       return r;
     }
-
-    case 'donateRelic':
-      return donateToCase(state, ctx, action.caseId, `relic:${action.uid}`, action.uid);
-
-    case 'donateItem':
-      return donateToCase(state, ctx, action.caseId, action.key);
 
     case 'sendExpedition': {
       const route = ROUTE_BY_ID.get(action.routeId);

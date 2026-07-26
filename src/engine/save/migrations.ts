@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 28;
+export const SAVE_VERSION = 29;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -609,6 +609,37 @@ export const MIGRATIONS: Record<number, Migration> = {
     museum['pieces'] ??= [];
     museum['exhibitsFound'] ??= [];
     return { ...p, version: 28, state };
+  },
+
+  // v28 -> v29 — THE GALLERY SHOWS WHAT YOU OWN (A.49). Donation, identify and
+  // move are gone, so every relic standing on a plinth comes HOME: the hold
+  // gets bigger and nothing is taken. `donated` and `pieces` are dropped after
+  // the relics are recovered from them.
+  //
+  // `completed` is KEPT exactly as it stands. It is monotonic by design now,
+  // and a player who filled halls the old way has filled them.
+  28: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const museum = (state['museum'] ??= {}) as Record<string, unknown>;
+    const relics = (state['relics'] ??= {}) as Record<string, unknown>;
+    const held = (relics['held'] ??= []) as Array<Record<string, unknown>>;
+    const pieces = (museum['pieces'] ?? []) as Array<{ relic?: Record<string, unknown> }>;
+    let nextUid = Number(relics['nextUid'] ?? 1);
+    for (const piece of pieces) {
+      if (!piece?.relic) continue;
+      // A donated relic kept its uid, but a hold that has moved on since may
+      // have reissued it — re-stamp so two relics can never share one.
+      held.push({ ...piece.relic, uid: nextUid });
+      nextUid += 1;
+    }
+    relics['nextUid'] = nextUid;
+    delete museum['pieces'];
+    delete museum['donated'];
+    museum['completed'] ??= [];
+    museum['exhibitsFound'] ??= [];
+    // AUTO-SCRAP (A.49) starts OFF, so a load can never eat anything.
+    relics['autoScrap'] ??= { on: false, maxRarity: 0, keepPowered: true };
+    return { ...p, version: 29, state };
   },
 };
 

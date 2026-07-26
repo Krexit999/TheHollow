@@ -1,22 +1,29 @@
 /**
- * A.47 — THE MUSEUM: arrangement as a discovery system.
+ * A.49 — THE GALLERY SHOWS WHAT YOU OWN.
  *
- * The load-bearing property is that a relic given to a hall is KEPT WHOLE.
- * Donating used to delete it, which was survivable while a relic was a rarity
- * colour and became a bug the moment A.46 gave each one a story — the museum
- * would have been built out of the only records of where anything came from.
- * Every exhibit predicate reads that record, so this is also the test that the
- * two systems share one source of truth rather than restating each other.
+ * A.47 built the Museum around ARRANGEMENT: hand a relic over, pay to study it,
+ * shuffle it between halls, and a set formed out of what stood together. Play
+ * reported the result as a donate button attached to a grid of empty slots, and
+ * the deeper problem is in that description — the screen asked the player to
+ * give up the thing they had just earned in order to look at it.
+ *
+ * So the author of a set changed. A hall fills from what you HOLD, and a set
+ * fires because the collection says something, not because you placed it. The
+ * properties that matter now:
+ *
+ *  - donation is gone and nothing was taken (the v29 migration is tested in
+ *    save-migrations, not here — this file tests the model);
+ *  - completion is MONOTONIC, so scrapping a relic can never claw a permanent
+ *    bonus back or slam the fusion gate shut mid-fuse;
+ *  - a set is a statement about the collection, discovered, never listed.
  */
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { EngineCtx, GameState, RelicInstance } from '../types';
-import { D } from '../decimal';
-import { addRelic, shardValue } from '../systems/relics';
+import { addRelic } from '../systems/relics';
 import {
-  donateToCase, identifyPiece, identifyCost, movePiece, EXHIBITS,
-  activeExhibits, exhibitBonus, piecesInCase, CASE_BY_ID,
-  caseBonusNow, museumBonus, STUDY_BONUS, identifyShardCost,
+  EXHIBITS, activeExhibits, exhibitBonus, caseProgress, caseComplete,
+  noteMuseum, museumBonus, museumFloorBonus, CASE_BY_ID, codexCount, gemKinds,
 } from '../systems/museum';
 
 const ctx: EngineCtx = { emit() {}, dirty() {} };
@@ -24,174 +31,127 @@ const fresh = () => {
   const engine = createEngine({ nowMs: 0 });
   return { engine, s: engine.getState() as GameState };
 };
-/** A relic with a story, given straight to a hall. */
-function give(s: GameState, hall: string, found: Partial<NonNullable<RelicInstance['found']>>, over: Partial<RelicInstance> = {}) {
-  const r = addRelic(s, {
+/** A relic with a story, straight into the hold — which IS the gallery now. */
+function own(s: GameState, found: Partial<NonNullable<RelicInstance['found']>> = {}, over: Partial<RelicInstance> = {}) {
+  return addRelic(s, {
     uid: 0, defId: 'x', rarity: 1, affixes: { regen: 0.1 }, source: 'depth', fusedFrom: 0,
     found: { depth: 300, shell: 'loam', run: 4, playSec: 100, ...found },
     ...over,
   });
-  const res = donateToCase(s, ctx, hall, `relic:${r.uid}`, r.uid);
-  expect(res.ok).toBe(true);
-  return r;
 }
-const study = (s: GameState, uid: number) => {
-  s.currencies['scrip'] = D(9999);
-  expect(identifyPiece(s, ctx, uid).ok).toBe(true);
-};
 
-describe('a hall keeps what it is given', () => {
-  it('a donated relic survives WHOLE, with its story intact', () => {
+describe('a hall fills from what you hold', () => {
+  it('counts the collection directly — nothing is handed over', () => {
     const { s } = fresh();
-    const r = give(s, 'firstFinds', { depth: 428, by: 'The Badger', run: 5 });
-    expect(s.relics.held.find((x) => x.uid === r.uid)).toBeUndefined(); // left the hold
-    const piece = s.museum.pieces.find((p) => p.relic.uid === r.uid);
-    expect(piece).toBeDefined();
-    expect(piece!.relic.found).toMatchObject({ depth: 428, by: 'The Badger', run: 5 });
-    expect(piece!.caseId).toBe('firstFinds');
-    expect(piece!.identified).toBe(false); // arrives under a cloth
+    const def = CASE_BY_ID.get('firstFinds')!;
+    expect(caseProgress(s, 'firstFinds')).toEqual({ have: 0, need: def.need });
+    for (let i = 0; i < def.need; i++) own(s);
+    expect(caseComplete(s, 'firstFinds')).toBe(true);
+    // ...and the relics are still yours.
+    expect(s.relics.held).toHaveLength(def.need);
   });
 
-  it('a locked relic is still refused, and stays in the hold', () => {
+  it('reads the other collections from their own registries', () => {
     const { s } = fresh();
-    const r = addRelic(s, { uid: 0, defId: 'x', rarity: 1, affixes: {}, source: 'depth', fusedFrom: 0, locked: true });
-    expect(donateToCase(s, ctx, 'firstFinds', `relic:${r.uid}`, r.uid).ok).toBe(false);
-    expect(s.relics.held).toHaveLength(1);
-    expect(s.museum.pieces).toHaveLength(0);
+    s.combat.seen = ['a', 'b', 'c'];
+    expect(caseProgress(s, 'quietRoom').have).toBe(3);
+    s.materials.gems = { ruby: 2, jade: 1, dead: 0 };
+    expect(gemKinds(s)).toBe(2);
+    s.lattice.discovered = ['x', 'y'];
+    s.crucible.discovered = ['z'];
+    expect(codexCount(s)).toBe(3);
+  });
+
+  /** The load-bearing one: ownership falls, a permanent bonus must not. */
+  it('completion is REMEMBERED — scrapping a relic never claws a bonus back', () => {
+    const { s } = fresh();
+    const def = CASE_BY_ID.get('firstFinds')!;
+    const rs = Array.from({ length: def.need }, () => own(s));
+    noteMuseum(s, ctx);
+    expect(s.museum.completed).toContain('firstFinds');
+    const paid = museumBonus(s, def.bucket);
+    expect(paid).toBeGreaterThan(0);
+
+    s.relics.held = s.relics.held.filter((r) => r.uid !== rs[0]!.uid);
+    expect(caseComplete(s, 'firstFinds')).toBe(false);   // the shelf has a gap
+    expect(s.museum.completed).toContain('firstFinds');  // the record does not
+    expect(museumBonus(s, def.bucket)).toBe(paid);
+  });
+
+  it('the floor bonus rises with filled halls and formed sets', () => {
+    const { s } = fresh();
+    expect(museumFloorBonus(s)).toBe(0);
+    s.museum.completed = ['firstFinds'];
+    const withHall = museumFloorBonus(s);
+    expect(withHall).toBeGreaterThan(0);
+    s.museum.exhibitsFound = ['lastShift'];
+    expect(museumFloorBonus(s)).toBeGreaterThan(withHall);
   });
 });
 
-describe('identify → value', () => {
-  it('costs Scrip, and an unstudied piece is invisible to every exhibit', () => {
-    const { s } = fresh();
-    const a = give(s, 'firstFinds', { run: 7 });
-    give(s, 'firstFinds', { run: 7 });
-    give(s, 'firstFinds', { run: 7 });
-    // Three from the same run — but nothing has been studied.
-    expect(piecesInCase(s, 'firstFinds')).toHaveLength(0);
-    expect(activeExhibits(s)).toHaveLength(0);
-
-    s.currencies['scrip'] = D(0);
-    const broke = identifyPiece(s, ctx, a.uid);
-    expect(broke.ok).toBe(false);
-    expect(broke.reason).toContain('Scrip');
-
-    s.currencies['scrip'] = D(identifyCost(s.museum.pieces[0]!));
-    expect(identifyPiece(s, ctx, a.uid).ok).toBe(true);
-    expect(s.currencies['scrip']!.toNumber()).toBe(0);
-    expect(identifyPiece(s, ctx, a.uid).ok).toBe(false); // only once
-  });
-});
-
-describe('exhibits form from the arrangement, and are found not listed', () => {
-  it('THE LAST SHIFT: three studied pieces from one run, standing in one hall', () => {
+describe('sets are statements about the collection, found not listed', () => {
+  it('THE LAST SHIFT fires on four out of one run, and names those four', () => {
     const { engine, s } = fresh();
     const def = EXHIBITS.find((e) => e.id === 'lastShift')!;
-    const rs = [give(s, 'firstFinds', { run: 9 }), give(s, 'firstFinds', { run: 9 }), give(s, 'firstFinds', { run: 9 })];
-    for (const r of rs) study(s, r.uid);
-    expect(activeExhibits(s).map((a) => a.def.id)).toContain('lastShift');
+    for (let i = 0; i < 3; i++) own(s, { run: 9 });
+    expect(activeExhibits(s).map((a) => a.def.id)).not.toContain('lastShift');
+    own(s, { run: 9 });
+    const live = activeExhibits(s).find((a) => a.def.id === 'lastShift');
+    expect(live).toBeDefined();
+    expect(live!.members.length).toBeGreaterThanOrEqual(def.need);
     expect(exhibitBonus(s, def.bucket)).toBeCloseTo(def.bonus, 6);
 
-    // PILLAR 5: written down only once it has actually formed.
+    // PILLAR 5: written down only once it has actually happened.
+    expect(s.museum.exhibitsFound).not.toContain('lastShift');
     engine.tick(2);
     expect((engine.getState() as GameState).museum.exhibitsFound).toContain('lastShift');
   });
 
   it("ONE HAND'S WORK reads the drill that found each — the A.46 record, not a copy", () => {
     const { s } = fresh();
-    for (let i = 0; i < 3; i++) study(s, give(s, 'firstFinds', { by: 'Old Tom', run: i }).uid);
+    for (let i = 0; i < 4; i++) own(s, { by: 'Old Tom', run: i });
     expect(activeExhibits(s).map((a) => a.def.id)).toContain('oneHandsWork');
   });
 
-  /** The whole point of "where does this go": the same relics in DIFFERENT
-   *  halls form nothing. Placement is the decision. */
-  it('the same pieces split across two halls form nothing', () => {
+  it('A WANDERING LIFE wants one from every kind of place', () => {
     const { s } = fresh();
-    const a = give(s, 'firstFinds', { run: 3 });
-    const b = give(s, 'firstFinds', { run: 3 });
-    const c = give(s, 'deepHoard', { run: 3 });
-    for (const r of [a, b, c]) study(s, r.uid);
-    expect(activeExhibits(s).map((x) => x.def.id)).not.toContain('lastShift');
-    // Bring the third one home and it forms.
-    expect(movePiece(s, ctx, c.uid, 'firstFinds').ok).toBe(true);
-    expect(activeExhibits(s).map((x) => x.def.id)).toContain('lastShift');
+    for (const source of ['depth', 'warren', 'anomaly', 'well', 'expedition']) own(s, {}, { source });
+    expect(activeExhibits(s).map((a) => a.def.id)).not.toContain('wanderingLife');
+    own(s, {}, { source: 'warden' });
+    expect(activeExhibits(s).map((a) => a.def.id)).toContain('wanderingLife');
   });
 
-  it('moving a piece keeps the case lists and completion honest in BOTH directions', () => {
+  it('THE WORKED ONES is about what you MADE, not what you found', () => {
     const { s } = fresh();
-    const need = CASE_BY_ID.get('firstFinds')!.need;
-    const rs = Array.from({ length: need }, () => give(s, 'firstFinds', {}));
-    expect(s.museum.completed).toContain('firstFinds');
-    expect(movePiece(s, ctx, rs[0]!.uid, 'deepHoard').ok).toBe(true);
-    // It left, so the case is no longer full — and says so.
-    expect(s.museum.completed).not.toContain('firstFinds');
-    expect(s.museum.donated['firstFinds']).toHaveLength(need - 1);
-    expect(s.museum.donated['deepHoard']).toHaveLength(1);
-    expect(s.museum.pieces.find((p) => p.relic.uid === rs[0]!.uid)!.caseId).toBe('deepHoard');
+    for (let i = 0; i < 3; i++) own(s, {}, { fusedFrom: 2 });
+    expect(activeExhibits(s).map((a) => a.def.id)).not.toContain('theWorked');
+    for (const r of s.relics.held) r.fusedFrom = 3;
+    expect(activeExhibits(s).map((a) => a.def.id)).toContain('theWorked');
   });
 
-  it('refuses a hall that is not for relics, and one that is full', () => {
+  /** A set you would trip over by holding forty commons is not a discovery. */
+  it('no set fires on a pile of identical commons', () => {
     const { s } = fresh();
-    const r = give(s, 'firstFinds', {});
-    expect(movePiece(s, ctx, r.uid, 'teeth').ok).toBe(false); // bestiary hall
-    expect(movePiece(s, ctx, r.uid, 'firstFinds').ok).toBe(false); // already there
-  });
-});
-
-/**
- * IDENTIFY -> VALUE (A.48). Studying used to buy story and exhibit eligibility
- * and nothing on the bonus line, which reads as "pay Scrip for flavour". And
- * the ONLY input was Scrip, so a player who had just Breached and spent their
- * purse met a live-but-dead button — the standing reach rule, in the Museum.
- */
-describe('identify → value, and a study that can always be paid for', () => {
-  it('a studied piece makes the hall it stands in permanently worth more', () => {
-    const { s } = fresh();
-    const def = CASE_BY_ID.get('firstFinds')!;
-    const rs = Array.from({ length: def.need }, () => give(s, 'firstFinds', {}));
-    expect(caseBonusNow(s, def)).toBeCloseTo(def.bonus, 6);
-    const bucketBefore = museumBonus(s, def.bucket);
-    study(s, rs[0]!.uid);
-    expect(caseBonusNow(s, def)).toBeCloseTo(def.bonus + STUDY_BONUS, 6);
-    // ...and it reaches the modifier layer, not just the card.
-    expect(museumBonus(s, def.bucket)).toBeGreaterThan(bucketBefore);
+    for (let i = 0; i < 12; i++) own(s, { run: i, depth: 150, by: undefined }, { rarity: 0 });
+    const ids = activeExhibits(s).map((a) => a.def.id);
+    expect(ids).not.toContain('lastShift');
+    expect(ids).not.toContain('wanderingLife');
+    expect(ids).not.toContain('everyColour');
+    expect(ids).not.toContain('wokenTogether');
   });
 
-  it('research lifts the relic floor before any case is anywhere near full', () => {
+  it('a set comes apart again when the collection does', () => {
     const { s } = fresh();
-    const r = give(s, 'deepHoard', {}); // need 10 — nowhere near complete
-    expect(s.museum.completed).not.toContain('deepHoard');
-    const before = s.relics.floorBonus;
-    study(s, r.uid);
-    expect(s.relics.floorBonus).toBeGreaterThan(before);
-  });
-
-  /** REACH: with zero Scrip anywhere, the player's own pile still pays. */
-  it('studies on SHARDS when there is no Scrip at all', () => {
-    const { s } = fresh();
-    const r = give(s, 'firstFinds', {});
-    s.currencies['scrip'] = D(0);
-    const piece = s.museum.pieces.find((p) => p.relic.uid === r.uid)!;
-
-    s.relics.shards = 0;
-    const broke = identifyPiece(s, ctx, r.uid);
-    expect(broke.ok).toBe(false);
-    expect(broke.reason).toMatch(/shards/); // and it NAMES the second input
-
-    s.relics.shards = identifyShardCost(piece);
-    expect(identifyPiece(s, ctx, r.uid).ok).toBe(true);
-    expect(s.relics.shards).toBe(0);
-    expect(piece.identified).toBe(true);
-  });
-
-  /** A second input that cannot be paid is the same dead button in a new colour. */
-  it('prices the shard route in the SHARD economy, not as a multiple of Scrip', () => {
-    const { s } = fresh();
-    const r = give(s, 'firstFinds', {}, { rarity: 2 });
-    const piece = s.museum.pieces.find((p) => p.relic.uid === r.uid)!;
-    // A Rare renders down for 6 shards, so a study must be a few spare relics.
-    expect(identifyShardCost(piece)).toBeLessThan(shardValue(r) * 6);
-    expect(identifyShardCost(piece)).toBeLessThan(identifyCost(piece));
+    for (let i = 0; i < 4; i++) own(s, { run: 2 });
+    expect(activeExhibits(s).map((a) => a.def.id)).toContain('lastShift');
+    s.relics.held.pop();
+    expect(activeExhibits(s).map((a) => a.def.id)).not.toContain('lastShift');
+    // ...but it stays in the Codex, because it did happen.
+    noteMuseum(s, ctx);
+    for (let i = 0; i < 4; i++) own(s, { run: 5 });
+    noteMuseum(s, ctx);
+    s.relics.held = [];
+    expect(s.museum.exhibitsFound).toContain('lastShift');
   });
 });
 
@@ -201,11 +161,12 @@ describe('curation still gates fusion — the edge that already existed', () => 
    * edge. It shipped in B4 (`MUSEUM_FUSION_NEED`). Verified here rather than
    * rebuilt — the ledger-is-a-claim rule, applied to the design doc.
    */
-  it('completed cases are what raise the relic rarity floor', () => {
+  it('filled halls are what raise the relic rarity floor', () => {
     const { s } = fresh();
     const before = s.relics.floorBonus;
     const need = CASE_BY_ID.get('firstFinds')!.need;
-    for (let i = 0; i < need; i++) give(s, 'firstFinds', {});
+    for (let i = 0; i < need; i++) own(s);
+    noteMuseum(s, ctx);
     expect(s.museum.completed).toContain('firstFinds');
     expect(s.relics.floorBonus).toBeGreaterThan(before);
   });

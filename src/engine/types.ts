@@ -599,6 +599,11 @@ export interface RelicInstance {
    *  can never be consumed — not fed into a fusion, not given to a Museum case.
    *  Absent means unlocked, so old saves load correctly with no migration. */
   locked?: boolean;
+  /** WHAT IT HAS EATEN (A.49). One entry per relic fused in, newest last,
+   *  capped — the reliquary renders these as notches cut into the object, so a
+   *  much-fused relic LOOKS much-fused. `fusedFrom` still carries the count;
+   *  this carries the character of each meal. */
+  ate?: string[];
   /** POWER OVERRIDE (A.48). Normally absent: `powerOf` DERIVES the power from
    *  (uid, source, rarity), so every relic in every existing save already has
    *  one and nothing needed migrating. This field exists only for the case
@@ -628,33 +633,34 @@ export interface RelicsState {
   /** Set resonances the player has actually seen fire. Discovery, not a list
    *  (pillar 5) — nothing here is shown before it happens once. */
   resonancesFound: string[];
-}
-
-/**
- * A RELIC ON DISPLAY (A.47). Donating used to DELETE the relic — which was
- * survivable while a relic was a rarity colour and a stat, and became a bug the
- * moment A.46 gave each one a story: the museum would have been a wall of
- * anonymous plinths built out of the only records of where anything came from.
- * The instance is kept whole here, so the relic's history has exactly ONE home
- * and the exhibit reads it rather than restating it.
- */
-export interface MuseumPiece {
-  relic: RelicInstance;
-  /** The hall it stands in — the player's choice, and what exhibits read. */
-  caseId: string;
-  /** Studied. An unidentified piece is a shape under a cloth: it counts for the
-   *  case, but an exhibit cannot recognise what it does not know. */
-  identified: boolean;
+  /**
+   * AUTO-SCRAP (A.49) — the standing order that stops the collection becoming
+   * a two-hundred-item scroll again. It runs at the moment a relic ARRIVES,
+   * before it is ever held, so the pile never grows past what the player
+   * actually wants to look at.
+   *
+   * OFF by default and never retroactive: it can only ever refuse a NEW find,
+   * so turning it on cannot eat anything already in the hold.
+   */
+  autoScrap: {
+    on: boolean;
+    /** Scrap anything at or below this rarity index (0 Common .. 4 Mythic). */
+    maxRarity: number;
+    /** Never scrap one that carries a power, whatever its rarity. */
+    keepPowered: boolean;
+  };
 }
 
 export interface MuseumState {
-  /** caseId -> donated item keys. */
-  donated: Record<string, string[]>;
+  /**
+   * Halls that have EVER been full. Monotonic on purpose (A.49): completion is
+   * read from what you own, and ownership can fall — scrap a relic, sell a gem
+   * — so recomputing it would claw back a permanent bonus and could slam the
+   * fusion gate shut mid-fuse. Once a hall has been full, it has been full.
+   */
   completed: string[];
-  /** Relics given to the halls, whole. */
-  pieces: MuseumPiece[];
-  /** Named exhibits the arrangement has actually formed. Discovery, never a
-   *  list (pillar 5) — nothing here is shown before it happens once. */
+  /** Named sets the collection has actually formed. Discovery, never a list
+   *  (pillar 5) — nothing here is shown before it happens once. */
   exhibitsFound: string[];
 }
 
@@ -1361,10 +1367,7 @@ export type GameAction =
   | { type: 'fuseRelics'; keepUid: number; feedUid: number }
   | { type: 'toggleRelicLock'; uid: number }
   | { type: 'renderRelic'; uid: number }
-  | { type: 'identifyPiece'; uid: number }
-  | { type: 'movePiece'; uid: number; caseId: string }
-  | { type: 'donateRelic'; uid: number; caseId: string }
-  | { type: 'donateItem'; caseId: string; key: string }
+  | { type: 'setAutoScrap'; on?: boolean; maxRarity?: number; keepPowered?: boolean }
   | { type: 'sendExpedition'; crewId: string; routeId: string; fromDepth?: number }
   | { type: 'claimExpedition'; crewId: string }
   | { type: 'hydrate'; state: GameState; nowMs: number }

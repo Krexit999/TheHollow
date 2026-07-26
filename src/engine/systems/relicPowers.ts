@@ -84,9 +84,10 @@ function otherPowered(state: GameState, self: number): number {
   }).length;
 }
 
-/** Studied pieces standing anywhere in the Museum. */
-const studiedPieces = (state: GameState): number =>
-  state.museum.pieces.filter((p) => p.identified).length;
+/** Halls the collection has filled. (A.49: was studied pieces, and studying
+ *  went away with the donation verb — this is the same idea, still collection-
+ *  driven, still something the player did rather than something they own.) */
+const namedHalls = (state: GameState): number => state.museum.completed.length;
 
 export const POWERS: RelicPowerDef[] = [
   // --- RULE — the system works differently ------------------------------
@@ -143,8 +144,8 @@ export const POWERS: RelicPowerDef[] = [
   {
     id: 'longTally', name: 'The Long Tally', kind: 'scaling',
     sources: ['warren', 'expedition'],
-    line: 'It counts the ones that got named. The ones under cloths, it will not look at.',
-    readout: (s) => `${pct(longTallyAt(s))} find rate — 3% per STUDIED Museum piece (${studiedPieces(s)}), to +45%.`,
+    line: 'It counts the ones that got named. The ones still in the dark, it will not look at.',
+    readout: (s) => `${pct(longTallyAt(s))} find rate — 4% per filled Museum hall (${namedHalls(s)}), to +45%.`,
     bonus: (s, b) => (b === 'dropRate' ? longTallyAt(s) : 0),
   },
   {
@@ -184,7 +185,7 @@ export const POWER_BY_ID = new Map(POWERS.map((p) => [p.id, p]));
 // The scaling readouts and the bonuses must never drift, so each is one
 // function used by both.
 const deepLedgerAt = (s: GameState): number => Math.min(0.6, Math.floor(s.depth / 15) * 0.01);
-const longTallyAt = (s: GameState): number => Math.min(0.45, studiedPieces(s) * 0.03);
+const longTallyAt = (s: GameState): number => Math.min(0.45, namedHalls(s) * 0.04);
 const emberCountAt = (s: GameState): number => Math.min(0.5, s.collapse.count * 0.02);
 
 /** Pair powers read the worn set, so they need a self to exclude. Both are
