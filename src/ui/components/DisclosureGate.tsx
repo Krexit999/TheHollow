@@ -21,6 +21,7 @@ function isEstablished(s: GameState): boolean {
 export function DisclosureGate() {
   const state = useGame((s) => s.state);
   const rev = useGame((s) => s.rev);
+  const runSummaryOpen = useGame((s) => s.runSummaryOpen);
   const setTab = useGame((s) => s.setTab);
   const [pending, setPending] = useState<TabId[]>([]);
   const backfilled = useRef(false);
@@ -65,6 +66,14 @@ export function DisclosureGate() {
     return () => window.removeEventListener('keydown', onKey);
   }, [pending]);
 
+  // WAIT YOUR TURN. A Collapse that also opens a room raises two full-screen
+  // z-50 dialogs at once, each with its own bg-black/70 — the screen goes
+  // double-dark and which one you can actually press is decided by nothing more
+  // than which was rendered second in App.tsx. This gate is the one that can
+  // afford to wait: the fall's payout is the thing the player just earned, and
+  // what it opened reads better after it. The pending list is held, not
+  // dropped, so nothing is lost by deferring.
+  if (runSummaryOpen) return null;
   if (pending.length === 0 || !state) return null;
 
   const acknowledge = () => {

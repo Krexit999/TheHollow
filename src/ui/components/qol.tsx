@@ -88,6 +88,14 @@ export function RunSummaryModal() {
     }
   }, [rev, state]);
 
+  // Tell the stack a page is up, so the DisclosureGate waits its turn instead
+  // of stacking a second full-screen backdrop behind this one.
+  const setRunSummaryOpen = useGame((s) => s.setRunSummaryOpen);
+  useEffect(() => {
+    setRunSummaryOpen(ledger !== null);
+    return () => setRunSummaryOpen(false);
+  }, [ledger, setRunSummaryOpen]);
+
   if (!ledger) return null;
 
   const prev = ledger.prev;
@@ -98,17 +106,24 @@ export function RunSummaryModal() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="panel w-full max-w-sm p-5 text-center">
         <div className="text-[10px] uppercase tracking-widest text-cave-400">The shaft fell — run closed</div>
+        {/*
+          REPORT, DON'T RESTATE (A.45). This page used to print the payout twice
+          — the headline and a "Cores pulled" line one gap below it — and then
+          repeat the depth and run length the Collapse panel had previewed
+          moments earlier. The pre-fall panel INFORMS the choice; this page's
+          job is to confirm the result and close the loop the panel opened, so
+          the delta moved onto the headline and the duplicate line is gone.
+        */}
         <div className="mt-2 font-display text-3xl font-bold text-core tnum">
           +{ledger.cores} <span className="text-base font-normal">Cores</span>
+          {coresD && (
+            <span className="ml-1 align-middle text-sm font-normal text-cave-400">
+              {relCores(coresD, ledger.cores)}
+            </span>
+          )}
         </div>
         <div className="mt-4 space-y-1.5 text-sm">
           <Line label="Deepest point" value={`depth ${ledger.depth}`} delta={deltaDepth} color="#8be9fd" />
-          <Line
-            label="Cores pulled"
-            value={ledger.cores}
-            deltaText={coresD ? relCores(coresD, ledger.cores) : null}
-            color="#8be9fd"
-          />
           <Line label="Run length" value={fmtDuration(ledger.sec)} color="#c9a86a" />
           {ledger.carried && ledger.carried.levels > 0 && (
             <Line label="Carried through" value={`${ledger.carried.name} · ${ledger.carried.levels} levels kept`} color="#9fd8c0" />
@@ -373,18 +388,21 @@ export function CollapseControls() {
 
   return (
     <div className="panel space-y-3 p-3">
-      {/* Compare vs last run */}
-      {last && (
-        <div>
-          <div className="mb-1 text-[10px] uppercase tracking-widest text-cave-400">Your last fall</div>
-          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-cave-300">
-            <span>Depth <span className="tnum font-semibold text-[#8be9fd]">{last.depth}</span></span>
-            <span>Cores <span className="tnum font-semibold text-[#8be9fd]">{fmt(last.cores)}</span></span>
-            <span>Run <span className="tnum text-cave-400">{fmtDuration(last.sec)}</span></span>
-            {last.carried && last.carried.levels > 0 && (
-              <span>Carried <span className="text-[#9fd8c0]">{last.carried.name} (+{last.carried.levels} lv)</span></span>
-            )}
-          </div>
+      {/*
+        THE THIRD SURFACE, FOLDED (A.45).
+        This card used to restate the last fall's depth, Cores and run length —
+        and by then all three had been said twice: the RunSummaryModal reports
+        them the moment the fall lands, and the Collapse panel now shows the
+        live run WITH deltas against exactly these numbers, which is the same
+        comparison in the form that actually informs the next decision.
+        What survives is the one line neither of those covers usefully: whether
+        the carry you chose last time did anything. It belongs HERE, directly
+        above the control that picks the next one, and nowhere else.
+      */}
+      {last?.carried && last.carried.levels > 0 && (
+        <div className="rounded-md border border-[#9fd8c0]/25 bg-[#9fd8c0]/5 px-2 py-1.5 text-[11px] text-[#9fd8c0]">
+          Last fall carried <span className="font-semibold">{last.carried.name}</span>
+          {' '}— {last.carried.levels} levels kept.
         </div>
       )}
 

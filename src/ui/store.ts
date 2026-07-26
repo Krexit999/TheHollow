@@ -56,6 +56,15 @@ interface UIStore {
   rev: number;
   state: Readonly<GameState> | null;
   tab: TabId;
+  /**
+   * A run-summary page is up. THE MODAL STACK IS EXPLICIT, NOT DOM ORDER.
+   * The DisclosureGate and the RunSummaryModal are both full-screen at z-50,
+   * so which one wins was decided by which happened to be rendered second in
+   * App.tsx — and both paint a bg-black/70 backdrop, so a fall that also opens
+   * a room double-darkened the screen with two full-screen dialogs. The gate
+   * now waits its turn: you read what the fall paid, THEN what it opened.
+   */
+  runSummaryOpen: boolean;
   /** Tabs the player has never opened since they appeared (glow hint). */
   freshTabs: TabId[];
   reducedMotion: boolean;
@@ -77,6 +86,7 @@ interface UIStore {
   /** A big spend awaiting the player's nod (confirm-on-big-spend). */
   pendingSpend: PendingSpend | null;
   setTab: (tab: TabId) => void;
+  setRunSummaryOpen: (open: boolean) => void;
   markFresh: (tab: TabId) => void;
   setOpticsMode: (on: boolean) => void;
   setFaceMode: (m: 'chip' | 'sweep' | 'technique') => void;
@@ -96,6 +106,7 @@ export const useGame = create<UIStore>((set, get) => ({
   rev: 0,
   state: null,
   tab: 'dig',
+  runSummaryOpen: false,
   freshTabs: [],
   reducedMotion:
     typeof window !== 'undefined' &&
@@ -105,6 +116,7 @@ export const useGame = create<UIStore>((set, get) => ({
   armedTechnique: null,
   bulkMode: loadBulk(),
   numberFormat: loadNumberFormat(),
+  setRunSummaryOpen: (open: boolean) => set({ runSummaryOpen: open }),
   setTab: (tab) =>
     set((s) => ({ tab, freshTabs: s.freshTabs.filter((t) => t !== tab) })),
   setOpticsMode: (on) => set({ opticsMode: on }),
