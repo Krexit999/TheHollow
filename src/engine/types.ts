@@ -1450,7 +1450,8 @@ export type GameAction =
   | { type: 'bulkSalvage'; toolIds: number[]; extract: boolean }
   | { type: 'practiceRunes'; sequence: (string | null)[] }
   | { type: 'debug'; op: 'grant'; currency: string; amount: number }
-  | { type: 'debug'; op: 'warp'; seconds: number };
+  | { type: 'debug'; op: 'warp'; seconds: number }
+  | { type: 'debug'; op: 'giveAll' };
 
 export interface ActionResult {
   ok: boolean;

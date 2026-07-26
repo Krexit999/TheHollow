@@ -5,7 +5,7 @@
  */
 import { D, Decimal } from './decimal';
 import type { ModifierCache } from './modifiers';
-import { addCurrency, getCurrency, spendCurrency } from './resources';
+import { addCurrency, allCurrencies, getCurrency, spendCurrency } from './resources';
 import { doSpiral, gridSlotCost, licenceCost, startChallenge, abandonChallenge } from './systems/spiral';
 import { GRID_CELLS } from './content/shell7/gridModules';
 import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from './systems/relics';
@@ -30,7 +30,7 @@ import {
 } from './content/shell1/latticeSystem';
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
-import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount } from './systems/forge';
+import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount, addMaterial } from './systems/forge';
 import { drillRepairCost, recutBit } from './systems/drills';
 import { drillHead } from './content/drillParts';
 import { lightOverstoke } from './systems/kiln';
@@ -71,7 +71,7 @@ import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from '.
 import { practiceRunes } from './content/shell4/runes';
 import { temperTool } from './systems/tempering';
 import type { PurityBand } from './materials';
-import { materialDef } from './materials';
+import { materialDef, MATERIALS, GEMS } from './materials';
 import { collectWell, commitToWell } from './content/shell5/wells';
 import { answerAnomaly } from './systems/anomalies';
 import { listen, rebuildCell } from './systems/absence';
@@ -86,6 +86,10 @@ import { convCurrencyId, resolveCurrencyId } from './shells';
 import { MAX_DRILLS } from './systems/drills';
 import { grantXP } from './systems/xp';
 import { initialState } from './state';
+
+/** 999Qa in this game's own suffix scale (decimal.ts SUFFIXES: Qa = 10^15) —
+ *  the dev "Give All" cheat's flat amount for every wallet in the game. */
+export const GIVE_ALL_AMOUNT = 999e15;
 
 export interface DispatchDeps {
   mods: ModifierCache;
@@ -936,6 +940,19 @@ export function handleAction(
     case 'debug': {
       if (action.op === 'grant') {
         addCurrency(state, action.currency, D(action.amount));
+        ctx.dirty();
+        return { ok: true };
+      }
+      if (action.op === 'giveAll') {
+        // EVERY currency (registry-driven — new ones need no update here), plus
+        // the three wallets that live OUTSIDE the currency registry by design
+        // (materials/gems are purity-banded stacks, not a flat balance; relic
+        // shards and geodes are single fields on their own systems).
+        for (const c of allCurrencies()) addCurrency(state, c.id, D(GIVE_ALL_AMOUNT));
+        for (const m of MATERIALS) addMaterial(state, m.id, 99, GIVE_ALL_AMOUNT);
+        for (const g of GEMS) state.materials.gems[g.id] = (state.materials.gems[g.id] ?? 0) + GIVE_ALL_AMOUNT;
+        state.materials.geodes += GIVE_ALL_AMOUNT;
+        state.relics.shards += GIVE_ALL_AMOUNT;
         ctx.dirty();
         return { ok: true };
       }
