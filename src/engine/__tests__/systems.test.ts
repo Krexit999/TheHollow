@@ -75,18 +75,17 @@ describe('drills', () => {
     expect(s.stats.totalChargeChipped.toNumber()).toBeGreaterThan(budget * 0.9);
   });
 
-  it('all four behaviors strike and earn', () => {
-    for (const behavior of ['fullest', 'sweep', 'random', 'chain'] as const) {
-      const engine = createEngine({ nowMs: 0 });
-      const s = engine.getState() as GameState;
-      s.drills.bayBuilt = true;
-      const drill = newDrill();
-      drill.behavior = behavior;
-      s.drills.units.push(drill);
-      engine.tick(30);
-      expect(s.stats.drillStrikes).toBeGreaterThan(0);
-      expect(s.currencies['dust']!.gt(0)).toBe(true);
-    }
+  // A.53: the four selectable behaviours are gone. One rule — the fullest
+  // workable cell — because a dropdown per drill was the definition of
+  // fiddling on the layer that is supposed to be invisible.
+  it('a bare drill strikes and earns with nothing configured', () => {
+    const engine = createEngine({ nowMs: 0 });
+    const s = engine.getState() as GameState;
+    s.drills.bayBuilt = true;
+    s.drills.units.push(newDrill());
+    engine.tick(30);
+    expect(s.stats.drillStrikes).toBeGreaterThan(0);
+    expect(s.currencies['dust']!.gt(0)).toBe(true);
   });
 });
 

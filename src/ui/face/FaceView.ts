@@ -16,8 +16,9 @@ import {
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
+import { residueLevel, richnessLevel } from '../../engine/systems/drillAlloys';
 import { ModifierCache } from '../../engine/modifiers';
-import type { DrillBehavior, Engine } from '../../engine';
+import type { Engine } from '../../engine';
 import { fmt } from '../../engine';
 import { useGame } from '../store';
 
@@ -139,11 +140,16 @@ const FACE_THEMES: Record<string, FaceTheme> = {
   },
 };
 
-const BEHAVIOR_COLORS: Record<DrillBehavior, number> = {
-  fullest: 0xfbbf24, // amber — goes for the richest rock
-  sweep: 0x5eead4, // teal — methodical passes
-  random: 0xc4b5fd, // violet — chaos
-  chain: 0xfb7185, // rose — follows the seam
+/**
+ * WHAT A DRILL LOOKS LIKE. A.53: the four behaviour glyphs went with the
+ * behaviour selector; what a drill wears now is the BAY-WIDE ALLOY, so
+ * equipping one visibly re-liveries every machine on the rails.
+ */
+const ALLOY_LOOK: Record<string, number> = {
+  plain: 0xfbbf24,   // amber — a bare drill, going for the richest rock
+  arcvein: 0x8fd8ff, // pale lightning
+  lodecall: 0xd9b64a, // gold, pulling
+  emberset: 0xe0703c, // ember left in the stone
 };
 
 function lerpColor(a: number, b: number, t: number): number {
@@ -175,6 +181,10 @@ interface TileEntry {
   flash: number;
   vine: number;
   fruitBand: number;
+  /** DRILL ALLOY marks (A.53), banded so they join the redraw gate rather than
+   *  forcing a repaint every frame: THE SET's warmth and THE CALL's gather. */
+  setBand: number;
+  callBand: number;
 }
 
 interface Particle {
@@ -197,7 +207,8 @@ interface DrillSprite {
   root: Container;
   body: Graphics;
   beam: Graphics;
-  behavior: DrillBehavior;
+  /** The equipped alloy id, or 'plain'. The drills WEAR the ability. */
+  look: string;
   pulse: number;
 }
 
@@ -335,7 +346,7 @@ export class FaceView {
     if (this.active === active || !this.app?.ticker) return;
     this.active = active;
     if (active) {
-      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; }
+      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.setBand = -1; t.callBand = -1; }
       this.layout(); // the hero height differs between Shaft and Dig on phone
       // Start the ticker but do NOT render synchronously: this call runs inside
       // a React effect, in the same commit where the OTHER view is about to be
@@ -408,7 +419,7 @@ export class FaceView {
     this.tiles = state.face.cells.map(() => {
       const g = new Graphics();
       this.tileLayer.addChild(g);
-      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1 };
+      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, setBand: -1, callBand: -1 };
     });
     this.layout();
   }
@@ -425,11 +436,19 @@ export class FaceView {
     const vine = gstate.growth.stage[i] ?? 0;
     const cellCapPx = 8; // fruit banding only needs a coarse visual scale
     const fruitBand = vine > 0 ? Math.min(4, Math.floor((gstate.growth.fruit[i] ?? 0) / (cellCapPx * 4))) : 0;
-    if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand && tile.flash <= 0) return;
+    // DRILL ALLOY marks. Banded to 5 steps so they take part in the redraw
+    // gate below — a smoothly-decaying float would repaint every tile every
+    // frame, which is exactly what the gate exists to prevent.
+    const setBand = Math.round(residueLevel(gstate, i) * 4);
+    const callBand = Math.round(richnessLevel(gstate, i) * 4);
+    if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
+      && setBand === tile.setBand && callBand === tile.callBand && tile.flash <= 0) return;
     tile.band = band;
     tile.crackStage = crackStage;
     tile.vine = vine;
     tile.fruitBand = fruitBand;
+    tile.setBand = setBand;
+    tile.callBand = callBand;
 
     const s = this.cellSize;
     const m = Math.max(1.5, s * 0.05); // grout gap
@@ -534,6 +553,42 @@ export class FaceView {
         }
         g.stroke({ width: 0.8 + crackStage * 0.25, color: theme.crackColor, alpha: 0.28 + crackStage * 0.14 });
       }
+    }
+
+    // ------------------------------------------------------------------
+    // DRILL ALLOY MARKS (A.53) — the abilities are drawn ON THE ROCK, which
+    // is the whole point of them: an ability that cannot be seen happening
+    // does not belong in the system.
+    // ------------------------------------------------------------------
+    if (setBand > 0) {
+      // THE SET: rock a drill has just worked stays hot and soft. An ember
+      // wash across the slab plus a bright fracture through it — it reads as
+      // "this one is still giving" without needing a number.
+      // Alpha is pitched to be read against a DRAINED cell — which is exactly
+      // when the mark matters, since the rock is soft because a drill just
+      // emptied it. Tuned against a 380px screenshot, where a tile is ~55px.
+      const heat = setBand / 4;
+      g.roundRect(m, m, w, w, r).fill({ color: 0xe0703c, alpha: 0.16 + heat * 0.34 });
+      g.moveTo(m + w * 0.2, m + w * 0.78)
+        .lineTo(m + w * 0.48, m + w * 0.44)
+        .lineTo(m + w * 0.72, m + w * 0.6)
+        .stroke({ width: 1.4 + heat * 1.2, color: 0xffcf9a, alpha: 0.55 + heat * 0.45 });
+    }
+    if (callBand > 0) {
+      // THE CALL: ore gathering under the cell. Rings drawing inward, and a
+      // core that brightens as the gather fills — when it is full the next
+      // drop out of this cell rolls as if the seam were deeper.
+      const pull = callBand / 4;
+      const cx = m + w / 2;
+      const cy = m + w / 2;
+      for (let ring = 3; ring >= 1; ring--) {
+        g.circle(cx, cy, w * 0.15 * ring * (1.25 - pull * 0.35))
+          .stroke({ width: 1.3, color: 0xf0c95e, alpha: 0.22 + pull * 0.48 });
+      }
+      // A soft pool under the core, so the gather still reads when a drill
+      // sprite is parked on the cell it is gathering under.
+      g.circle(cx, cy, w * 0.2).fill({ color: 0xd9b64a, alpha: 0.08 + pull * 0.16 });
+      g.circle(cx, cy, w * 0.06 + w * 0.05 * pull).fill({ color: 0xffefb0, alpha: 0.5 + pull * 0.5 });
     }
 
     // GROWTH: vines drawn by AGE — a sprout curls in from a corner, a
@@ -956,19 +1011,22 @@ export class FaceView {
   // Drills
   // -------------------------------------------------------------------------
 
-  private makeDrillSprite(behavior: DrillBehavior): DrillSprite {
+  private makeDrillSprite(look: string): DrillSprite {
     const root = new Container();
     const beam = new Graphics();
     const body = new Graphics();
-    this.drawDrillBody(body, behavior);
+    this.drawDrillBody(body, look);
     root.addChild(beam, body);
     this.drillLayer.addChild(root);
-    return { root, body, beam, behavior, pulse: 0 };
+    return { root, body, beam, look, pulse: 0 };
   }
 
-  private drawDrillBody(g: Graphics, behavior: DrillBehavior): void {
+  /** The chassis, and the mark of whatever alloy the bay is running. Equipping
+   *  an alloy re-liveries every drill, so the ability is visible on the
+   *  machines as well as in what they do to the rock. */
+  private drawDrillBody(g: Graphics, look: string): void {
     g.clear();
-    const color = BEHAVIOR_COLORS[behavior];
+    const color = ALLOY_LOOK[look] ?? ALLOY_LOOK['plain']!;
     const r = Math.max(6, this.cellSize * 0.17);
     // Hex chassis
     for (let i = 0; i <= 6; i++) {
@@ -979,32 +1037,29 @@ export class FaceView {
       else g.lineTo(x, y);
     }
     g.fill(0x1c1815).stroke({ width: 1.5, color, alpha: 0.9 });
-    // Behavior glyph — readable at a glance.
     const gr = r * 0.45;
-    switch (behavior) {
-      case 'fullest': // diamond: seeks the richest
-        g.moveTo(0, -gr).lineTo(gr, 0).lineTo(0, gr).lineTo(-gr, 0).closePath().fill(color);
-        break;
-      case 'sweep': // arrow: marching order
-        g.moveTo(-gr, -gr * 0.8).lineTo(gr, 0).lineTo(-gr, gr * 0.8).closePath().fill(color);
-        break;
-      case 'random': // scatter dots
-        g.circle(-gr * 0.6, -gr * 0.4, 1.6).fill(color);
-        g.circle(gr * 0.5, -gr * 0.1, 1.6).fill(color);
-        g.circle(-gr * 0.1, gr * 0.6, 1.6).fill(color);
-        break;
-      case 'chain': // two links
-        g.circle(-gr * 0.45, 0, gr * 0.5).stroke({ width: 1.5, color });
-        g.circle(gr * 0.45, 0, gr * 0.5).stroke({ width: 1.5, color });
-        break;
+    if (look === 'arcvein') {
+      g.moveTo(-gr * 0.5, -gr).lineTo(gr * 0.2, -gr * 0.1).lineTo(-gr * 0.2, gr * 0.1).lineTo(gr * 0.5, gr)
+        .stroke({ width: 1.6, color });
+    } else if (look === 'lodecall') {
+      g.circle(0, 0, gr).stroke({ width: 1.2, color, alpha: 0.8 });
+      g.circle(0, 0, gr * 0.45).fill(color);
+    } else if (look === 'emberset') {
+      g.circle(0, 0, gr * 0.7).fill(color);
+      g.circle(0, 0, gr).stroke({ width: 1, color, alpha: 0.5 });
+    } else {
+      // Bare: the diamond that has always meant "the richest cell".
+      g.moveTo(0, -gr).lineTo(gr, 0).lineTo(0, gr).lineTo(-gr, 0).closePath().fill(color);
     }
   }
 
   private syncDrills(): void {
-    const units = this.engine.getState().drills.units;
+    const st = this.engine.getState();
+    const units = st.drills.units;
+    const look = st.drills.equipped ?? 'plain';
     while (this.drillSprites.length < units.length) {
       const unit = units[this.drillSprites.length]!;
-      const sprite = this.makeDrillSprite(unit.behavior);
+      const sprite = this.makeDrillSprite(look);
       const at = this.cellCenter(unit.lastCell);
       sprite.root.position.set(at.x, at.y - this.cellSize * 0.18);
       this.drillSprites.push(sprite);
@@ -1014,11 +1069,10 @@ export class FaceView {
       sprite.root.destroy({ children: true });
     }
     for (let i = 0; i < units.length; i++) {
-      const unit = units[i]!;
       const sprite = this.drillSprites[i]!;
-      if (sprite.behavior !== unit.behavior) {
-        sprite.behavior = unit.behavior;
-        this.drawDrillBody(sprite.body, unit.behavior);
+      if (sprite.look !== look) {
+        sprite.look = look;
+        this.drawDrillBody(sprite.body, look);
       }
     }
   }
@@ -1117,6 +1171,37 @@ export class FaceView {
         }
         if (ev.chain >= 2) this.spawnPop(at.x, at.y - this.cellSize * 0.3, `×${ev.chain}`, ev.chain >= 6);
         this.lastChainCell = ev.cell;
+      } else if (ev.type === 'drillArc') {
+        // THE ARC (drill alloy): the strike jumped. Drawn as forked lightning
+        // from the struck cell to each cell it reached, on the same fading
+        // fx layer the polarity chain uses — so an arcing bay is unmistakable
+        // even from across the room.
+        if (!this.reducedMotion) {
+          const from = this.cellCenter(ev.from);
+          for (const t of ev.to) {
+            const to = this.cellCenter(t);
+            const arc = new Graphics();
+            // A jagged path rather than a straight line: it should read as
+            // something jumping, not as a ruler laid between two squares.
+            const mx = (from.x + to.x) / 2;
+            const my = (from.y + to.y) / 2;
+            const nx = -(to.y - from.y);
+            const ny = to.x - from.x;
+            const len = Math.max(1, Math.hypot(nx, ny));
+            const kick = this.cellSize * 0.16;
+            arc.moveTo(from.x, from.y)
+              .lineTo(mx + (nx / len) * kick, my + (ny / len) * kick)
+              .lineTo(to.x, to.y)
+              .stroke({ width: 3, color: 0x8fd8ff, alpha: 0.35 });
+            arc.moveTo(from.x, from.y)
+              .lineTo(mx + (nx / len) * kick, my + (ny / len) * kick)
+              .lineTo(to.x, to.y)
+              .stroke({ width: 1.2, color: 0xeaf8ff, alpha: 0.95 });
+            arc.circle(to.x, to.y, 3.5).fill({ color: 0x8fd8ff, alpha: 0.8 });
+            this.fxLayer.addChild(arc);
+            this.chainArcs.push({ g: arc, life: 0 });
+          }
+        }
       } else if (ev.type === 'chainBroken') {
         const at = this.cellCenter(ev.at);
         this.spawnPop(at.x, at.y - this.cellSize * 0.3, 'snap', false);
@@ -1174,7 +1259,7 @@ export class FaceView {
           sprite.beam
             .moveTo(0, 0)
             .lineTo(0, this.cellSize * 0.34)
-            .stroke({ width: 2, color: BEHAVIOR_COLORS[sprite.behavior], alpha: sprite.pulse * 0.8 });
+            .stroke({ width: 2, color: (ALLOY_LOOK[sprite.look] ?? ALLOY_LOOK['plain']!), alpha: sprite.pulse * 0.8 });
         }
       } else {
         sprite.body.scale.set(1);

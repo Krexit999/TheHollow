@@ -6,7 +6,11 @@
 import { useState } from 'react';
 import { convCurrencyId, currencyDef, fmtNum, getCurrency, maxToolTier } from '../../engine';
 import type { GameState, Stack } from '../../engine';
-import { GEMS, gemDef, materialDef } from '../../engine/materials';
+import { GEMS, gemDef, materialDef, MATERIALS } from '../../engine/materials';
+import { ABILITY_BY_ID, alloyHint } from '../../engine/content/drillAlloys';
+import {
+  ALLOY_POUR_COST, POUR_SLOTS, equippedAbility, knownAbilities,
+} from '../../engine/systems/drillAlloys';
 import {
   equippedTool,
   materialCount,
@@ -51,6 +55,7 @@ export function ForgePanel() {
 
   return (
     <div className="space-y-2">
+      <AlloyBench state={state} />
       {obsolete.length > 1 && (
         <div className="panel flex flex-wrap items-center justify-between gap-2 p-2 text-[11px]">
           <span className="min-w-0 flex-1 text-cave-400">{obsolete.length} tools below Tier {ROMAN[equipped.tier]} sitting idle.</span>
@@ -391,6 +396,157 @@ function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
         })}
       </div>
       <div className="mt-1 text-[9px] italic leading-snug text-cave-400">{recipe.flavor}</div>
+    </div>
+  );
+}
+
+/**
+ * THE ALLOY BENCH (A.53) — where the drill bay's ability is decided.
+ *
+ * The discovery loop, in three moves, and the panel is built around them:
+ *   HINT     — pick materials and the bench reads their TRAITS back at you. It
+ *              describes the MIX, never the outcome, so you have a reason to
+ *              try a thing without being told what it makes (pillar 5).
+ *   TRY      — pour. Materials and the fee are spent either way; a miss names
+ *              what the mix leaned toward, which is the teaching move.
+ *   CONFIRM  — a hit names the ability, states what it does, and records it
+ *              forever. After that it is readable, not a secret.
+ */
+function AlloyBench({ state }: { state: GameState }) {
+  const [picks, setPicks] = useState<string[]>([]);
+  const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const owned = MATERIALS.filter((m) => materialCount(state, m.id) > 0);
+  const conv = convCurrencyId(state);
+  const convName = currencyDef(conv).name;
+  const canPay = getCurrency(state, conv).gte(ALLOY_POUR_COST);
+  const hint = alloyHint(picks);
+  const known = knownAbilities(state);
+  const equipped = equippedAbility(state);
+
+  const toggle = (id: string) => {
+    setLast(null);
+    setPicks((cur) => {
+      if (cur.includes(id)) return cur.filter((x) => x !== id);
+      if (cur.length >= POUR_SLOTS) return cur;
+      return [...cur, id];
+    });
+  };
+
+  const pour = () => {
+    const before = state.drills.alloys.length;
+    const r = dispatch({ type: 'forgeDrillAlloy', materialIds: picks });
+    if (!r.ok) { setLast({ ok: false, text: r.reason ?? 'The pour would not take' }); return; }
+    const data = r.data as { alloy: string | null; known?: boolean; reason?: string } | undefined;
+    if (!data?.alloy) {
+      setLast({ ok: false, text: data?.reason ?? 'Slag.' });
+    } else {
+      const def = ABILITY_BY_ID.get(data.alloy)!;
+      const fresh = state.drills.alloys.length > before || !data.known;
+      setLast({ ok: true, text: `${fresh ? 'It took — ' : 'Poured again — '}${def.name}. ${def.effect}` });
+    }
+    setPicks([]);
+  };
+
+  return (
+    <div className="panel p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[#8fd8c0]">Drill alloys</span>
+        <span className="tnum text-[10px] text-cave-400">{known.length} known</span>
+      </div>
+      <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+        Pour two or three materials together and the drill bay takes whatever behaviour the mix
+        sets into. Nobody wrote down which mixes make what — the traits are the clue.
+      </p>
+
+      {/* PICK — the pool is everything you actually hold, traits on the card. */}
+      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">
+        In the crucible · {picks.length}/{POUR_SLOTS}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {picks.length === 0 && <span className="text-[11px] italic text-cave-600">Nothing yet.</span>}
+        {picks.map((id, n) => (
+          <button
+            key={`${id}-${n}`}
+            className="rounded border border-lamp-500/50 bg-lamp-500/10 px-1.5 py-0.5 text-[10px] text-lamp-200"
+            title="Take it back out"
+            onClick={() => toggle(id)}
+          >
+            {materialDef(id).name} ✕
+          </button>
+        ))}
+      </div>
+
+      {/* HINT — reads the MIX, never the answer. */}
+      {hint && (
+        <p className="mt-1.5 rounded border border-cave-800 px-2 py-1.5 text-[11px] italic leading-snug text-[#c7a35a]">
+          {hint}
+        </p>
+      )}
+
+      <button
+        className={`btn mt-2 w-full py-1 text-[11px] ${picks.length > 0 && canPay ? 'btn-warm' : ''}`}
+        disabled={picks.length === 0 || !canPay}
+        title={canPay ? `Pour — costs ${ALLOY_POUR_COST} ${convName} and the materials` : `Wants ${ALLOY_POUR_COST} ${convName}`}
+        onClick={pour}
+      >
+        Pour the alloy · {ALLOY_POUR_COST} {convName}
+      </button>
+      {last && (
+        <p className={`mt-1 text-[11px] leading-snug ${last.ok ? 'text-[#8fd8c0]' : 'text-cave-400'}`}>{last.text}</p>
+      )}
+
+      {/* THE POOL you can draw from. Traits are shown because a trait is a
+          property, not a solution (traits.ts rule 3) — this is the reasoning. */}
+      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">What you hold</div>
+      <div className="mt-1 max-h-44 space-y-1 overflow-y-auto scroll-thin">
+        {owned.length === 0 && (
+          <p className="text-[11px] italic text-cave-600">Nothing in the hold to pour. Dig something up.</p>
+        )}
+        {owned.map((mm) => (
+          <button
+            key={mm.id}
+            className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left transition-colors ${
+              picks.includes(mm.id) ? 'border-lamp-500/50 bg-cave-800' : 'border-cave-800 hover:bg-cave-800'
+            }`}
+            disabled={!picks.includes(mm.id) && picks.length >= POUR_SLOTS}
+            onClick={() => toggle(mm.id)}
+          >
+            <MaterialIcon id={mm.id} size={16} />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-cave-200">{mm.name}</span>
+            <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+              {traitsOf(mm.id).join(' · ')}
+            </span>
+            <span className="tnum shrink-0 text-[10px] text-cave-500">×{materialCount(state, mm.id)}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* WHAT YOU HAVE MADE. Nothing appears here until it has been poured
+          once — the list IS the discovery record. */}
+      {known.length > 0 && (
+        <>
+          <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">Made</div>
+          {known.map((a) => {
+            const on = equipped?.id === a.id;
+            return (
+              <div key={a.id} className={`mt-1 rounded border px-2 py-1.5 ${on ? 'border-[#8fd8c0]/50 bg-[#8fd8c0]/5' : 'border-cave-800'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-[12px] font-semibold ${on ? 'text-[#8fd8c0]' : 'text-cave-200'}`}>{a.name}</span>
+                  <button
+                    className={`btn shrink-0 px-2 py-0.5 text-[10px] ${on ? 'btn-warm' : ''}`}
+                    onClick={() => dispatch({ type: 'equipDrillAlloy', id: on ? null : a.id })}
+                  >
+                    {on ? 'Fitted' : 'Fit it'}
+                  </button>
+                </div>
+                <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{a.effect}</div>
+                <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{a.line}</div>
+              </div>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

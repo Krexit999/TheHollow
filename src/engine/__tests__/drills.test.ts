@@ -1,21 +1,21 @@
 /**
- * THE FACE CLUSTER (v21) — the Drill Bay and the shared AFFINITY mechanism, at the
- * engine level. The guarantees: affinity is slow, capped, never decays, and never
- * touches dustYield (pillar 2); wear accrues only from live striking and a broken
- * drill limps rather than stops (pillar 1); heads and bits configure a drill.
+ * THE DRILL BAY and the shared AFFINITY mechanism, at the engine level.
+ *
+ * A.53 STRIPPED the configuration layer these tests used to cover — heads,
+ * bits, wear, repair, the shared feed, the seam and the grain. What survived
+ * is what a dumb auto-miner needs: it mines, it learns the shell it works, and
+ * affinity stays slow, capped, never-decaying and off dustYield (pillar 2).
+ * The abilities that replaced the configuration layer are covered in
+ * drill-alloys.test.ts.
  */
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { Engine, EngineCtx, GameState } from '../types';
-import { getCurrency } from '../resources';
 import { ModifierCache, computeBucket, breakdown } from '../modifiers';
 import {
   affinityLevel, affinityMult, logImplementUse, AFFINITY_MAX_BONUS,
 } from '../systems/affinity';
-import {
-  tickDrills, drillPower, newDrill, drillBroken, drillCondition, BROKEN_FLOOR, drillRepairCost,
-} from '../systems/drills';
-import { drillConfig } from '../content/drillParts';
+import { tickDrills, drillPower, newDrill } from '../systems/drills';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 
 const nullCtx: EngineCtx = { emit() {}, dirty() {} };
@@ -83,73 +83,37 @@ describe('affinity — pillar 2 (drillPower, not dustYield)', () => {
   });
 });
 
-describe('drills — breakable (foreseeable, repairable, idle-safe)', () => {
-  it('wear accrues from live striking and shows a condition before it breaks', () => {
-    const { s } = fresh();
-    const state = s();
-    const mods = new ModifierCache();
-    state.drills.bayBuilt = true;
-    state.drills.units = [newDrill('Grinder')];
-    for (let i = 0; i < state.face.cells.length; i++) state.face.cells[i] = 8;
-    expect(drillCondition(state.drills.units[0]!)).toBe('ok');
-    for (let t = 0; t < 2000; t++) { tickDrills(state, mods, nullCtx, 0.5); state.face.cells.fill(8); }
-    expect((state.drills.units[0]!.wear ?? 0)).toBeGreaterThan(0);
-  });
-
-  it('a broken drill limps at a floor rather than stopping (pillar 1)', () => {
-    const { s } = fresh();
-    const mods = new ModifierCache();
-    const drill = newDrill('Nub');
-    const sound = drillPower(s(), mods, drill);
-    drill.wear = 1;
-    expect(drillBroken(drill)).toBe(true);
-    const broken = drillPower(s(), mods, drill);
-    expect(broken).toBeCloseTo(sound * BROKEN_FLOOR, 5);
-    expect(broken).toBeGreaterThan(0); // never zero — idle income never craters
-  });
-
-  it('repair costs the shell converted currency and restores the drill', () => {
+describe('drills — furniture, not a configuration screen (A.53)', () => {
+  it('mines with no configuration of any kind', () => {
     const { engine, s } = fresh();
-    const state = s();
-    state.drills.bayBuilt = true;
-    state.drills.units = [newDrill('Bess')];
-    state.drills.units[0]!.wear = 0.8;
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'brick', amount: 10000 });
-    const cost = drillRepairCost(state.drills.units[0]!);
-    const before = getCurrency(state, 'brick');
-    const r = engine.dispatch({ type: 'repairDrill', index: 0 });
-    expect(r.ok).toBe(true);
-    expect(state.drills.units[0]!.wear).toBe(0);
-    expect(getCurrency(state, 'brick').toNumber()).toBeCloseTo(before.toNumber() - cost, 2);
+    const st = s();
+    st.drills.bayBuilt = true;
+    st.drills.units.push(newDrill('Bess'));
+    st.face.cells = st.face.cells.map(() => 8);
+    const before = st.totals['dust']?.toNumber() ?? 0;
+    tickDrills(st, new ModifierCache(), nullCtx, 20);
+    expect((st.totals['dust']?.toNumber() ?? 0)).toBeGreaterThan(before);
+    void engine;
   });
-});
 
-describe('drills — configured by head + bit', () => {
-  it('a fitted head sets the targeting behaviour and stat lean', () => {
-    const drill = newDrill('Maulie');
-    expect(drillConfig(drill).configured).toBe(false);
-    drill.head = 'maul';
-    const cfg = drillConfig(drill);
-    expect(cfg.configured).toBe(true);
-    expect(cfg.behavior).toBe('fullest');
-    expect(cfg.powerMult).toBeGreaterThan(1); // the Maul hits harder, slower
-    expect(cfg.speedMult).toBeLessThan(1);
+  it('a drill carries nothing to fiddle with — level, name, and a memory', () => {
+    const d = newDrill('Bess') as unknown as Record<string, unknown>;
+    expect(Object.keys(d).sort()).toEqual(['lastCell', 'level', 'name', 'timer', 'use']);
   });
 
   it('renaming makes a drill an individual', () => {
     const { engine, s } = fresh();
     s().drills.bayBuilt = true;
-    s().drills.units = [newDrill('Bess')];
-    engine.dispatch({ type: 'renameDrill', index: 0, name: 'Old Faithful' });
-    expect(s().drills.units[0]!.name).toBe('Old Faithful');
+    s().drills.units.push(newDrill());
+    engine.dispatch({ type: 'renameDrill', index: 0, name: '  Gnash  ' });
+    expect(s().drills.units[0]!.name).toBe('Gnash');
   });
 });
-
-describe('save v21 — implements gain history', () => {
-  it('migrates tools and drills to carry use-history, wear, and names', () => {
+describe('the save chain, v21 through A.53', () => {
+  it('gives implements a history, then strips the configuration layer back off', () => {
     const payload = {
       version: 20, savedAtMs: 0,
-      state: { forge: { tools: [{ id: 0 }] }, drills: { units: [{ level: 0, behavior: 'fullest', timer: 0, lastCell: 0 }, {}] } },
+      state: { forge: { tools: [{ id: 0 }] }, drills: { units: [{ level: 0, timer: 0, lastCell: 0 }, {}] } },
     } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
@@ -157,7 +121,18 @@ describe('save v21 — implements gain history', () => {
     const st = out.state as { forge: { tools: Array<Record<string, unknown>> }; drills: { units: Array<Record<string, unknown>> } };
     expect(st.forge.tools[0]!['use']).toEqual({});
     expect(st.drills.units[0]!['use']).toEqual({});
-    expect(st.drills.units[0]!['wear']).toBe(0);
     expect(typeof st.drills.units[0]!['name']).toBe('string');
+    // A.53 (v31): wear, heads, bits and behaviour are gone from every chassis,
+    // and the bay-wide bookkeeping with them. The DRILLS themselves survive.
+    expect(st.drills.units).toHaveLength(2);
+    for (const u of st.drills.units) {
+      for (const gone of ['wear', 'head', 'bit', 'behavior']) expect(u[gone]).toBeUndefined();
+    }
+    const bay = (out.state as { drills: Record<string, unknown> }).drills;
+    for (const gone of ['supply', 'synergiesFound', 'seam']) expect(bay[gone]).toBeUndefined();
+    // ...and no ability is handed out: an alloy is DISCOVERED, and granting one
+    // would spend the discovery on the player's behalf.
+    expect(bay['alloys']).toEqual([]);
+    expect(bay['equipped']).toBeNull();
   });
 });

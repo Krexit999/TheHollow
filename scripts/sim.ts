@@ -2065,7 +2065,7 @@ function main(): void {
     s.forge.built = true;
     s.kiln.built = true;
     s.drills.bayBuilt = true;
-    for (let i = 0; i < 8; i++) s.drills.units.push({ level: 8, behavior: 'fullest', timer: 0, lastCell: 0 });
+    for (let i = 0; i < 8; i++) s.drills.units.push({ level: 8, timer: 0, lastCell: 0 });
     s.forge.tools.push({
       id: 97, recipeId: 'slagbreaker', name: 'Slagbreaker', tier: 13, purity: 65,
       chipPower: 34, strikePower: 420, sockets: ['cinderquartz', null, null], alloys: [null, null],

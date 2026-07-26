@@ -91,7 +91,7 @@ describe('growth: not acting is a strategy', () => {
   it('drills never harvest a vined cell (automation must not trash a garden)', () => {
     const { engine, s, mods } = verdant();
     s.drills.bayBuilt = true;
-    s.drills.units.push({ level: 0, behavior: 'fullest', timer: 0, lastCell: 0 });
+    s.drills.units.push({ level: 0, timer: 0, lastCell: 0 });
     const cap = cellCap(s, mods);
     s.face.cells.fill(0.2);
     s.face.cells[3] = cap; // fullest — but vined

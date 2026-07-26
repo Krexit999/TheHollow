@@ -29,7 +29,7 @@ function atFloor(): { engine: Engine; s: GameState } {
   s.upgrades['blade'] = 40;
   s.kiln.built = true;
   s.drills.bayBuilt = true;
-  s.drills.units.push({ level: 3, behavior: 'fullest', timer: 0, lastCell: 0 });
+  s.drills.units.push({ level: 3, timer: 0, lastCell: 0 });
   s.lattice.unlocked = true;
   s.lattice.discovered.push('triangle.isolated.uniform');
   s.collapse.nodes['grit'] = 5;
@@ -176,7 +176,7 @@ describe('polarity chains', () => {
     engine.dispatch({ type: 'chip', cell: 0 });
     const chain = s.polarity.chain;
     s.drills.bayBuilt = true;
-    s.drills.units.push({ level: 0, behavior: 'fullest', timer: 0, lastCell: 0 });
+    s.drills.units.push({ level: 0, timer: 0, lastCell: 0 });
     engine.tick(3); // drills strike; under the 4s manual timeout
     expect(s.polarity.chain).toBe(chain);
   });

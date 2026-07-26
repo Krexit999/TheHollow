@@ -251,7 +251,7 @@ describe('drops ride the ceiling (pillar 2)', () => {
     const { engine, s } = fresh();
     s.drills.bayBuilt = true;
     for (let i = 0; i < 12; i++) {
-      s.drills.units.push({ level: 5, behavior: 'fullest', timer: 0, lastCell: 0 });
+      s.drills.units.push({ level: 5, timer: 0, lastCell: 0 });
     }
     // Two hours: one is within binomial flake range at depth-0 drop odds.
     engine.dispatch({ type: 'debug', op: 'warp', seconds: 7200 });

@@ -110,7 +110,12 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
     if (!SURVIVES_BREACH.has(def.id)) state.upgrades[def.id] = 0;
   }
   state.kiln = { built: false, heat: 0, feeding: false, progress: D(0) };
-  state.drills = { bayBuilt: false, units: [], supply: 0, synergiesFound: [] };
+  // The BAY is scaffolding and goes with the rest of it. What you LEARNED
+  // about drill alloys does not: knowing a mix makes an ability is knowledge,
+  // and knowledge crosses a Breach the way every other codex does. The alloy
+  // itself was physical and is gone — re-pour it from this world's materials
+  // (every signature is forgeable in every shell, which is the reach rule).
+  state.drills = { bayBuilt: false, units: [], alloys: state.drills.alloys ?? [], equipped: null };
   state.assay.active = null;
   state.assay.boostChips = 0;
   state.assay.reportDepth = null;

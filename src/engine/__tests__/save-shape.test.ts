@@ -19,7 +19,7 @@ function damagedSave(): string {
   const s = engine.getState() as GameState & Record<string, any>;
   // Give it a drill so the user's exact sequence is replayable after load.
   s.drills.bayBuilt = true;
-  (s.drills.units as unknown[]).push({ level: 5, behavior: 'fullest', timer: 0, lastCell: 0 });
+  (s.drills.units as unknown[]).push({ level: 5, timer: 0, lastCell: 0 });
   s.currencies['brick'] = s.currencies['brick']!.add(10000);
   const raw = serialize(engine.getState(), 0);
   // Damage the payload the way version drift does: delete nested slices of
@@ -59,7 +59,9 @@ describe('hydrate fills every missing slice from the default shape', () => {
 
     // The reported sequence, on the loaded save.
     expect(engine.dispatch({ type: 'upgradeDrill', index: 0 }).ok).toBe(true);
-    expect(engine.dispatch({ type: 'fitDrillHead', index: 0, head: 'auger' }).ok).toBe(true);
+    // A.53: the reported sequence's second step was fitting a head; heads are
+    // gone, so the equivalent bay verb is the one that replaced them.
+    expect(engine.dispatch({ type: 'equipDrillAlloy', id: null }).ok).toBe(true);
     expect(() => engine.tick(5)).not.toThrow();
     // And chipping still pays afterward.
     const before = s.currencies['dust']!.toNumber();

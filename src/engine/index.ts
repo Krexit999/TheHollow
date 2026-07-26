@@ -29,7 +29,8 @@ import { handleAction } from './actions';
 import { allCraftSystems } from './craft';
 import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
-import { tickDrills, readSeam, noteSynergies } from './systems/drills';
+import { tickDrills } from './systems/drills';
+import { tickAlloys } from './systems/drillAlloys';
 import { tickAssay } from './systems/drops';
 import { tickCombat } from './combat/combat';
 import { tickGuild } from './guild/guild';
@@ -253,14 +254,8 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // case completes or a set forms — the beat has to notice. Two array
       // scans over ~20 cases and ~8 sets, once a second.
       noteMuseum(state, ctx);
-      // A.52 THE SEAM: read the live face once a second and cache it, so the
-      // heads' fit is against what the rock is doing NOW rather than what it
-      // was doing when the bay was solved. One pass over the cells; the panel
-      // and drillPower both read the cache, never recompute.
-      if (state.drills.bayBuilt) {
-        state.drills.seam = readSeam(state);
-        noteSynergies(state, ctx);
-      }
+      // THE SET (drill alloy) cools on the same one-second beat.
+      tickAlloys(state, 1);
       checkAchievements(state, ctx);
     }
   }

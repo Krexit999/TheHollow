@@ -10,22 +10,12 @@ import { lawFlag } from '../../engine/laws';
 import { cellCap, cellRegen, chipYield, dpsMax } from '../../engine/systems/face';
 import { kilnRate, kilnEfficiency, KILN_DUST_PER_BRICK, overstokeActive, overstokeReady, overstokeCost } from '../../engine/systems/kiln';
 import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '../../engine/content/kilnFuel';
-import {
-  drillInterval, drillPower, MAX_DRILLS, drillCondition, drillRepairCost,
-  bayDraw, baySupply, bayLoadFactor, bayStaleness, seamOf, headFit, FIT_LOW, FIT_HIGH,
-  bitGrainMult, grainWork, grainShare, GRAIN_SETTLE, recutCost,
-  BAY_SYNERGIES, activeSynergies,
-} from '../../engine/systems/drills';
-import { DRILL_HEADS, drillHead, drillDraw } from '../../engine/content/drillParts';
-import { affinityLevel, AFFINITY_MAX_BONUS } from '../../engine/systems/affinity';
+import { drillInterval, drillPower, MAX_DRILLS } from '../../engine/systems/drills';
+import { equippedAbility } from '../../engine/systems/drillAlloys';
 import { materialCount } from '../../engine/systems/forge';
-import { materialDef, MATERIALS } from '../../engine/materials';
-import { MaterialIcon } from './MaterialIcon';
-import type { DrillBehavior } from '../../engine';
-import type { SeamProfile } from '../../engine/types';
 import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
-import { Amount, BucketInfo, BUCKET_NAME } from './shared';
+import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
@@ -307,41 +297,17 @@ const KILN_PREVIEW: PreviewStat[] = [
 // Drills
 // ---------------------------------------------------------------------------
 
-const BEHAVIOR_META: Record<DrillBehavior, { label: string; hint: string; color: string; glyph: string }> = {
-  fullest: { label: 'Rich', hint: 'Strikes the fullest cell', color: '#fbbf24', glyph: '◆' },
-  sweep: { label: 'Sweep', hint: 'Marches across the face in order', color: '#5eead4', glyph: '➤' },
-  random: { label: 'Roam', hint: 'Wanders at random', color: '#c4b5fd', glyph: '∴' },
-  chain: { label: 'Seam', hint: 'Follows adjacent charged cells', color: '#fb7185', glyph: '∞' },
-};
-
-/** A labelled 0..1 bar — the seam reads as three of these. */
-function Gauge({ label, value, note, color = '#c7a35a' }: {
-  label: string; value: number; note: string; color?: string;
-}) {
-  return (
-    <div className="min-w-0 flex-1">
-      <div className="flex items-baseline justify-between gap-1">
-        <span className="text-[9px] uppercase tracking-[0.12em] text-cave-500">{label}</span>
-        <span className="tnum text-[9px] text-cave-400">{Math.round(value * 100)}%</span>
-      </div>
-      <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-cave-800">
-        <div className="h-full rounded-full" style={{ width: `${Math.round(value * 100)}%`, background: color }} />
-      </div>
-      <div className="mt-0.5 truncate text-[9px] text-cave-600" title={note}>{note}</div>
-    </div>
-  );
-}
-
 /**
- * THE BAY (A.52) — a shared feed, a live read of the rock, and whatever the
- * arrangement as a whole has turned out to be worth.
+ * THE DRILL BAY (A.53) — buy more, they mine. That is the whole panel.
  *
- * Everything here is a READOUT of state the engine already computes. The panel
- * deliberately shows the FIT of every head against the current seam rather
- * than making the player infer it: the puzzle is meant to be solvable by
- * reasoning, not by trial (SYSTEM_IMPROVEMENTS: "legible tradeoffs, reason
- * don't guess"). What is NOT shown is any arrangement that has not fired yet
- * — those are found, never listed (pillar 5).
+ * A.52 put a shared feed, a seam reading, a bit grain and five head archetypes
+ * on this screen; before that, v21 put heads, bits and a wear bar on it. All of
+ * it is gone. The bay is the IDLE layer, and every knob here was a chore on the
+ * screen a player is least often looking at.
+ *
+ * What the bay DOES is now decided at the Forge: one drill alloy, equipped
+ * bay-wide, granting an ability you can watch happen on the face. This panel
+ * only says which one is running and what it does.
  */
 export function DrillsPanel() {
   const state = useGame((s) => s.state);
@@ -358,261 +324,90 @@ export function DrillsPanel() {
   }
 
   const countDef = allUpgrades().find((u) => u.id === 'drillCount')!;
-  const feedDef = allUpgrades().find((u) => u.id === 'baySupply')!;
-  const draw = bayDraw(state);
-  const supply = baySupply(state);
-  const load = bayLoadFactor(state);
-  const seam = seamOf(state);
-  const stale = bayStaleness(state);
-  const found = BAY_SYNERGIES.filter((s) => state.drills.synergiesFound.includes(s.id));
-  const live = new Set(activeSynergies(state).map((s) => s.id));
-
-  return (
-    <div className="space-y-2">
-      {/* THE FEED — one budget, and what the bay is currently asking of it. */}
-      <div className="panel p-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-cave-300">The feed</span>
-          <span className="tnum text-[10px] text-cave-400">
-            <span className={draw > supply ? 'text-amber-400' : 'text-cave-200'}>{draw.toFixed(1)}</span>
-            {' / '}{supply.toFixed(0)} drawn · {state.drills.units.length}/{MAX_DRILLS} chassis
-          </span>
-        </div>
-        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-cave-800">
-          <div
-            className="h-full rounded-full transition-[width]"
-            style={{
-              width: `${Math.min(100, (draw / Math.max(1, supply)) * 100)}%`,
-              background: draw > supply ? '#e08a4a' : '#9ab87a',
-            }}
-          />
-        </div>
-        <p className="mt-1 text-[10px] leading-snug text-cave-500">
-          {draw > supply
-            ? <span className="text-amber-400">Browning out — every drill is running at {Math.round(load * 100)}% until the feed catches up, or something comes off.</span>
-            : `Headroom for ${(supply - draw).toFixed(1)} more draw. A heavier head or a finer bit takes it out of what the rest can have.`}
-        </p>
-        <div className="mt-2"><UpgradeRow def={feedDef} /></div>
-      </div>
-
-      {/* THE SEAM — what the rock is doing, and what a re-solve is worth. */}
-      <div className={`panel p-3 ${stale.gain > 0.04 ? 'border-lamp-500/40' : ''}`}>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-cave-300">The seam</span>
-          <span className="tnum text-[10px] text-cave-400">fit {Math.round(stale.now * 100)}%</span>
-        </div>
-        <div className="mt-1.5 flex gap-3">
-          <Gauge label="Spread" value={seam.spread} note={seam.spread > 0.6 ? 'even across the face' : 'concentrated in a few cells'} />
-          <Gauge label="Cluster" value={seam.cluster} note={seam.cluster > 0.6 ? 'rich cells touching' : 'rich cells scattered'} />
-          <Gauge label="Hardness" value={seam.hardness} note={seam.hardness > 0.6 ? 'deep and hard' : 'near the roof'} />
-        </div>
-        <p className="mt-1.5 text-[10px] leading-snug text-cave-500">
-          {stale.gain > 0.04
-            ? <span className="text-lamp-300">The rock has turned under this bay. Re-fitting heads for what it is doing now is worth about {Math.round(stale.gain * 100)}% more.</span>
-            : 'The heads suit what the face is doing. It will not stay that way as you go down.'}
-        </p>
-      </div>
-
-      {/* WHAT THE BAY AS A WHOLE TURNED OUT TO BE. Only what has fired. */}
-      {found.length > 0 && (
-        <div className="panel p-3">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#9ab87a]">The bay together</span>
-            <span className="tnum text-[10px] text-cave-400">{live.size}/{found.length} holding</span>
-          </div>
-          {found.map((s) => (
-            <div key={s.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${live.has(s.id) ? 'border-[#9ab87a]/40 bg-[#9ab87a]/5' : 'border-cave-800 opacity-60'}`}>
-              <div className="flex items-baseline justify-between gap-2">
-                <span className={`text-[12px] font-semibold ${live.has(s.id) ? 'text-[#9ab87a]' : 'text-cave-400'}`}>{s.name}</span>
-                <span className="shrink-0 text-[10px] text-cave-500">
-                  {live.has(s.id)
-                    ? <span className="text-lamp-400">+{Math.round(s.bonus * 100)}% {BUCKET_NAME[s.bucket]}</span>
-                    : 'not holding'}
-                </span>
-              </div>
-              <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{s.line}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {state.drills.units.length < MAX_DRILLS && <UpgradeRow def={countDef} />}
-      <div className="space-y-1.5">
-        {state.drills.units.map((unit, i) => (
-          <DrillRow key={i} state={state} m={m} unit={unit} i={i} seam={seam} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const CONDITION_META: Record<string, { label: string; color: string }> = {
-  ok: { label: 'Sound', color: '#9ab87a' },
-  strained: { label: 'Strained', color: '#d9b64a' },
-  failing: { label: 'Failing', color: '#e08a4a' },
-  broken: { label: 'BROKEN', color: '#e0604a' },
-};
-
-/** One drill — an individual: name, condition, affinity, and how it is configured. */
-function DrillRow({ state, m, unit, i, seam }: {
-  state: GameState; m: ModifierCache; unit: GameState['drills']['units'][number]; i: number; seam: SeamProfile;
-}) {
-  const upCost = D(5).mul(Math.pow(1.25, unit.level));
-  const behavior = drillHead(unit.head)?.behavior ?? unit.behavior;
-  const meta = BEHAVIOR_META[behavior];
-  const cond = drillCondition(unit);
-  const cm = CONDITION_META[cond]!;
-  const wear = unit.wear ?? 0;
-  const shell = currentShell(state);
-  const aff = affinityLevel(unit, shell.id);
-  // Both upgrade AND repair are paid in the shell's converted currency (Brick in
-  // Loam, its own coin deeper). The old code checked BRICK for the upgrade, so
-  // past Loam the button read the wrong purse. Name it, and check the real one.
   const conv = convCurrencyId(state);
   const convName = currencyDef(conv).name;
   const convColor = currencyDef(conv).color;
-  const canUp = unit.level < 25 && getCurrency(state, conv).gte(upCost);
-  const repairCost = D(drillRepairCost(unit));
-  const canRepair = wear > 0 && getCurrency(state, conv).gte(repairCost);
-  // Materials the player actually holds — the pool a bit can be cut from.
-  const ownedBits = MATERIALS.filter((mm) => materialCount(state, mm.id) > 0).slice(0, 40);
-
-  // A.52 per-drill readouts: what it asks of the feed, how its head suits the
-  // rock, and what shape its bit has taken.
-  const draw = drillDraw(unit);
-  const fit = headFit(unit.head, seam);
-  const grain = bitGrainMult(unit, shell.id);
-  const settled = unit.bit ? grainWork(unit.bit) >= GRAIN_SETTLE : false;
-  const share = unit.bit ? grainShare(unit.bit, shell.id) : 0;
-  const recut = D(recutCost(unit));
-  const canRecut = settled && getCurrency(state, conv).gte(recut);
+  const ability = equippedAbility(state);
+  const throughput = state.drills.units.reduce(
+    (sum, u) => sum + drillPower(state, m, u) / drillInterval(state, m, u), 0,
+  );
 
   return (
-    <div className="panel space-y-1.5 px-2.5 py-2">
-      <div className="flex items-center gap-2">
-        <span className="text-base" style={{ color: meta.color }} title={meta.hint}>{meta.glyph}</span>
-        <button
-          className="min-w-0 flex-1 text-left"
-          title="Rename this drill"
-          onClick={() => {
-            const name = window.prompt('Name this drill', unit.name ?? '')?.trim();
-            if (name !== undefined) dispatch({ type: 'renameDrill', index: i, name });
-          }}
-        >
-          <span className="truncate text-xs font-semibold text-cave-100">{unit.name ?? `Drill ${i + 1}`}</span>
-          <span className="tnum ml-1.5 text-[10px] font-normal text-cave-400">Lv {unit.level}</span>
-        </button>
-        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide" style={{ color: cm.color, background: `${cm.color}22` }}>{cm.label}</span>
-        <button
-          className={`btn shrink-0 px-2 py-1 text-[11px] ${canUp ? 'btn-warm' : ''}`}
-          disabled={!canUp}
-          title={unit.level >= 25 ? 'This drill is at its ceiling' : `Upgrade — costs ${fmtNum(upCost.toNumber(), 0)} ${convName}`}
-          onClick={() => dispatch({ type: 'upgradeDrill', index: i })}
-        >
-          {unit.level >= 25 ? 'Max' : <>▲ <Amount value={upCost} color={convColor} /> <span className="text-[9px] font-normal text-cave-400">{convName}</span></>}
-        </button>
+    <div className="space-y-2">
+      <div className="panel p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-cave-300">The bay</span>
+          <span className="tnum text-[10px] text-cave-400">
+            {state.drills.units.length}/{MAX_DRILLS} drills · {fmtNum(throughput, 1)} charge/s
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+          They work the fullest cell on their own and never need telling. What they DO to the
+          rock is decided at the Forge — one drill alloy, worn by the whole bay.
+        </p>
+        <div className="mt-1.5 flex items-center gap-2">
+          <BucketInfo bucket="drillSpeed"><span className="text-[10px] text-cave-400">Speed bonuses</span></BucketInfo>
+          <span className="text-cave-700">·</span>
+          <BucketInfo bucket="drillPower"><span className="text-[10px] text-cave-400">Bite bonuses</span></BucketInfo>
+        </div>
       </div>
 
-      <div className="tnum flex flex-wrap items-center gap-x-3 text-[10px] text-cave-400">
-        <span>{fmtNum(drillPower(state, m, unit), 1)} charge / {fmtNum(drillInterval(state, m, unit), 2)}s</span>
-        <span title="What this chassis asks of the shared feed">draw {draw.toFixed(2)}</span>
-        <span
-          title={`How well this head suits the seam right now (${FIT_LOW.toFixed(2)}–${FIT_HIGH.toFixed(2)})`}
-          style={{ color: fit >= 1.05 ? '#9ab87a' : fit <= 0.9 ? '#e08a4a' : undefined }}
-        >
-          fit ×{fit.toFixed(2)}
-        </span>
-        {aff > 0.005 && (
-          <span title={`This drill knows ${shell.name} — +${Math.round(aff * AFFINITY_MAX_BONUS * 100)}% power here`} style={{ color: '#c7a35a' }}>
-            knows {shell.name} {Math.round(aff * 100)}%
-          </span>
+      {/* WHAT THE BAY IS RUNNING. The alloy is made at the Forge; this is the
+          readout and the only place the bay says what it is doing. */}
+      <div className={`panel p-3 ${ability ? 'border-[#8fd8c0]/40' : ''}`}>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#8fd8c0]">The alloy</span>
+          <span className="text-[10px] text-cave-500">{ability ? 'running' : 'none fitted'}</span>
+        </div>
+        {ability ? (
+          <>
+            <div className="mt-1 text-[13px] font-semibold text-[#8fd8c0]">{ability.name}</div>
+            <div className="mt-0.5 text-[11px] leading-snug text-cave-300">{ability.effect}</div>
+            <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{ability.line}</div>
+          </>
+        ) : (
+          <p className="mt-1 text-[11px] italic leading-snug text-cave-500">
+            The drills run bare. Pour an alloy at the Forge and the whole bay takes its
+            behaviour — nothing here is required, and a bare bay mines perfectly well.
+          </p>
         )}
       </div>
 
-      {/* Wear + repair — a drill in trouble is visibly in trouble. */}
-      {wear > 0.001 && (
-        <div className="flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-cave-800">
-            <div className="h-full rounded-full transition-[width]" style={{ width: `${Math.round(wear * 100)}%`, background: cm.color }} />
-          </div>
-          <button
-            className={`min-h-[28px] shrink-0 rounded border px-2 text-[10px] ${canRepair ? 'border-lamp-500/50 text-lamp-200 hover:bg-cave-800' : 'border-cave-800 text-cave-500'}`}
-            disabled={!canRepair}
-            title={`Repair to pristine — costs ${fmtNum(repairCost.toNumber(), 0)} ${convName}`}
-            onClick={() => dispatch({ type: 'repairDrill', index: i })}
-          >
-            Repair <Amount value={repairCost} color={convColor} /> <span className="text-[9px] text-cave-400">{convName}</span>
-          </button>
-        </div>
-      )}
+      {state.drills.units.length < MAX_DRILLS && <UpgradeRow def={countDef} />}
 
-      {/* THE GRAIN — what shape the bit has taken, and the way back. */}
-      {unit.bit && settled && (
-        <div className="flex items-center gap-2 rounded border border-cave-800 px-2 py-1">
-          <span className="min-w-0 flex-1 text-[10px] leading-snug text-cave-400">
-            <span style={{ color: grain >= 1.02 ? '#9ab87a' : grain <= 0.95 ? '#e08a4a' : '#c7a35a' }}>
-              {grain >= 1.02 ? 'Shaped for here' : grain <= 0.95 ? 'Shaped for somewhere else' : 'Taking a shape'}
-            </span>
-            <span className="tnum"> ×{grain.toFixed(2)}</span>
-            <span className="text-cave-600"> · {Math.round(share * 100)}% of its work was in {shell.name}</span>
-          </span>
-          <button
-            className={`min-h-[28px] shrink-0 rounded border px-2 text-[10px] ${canRecut ? 'border-lamp-500/50 text-lamp-200 hover:bg-cave-800' : 'border-cave-800 text-cave-500'}`}
-            disabled={!canRecut}
-            title={`Grind the bit back to a flat edge — costs ${recut.toNumber()} ${convName}. It starts taking this world's shape from nothing.`}
-            onClick={() => dispatch({ type: 'recutBit', index: i })}
-          >
-            Re-cut <Amount value={recut} color={convColor} />
-          </button>
-        </div>
-      )}
-
-      {/* Configuration: a head (targeting archetype) and a bit (material). */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {!unit.head && (
-          <div className="flex gap-0.5">
-            {(Object.keys(BEHAVIOR_META) as DrillBehavior[]).map((b) => (
+      {/* One compact row per chassis: a name, a level, a buy button. */}
+      <div className="panel p-3">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-cave-300">On the rails</div>
+        {state.drills.units.map((unit, i) => {
+          const upCost = D(5).mul(Math.pow(1.25, unit.level));
+          const canUp = unit.level < 25 && getCurrency(state, conv).gte(upCost);
+          return (
+            <div key={i} className="mt-1 flex items-center gap-2 border-t border-cave-800 pt-1 first:border-t-0 first:pt-0">
               <button
-                key={b}
-                title={`${BEHAVIOR_META[b].label} — ${BEHAVIOR_META[b].hint}`}
-                className={`h-6 w-6 rounded border text-[11px] leading-none ${unit.behavior === b ? 'border-transparent bg-cave-700' : 'border-cave-700 opacity-40 hover:opacity-80'}`}
-                style={{ color: BEHAVIOR_META[b].color }}
-                onClick={() => dispatch({ type: 'setDrillBehavior', index: i, behavior: b })}
-              >{BEHAVIOR_META[b].glyph}</button>
-            ))}
-          </div>
-        )}
-        {/* Each head names its FIT against the live seam and its DRAW, so the
-            allocation is reasoned rather than guessed. */}
-        <Select
-          className="min-w-[6.5rem] flex-1"
-          ariaLabel="Drill head"
-          title="Fit a head — it sets how the drill targets, what it draws, and what rock it suits"
-          value={unit.head ?? ''}
-          onChange={(v) => dispatch({ type: 'fitDrillHead', index: i, head: v || null })}
-          options={[
-            { value: '', label: 'No head (behaviour)' },
-            ...DRILL_HEADS.map((h) => ({
-              value: h.id,
-              label: `${h.name} — fit ×${headFit(h.id, seam).toFixed(2)} · draw ${h.draw.toFixed(2)} · ${h.wants}`,
-            })),
-          ]}
-        />
-        <Select
-          className="min-w-[6.5rem] flex-1"
-          ariaLabel="Drill bit"
-          title="Cut a bit from a material — its traits tune power, speed, and wear, and it takes the shape of the rock it works"
-          value={unit.bit?.materialId ?? ''}
-          onChange={(v) => dispatch({ type: 'fitDrillBit', index: i, materialId: v || null })}
-          options={[
-            { value: '', label: 'No bit' },
-            ...(unit.bit && !ownedBits.some((b) => b.id === unit.bit!.materialId)
-              ? [{ value: unit.bit.materialId, label: `${materialDef(unit.bit.materialId).name} (fitted)` }]
-              : []),
-            ...ownedBits.map((b) => ({ value: b.id, label: `${b.name} ×${materialCount(state, b.id)}` })),
-          ]}
-        />
-        {unit.bit && <MaterialIcon id={unit.bit.materialId} size={16} />}
+                className="min-w-0 flex-1 text-left"
+                title="Rename this drill"
+                onClick={() => {
+                  const name = window.prompt('Name this drill', unit.name ?? '')?.trim();
+                  if (name !== undefined) dispatch({ type: 'renameDrill', index: i, name });
+                }}
+              >
+                <span className="truncate text-[11px] text-cave-200">{unit.name ?? `Drill ${i + 1}`}</span>
+                <span className="tnum ml-1.5 text-[10px] text-cave-500">Lv {unit.level}</span>
+              </button>
+              <span className="tnum shrink-0 text-[10px] text-cave-500">
+                {fmtNum(drillPower(state, m, unit), 1)} / {fmtNum(drillInterval(state, m, unit), 2)}s
+              </span>
+              <button
+                className={`btn shrink-0 px-2 py-1 text-[11px] ${canUp ? 'btn-warm' : ''}`}
+                disabled={!canUp}
+                title={unit.level >= 25 ? 'This drill is at its ceiling' : `Upgrade — costs ${fmtNum(upCost.toNumber(), 0)} ${convName}`}
+                onClick={() => dispatch({ type: 'upgradeDrill', index: i })}
+              >
+                {unit.level >= 25 ? 'Max' : <>▲ <Amount value={upCost} color={convColor} /></>}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

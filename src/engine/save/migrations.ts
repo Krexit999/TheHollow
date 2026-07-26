@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 30;
+export const SAVE_VERSION = 31;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -663,6 +663,30 @@ export const MIGRATIONS: Record<number, Migration> = {
     drills['supply'] ??= Math.max(0, Math.ceil((draw - 6) / 3));
     drills['synergiesFound'] ??= [];
     return { ...p, version: 30, state };
+  },
+
+  // v30 -> v31 — THE BAY GOES BACK TO BEING FURNITURE (A.53). Every knob the
+  // configuration layer added is stripped from each chassis, and the bay-wide
+  // bookkeeping goes with it. What a player had that MATTERED — the chassis
+  // themselves and their levels — is untouched, so nobody loses a drill.
+  //
+  // Nothing is granted in exchange: drill alloys are DISCOVERED, and handing
+  // an existing save a free ability would spend the discovery on its behalf.
+  30: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const drills = (state['drills'] ??= {}) as Record<string, unknown>;
+    for (const u of (drills['units'] ?? []) as Array<Record<string, unknown>>) {
+      delete u['head'];
+      delete u['bit'];
+      delete u['wear'];
+      delete u['behavior'];
+    }
+    delete drills['supply'];
+    delete drills['synergiesFound'];
+    delete drills['seam'];
+    drills['alloys'] ??= [];
+    drills['equipped'] ??= null;
+    return { ...p, version: 31, state };
   },
 };
 

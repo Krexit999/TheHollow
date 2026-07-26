@@ -13,6 +13,7 @@
 import { D } from '../decimal';
 import { maybeDropRelic, relicChanceForDepth } from './relics';
 import { lawFlag , sealed } from '../laws';
+import { attractDepthBonus } from './drillAlloys';
 import type { ModifierCache } from '../modifiers';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
@@ -94,6 +95,9 @@ export function rollForDrop(
   weight: number,
   /** The drill that struck, when a drill did — a relic remembers who found it. */
   by?: string,
+  /** Which cell was struck. THE CALL (drill alloy) reads it: a cell that has
+   *  gathered enough rolls its drop as if the seam there were deeper. */
+  cell?: number,
 ): void {
   // Sable's pages ride the same harvest rhythm as everything else —
   // surfaced while mining, never a modal (Phase 6).
@@ -107,7 +111,10 @@ export function rollForDrop(
   // THE PATIENT VEIN (law): a survey's mark never expires — chips unspent.
   if (state.assay.boostChips > 0 && !lawFlag(state, 'assayPersist')) state.assay.boostChips -= 1;
   if (Math.random() >= chance) return;
-  applyDrop(state, ctx, rollDrop(currentShell(state).id, state.depth));
+  // THE CALL rolls the table DEEPER for a cell that has gathered — richer
+  // rarities, same drop chance. Drops sit outside the income path, so this
+  // shifts what you find without touching the regen ceiling (pillar 2).
+  applyDrop(state, ctx, rollDrop(currentShell(state).id, state.depth + attractDepthBonus(state, cell)));
 }
 
 export { DRILL_DROP_FACTOR };

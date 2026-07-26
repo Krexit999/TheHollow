@@ -202,60 +202,25 @@ export interface AssayState {
 // Face
 // ---------------------------------------------------------------------------
 
-export type DrillBehavior = 'fullest' | 'sweep' | 'random' | 'chain';
-
+/**
+ * A DRILL IS FURNITURE (A.53). It has a level, a name, and a memory of the
+ * rock it has worked — nothing to configure. The head, the bit, the wear, the
+ * grain and the behaviour selector were all stripped when the bay went back to
+ * being the idle layer; what they were reaching for lives in DRILL ALLOYS now
+ * (content/drillAlloys.ts), one bay-wide ability forged at the Forge.
+ */
 export interface DrillState {
   /** Per-drill upgrade level (chip power + a little speed). */
   level: number;
-  behavior: DrillBehavior;
   /** Seconds accumulated toward the next strike. */
   timer: number;
-  /** Sweep cursor / chain anchor: last cell index this drill touched. */
+  /** Last cell index this drill touched — the face draws the arm reaching. */
   lastCell: number;
-  // --- THE FACE CLUSTER (v21) — a drill is an individual, not a slot number ---
   /** A name the player gave it. An individual, not "drill 3". */
   name?: string;
-  /** AFFINITY: use-history per shell — a drill that worked a shell hits it harder. */
+  /** AFFINITY: use-history per shell — a drill that worked a shell hits it
+   *  harder. Invisible and automatic; nothing to manage. */
   use?: Record<string, number>;
-  /** WEAR 0..1: strikes grind the head. At 1 the drill is BROKEN (idles) until
-   *  repaired. Accrues ONLY online — an away/idle player's drills never wear
-   *  (pillar 1). Visible long before it fails (pillar: never a surprise). */
-  wear?: number;
-  /** HEAD archetype id — determines targeting behaviour (a configured component,
-   *  not the old `behavior` enum). When set, it supersedes `behavior`. */
-  head?: string;
-  /**
-   * BIT material — reads traits the way tool parts do (edge → power, cadence →
-   * speed, heft → wear resistance). A drill is configured, not merely levelled.
-   *
-   * THE GRAIN (A.52): strikes shape the bit. Unlike the drill's `use` (which
-   * accumulates forever and never decays — switching an implement is never
-   * punished), a bit's grain is a SHAPE: sharpening it for one world is the
-   * same act as blunting it for the others, so this is read as a SHARE, not a
-   * total. That is what eventually asks a question — ride the specialised bit,
-   * or re-cut it flat for the world you are standing in.
-   */
-  bit?: { materialId: string; purity: number; grain?: Record<string, number> };
-}
-
-/**
- * WHAT THE ROCK IS DOING RIGHT NOW (A.52) — three readings off the live face,
- * recomputed on the one-second beat. Heads are fitted AGAINST this, so a bay
- * solved at depth 40 stops being the right bay at depth 300, and a shell whose
- * signature rearranges the board (Verdance vines, Ferrite's poles, Glassmere's
- * beam) turns the seam under a bay nobody touched.
- *
- * Derived, never authored: it is a cache of a pure read of `face.cells`.
- */
-export interface SeamProfile {
-  /** 0 = one hot cell and nothing else · 1 = perfectly even face. */
-  spread: number;
-  /** 0 = rich cells scattered · 1 = rich cells sit next to each other. */
-  cluster: number;
-  /** 0 = the shell's roof · 1 = its floor. Depth, normalised. */
-  hardness: number;
-  /** play-seconds it was taken, so the panel can say how fresh it is. */
-  at: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -861,18 +826,20 @@ export interface GameState {
     bayBuilt: boolean;
     units: DrillState[];
     /**
-     * THE FEED (A.52). Levels of bay supply bought. Every drill DRAWS on one
-     * shared feed, so fitting a heavy head and a fine bit on one chassis is
-     * taken out of what the rest can have. Over-drawing never stops the bay —
-     * it browns out, which leaves value on the table without blocking a player
-     * who never opens the panel (pillar 1).
+     * DRILL ALLOYS (A.53) — abilities forged at the Forge, equipped BAY-WIDE.
+     * One slot on purpose: a per-drill alloy would rebuild the configuration
+     * screen this phase tore out.
      */
-    supply: number;
-    /** Bay-wide arrangements the player has actually seen fire. Discovery, not
-     *  a list (pillar 5) — nothing is shown before it happens once. */
-    synergiesFound: string[];
-    /** Cached read of the live face; see SeamProfile. Absent until first tick. */
-    seam?: SeamProfile;
+    /** Ability ids the player has actually made. The discovery record —
+     *  nothing is shown before it has been forged once (pillar 5). */
+    alloys: string[];
+    /** The one in the bay, or null. */
+    equipped: string | null;
+    /** Per-cell marks the equipped ability writes, parallel to face.cells.
+     *  Owned by the alloy feature: created lazily, cleared on a swap, resized
+     *  with the face. THE SET writes `residue`; THE CALL writes `richness`. */
+    residue?: number[];
+    richness?: number[];
   };
 
   depth: number;
@@ -1189,7 +1156,6 @@ export type GameEvent =
   /** THE FACE CLUSTER (v20): a FIGURE traced in the rock. `first` on discovery. */
   | { type: 'figure'; id: string; name: string; first: boolean }
   /** THE FACE CLUSTER (v21): a drill wore through and dropped to its floor. */
-  | { type: 'drillBroke'; drill: number; name?: string }
   /** IMPLEMENTS AND INSCRIPTION (v22). */
   | { type: 'gemFused'; gemId: string; quality: number }
   | { type: 'bulkSalvaged'; count: number; units: number }
@@ -1236,7 +1202,9 @@ export type GameEvent =
   | { type: 'relicWoke'; uid: number; step: number }
   | { type: 'resonanceFound'; id: string }
   | { type: 'exhibitFormed'; id: string }
-  | { type: 'baySynergy'; id: string }
+  | { type: 'drillAlloyFound'; id: string }
+  /** THE ARC: a strike jumped from one cell to these. The face draws it. */
+  | { type: 'drillArc'; from: number; to: number[] }
   | { type: 'relicFused'; relicId: string; rarity: string }
   | { type: 'expeditionReturned'; crewId: string; haul: number }
   | { type: 'caseCompleted'; caseId: string }
@@ -1273,7 +1241,6 @@ export type GameAction =
   | { type: 'buyUpgrade'; id: string; count?: number | 'max' }
   | { type: 'setKilnFeeding'; feeding: boolean }
   | { type: 'upgradeDrill'; index: number }
-  | { type: 'setDrillBehavior'; index: number; behavior: DrillBehavior }
   | { type: 'descend' }
   | { type: 'descendMany'; count: number }
   | { type: 'climb'; to?: number }
@@ -1439,10 +1406,8 @@ export type GameAction =
   | { type: 'sweep'; cells: number[] }
   // --- THE FACE CLUSTER (v21) — Drill Bay -------------------------------
   | { type: 'renameDrill'; index: number; name: string }
-  | { type: 'repairDrill'; index: number }
-  | { type: 'recutBit'; index: number }
-  | { type: 'fitDrillHead'; index: number; head: string | null }
-  | { type: 'fitDrillBit'; index: number; materialId: string | null }
+  | { type: 'forgeDrillAlloy'; materialIds: string[] }
+  | { type: 'equipDrillAlloy'; id: string | null }
   | { type: 'setKilnFuel'; fuelId: string | null }
   | { type: 'overstoke' }
   // --- IMPLEMENTS AND INSCRIPTION (v22) ---------------------------------

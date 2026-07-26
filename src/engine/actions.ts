@@ -31,8 +31,7 @@ import {
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
 import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount, addMaterial } from './systems/forge';
-import { drillRepairCost, recutBit } from './systems/drills';
-import { drillHead } from './content/drillParts';
+import { forgeDrillAlloy, equipDrillAlloy } from './systems/drillAlloys';
 import { lightOverstoke } from './systems/kiln';
 import { kilnFuel } from './content/kilnFuel';
 import { crackGeode, startAssay } from './systems/drops';
@@ -195,13 +194,6 @@ export function handleAction(
       return { ok: true, data: { level: drill.level } };
     }
 
-    case 'setDrillBehavior': {
-      const drill = state.drills.units[action.index];
-      if (!drill) return { ok: false, reason: 'No such drill' };
-      drill.behavior = action.behavior;
-      return { ok: true };
-    }
-
     case 'renameDrill': {
       const drill = state.drills.units[action.index];
       if (!drill) return { ok: false, reason: 'No such drill' };
@@ -211,45 +203,17 @@ export function handleAction(
       return { ok: true };
     }
 
-    // THE RE-CUT (A.52). Grinding a bit back to a flat edge — the answer to a
-    // bit that has taken the shape of a world you have left. Priced in the
-    // shell's own converted currency, so it is payable wherever you are.
-    case 'recutBit': {
-      const r = recutBit(state, action.index);
+    // DRILL ALLOYS (A.53) — the two verbs that replaced the whole per-drill
+    // configuration layer. Pouring happens at the Forge; equipping is
+    // bay-wide, because one alloy for the whole bay is what keeps the drills
+    // furniture instead of a screen full of dropdowns.
+    case 'forgeDrillAlloy':
+      return forgeDrillAlloy(state, ctx, action.materialIds);
+
+    case 'equipDrillAlloy': {
+      const r = equipDrillAlloy(state, action.id);
       if (r.ok) ctx.dirty();
       return r;
-    }
-
-    case 'repairDrill': {
-      const drill = state.drills.units[action.index];
-      if (!drill) return { ok: false, reason: 'No such drill' };
-      if ((drill.wear ?? 0) <= 0) return { ok: false, reason: 'Nothing to repair' };
-      const cost = D(drillRepairCost(drill));
-      if (!spendCurrency(state, convCurrencyId(state), cost)) return { ok: false, reason: 'Cannot afford' };
-      drill.wear = 0;
-      ctx.dirty();
-      return { ok: true, data: { cost } };
-    }
-
-    case 'fitDrillHead': {
-      const drill = state.drills.units[action.index];
-      if (!drill) return { ok: false, reason: 'No such drill' };
-      if (action.head !== null && !drillHead(action.head)) return { ok: false, reason: 'No such head' };
-      drill.head = action.head ?? undefined;
-      ctx.dirty();
-      return { ok: true };
-    }
-
-    case 'fitDrillBit': {
-      const drill = state.drills.units[action.index];
-      if (!drill) return { ok: false, reason: 'No such drill' };
-      if (action.materialId === null) { drill.bit = undefined; ctx.dirty(); return { ok: true }; }
-      // A bit is cut from a material — fitting consumes one, reading its traits.
-      const purity = consumeMaterial(state, action.materialId, 1);
-      if (purity === null) return { ok: false, reason: 'None of that material to cut a bit from' };
-      drill.bit = { materialId: action.materialId, purity };
-      ctx.dirty();
-      return { ok: true, data: { purity } };
     }
 
     case 'descend':

@@ -59,7 +59,7 @@ function seeded() {
   const st = e.getState();
   st.kiln.built = true;
   st.drills.bayBuilt = true;
-  for (let i = 0; i < 6; i++) st.drills.units.push({ level: 8, behavior: 'fullest', timer: 0, lastCell: 0 });
+  for (let i = 0; i < 6; i++) st.drills.units.push({ level: 8, timer: 0, lastCell: 0 });
   e.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e6 });
   e.tick(120); // settle to steady state before measuring
   return e;

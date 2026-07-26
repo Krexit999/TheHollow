@@ -23,7 +23,6 @@ import { clearLaws, registerChallengeLaws } from '../laws';
 import { CHALLENGES } from './shell7/challenges';
 import { registerRelicModifiers } from '../systems/relics';
 import { registerMuseumModifiers } from '../systems/museum';
-import { registerBayModifiers } from '../systems/drills';
 import { registerConfluenceModifiers } from '../systems/confluence';
 import { registerChains } from './shell2/chains';
 import { registerTemperModifiers } from '../systems/tempering';
@@ -138,7 +137,6 @@ export function ensureContentLoaded(): void {
   registerSpiralContent();
   registerRelicModifiers();
   registerMuseumModifiers();
-  registerBayModifiers();
   registerConfluenceModifiers();
   registerChains();
   registerTemperModifiers();

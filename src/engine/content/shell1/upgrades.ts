@@ -195,26 +195,6 @@ export function registerShell1Upgrades(): void {
     description: (l) =>
       `Cut Motifs of rank ${3 + l > 5 ? 5 : 3 + l}. The Lattice accepts finer work only from finer tools (now up to rank ${2 + l}).`,
   });
-  /**
-   * THE FEED (A.52). The one budget every chassis draws on. Priced in CONV —
-   * the shell's own converted currency — so it is buyable in every world and
-   * cannot strand the bay after a Breach (the standing reach rule).
-   *
-   * It resets on nothing: the feed is infrastructure, like the chassis it runs.
-   */
-  registerUpgrade({
-    id: 'baySupply',
-    name: 'Bay Feed',
-    currency: 'CONV',
-    baseCost: D(10),
-    ratio: 1.3,
-    maxLevel: 40,
-    resetsOnCollapse: false,
-    visible: hasBay,
-    description: (l) =>
-      `Another run off the main. +3 to what the bay can feed (now ${6 + 3 * l}). Every drill draws on it; a bay that draws more than it is fed browns out rather than stopping.`,
-    onPurchase: (s, levels) => { s.drills.supply = (s.drills.supply ?? 0) + levels; },
-  });
   registerUpgrade({
     id: 'drillCount',
     name: 'Drill Chassis',
@@ -224,7 +204,7 @@ export function registerShell1Upgrades(): void {
     maxLevel: 23, // bay build grants the 1st; 24 total (locked cap)
     resetsOnCollapse: false,
     visible: hasBay,
-    description: () => 'Another chassis on the rails. Each drill is upgraded and targeted individually.',
+    description: () => 'Another chassis on the rails. They work the fullest cell without being told; the only decision is how many.',
     onPurchase: (s, levels) => {
       for (let i = 0; i < levels; i++) {
         if (s.drills.units.length < 24) s.drills.units.push(newDrill(defaultDrillName(s.drills.units.length)));

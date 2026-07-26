@@ -3,6 +3,7 @@ import { fmt, fmtDuration, currentShell } from '../../engine';
 import { ACHIEVEMENTS } from '../../engine/content/shell1/achievements';
 import { CHORD_BY_ID, PROGRESSION_BY_ID } from '../../engine/content/shell1/latticeChords';
 import { gemDef, materialDef } from '../../engine/materials';
+import { ABILITY_BY_ID } from '../../engine/content/drillAlloys';
 import { speciesDef } from '../../engine/combat/species';
 import { gearDef } from '../../engine/combat/gear';
 import { npcDef, REP_TIER_NAMES } from '../../engine/guild/npcs';
@@ -320,8 +321,9 @@ export function Toasts() {
         fresh.push({ key: entry.seq, title: 'Duplicates fused', body: 'Two of the same gem went into a cleaner cut for the type — never worse than before.', color: '#9ab8d0' });
       } else if (ev.type === 'bulkSalvaged') {
         fresh.push({ key: entry.seq, title: `${ev.count} tools broken down`, body: `The dead inventory became ${ev.units} units of material for the next thing you make.`, color: '#c98e4a' });
-      } else if (ev.type === 'drillBroke') {
-        fresh.push({ key: entry.seq, title: `${ev.name ?? 'A drill'} wore through`, body: 'Its head is spent — it limps at a fraction of its bite until you repair it. The Drill Bay shows the cost.', color: '#e0604a' });
+      } else if (ev.type === 'drillAlloyFound') {
+        const def = ABILITY_BY_ID.get(ev.id);
+        fresh.push({ key: entry.seq, title: `${def?.name ?? 'An alloy'} — it took`, body: def?.effect ?? 'The pour set into something with a behaviour of its own.', color: '#8fd8c0' });
       } else if (ev.type === 'figure') {
         // Only the FIRST time a figure is discovered gets a toast (a Codex moment,
         // a handful ever). Re-cutting the same shape pays silently — no spam.
