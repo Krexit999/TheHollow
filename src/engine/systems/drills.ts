@@ -191,7 +191,7 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
         const by = currentShell(state).drillByproduct;
         if (by) addCurrency(state, by.currencyId, D(take * by.perCharge));
         grantXP(state, mods, ctx, D(0.12 * (1 + 0.08 * state.depth) * (take / 8)));
-        rollForDrop(state, mods, ctx, take, DRILL_DROP_FACTOR);
+        rollForDrop(state, mods, ctx, take, DRILL_DROP_FACTOR, drill.name);
         rollForEncounter(state, ctx, take, ENCOUNTER_DRILL_FACTOR);
         ctx.emit({ type: 'drillStrike', drill: d, cell: hit, dust });
       }

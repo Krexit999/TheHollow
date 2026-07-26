@@ -165,6 +165,7 @@ describe('relics cannot punish bad luck', () => {
 
   it('fusion keeps the better of each affix and never destroys value', () => {
     const { s } = fresh();
+    s.relics.shards = 999; // A.46: a fusion costs shards now
     const a = addRelic(s, mintRelic(s, 'depth', 3));
     const b = addRelic(s, mintRelic(s, 'depth', 9));
     const bestBefore: Record<string, number> = {};
@@ -242,7 +243,7 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(26); // A.45 — the column's collapse traces
+    expect(SAVE_VERSION).toBe(27); // A.46 — relic shards + found resonances
     const st = out.state as Record<string, unknown>;
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();
@@ -398,6 +399,7 @@ describe('bonus definitions point at REAL modifier buckets', () => {
     expect(pv.gatedBy).toBeUndefined();                            // the cases opened it
 
     const before = { ...a.affixes };
+    s.relics.shards = 999; // A.46: a fusion costs shards now
     expect(fuseRelics(s, a.uid, b.uid).ok).toBe(true);
     const after = s.relics.held.find((r) => r.uid === a.uid)!;
 

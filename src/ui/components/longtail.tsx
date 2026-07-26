@@ -11,7 +11,11 @@ import {
 } from '../../engine/systems/spiral';
 import { CHALLENGES, availableChallenges, CHALLENGE_BY_ID } from '../../engine/content/shell7/challenges';
 import { GRID_MODULES, MODULE_BY_ID, GRID_W, GRID_CELLS, automationRate } from '../../engine/content/shell7/gridModules';
-import { RARITIES, RELIC_SLOTS, AFFIXES, SOURCE_BY_ID, fusionPreview } from '../../engine/systems/relics';
+import {
+  RARITIES, RELIC_SLOTS, AFFIXES, SOURCE_BY_ID, fusionPreview,
+  RELIC_HOLD_CAP, RESONANCES, activeResonances, rollFloor, shardValue,
+  wakingOf, wakingStep, wakingNeed, fusionCost,
+} from '../../engine/systems/relics';
 import { CASES, caseProgress, ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs } from '../../engine/systems/museum';
 import { HIRELING_BY_NPC } from '../../engine/guild/hirelings';
 import { keyDisplayName } from '../../engine/content/keyNames';
@@ -361,9 +365,52 @@ export function RelicsPanel() {
         <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
           What a relic can carry is decided by where you found it, so the hunt is steerable.
           Fusing keeps the better of each line and never destroys — a duplicate is always
-          progress, never waste.
+          progress, never waste. Carry one long enough and it wakes.
         </p>
+        {/* THE PILE IS THE RESOURCE. Shards, the cap, and the rising floor —
+            the three things that used to be invisible while the hold grew to
+            two hundred commons in an infinite scroll. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span className="text-cave-400">
+            Shards <span className="tnum font-semibold text-[#d8b8ee]">{Math.floor(state.relics.shards)}</span>
+          </span>
+          <span className="text-cave-500">·</span>
+          <span className={held.length >= RELIC_HOLD_CAP ? 'text-amber-400' : 'text-cave-400'}>
+            Hold <span className="tnum">{held.length}/{RELIC_HOLD_CAP}</span>
+            {held.length >= RELIC_HOLD_CAP && ' — the weakest render themselves down'}
+          </span>
+          {state.relics.floorBonus > 0 && (
+            <>
+              <span className="text-cave-500">·</span>
+              <span className="text-cave-400" title="Completion raises the MINIMUM roll. A late relic can never be worse than an early one.">
+                Floor <span className="tnum text-emerald-400/80">+{Math.round(rollFloor(state) * 100)}%</span>
+              </span>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* RESONANCE — found by wearing, never listed before it fires (pillar 5). */}
+      {(activeResonances(state).length > 0 || state.relics.resonancesFound.length > 0) && (
+        <div className="panel p-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[#d8b8ee]">They recognise each other</div>
+          {RESONANCES.filter((res) => state.relics.resonancesFound.includes(res.id)).map((res) => {
+            const on = activeResonances(state).some((a) => a.id === res.id);
+            return (
+              <div key={res.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${
+                on ? 'border-[#d8b8ee]/40 bg-[#d8b8ee]/5' : 'border-cave-800 opacity-60'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-[12px] font-semibold ${on ? 'text-[#d8b8ee]' : 'text-cave-400'}`}>{res.name}</span>
+                  <span className="shrink-0 text-[10px] text-cave-500">
+                    {on ? `+${Math.round((res.mult - 1) * 100)}% to those lines` : `wear ${res.need} from ${SOURCE_BY_ID.get(res.source)?.name ?? res.source}`}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{res.line}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {held.length === 0 && (
         <div className="panel p-3 text-[11px] italic text-cave-400">
@@ -385,12 +432,52 @@ export function RelicsPanel() {
               </span>
               <span className="shrink-0 text-[10px] text-cave-500">from {src?.name ?? r.source}</span>
             </div>
+            {/* WHERE IT CAME FROM. Every field was already in state at the
+                moment it was minted and used to be thrown away for a rarity
+                colour. Relics found before A.46 have no story and say nothing
+                — inventing one would be worse than the silence. */}
+            {r.found && (
+              <div className="mt-1 text-[10px] leading-snug text-cave-500">
+                Found at depth <span className="tnum text-cave-400">{r.found.depth}</span>
+                {' '}in {r.found.shell}, run <span className="tnum text-cave-400">{r.found.run + 1}</span>
+                {r.found.by && <> — turned up by <span className="text-cave-400">{r.found.by}</span></>}
+              </div>
+            )}
+
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-              {Object.entries(r.affixes).map(([k, v]) => (
-                <span key={k} className="tnum text-[11px] text-cave-400">
-                  {AFFIXES[k]?.label ?? k} <span className="text-lamp-400">+{Math.round(v * 100)}%</span>
+              {Object.entries(r.affixes).map(([k, v]) => {
+                const step = wakingStep(r);
+                const res = activeResonances(state)
+                  .filter((x) => x.source === r.source).reduce((m, x) => m * x.mult, 1);
+                const live = v * step.mult * res;
+                return (
+                  <span key={k} className="tnum text-[11px] text-cave-400">
+                    {AFFIXES[k]?.label ?? k} <span className="text-lamp-400">+{Math.round(live * 100)}%</span>
+                    {live > v + 1e-9 && (
+                      <span className="ml-0.5 text-[9px] text-cave-500">(base {Math.round(v * 100)}%)</span>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* WAKING — carried time, so an idle player wakes theirs at the
+                same rate simply by wearing them (pillar 1). A dormant relic
+                never advertises what it becomes (pillar 5). */}
+            <div className="mt-1.5">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className={`text-[10px] uppercase tracking-wider ${
+                  wakingOf(r) === 0 ? 'text-cave-500' : 'text-[#9fd8c0]'}`}>
+                  {wakingStep(r).name}
+                  {wakingStep(r).mult > 1 && <span className="ml-1 tnum">×{wakingStep(r).mult.toFixed(2)}</span>}
                 </span>
-              ))}
+                {wakingNeed(r) !== null && (
+                  <span className="tnum shrink-0 text-[9px] text-cave-500">
+                    {Math.ceil(wakingNeed(r)! / 60)}m carried to go
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{wakingStep(r).line}</div>
             </div>
             <div className="mt-2 flex gap-1.5">
               {!worn ? (
@@ -430,14 +517,36 @@ export function RelicsPanel() {
               >
                 {r.locked ? '🔒' : '🔓'}
               </button>
+              {/* RENDER IT DOWN. The manual version of what the cap does on its
+                  own — turns a relic you will not miss into the shards a fusion
+                  costs. Never offered for a locked or worn one; the engine
+                  refuses both, so this can never present a choice that fails. */}
+              {!worn && !r.locked && (
+                <button
+                  className="btn shrink-0 px-2 py-1 text-[11px]"
+                  title={`Render it down for ${shardValue(r)} shards. Gone for good.`}
+                  onClick={() => dispatch({ type: 'renderRelic', uid: r.uid })}
+                >
+                  ⚒ {shardValue(r)}
+                </button>
+              )}
             </div>
 
             {/* The chooser. Fusion eats a relic, so the player picks WHICH one
                 and sees what it would actually contribute first. */}
             {fusingInto === r.uid && (
               <div className="mt-2 space-y-1 border-t border-cave-700 pt-2">
-                <div className="text-[10px] uppercase tracking-widest text-cave-500">
-                  Feed into this one — the fed relic is consumed
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[10px] uppercase tracking-widest text-cave-500">
+                    Feed into this one — the fed relic is consumed
+                  </span>
+                  {/* The price, where the decision is. A fusion used to cost
+                      nothing but a spare, so the dominant play was to fuse
+                      everything into everything and the choice evaporated. */}
+                  <span className={`tnum shrink-0 text-[10px] ${
+                    state.relics.shards >= fusionCost(r) ? 'text-[#d8b8ee]' : 'text-amber-400'}`}>
+                    {fusionCost(r)} shards
+                  </span>
                 </div>
                 {/* A LOCKED relic is never offered as food — the engine refuses it
                     too, so this list can never present a choice that would fail. */}

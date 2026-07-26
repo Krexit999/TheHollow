@@ -8,7 +8,7 @@ import type { ModifierCache } from './modifiers';
 import { addCurrency, getCurrency, spendCurrency } from './resources';
 import { doSpiral, gridSlotCost, licenceCost, startChallenge, abandonChallenge } from './systems/spiral';
 import { GRID_CELLS } from './content/shell7/gridModules';
-import { equipRelic, fuseRelics, toggleRelicLock, RARITIES } from './systems/relics';
+import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from './systems/relics';
 import { donateToCase, claimExpedition, ROUTE_BY_ID , routeDurationMs } from './systems/museum';
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
@@ -776,6 +776,12 @@ export function handleAction(
         const keep = state.relics.held.find((x) => x.uid === action.keepUid);
         if (keep) ctx.emit({ type: 'relicFused', relicId: String(keep.uid), rarity: RARITIES[keep.rarity] ?? 'Common' });
       }
+      return r;
+    }
+
+    case 'renderRelic': {
+      const r = renderRelic(state, action.uid);
+      if (r.ok) ctx.dirty();
       return r;
     }
 

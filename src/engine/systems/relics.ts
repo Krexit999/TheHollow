@@ -157,11 +157,63 @@ export function mintRelic(state: GameState, sourceId: string, seed: number): Rel
   };
 }
 
+/**
+ * THE HOLD IS FINITE (A.46). Two hundred commons in an infinite scroll is not
+ * a collection, it is a chore with a scrollbar — and it made the correct play
+ * "fuse everything into everything", which is no play at all.
+ *
+ * The cap does NOT block a find. Losing the thing you just earned to a full
+ * bag is the worst possible reading of a reward, so the pile renders itself
+ * down instead: the weakest unlocked, unequipped relic becomes SHARDS, which
+ * are what fusion costs. The clutter turns into the currency that improves
+ * what you kept.
+ */
+export const RELIC_HOLD_CAP = 40;
+
+/** What a relic is worth rendered down. Rarity is most of it. */
+export function shardValue(relic: RelicInstance): number {
+  return (relic.rarity + 1) * 2 + relic.fusedFrom;
+}
+
+/** Weakest first: rarity, then affix weight, then age. Never locked or worn. */
+function renderCandidates(state: GameState): RelicInstance[] {
+  const worn = new Set(state.relics.equipped);
+  return state.relics.held
+    .filter((r) => !r.locked && !worn.has(r.uid))
+    .sort((a, b) => {
+      if (a.rarity !== b.rarity) return a.rarity - b.rarity;
+      const wa = Object.values(a.affixes).reduce((x, y) => x + y, 0);
+      const wb = Object.values(b.affixes).reduce((x, y) => x + y, 0);
+      if (wa !== wb) return wa - wb;
+      return a.uid - b.uid;
+    });
+}
+
+/** Render one relic down by hand. Locked and equipped are never touched. */
+export function renderRelic(state: GameState, uid: number): { ok: boolean; reason?: string; data?: { shards: number } } {
+  const r = state.relics.held.find((x) => x.uid === uid);
+  if (!r) return { ok: false, reason: 'No such relic' };
+  if (r.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
+  if (state.relics.equipped.includes(uid)) return { ok: false, reason: 'It is being carried. Take it off first' };
+  const gained = shardValue(r);
+  state.relics.held = state.relics.held.filter((x) => x.uid !== uid);
+  state.relics.shards += gained;
+  return { ok: true, data: { shards: gained } };
+}
+
 export function addRelic(state: GameState, relic: RelicInstance): RelicInstance {
   const held = { ...relic, uid: state.relics.nextUid };
   state.relics.nextUid += 1;
   state.relics.held.push(held);
   state.relics.found += 1;
+  // Over the cap, the pile renders itself — weakest first, never the locked,
+  // never what you are carrying, and never the one that just arrived.
+  while (state.relics.held.length > RELIC_HOLD_CAP) {
+    const victim = renderCandidates(state).find((r) => r.uid !== held.uid);
+    if (!victim) break; // every spare is locked or worn — keep the overflow
+    state.relics.shards += shardValue(victim);
+    state.relics.held = state.relics.held.filter((x) => x.uid !== victim.uid);
+  }
   return held;
 }
 
@@ -184,11 +236,30 @@ export function fusionGate(state: GameState, rarity: number): { need: number; ha
   return { need: MUSEUM_FUSION_NEED[rarity] ?? 0, have: state.museum.completed.length };
 }
 
+/**
+ * WHAT A FUSION COSTS (A.46). It used to cost nothing but a spare relic, so
+ * the dominant play was to fuse everything into everything and the choice
+ * evaporated. Shards price it — and note this is STRICTLY a superset of the
+ * old requirement: you still need the fed relic, and now also the shards. A
+ * fusion can only ever be harder to reach than it was, never easier, which is
+ * why this needs no re-baselining of anything the sim measures.
+ */
+export function fusionCost(keep: RelicInstance): number {
+  return (keep.rarity + 1) * 4 + keep.fusedFrom * 2;
+}
+
 export function fuseRelics(state: GameState, keepUid: number, feedUid: number): { ok: boolean; reason?: string } {
   if (keepUid === feedUid) return { ok: false, reason: 'A relic cannot be fused into itself' };
   const keep = state.relics.held.find((r) => r.uid === keepUid);
   const feed = state.relics.held.find((r) => r.uid === feedUid);
   if (!keep || !feed) return { ok: false, reason: 'No such relic' };
+  const cost = fusionCost(keep);
+  if (state.relics.shards < cost) {
+    return {
+      ok: false,
+      reason: `The bench wants ${cost} shards for work this fine — you have ${Math.floor(state.relics.shards)}. Render something you will not miss.`,
+    };
+  }
   // A LOCKED relic is never consumed. Note it is only ever the FED one that is
   // eaten, so a locked relic can still be the KEEPER and be improved by a fusion.
   if (feed.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
@@ -211,6 +282,7 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
 
   state.relics.held = state.relics.held.filter((r) => r.uid !== feedUid);
   state.relics.equipped = state.relics.equipped.filter((u) => u !== feedUid);
+  state.relics.shards -= cost;
   state.relics.fused += 1;
   return { ok: true };
 }
@@ -286,12 +358,138 @@ export function equipRelic(state: GameState, uid: number, slot: number): { ok: b
   return { ok: true };
 }
 
-/** The equipped set's contribution to a bucket — read by the modifier layer. */
+// ---------------------------------------------------------------------------
+// WAKING — a relic is a small progression path, not a stat sticker
+// ---------------------------------------------------------------------------
+/**
+ * Dormant → stirring → awake, on CHARGE. Charge accrues from being CARRIED,
+ * which makes the whole layer idle-friendly by construction: an idle player
+ * wakes their relics at the full rate simply by wearing them, and an active
+ * player only gets there sooner by doing deeds in the relic's own element
+ * (pillar 1, and pillar 4 — engaging pays, ignoring is never walled).
+ *
+ * Nothing here is listed before it happens (pillar 5): a dormant relic does
+ * not advertise what it will become.
+ */
+export const WAKING_STEPS = [
+  { at: 0, name: 'Dormant', mult: 1.0, line: 'Cold in the hand. It has not decided about you.' },
+  { at: 1800, name: 'Stirring', mult: 1.15, line: 'Warmer than the rock around it. Something in it is paying attention.' },
+  { at: 7200, name: 'Awake', mult: 1.35, line: 'It answers before you ask. Whatever it was for, it is for you now.' },
+] as const;
+
+export const wakingOf = (r: RelicInstance): number => r.waking ?? 0;
+export const wakingStep = (r: RelicInstance) => WAKING_STEPS[Math.min(WAKING_STEPS.length - 1, wakingOf(r))]!;
+/** Charge still owed before the next step. null when fully awake. */
+export function wakingNeed(r: RelicInstance): number | null {
+  const next = WAKING_STEPS[wakingOf(r) + 1];
+  return next ? Math.max(0, next.at - (r.charge ?? 0)) : null;
+}
+
+/**
+ * Carry time, once a second, for the worn set only. Deeds add on top via
+ * `relicDeed`. Kept off the hot path: six relics, one number each.
+ */
+export function tickRelics(state: GameState, ctx: EngineCtx, dt: number): void {
+  for (const uid of state.relics.equipped) {
+    const r = state.relics.held.find((x) => x.uid === uid);
+    if (!r || wakingOf(r) >= WAKING_STEPS.length - 1) continue;
+    r.charge = (r.charge ?? 0) + dt;
+    const next = WAKING_STEPS[wakingOf(r) + 1];
+    if (next && (r.charge ?? 0) >= next.at) {
+      r.waking = wakingOf(r) + 1;
+      ctx.emit({ type: 'relicWoke', uid: r.uid, step: r.waking });
+      ctx.dirty();
+    }
+  }
+}
+
+/**
+ * A deed in a relic's own element hurries it along — an expedition relic gets
+ * better at expeditions because expeditions are what it is awake FOR. This is
+ * the "relics adapt to use" half, folded into waking rather than built as a
+ * second axis: one number the player can see move beats two they cannot.
+ */
+export function relicDeed(state: GameState, ctx: EngineCtx, sourceId: string, worth = 120): void {
+  for (const uid of state.relics.equipped) {
+    const r = state.relics.held.find((x) => x.uid === uid);
+    if (!r || r.source !== sourceId || wakingOf(r) >= WAKING_STEPS.length - 1) continue;
+    r.charge = (r.charge ?? 0) + worth;
+    const next = WAKING_STEPS[wakingOf(r) + 1];
+    if (next && (r.charge ?? 0) >= next.at) {
+      r.waking = wakingOf(r) + 1;
+      ctx.emit({ type: 'relicWoke', uid: r.uid, step: r.waking });
+      ctx.dirty();
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RESONANCE — some of them recognise each other
+// ---------------------------------------------------------------------------
+/**
+ * Carry two from the same place and they know it. Deliberately simple: the
+ * build decision is which SIX to wear, and a rule you can hold in your head is
+ * what makes that a decision rather than a spreadsheet.
+ *
+ * Found by wearing, never listed beforehand (pillar 5).
+ */
+export interface ResonanceDef {
+  id: string;
+  name: string;
+  /** Equipped relics from this source needed. */
+  source: string;
+  need: number;
+  /** Multiplier applied to every affix on the resonating relics. */
+  mult: number;
+  line: string;
+}
+
+export const RESONANCES: ResonanceDef[] = [
+  { id: 'deepchord', source: 'depth', need: 2, mult: 1.12, name: 'The Deep Chord',
+    line: 'Two stones out of the same dark. They hum at the same pitch.' },
+  { id: 'warrenkin', source: 'warren', need: 2, mult: 1.12, name: 'Warren-Kin',
+    line: 'Both were somebody\'s once, in the same rooms.' },
+  { id: 'wandering', source: 'expedition', need: 2, mult: 1.12, name: 'The Wandering Set',
+    line: 'They have been further than you have. Together they remember the way.' },
+  { id: 'oathofash', source: 'warden', need: 2, mult: 1.15, name: 'Oath of Ash',
+    line: 'Taken from things that guarded. They guard you now, and they are not gentle about it.' },
+];
+
+/**
+ * A resonance you have never seen is not shown; one that has fired once is
+ * remembered forever, so the Codex fills in by DOING (pillar 5). Recording it
+ * is separate from applying it — the bonus works the first time regardless.
+ */
+export function noteResonances(state: GameState, ctx: EngineCtx): void {
+  for (const res of activeResonances(state)) {
+    if (state.relics.resonancesFound.includes(res.id)) continue;
+    state.relics.resonancesFound.push(res.id);
+    ctx.emit({ type: 'resonanceFound', id: res.id });
+    ctx.dirty();
+  }
+}
+
+/** Which resonances the worn set is currently satisfying. */
+export function activeResonances(state: GameState): ResonanceDef[] {
+  const worn = state.relics.equipped
+    .map((uid) => state.relics.held.find((x) => x.uid === uid))
+    .filter((r): r is RelicInstance => !!r);
+  return RESONANCES.filter((res) => worn.filter((r) => r.source === res.source).length >= res.need);
+}
+
+/** The equipped set's contribution to a bucket — read by the modifier layer.
+ *  Waking and resonance both scale what a worn relic gives; neither creates a
+ *  new source of income, so pillar 2's argument above is untouched. */
 export function relicBonus(state: GameState, bucket: Bucket): number {
+  const active = activeResonances(state);
   let total = 0;
   for (const uid of state.relics.equipped) {
     const r = state.relics.held.find((x) => x.uid === uid);
-    if (r) total += r.affixes[bucket] ?? 0;
+    if (!r) continue;
+    const base = r.affixes[bucket] ?? 0;
+    if (base === 0) continue;
+    const res = active.filter((x) => x.source === r.source).reduce((m, x) => m * x.mult, 1);
+    total += base * wakingStep(r).mult * res;
   }
   return total;
 }
@@ -336,16 +534,33 @@ export function maybeDropRelic(
   ctx: EngineCtx,
   sourceId: string,
   chance: number,
+  by?: string,
 ): RelicInstance | null {
   if (chance <= 0 || Math.random() >= chance) return null;
-  return grantRelic(state, ctx, sourceId);
+  return grantRelic(state, ctx, sourceId, by);
 }
 
 /** An unconditional relic from a named context (a cleared Warren, a won Well). */
-export function grantRelic(state: GameState, ctx: EngineCtx, sourceId: string): RelicInstance {
+export function grantRelic(
+  state: GameState,
+  ctx: EngineCtx,
+  sourceId: string,
+  by?: string,
+): RelicInstance {
   // The seed IS the relic: a save round-trip can never re-roll what you found.
   const seed = state.relics.nextUid * 7919 + Math.floor(state.stats.playTimeSec);
-  const held = addRelic(state, mintRelic(state, sourceId, seed));
+  const minted = mintRelic(state, sourceId, seed);
+  // THE STORY IS FREE. Every field here was already sitting in state at this
+  // exact moment and was discarded; keeping it is the difference between "a
+  // Rare" and "the one the Badger turned up at 428 on run six".
+  minted.found = {
+    depth: state.depth,
+    shell: state.shell.current,
+    run: state.collapse.count,
+    playSec: Math.floor(state.stats.playTimeSec),
+    ...(by ? { by } : {}),
+  };
+  const held = addRelic(state, minted);
   ctx.emit({ type: 'relicFound', relicId: String(held.uid), rarity: RARITIES[held.rarity] ?? 'Common', source: sourceId });
   ctx.dirty();
   return held;
@@ -358,5 +573,5 @@ export function relicChanceForDepth(state: GameState): number {
 }
 
 export function defaultRelicsState(): RelicsState {
-  return { held: [], equipped: [], nextUid: 1, found: 0, fused: 0, floorBonus: 0 };
+  return { held: [], equipped: [], nextUid: 1, found: 0, fused: 0, floorBonus: 0, shards: 0, resonancesFound: [] };
 }

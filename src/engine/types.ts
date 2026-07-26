@@ -560,6 +560,23 @@ export interface SpiralState {
 /** A rolled relic. Affixes come from CONTEXT (where and how it was found),
  * never from a blind roll — so the "roll" is steerable and a bad one is not a
  * punishment. Fusion keeps the better of each affix and never destroys. */
+/**
+ * WHERE IT CAME FROM (A.46). The game already knew every one of these at the
+ * moment a relic was minted and threw all of it away, keeping a rarity colour.
+ * "A Rare" is not a memory; "the one the Badger turned up at depth 428 on run
+ * six" is. Near-zero cost, and it is the whole identity half.
+ */
+export interface RelicFind {
+  depth: number;
+  shell: string;
+  /** Collapse count when found — "run 6". */
+  run: number;
+  /** Play-time seconds at the find, for "how long ago". */
+  playSec: number;
+  /** The drill that turned it up, when a drill did. */
+  by?: string;
+}
+
 export interface RelicInstance {
   uid: number;
   defId: string;
@@ -569,6 +586,15 @@ export interface RelicInstance {
   /** Where it came from — shown, and what shaped the affixes. */
   source: string;
   fusedFrom: number;
+  /** The find. Absent on relics from before A.46 — they simply have no story,
+   *  which is honest; back-filling one would be inventing a memory. */
+  found?: RelicFind;
+  /** 0 dormant · 1 stirring · 2 awake. Absent = 0. */
+  waking?: number;
+  /** Progress toward the next waking: seconds carried, plus deeds in its own
+   *  element. Time-based so it is idle-friendly (pillar 1) — carrying is
+   *  enough, working it is faster. */
+  charge?: number;
   /** LOCKED (v22): the player has marked this one keep-forever. A locked relic
    *  can never be consumed — not fed into a fusion, not given to a Museum case.
    *  Absent means unlocked, so old saves load correctly with no migration. */
@@ -585,6 +611,17 @@ export interface RelicsState {
   /** Rarity floor rises with museum/codex completion — a late Mythic can
    * never roll worse than an early one. */
   floorBonus: number;
+  /**
+   * SHARDS (A.46) — what a rendered relic becomes, and the only thing that
+   * pays for a fusion. Before this, fusion was FREE and the hold was
+   * unbounded, so two hundred commons sat in an infinite scroll and the
+   * correct play was to fuse everything into everything. Shards make the
+   * pile the resource rather than the clutter.
+   */
+  shards: number;
+  /** Set resonances the player has actually seen fire. Discovery, not a list
+   *  (pillar 5) — nothing here is shown before it happens once. */
+  resonancesFound: string[];
 }
 
 export interface MuseumState {
@@ -1120,6 +1157,8 @@ export type GameEvent =
   | { type: 'modulePlaced'; id: string; cell: number }
   | { type: 'shellLicensed'; shellId: string }
   | { type: 'relicFound'; relicId: string; rarity: string; source: string }
+  | { type: 'relicWoke'; uid: number; step: number }
+  | { type: 'resonanceFound'; id: string }
   | { type: 'relicFused'; relicId: string; rarity: string }
   | { type: 'expeditionReturned'; crewId: string; haul: number }
   | { type: 'caseCompleted'; caseId: string }
@@ -1292,6 +1331,7 @@ export type GameAction =
   | { type: 'unequipRelic'; slot: number }
   | { type: 'fuseRelics'; keepUid: number; feedUid: number }
   | { type: 'toggleRelicLock'; uid: number }
+  | { type: 'renderRelic'; uid: number }
   | { type: 'donateRelic'; uid: number; caseId: string }
   | { type: 'donateItem'; caseId: string; key: string }
   | { type: 'sendExpedition'; crewId: string; routeId: string; fromDepth?: number }

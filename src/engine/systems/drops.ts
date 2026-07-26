@@ -92,13 +92,15 @@ export function rollForDrop(
   ctx: EngineCtx,
   charge: number,
   weight: number,
+  /** The drill that struck, when a drill did — a relic remembers who found it. */
+  by?: string,
 ): void {
   // Sable's pages ride the same harvest rhythm as everything else —
   // surfaced while mining, never a modal (Phase 6).
   rollForFragment(state, ctx, weight);
   // Relics ride the same harvest rhythm as ore and Sable's pages — the one
   // call site that makes the Relics room and the Museum reachable at all.
-  maybeDropRelic(state, ctx, 'depth', relicChanceForDepth(state) * weight);
+  maybeDropRelic(state, ctx, 'depth', relicChanceForDepth(state) * weight, by);
   // THE THIN SEAM (challenge): nothing drops at all for the run.
   if (sealed(state, 'sealDrops')) return;
   const chance = dropChance(state, mods, charge) * weight;

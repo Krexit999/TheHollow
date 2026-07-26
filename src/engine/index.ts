@@ -51,6 +51,7 @@ import { chipCurrencyId } from './shells';
 import { D } from './decimal';
 import { runFaceTick } from './signatures';
 import { checkAchievements } from './content/shell1/achievements';
+import { tickRelics, noteResonances } from './systems/relics';
 import { applyOfflineProgress } from './systems/offline';
 import { tickSettle } from './systems/settle';
 import { serialize, deserialize } from './save/codec';
@@ -243,6 +244,11 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     if (achTimer >= 1 || achCheckDue) {
       achTimer = 0;
       achCheckDue = false;
+      // Relics wake on CARRY TIME, so this rides the same one-second beat the
+      // achievements do: six numbers, no allocation, and idle-friendly by
+      // construction (wearing one is the whole requirement — pillar 1).
+      tickRelics(state, ctx, 1);
+      noteResonances(state, ctx);
       checkAchievements(state, ctx);
     }
   }

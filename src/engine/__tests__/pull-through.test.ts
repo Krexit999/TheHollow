@@ -225,9 +225,10 @@ describe('museum-gated fusion', () => {
 
   it('same-rarity fusion is never gated; rarity-up needs the cases and says so', () => {
     const { s } = fresh();
+    s.relics.shards = 999; // A.46: a fusion costs shards; the GATE is what this tests
     const a = relic(s, 1);
     const b = relic(s, 1);
-    expect(fuseRelics(s, a.uid, b.uid).ok).toBe(true); // merging is free forever
+    expect(fuseRelics(s, a.uid, b.uid).ok).toBe(true); // merging is never case-gated
 
     const keep = relic(s, 1);
     const fine = relic(s, 3); // rising to 3 needs MUSEUM_FUSION_NEED[3] cases

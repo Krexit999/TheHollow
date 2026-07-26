@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 26;
+export const SAVE_VERSION = 27;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -577,6 +577,24 @@ export const MIGRATIONS: Record<number, Migration> = {
     const collapse = (state['collapse'] ??= {}) as Record<string, unknown>;
     collapse['traces'] ??= [];
     return { ...p, version: 26, state };
+  },
+
+  // v26 -> v27 — relic shards and found resonances (A.46). Both start EMPTY.
+  // Relics already held get no  record either: the game did not keep
+  // where they came from, and back-filling a plausible depth would be putting
+  // an invented memory in front of the player as if it were theirs. They are
+  // simply relics without a story, which is the truth about them.
+  // v26 -> v27 — relic shards and found resonances (A.46). Both start EMPTY,
+  // and relics already held get no `found` record: the game never kept where
+  // they came from, and back-filling a plausible depth would put an invented
+  // memory in front of the player as if it were their own. They are relics
+  // without a story, which is the truth about them.
+  26: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const relics = (state['relics'] ??= {}) as Record<string, unknown>;
+    relics['shards'] ??= 0;
+    relics['resonancesFound'] ??= [];
+    return { ...p, version: 27, state };
   },
 };
 
