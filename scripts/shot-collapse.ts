@@ -1,155 +1,98 @@
 /**
- * A.45 — verify THE COLLAPSE panel in the real app.
+ * A.45 — verify THE COLLAPSE panel renders, desktop and 380px.
  *
- * The Browser pane renders 0x0/empty in this environment, so playwright is the
- * working route (same as scripts/shot.ts).
- *
- * Drives a REAL game rather than injecting a save: the panel reads
- * `collapse.lastRun`, `collapse.traces` and live core-node prices, and a
- * hand-built save would let all three be wrong while the screenshot looked
- * fine — the same trap as the recursion scenario that was handed its Echoes.
- *
- * WHERE THIS GETS TO, HONESTLY: depth ~8. The Collapse room needs
- * maxDepthRecord >= 15 (nav.ts) and a paying fall needs depth 26+, but
- * `dustCost(d) = 25·1.09^d` outruns hand-chipping long before either — the
- * face depletes between clicks and regen is the real income until the Kiln is
- * up. So this verifies the app mounts, the rooms navigate, and nothing throws;
- * it does NOT yet reach the panel it is named for. Finishing it means teaching
- * it to raise the Kiln and buy drills, which is a real (small) piece of work
- * and not the same thing as the panel being unverified-by-accident.
- *
- * Until then the Collapse panel's BEHAVIOUR is covered by unit tests
- * (systems.test.ts: core-neutrality, clean-is-default, braced, ember, bounded
- * traces) and its rendering is unverified in-browser. Said plainly rather than
- * implied by a green script.
+ * Uses the DEV hooks `main.tsx` exposes for exactly this ("...without brittle
+ * role selectors"). The state is stipulated because this is a LAYOUT check;
+ * the panel's behaviour is unit-tested in systems.test.ts. What is NOT
+ * stipulated is the panel's own data: the traces, lastRun and Core prices it
+ * draws are produced by dispatching REAL collapses through the engine, so a
+ * wrong reducer still shows up here.
  *
  *   npx tsx scripts/shot-collapse.ts [port] [outDir]
  */
-import { chromium, type Page } from 'playwright';
+import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { setup, tab, dismiss } from './drive';
 
-const PORT = process.argv[2] ?? '5173';
+const PORT = process.argv[2] ?? '5174';
 const OUT = process.argv[3] ?? 'sim-out/shots';
 const URL = `http://localhost:${PORT}`;
 
-async function chip(page: Page, times: number): Promise<void> {
-  const canvas = page.locator('canvas').first();
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error('no face canvas — the game did not mount');
-  for (let i = 0; i < times; i++) {
-    await page.mouse.click(
-      box.x + box.width * (0.2 + 0.6 * Math.random()),
-      box.y + box.height * (0.2 + 0.6 * Math.random()),
-    );
+/** Runs in the page with (engine, ui) in scope. Three REAL collapses at
+ *  different depths and fall types, so the trace strip, the "vs last run"
+ *  deltas and the what-this-buys line all have honest data behind them. */
+const SEED = `
+  const d = (a) => engine.dispatch(a);
+  d({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e7 });
+  const st = engine.getState();
+  st.upgrades['blade'] = 24; st.upgrades['soil'] = 12; st.upgrades['roots'] = 6;
+  st.kiln.built = true; st.kiln.heat = 0.8;
+  st.collapse.nodes['momentum'] = 2;
+  for (const [depth, fall] of [[42,'clean'],[68,'braced'],[95,'ember'],[120,'clean']]) {
+    const s = engine.getState();
+    s.depth = depth; s.maxDepthRecord = Math.max(s.maxDepthRecord, depth);
+    s.shaft.reached = depth;
+    d({ type: 'collapse', fall });
+    d({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e6 });
   }
-}
-
-/**
- * Descend and Collapse are HOLD controls. A plain click does nothing at all,
- * which is how the first cut of this driver spent fourteen rounds "descending"
- * and never left depth 0 — the button reported enabled, every click reported
- * success, and the game correctly ignored all of them.
- */
-async function hold(page: Page, label: RegExp, ms = 1200): Promise<boolean> {
-  const b = page.getByRole('button', { name: label }).first();
-  if ((await b.count()) === 0) return false;
-  if (await b.isDisabled().catch(() => true)) return false;
-  await b.hover().catch(() => {});
-  await page.mouse.down();
-  await page.waitForTimeout(ms);
-  await page.mouse.up();
-  await page.waitForTimeout(120);
-  return true;
-}
-
-async function spam(page: Page, label: RegExp, rounds: number): Promise<number> {
-  let hits = 0;
-  for (let i = 0; i < rounds; i++) {
-    const b = page.getByRole('button', { name: label }).first();
-    if ((await b.count()) === 0) break;
-    if (await b.isDisabled().catch(() => true)) break;
-    await b.click({ timeout: 800 }).catch(() => {});
-    hits++;
-  }
-  return hits;
-}
-
-const deepest = async (page: Page): Promise<number> =>
-  Number((await page.locator('body').innerText()).match(/Deepest: (\d+)/)?.[1] ?? 0);
-
-async function openCollapse(page: Page): Promise<void> {
-  const direct = page.getByRole('button', { name: /Collapse/ }).first();
-  if ((await direct.count()) > 0) { await direct.click().catch(() => {}); return; }
-  const prog = page.getByText('PROGRESS', { exact: false }).first();
-  if ((await prog.count()) > 0) await prog.click().catch(() => {});
-  await page.waitForTimeout(300);
-  const t = page.getByRole('button', { name: /Collapse/ }).first();
-  if ((await t.count()) > 0) await t.click().catch(() => {});
-}
+  const f = engine.getState();
+  f.depth = 137; f.maxDepthRecord = 150; f.shaft.reached = 137;
+  f.stats.playTimeSec = f.collapse.runStartAt + 494;
+`;
 
 async function main(): Promise<void> {
   mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 1100 } });
   const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(`[pageerror] ${e.message}`));
-  page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(`[console] ${m.text().slice(0, 300)}`);
-  });
 
-  await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.waitForTimeout(1200);
-
-  // The Collapse room opens at maxDepthRecord >= 15 (nav.ts); the fall itself
-  // needs depth 26+ to pay a Core.
-  for (let round = 0; round < 45; round++) {
-    await chip(page, 70);
-    await spam(page, /^Buy ×1/, 10);
-    for (let d = 0; d < 6; d++) if (!(await hold(page, /^Descend/, 1000))) break;
-    const rec = await deepest(page);
-    if (round % 10 === 0) console.log(`  round ${round}: deepest ${rec}`);
-    if (rec >= 30) { console.log(`  reached deepest ${rec} at round ${round}`); break; }
-  }
-
-  await openCollapse(page);
-  await page.waitForTimeout(700);
-
-  const shot = async (name: string): Promise<void> => {
-    await page.screenshot({ path: `${OUT}/collapse-${name}.png` });
+  for (const [name, width, height] of [['desktop', 1280, 1000], ['narrow', 380, 900]] as const) {
+    const page = await browser.newPage({ viewport: { width, height } });
+    page.on('pageerror', (e) => errors.push(`[${name}] [pageerror] ${e.message}`));
+    page.on('console', (m) => {
+      if (m.type() === 'error') errors.push(`[${name}] [console] ${m.text().slice(0, 240)}`);
+    });
+    await page.goto(URL, { waitUntil: 'networkidle' });
+    await page.waitForTimeout(1200);
+    await setup(page, SEED);
+    await dismiss(page);
+    await tab(page, 'collapse');
+    await dismiss(page);
+    // Seeding fires achievement/unlock toasts that sit over the lower panel.
+    // They are transient, not layout — let them go before judging the shot.
+    await page.waitForTimeout(9000);
+    await dismiss(page);
+    await page.screenshot({ path: `${OUT}/collapse-${name}.png`, fullPage: true });
     console.log(`  wrote ${OUT}/collapse-${name}.png`);
-  };
-  await shot('panel');
 
-  for (const fall of ['Braced', 'Ember', 'Clean']) {
-    const b = page.getByRole('button', { name: new RegExp(`^${fall}$`) }).first();
-    if ((await b.count()) > 0) {
-      await b.click().catch(() => {});
-      await page.waitForTimeout(200);
-      await shot(fall.toLowerCase());
-    } else console.error(`  MISSING fall button: ${fall}`);
-  }
-
-  // Fall a few times so "vs last run" and the trace strip have real data.
-  for (let i = 0; i < 3; i++) {
-    if (!(await hold(page, /Hold for the/, 1300))) { console.error('  collapse unavailable'); break; }
-    const face = page.getByText('THE FACE', { exact: false }).first();
-    if ((await face.count()) > 0) await face.click().catch(() => {});
-    for (let r = 0; r < 12; r++) {
-      await chip(page, 60);
-      await spam(page, /^Buy ×1/, 8);
-      for (let d = 0; d < 6; d++) if (!(await hold(page, /^Descend/, 900))) break;
+    if (name === 'narrow') {
+      // 0px at 380 is the project's standing bar — nothing may overflow.
+      const overflow = await page.evaluate(() =>
+        Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
+      console.log(`  horizontal overflow at 380px: ${overflow}px`);
+      if (overflow > 0) errors.push(`[narrow] ${overflow}px horizontal overflow`);
+      for (const fall of ['Braced', 'Ember']) {
+        const b = page.getByRole('button', { name: new RegExp(`^${fall}$`) }).first();
+        if ((await b.count()) > 0) {
+          await b.click().catch(() => {});
+          await page.waitForTimeout(200);
+          await page.screenshot({ path: `${OUT}/collapse-narrow-${fall.toLowerCase()}.png`, fullPage: true });
+          console.log(`  wrote ${OUT}/collapse-narrow-${fall.toLowerCase()}.png`);
+        } else errors.push(`[narrow] missing fall button ${fall}`);
+      }
     }
-    await openCollapse(page);
-    await page.waitForTimeout(400);
-  }
-  await shot('after-falls');
 
-  const body = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
-  console.log('\npanel content:');
-  for (const probe of ['Let the shaft fall', 'This run', 'Fall no.', 'Clean', 'Braced', 'Ember', 'The column']) {
-    console.log(`  ${body.includes(probe) ? 'yes' : 'NO '}  ${probe}`);
+    const body = (await page.locator('body').innerText()).replace(/\s+/g, ' ');
+    console.log(`  ${name} content:`);
+    for (const probe of ['Let the shaft fall', 'Depth', 'This run', 'Fall no.',
+      'Clean', 'Braced', 'Ember', 'The column', 'Collapses so far']) {
+      const ok = body.toLowerCase().includes(probe.toLowerCase());
+      console.log(`    ${ok ? 'yes' : 'NO '}  ${probe}`);
+      if (!ok) errors.push(`[${name}] missing: ${probe}`);
+    }
+    await page.close();
   }
-  console.log(errors.length ? `\nERRORS:\n${errors.join('\n')}` : '\nno console errors, no page errors');
+
+  console.log(errors.length ? `\nPROBLEMS:\n  ${errors.join('\n  ')}` : '\nclean: no errors, nothing missing, no overflow');
   await browser.close();
   process.exit(errors.length ? 1 : 0);
 }

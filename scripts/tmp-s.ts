@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import { chip, clickAll, hold, SEL } from './drive';
+const br = await chromium.launch({ channel: 'chrome', headless: true });
+const p = await br.newPage({ viewport: { width: 1280, height: 1100 } });
+await p.goto('http://localhost:5174', { waitUntil: 'networkidle' });
+await p.waitForTimeout(1000);
+await chip(p, 45); await clickAll(p, SEL.buy, 3);
+await p.waitForTimeout(2000);
+for (let d = 0; d < 8; d++) if (!(await hold(p, SEL.descend, 950))) break;
+await p.screenshot({ path: 'sim-out/shots/drive-mid.png' });
+console.log('buy buttons now:', await p.getByRole('button', { name: SEL.buy }).count());
+console.log('all buttons:', JSON.stringify((await Promise.all((await p.getByRole('button').all()).slice(0,25).map(async b => (await b.innerText().catch(()=>'')).replace(/\s+/g,' ').slice(0,28)))).filter(Boolean)));
+await br.close(); process.exit(0);
