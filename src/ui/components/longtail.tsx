@@ -1,23 +1,36 @@
 import { useState } from 'react';
 /**
- * THE LONG TAIL (Phase 12) — the Spiral, the Automation Grid and the
- * Expeditions. (Relics and the Museum left at A.49 to become rendered canvas
- * surfaces of their own.) Built to the Phase 11 pattern: the
- * central SystemHeader supplies Layer 1 and Layer 2, so these panels carry the
- * numbers and the controls and never repeat their own title.
+ * THE LONG TAIL (Phase 12) — the Spiral, the Automation Grid, Relics, the
+ * Museum and the Expeditions. Built to the Phase 11 pattern: the central
+ * SystemHeader supplies Layer 1 and Layer 2, so these panels carry the numbers
+ * and the controls and never repeat their own title.
+ *
+ * A.50: Relics and the Museum came BACK here. A.49 rebuilt them as rendered
+ * Pixi surfaces and they played as grey shapes in boxes; the engine work under
+ * them was sound and was kept whole, so this is a presentation-only reversal.
  */
 import { getCurrency } from '../../engine';
+import type { GameState, RelicInstance } from '../../engine/types';
 import {
   spiralPending, gridSlotCost, licenceCost, canSpiral, PARALLEL_IDLE_SHARE,
 } from '../../engine/systems/spiral';
 import { CHALLENGES, availableChallenges, CHALLENGE_BY_ID } from '../../engine/content/shell7/challenges';
 import { GRID_MODULES, MODULE_BY_ID, GRID_W, GRID_CELLS, automationRate } from '../../engine/content/shell7/gridModules';
-import { ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs } from '../../engine/systems/museum';
+import {
+  RARITIES, RELIC_SLOTS, AFFIXES, SOURCE_BY_ID, RESONANCES, activeResonances,
+  rollFloor, shardValue, holdCap, effectiveAffixes, fusionPreview, fusionAfford,
+  wakingOf, wakingStep, wakingNeed,
+} from '../../engine/systems/relics';
+import { powerOf, powerLive, KIND_NAME, pairMultiplier } from '../../engine/systems/relicPowers';
+import {
+  CASES, caseProgress, EXHIBITS, activeExhibits,
+  ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs,
+} from '../../engine/systems/museum';
 import { HIRELING_BY_NPC } from '../../engine/guild/hirelings';
 import { cachesOf } from '../../engine/systems/shaftSys';
 import { currentShell } from '../../engine/shells';
 import { dispatch, useGame } from '../store';
-import { Amount, HoldButton } from './shared';
+import { Amount, HoldButton, BUCKET_NAME } from './shared';
 
 /** Shells a licence can open beside the one in your hands. */
 const LICENSABLE = ['loam', 'ferrite', 'verdance', 'glassmere', 'cinder'];
@@ -310,15 +323,528 @@ export function AutomationPanel() {
 }
 
 // ---------------------------------------------------------------------------
-// Relics
+// Relics — a panel again (A.50)
 // ---------------------------------------------------------------------------
-// Relics and the Museum moved OUT of this file at A.49.
-//
-// Both are rendered canvas surfaces now (src/ui/relics/), sharing one Pixi
-// application the way the Shaft owns its own. What was here was a spreadsheet
-// of stat cards and a grid of empty slots; it is not worth keeping a second,
-// worse copy of a screen around for reference.
+/**
+ * A.49 rebuilt these two screens as rendered Pixi surfaces and they came out
+ * as grey blobs in boxes. The engine work under them was sound and is
+ * untouched; only the presentation was thrown away. This is deliberately the
+ * A.48 SHAPE — plain rows, plain buttons, every number written down — against
+ * the A.49 API.
+ *
+ * The rule this file is now built to: FUNCTIONAL OVER FANCY. If something is
+ * true about a relic, it says so in words. Nothing here is drawn.
+ */
+
+/** Rarity reads as a colour on the word, which is as far as decoration goes. */
+const RARITY_TEXT = ['text-cave-300', 'text-[#9ab08a]', 'text-[#8fb4d8]', 'text-[#e2c76a]', 'text-[#cdd9ff]'];
+
+/** One relic's live effect lines. A powered relic keeps only its best line
+ *  (`effectiveAffixes`) — the panel must show what the ENGINE reads, not the
+ *  raw roll, or the two disagree in front of the player. */
+function EffectLines({ state, relic }: { state: GameState; relic: RelicInstance }) {
+  const shown = effectiveAffixes(relic);
+  const keys = Object.keys(shown);
+  if (keys.length === 0) return null;
+  const step = wakingStep(relic);
+  const res = activeResonances(state)
+    .filter((x) => x.source === relic.source)
+    .reduce((m, x) => m * x.mult, 1);
+  const pair = pairMultiplier(state);
+  const worn = state.relics.equipped.includes(relic.uid);
+  return (
+    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+      {keys.map((k) => {
+        const base = shown[k]!;
+        const live = worn ? base * step.mult * res * pair : base;
+        return (
+          <span key={k} className="tnum text-[11px] text-cave-400">
+            {AFFIXES[k]?.label ?? k} <span className="text-lamp-400">+{Math.round(live * 100)}%</span>
+            {live > base + 1e-9 && <span className="ml-0.5 text-[9px] text-cave-500">(base {Math.round(base * 100)}%)</span>}
+          </span>
+        );
+      })}
+      {Object.keys(relic.affixes).length > keys.length && (
+        <span className="text-[10px] italic text-cave-600" title="A relic with a power keeps only its strongest line — the rest were noise beside it.">
+          + {Object.keys(relic.affixes).length - keys.length} lesser line(s), not counted
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Waking state and what it is worth, in words. */
+function WakingLine({ relic }: { relic: RelicInstance }) {
+  const step = wakingStep(relic);
+  const need = wakingNeed(relic);
+  return (
+    <div className="mt-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={`text-[10px] uppercase tracking-wider ${wakingOf(relic) === 0 ? 'text-cave-500' : 'text-[#9fd8c0]'}`}>
+          {step.name}
+          {step.mult > 1 && <span className="ml-1 tnum">×{step.mult.toFixed(2)} to its lines</span>}
+        </span>
+        {need !== null && (
+          <span className="tnum shrink-0 text-[9px] text-cave-500">{Math.ceil(need / 60)}m carried to go</span>
+        )}
+      </div>
+      <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{step.line}</div>
+    </div>
+  );
+}
+
+/** The named power, its kind, and what it is doing right now. */
+function PowerBlock({ state, relic }: { state: GameState; relic: RelicInstance }) {
+  const pw = powerOf(relic);
+  if (!pw) return null;
+  const live = powerLive(relic);
+  return (
+    <div className={`mt-1.5 rounded-md border px-2 py-1.5 ${live ? 'border-[#e8c98a]/50 bg-[#e8c98a]/5' : 'border-dashed border-cave-800'}`}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={`text-[11px] font-semibold ${live ? 'text-[#e8c98a]' : 'text-cave-500'}`}>{pw.name}</span>
+        <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+          {live ? KIND_NAME[pw.kind] : 'dormant'}
+        </span>
+      </div>
+      {live ? (
+        <>
+          <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{pw.readout(state)}</div>
+          <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">{pw.line}</div>
+        </>
+      ) : (
+        <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
+          Something in it has not woken. Carry it and find out what.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Where it came up, and out of whose hand. Absent on pre-A.46 relics, and
+ *  saying nothing is more honest than inventing a memory for them. */
+function FoundLine({ relic }: { relic: RelicInstance }) {
+  if (!relic.found) {
+    return <div className="mt-1 text-[10px] italic leading-snug text-cave-600">Nobody wrote down where this came from.</div>;
+  }
+  return (
+    <div className="mt-1 text-[10px] leading-snug text-cave-500">
+      Found at depth <span className="tnum text-cave-400">{relic.found.depth}</span>
+      {' '}in {relic.found.shell}, run <span className="tnum text-cave-400">{relic.found.run + 1}</span>
+      {relic.found.by && <> — turned up by <span className="text-cave-400">{relic.found.by}</span></>}
+    </div>
+  );
+}
+
+function RelicTitle({ relic }: { relic: RelicInstance }) {
+  return (
+    <span className={`text-sm font-semibold ${RARITY_TEXT[relic.rarity] ?? 'text-cave-200'}`}>
+      {relic.locked && <span className="mr-1 text-[#e6c15a]" title="Locked — a fusion can never eat it">🔒</span>}
+      {RARITIES[relic.rarity]} relic
+      {relic.fusedFrom > 0 && (
+        <span className="ml-1 text-[10px] text-cave-500" title={`Fused from ${(relic.ate ?? []).join(', ') || 'earlier relics'}`}>
+          ·{relic.fusedFrom} fused in
+        </span>
+      )}
+    </span>
+  );
+}
+
+export function RelicsPanel() {
+  const state = useLive();
+  const [fusingInto, setFusingInto] = useState<number | null>(null);
+  const [showScrap, setShowScrap] = useState(false);
+  if (!state) return null;
+  const held = state.relics.held;
+  const worn = state.relics.equipped
+    .map((uid) => held.find((r) => r.uid === uid))
+    .filter((r): r is RelicInstance => !!r);
+  const spare = held.filter((r) => !state.relics.equipped.includes(r.uid));
+  const cores = Math.floor(getCurrency(state, 'core').toNumber());
+
+  return (
+    <div className="space-y-2">
+      {/* The three numbers everything else spends. */}
+      <div className="panel p-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span className="text-cave-400">
+            Shards <span className="tnum font-semibold text-[#d8b8ee]">{Math.floor(state.relics.shards)}</span>
+          </span>
+          <span className="text-cave-500">·</span>
+          <span className="text-cave-400">
+            Cores <span className="tnum font-semibold text-[#e8c98a]">{cores}</span>
+          </span>
+          <span className="text-cave-500">·</span>
+          <span className={held.length >= holdCap(state) ? 'text-amber-400' : 'text-cave-400'}>
+            Hold <span className="tnum">{held.length}/{holdCap(state)}</span>
+            {held.length >= holdCap(state) && ' — the weakest render themselves down'}
+          </span>
+          {state.relics.floorBonus > 0 && (
+            <>
+              <span className="text-cave-500">·</span>
+              <span className="text-cave-400" title="Filled halls and formed sets raise the MINIMUM roll. A late relic can never be worse than an early one.">
+                Floor <span className="tnum text-emerald-400/80">+{Math.round(rollFloor(state) * 100)}%</span>
+              </span>
+            </>
+          )}
+        </div>
+        <button
+          className={`btn mt-2 w-full py-1 text-[11px] ${state.relics.autoScrap.on ? 'btn-warm' : ''}`}
+          aria-expanded={showScrap}
+          onClick={() => setShowScrap((v) => !v)}
+        >
+          Standing order{state.relics.autoScrap.on
+            ? ` · on, up to ${RARITIES[state.relics.autoScrap.maxRarity]}`
+            : ' · off'}
+        </button>
+        {showScrap && <AutoScrapRules state={state} />}
+      </div>
+
+      {/* RESONANCE — found by wearing, never listed before it fires (pillar 5). */}
+      {(activeResonances(state).length > 0 || state.relics.resonancesFound.length > 0) && (
+        <div className={`panel p-3 ${activeResonances(state).length > 0 ? 'border-[#d8b8ee]/50' : ''}`}>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#d8b8ee]">They recognise each other</span>
+            {activeResonances(state).length > 0 && (
+              <span className="shrink-0 rounded bg-[#d8b8ee]/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#d8b8ee]">
+                Firing · {activeResonances(state).length}
+              </span>
+            )}
+          </div>
+          {RESONANCES.filter((res) => state.relics.resonancesFound.includes(res.id)).map((res) => {
+            const on = activeResonances(state).some((a) => a.id === res.id);
+            const wearing = worn.filter((r) => r.source === res.source).length;
+            return (
+              <div key={res.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${on ? 'border-[#d8b8ee]/40 bg-[#d8b8ee]/5' : 'border-cave-800 opacity-60'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-[12px] font-semibold ${on ? 'text-[#d8b8ee]' : 'text-cave-400'}`}>{res.name}</span>
+                  <span className={`tnum shrink-0 text-[10px] ${on ? 'text-[#d8b8ee]' : 'text-cave-500'}`}>
+                    {on
+                      ? `+${Math.round((res.mult - 1) * 100)}% to every line on those ${wearing}`
+                      : `${wearing}/${res.need} from ${SOURCE_BY_ID.get(res.source)?.name ?? res.source} worn`}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{res.line}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* CARRIED — the six that actually do something. */}
+      <div className="panel p-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#d8b8ee]">Carried</span>
+          <span className="tnum text-[10px] text-cave-400">{worn.length}/{RELIC_SLOTS} worn · {state.relics.fused} fused</span>
+        </div>
+        {worn.length === 0 && (
+          <p className="mt-1 text-[11px] italic leading-snug text-cave-500">
+            Nothing worn. An unworn relic does nothing at all — its power stays asleep and its
+            lines pay nothing.
+          </p>
+        )}
+        {worn.map((r, i) => (
+          <div key={r.uid} className="mt-1.5 rounded-md border border-lamp-500/30 px-2 py-1.5">
+            <div className="flex items-baseline justify-between gap-2">
+              <RelicTitle relic={r} />
+              <span className="shrink-0 text-[10px] text-cave-500">from {SOURCE_BY_ID.get(r.source)?.name ?? r.source}</span>
+            </div>
+            <FoundLine relic={r} />
+            <EffectLines state={state} relic={r} />
+            <WakingLine relic={r} />
+            <PowerBlock state={state} relic={r} />
+            <div className="mt-2 flex gap-1.5">
+              <button
+                className="btn flex-1 py-1 text-[11px]"
+                onClick={() => dispatch({ type: 'unequipRelic', slot: i })}
+              >
+                Take it off
+              </button>
+              <button className="btn flex-1 py-1 text-[11px]" onClick={() => setFusingInto(fusingInto === r.uid ? null : r.uid)}>
+                {fusingInto === r.uid ? 'Never mind' : 'Fuse one in…'}
+              </button>
+              <LockButton relic={r} />
+            </div>
+            {fusingInto === r.uid && <FuseChooser state={state} keep={r} onDone={() => setFusingInto(null)} />}
+          </div>
+        ))}
+      </div>
+
+      {/* THE HOLD — everything else. */}
+      <div className="panel p-3">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs font-semibold uppercase tracking-wider text-cave-300">In the hold</span>
+          <span className="tnum text-[10px] text-cave-400">{spare.length}</span>
+        </div>
+        {spare.length === 0 && (
+          <p className="mt-1 text-[11px] italic leading-snug text-cave-500">
+            Nothing spare. They come up out of the deep shaft, out of Warrens, out of anomalies
+            and wells, and back with the crews.
+          </p>
+        )}
+      </div>
+
+      {spare.map((r) => (
+        <div key={r.uid} className="panel p-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <RelicTitle relic={r} />
+            <span className="shrink-0 text-[10px] text-cave-500">from {SOURCE_BY_ID.get(r.source)?.name ?? r.source}</span>
+          </div>
+          <FoundLine relic={r} />
+          <EffectLines state={state} relic={r} />
+          <WakingLine relic={r} />
+          <PowerBlock state={state} relic={r} />
+          <div className="mt-2 flex gap-1.5">
+            <button
+              className="btn flex-1 py-1 text-[11px]"
+              disabled={state.relics.equipped.length >= RELIC_SLOTS}
+              title={state.relics.equipped.length >= RELIC_SLOTS ? 'All six slots are full — take one off first' : undefined}
+              onClick={() => dispatch({ type: 'equipRelic', uid: r.uid, slot: state.relics.equipped.length })}
+            >
+              Wear it
+            </button>
+            {held.length > 1 && (
+              <button className="btn flex-1 py-1 text-[11px]" onClick={() => setFusingInto(fusingInto === r.uid ? null : r.uid)}>
+                {fusingInto === r.uid ? 'Never mind' : 'Fuse one in…'}
+              </button>
+            )}
+            <LockButton relic={r} />
+            {!r.locked && (
+              <button
+                className="btn shrink-0 px-2 py-1 text-[11px]"
+                title={`Render it down for ${shardValue(r)} shards. Gone for good.`}
+                onClick={() => dispatch({ type: 'renderRelic', uid: r.uid })}
+              >
+                ⚒ {shardValue(r)}
+              </button>
+            )}
+          </div>
+          {fusingInto === r.uid && <FuseChooser state={state} keep={r} onDone={() => setFusingInto(null)} />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LockButton({ relic }: { relic: RelicInstance }) {
+  return (
+    <button
+      className={`btn shrink-0 px-2 py-1 text-[11px] ${relic.locked ? 'btn-warm' : ''}`}
+      title={relic.locked
+        ? 'Locked — a fusion can never eat it. Click to unlock.'
+        : 'Lock it — a fusion can never eat it.'}
+      aria-pressed={!!relic.locked}
+      aria-label={relic.locked ? 'Unlock this relic' : 'Lock this relic'}
+      onClick={() => dispatch({ type: 'toggleRelicLock', uid: relic.uid })}
+    >
+      {relic.locked ? '🔒' : '🔓'}
+    </button>
+  );
+}
+
+/**
+ * THE FUSE CHOOSER. Fusion eats a relic, so the player picks WHICH one and
+ * sees the price and the outcome before committing. The price is stated PER
+ * CANDIDATE because Cores are only charged on a fusion that lifts the keeper
+ * into the top band — the same feed can be free or cost 12 depending on what
+ * it is.
+ */
+function FuseChooser({ state, keep, onDone }: { state: GameState; keep: RelicInstance; onDone: () => void }) {
+  const feeds = state.relics.held.filter((o) => o.uid !== keep.uid && !o.locked);
+  return (
+    <div className="mt-2 space-y-1 border-t border-cave-700 pt-2">
+      <div className="text-[10px] uppercase tracking-widest text-cave-500">
+        Feed one in — the fed relic is consumed, the keeper takes the better of every line
+      </div>
+      {feeds.length === 0 && (
+        <p className="text-[10px] italic text-cave-500">
+          Nothing spare and unlocked to feed it. Unlock one, or go and find another.
+        </p>
+      )}
+      {feeds.map((o) => {
+        const pv = fusionPreview(state, keep.uid, o.uid);
+        const af = fusionAfford(state, keep, o);
+        const blocked = !af.ok || !!pv?.gatedBy;
+        return (
+          <button
+            key={o.uid}
+            className={`block w-full rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors ${
+              blocked ? 'border-cave-800 opacity-60' : 'border-cave-700 hover:border-lamp-500/50 hover:bg-cave-800'
+            }`}
+            disabled={blocked}
+            onClick={() => { dispatch({ type: 'fuseRelics', keepUid: keep.uid, feedUid: o.uid }); onDone(); }}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-cave-200">
+                {RARITIES[o.rarity]} · {SOURCE_BY_ID.get(o.source)?.name ?? o.source}
+                {state.relics.equipped.includes(o.uid) && <span className="ml-1 text-[9px] uppercase tracking-wider text-amber-400">worn</span>}
+              </span>
+              <span className="tnum shrink-0 text-[10px]">
+                <span className={af.ok ? 'text-[#d8b8ee]' : 'text-amber-400'}>{af.price.shards} shards</span>
+                {af.price.cores > 0 && (
+                  <span className={af.ok ? ' text-[#e8c98a]' : ' text-amber-400'}> + {af.price.cores} Cores</span>
+                )}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[10px] leading-snug text-cave-400">
+              {pv?.gatedBy ? (
+                <span className="text-[#d4a86a]">Rarity up needs {pv.gatedBy.need} filled halls ({pv.gatedBy.have} done).</span>
+              ) : !af.ok ? (
+                <span className="text-amber-400">Short {af.short.join(' and ')}.</span>
+              ) : !pv || (pv.gained.length === 0 && pv.improved.length === 0 && !pv.rarityUp && !pv.powerGained) ? (
+                <span className="italic">Adds nothing this one does not already beat — but it still marks it.</span>
+              ) : (
+                <>
+                  {pv.rarityUp && <span className="mr-2 text-lamp-400">rarity up</span>}
+                  {pv.powerGained && <span className="mr-2 text-[#e8c98a]">takes its power · {pv.powerGained}</span>}
+                  {pv.gained.map((g) => <span key={g.key} className="mr-2 text-lamp-400">+{g.label} {Math.round(g.value * 100)}%</span>)}
+                  {pv.improved.map((i) => <span key={i.key} className="mr-2 text-lamp-300">{i.label} {Math.round(i.from * 100)}→{Math.round(i.to * 100)}%</span>)}
+                  {pv.wasted.length > 0 && <span className="text-cave-600">({pv.wasted.length} already beaten)</span>}
+                </>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const SCRAP_BANDS = ['Common', 'Uncommon', 'Rare', 'Fabled', 'Mythic'];
+
+/** The standing order. Off by default, checked at the door, never retroactive. */
+function AutoScrapRules({ state }: { state: GameState }) {
+  const rule = state.relics.autoScrap;
+  return (
+    <div className="mt-2 border-t border-cave-700 pt-2">
+      <p className="text-[10px] italic leading-snug text-cave-500">
+        What to render down the moment it comes up, so the hold never becomes a list again. It
+        only ever refuses a NEW find — turning it on cannot touch anything already here, and it
+        never takes a locked one.
+      </p>
+      <button
+        className={`btn mt-1.5 w-full py-1 text-[11px] ${rule.on ? 'btn-warm' : ''}`}
+        aria-pressed={rule.on}
+        onClick={() => dispatch({ type: 'setAutoScrap', on: !rule.on })}
+      >
+        {rule.on ? 'Standing order is ON' : 'Standing order is off'}
+      </button>
+      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">Render down anything up to</div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {SCRAP_BANDS.map((name, i) => (
+          <button
+            key={name}
+            className={`btn flex-1 px-1 py-1 text-[10px] ${rule.maxRarity === i ? 'btn-warm' : ''}`}
+            aria-pressed={rule.maxRarity === i}
+            onClick={() => dispatch({ type: 'setAutoScrap', maxRarity: i })}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+      <button
+        className={`btn mt-1.5 w-full py-1 text-[11px] ${rule.keepPowered ? 'btn-warm' : ''}`}
+        aria-pressed={rule.keepPowered}
+        onClick={() => dispatch({ type: 'setAutoScrap', keepPowered: !rule.keepPowered })}
+      >
+        {rule.keepPowered ? 'Always keep one that has a power' : 'Powers get no exemption'}
+      </button>
+      {rule.keepPowered && rule.maxRarity >= 2 && (
+        <p className="mt-1 text-[10px] italic leading-snug text-cave-500">
+          Every Rare and above carries a power, so with this on the bands above Uncommon change
+          nothing. Turn it off if you meant it.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
+// The Museum — what the collection has filled, and what it has been named for
+// ---------------------------------------------------------------------------
+/**
+ * A.49 removed donation: a hall fills from what you HOLD, and a set fires
+ * because the collection says something. That model is kept — it is the
+ * "sets you have completed" view this panel is meant to be. Nothing here is a
+ * verb; the only way to change it is to go and dig.
+ *
+ * PILLAR 5: a set is listed ONLY after it has fired once. The halls are shown
+ * because a hall states its own price up front (it always did); the sets are
+ * the discovery layer and stay dark until found.
+ */
+export function MuseumPanel() {
+  const state = useLive();
+  if (!state) return null;
+  const standing = new Set(activeExhibits(state).map((a) => a.def.id));
+  const found = EXHIBITS.filter((e) => state.museum.exhibitsFound.includes(e.id));
+
+  return (
+    <div className="space-y-2">
+      {/* No blurb here: the SystemHeader above already says what this room is,
+          and this file's rule is that a panel carries the numbers and the
+          controls and never repeats its own title. The first draft printed the
+          same two sentences twice, one card apart. */}
+      <div className="panel p-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          <span className="text-cave-400">
+            Halls <span className="tnum font-semibold text-[#e8c98a]">{state.museum.completed.length}/{CASES.length}</span>
+          </span>
+          <span className="text-cave-500">·</span>
+          <span className="text-cave-400">
+            Sets found <span className="tnum font-semibold text-[#e8c98a]">{found.length}</span>
+            {standing.size > 0 && <span className="text-cave-500"> ({standing.size} standing)</span>}
+          </span>
+        </div>
+      </div>
+
+      {/* THE SETS — discovery, so nothing appears until it has happened once. */}
+      {found.length > 0 && (
+        <div className="panel p-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">Named by the room</div>
+          {found.map((e) => {
+            const live = standing.has(e.id);
+            return (
+              <div key={e.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${live ? 'border-[#e8c98a]/40 bg-[#e8c98a]/5' : 'border-cave-800 opacity-60'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-[12px] font-semibold ${live ? 'text-[#e8c98a]' : 'text-cave-400'}`}>{e.name}</span>
+                  <span className="shrink-0 text-[10px] text-cave-500">
+                    {live
+                      ? <span className="text-lamp-400">+{Math.round(e.bonus * 100)}% {BUCKET_NAME[e.bucket]}</span>
+                      : 'not standing — you no longer hold the pieces'}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{e.line}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* THE HALLS — a directed hunt, and each states its own price. */}
+      {CASES.map((c) => {
+        const p = caseProgress(state, c.id);
+        const done = state.museum.completed.includes(c.id);
+        return (
+          <div key={c.id} className={`panel p-3 ${done ? 'border-lamp-500/40' : ''}`}>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-semibold text-cave-200">{c.name}</span>
+              <span className="tnum shrink-0 text-[10px] text-cave-400">{p.have}/{p.need}</span>
+            </div>
+            <p className="mt-1 text-[11px] italic leading-snug text-cave-400">{c.blurb}</p>
+            <div className="mt-1 text-[11px] text-cave-300"><span className="text-cave-500">Wants · </span>{c.wants}</div>
+            <div className="mt-1 h-1 overflow-hidden rounded-full bg-cave-800">
+              <div className="h-full rounded-full bg-lamp-500/70" style={{ width: `${Math.min(100, (p.have / p.need) * 100)}%` }} />
+            </div>
+            <div className="mt-1 text-[10px] text-cave-500">
+              {done ? 'Filled — ' : 'When filled — '}
+              <span className="text-lamp-400">+{Math.round(c.bonus * 100)}% {BUCKET_NAME[c.bucket]}</span>, permanently.
+              {done && p.have < p.need && <span className="text-cave-600"> Kept: a hall that has been full stays paid.</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 

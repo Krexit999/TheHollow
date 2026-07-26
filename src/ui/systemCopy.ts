@@ -425,22 +425,22 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
   relics: {
     title: 'Relics',
     purpose:
-      'Six niches in a lamplit wall, and everything else you have carried up on the shelf below. What a relic can carry is decided by where you found it, so you can hunt the shape you want instead of praying at a slot machine — and fusing one into another keeps the better of every line, marks the keeper with what it ate, and never destroys. The only thing that can take a relic out of your hands is a fusion; LOCK one and not even that.',
+      'The things you carried up. Six can be worn at once, and only a worn relic does anything — its power wakes in your hand and nowhere else. What a relic can carry is decided by where you found it, so you can hunt the shape you want instead of praying at a slot machine, and fusing one into another keeps the better of every line and never destroys. The only thing that can take a relic out of your hands is a fusion; LOCK one and not even that.',
     status: (s) => {
       const locked = s.relics.held.filter((r) => r.locked).length;
       return `${s.relics.equipped.length}/6 worn · ${s.relics.held.length} held${locked > 0 ? ` · ${locked} locked` : ''}`;
     },
     next: (s) => {
       if (s.relics.held.length === 0) return 'Nothing yet. They come out of the deep shaft, the Warrens, anomalies, wells, and back with the crews.';
-      if (s.relics.equipped.length === 0) return 'Every niche is empty. A relic on the shelf does nothing — tap a niche and stand one in it.';
+      if (s.relics.equipped.length === 0) return 'Nothing worn. A relic in the hold does nothing at all — wear one.';
       if (s.relics.held.length > s.relics.equipped.length + 2) return 'You are carrying spares. Fuse them in — nothing is lost, and the keeper only ever improves.';
-      return `${s.relics.equipped.length} of six niches filled. An empty one is pure loss.`;
+      return `${s.relics.equipped.length} of six worn. An empty slot is pure loss.`;
     },
   },
   museum: {
     title: 'The Museum',
     purpose:
-      'The long room off the back of the Lamphouse. Every other screen shows what you can do; this one shows what you did. Walk it. The halls fill themselves from what you own, and now and then the lamps come up over a few plinths and somebody has carved a name above them.',
+      'The long room off the back of the Lamphouse. Every other screen shows what you can do; this one shows what you did. Nothing is handed over: a hall fills from what you are holding, and now and then the room notices something about the collection and puts a name to it.',
     // CASES.length was hardcoded to 6 while the case list grew to 20 behind
     // it — a stale count exactly like the "a number in this document is not
     // evidence" rule warns about, dormant until this tab was reachable to see
@@ -448,8 +448,8 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
     status: (s) => `${s.museum.completed.length}/${CASES.length} cases`,
     next: (s) => {
       if (s.museum.completed.length === CASES.length) return 'Every hall filled. The room is finished, and so, more or less, are you.';
-      if (s.museum.exhibitsFound.length > 0) return 'The lamps have come up over a few of them. Keep collecting — there are more.';
-      if (s.relics.held.length > 0) return 'Your finds are already on the plinths. Nothing to hand over — go and find more.';
+      if (s.museum.exhibitsFound.length > 0) return 'The room has named a few of them. Keep collecting — there are more.';
+      if (s.relics.held.length > 0) return 'Your finds already count toward these halls. Nothing to hand over — go and find more.';
       return 'Empty, for now. Relics, teeth, gems and Codex pages all end up on these walls by themselves.';
     },
   },
