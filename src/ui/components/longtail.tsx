@@ -16,7 +16,10 @@ import {
   RELIC_HOLD_CAP, RESONANCES, activeResonances, rollFloor, shardValue,
   wakingOf, wakingStep, wakingNeed, fusionCost,
 } from '../../engine/systems/relics';
-import { CASES, caseProgress, ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs } from '../../engine/systems/museum';
+import {
+  CASES, CASE_BY_ID, caseProgress, ROUTES, ROUTE_BY_ID, crewEffect, routeDurationMs,
+  EXHIBITS, activeExhibits, identifyCost,
+} from '../../engine/systems/museum';
 import { HIRELING_BY_NPC } from '../../engine/guild/hirelings';
 import { keyDisplayName } from '../../engine/content/keyNames';
 import { cachesOf } from '../../engine/systems/shaftSys';
@@ -638,9 +641,114 @@ export function MuseumPanel() {
         </div>
         <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
           Built onto the back of the Lamphouse, where the crews muster. Every case asks for
-          something specific — filling one is a hunt, not a shelf.
+          something specific — filling one is a hunt, not a shelf. What you put WHERE is the
+          other half: some things, stood together, turn out to mean something.
         </p>
       </div>
+
+      {/* WHAT THE ARRANGEMENT MEANS. Only formed exhibits appear — nothing is
+          listed before it happens (pillar 5), so this whole panel is absent
+          until the player's own placing makes one. */}
+      {state.museum.exhibitsFound.length > 0 && (
+        <div className="panel p-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">
+            Exhibits · {state.museum.exhibitsFound.length} found
+          </div>
+          {EXHIBITS.filter((e) => state.museum.exhibitsFound.includes(e.id)).map((e) => {
+            const live = activeExhibits(state).find((a) => a.def.id === e.id);
+            return (
+              <div key={e.id} className={`mt-1.5 rounded-md border px-2 py-1.5 ${
+                live ? 'border-[#e8c98a]/40 bg-[#e8c98a]/5' : 'border-cave-800 opacity-60'}`}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className={`text-[12px] font-semibold ${live ? 'text-[#e8c98a]' : 'text-cave-400'}`}>{e.name}</span>
+                  <span className="shrink-0 text-[10px] text-cave-500">
+                    {live
+                      ? `standing in ${CASE_BY_ID.get(live.caseId)?.name ?? live.caseId} · +${Math.round(e.bonus * 100)}% ${BUCKET_NAME[e.bucket]}`
+                      : 'not currently stood together'}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[10px] italic leading-snug text-cave-400">{e.line}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* THE PIECES — where the relic's story lives on. One source of truth:
+          this reads the RelicInstance the hall was given, it does not restate
+          it. An unstudied piece is a shape under a cloth. */}
+      {state.museum.pieces.length > 0 && (
+        <div className="panel p-3">
+          <div className="flex items-baseline justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#e8c98a]">On the plinths</span>
+            <span className="tnum text-[10px] text-cave-400">
+              {state.museum.pieces.filter((p) => p.identified).length}/{state.museum.pieces.length} studied
+            </span>
+          </div>
+          {state.museum.pieces.map((p) => {
+            const cost = identifyCost(p);
+            const canPay = getCurrency(state, 'scrip').gte(cost);
+            return (
+              <div key={p.relic.uid} className="mt-1.5 rounded-md border border-cave-800 px-2 py-1.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[12px] text-cave-200">
+                    {p.identified ? `${RARITIES[p.relic.rarity]} relic` : 'Unidentified piece'}
+                    {p.identified && (p.relic.waking ?? 0) >= 2 && (
+                      <span className="ml-1 text-[10px] text-[#9fd8c0]">awake</span>
+                    )}
+                  </span>
+                  <span className="shrink-0 text-[10px] text-cave-500">
+                    {CASE_BY_ID.get(p.caseId)?.name ?? p.caseId}
+                  </span>
+                </div>
+                {p.identified ? (
+                  p.relic.found ? (
+                    <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
+                      Found at depth <span className="tnum text-cave-400">{p.relic.found.depth}</span>
+                      {' '}in {p.relic.found.shell}, run <span className="tnum text-cave-400">{p.relic.found.run + 1}</span>
+                      {p.relic.found.by && <> — turned up by <span className="text-cave-400">{p.relic.found.by}</span></>}
+                    </div>
+                  ) : (
+                    <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
+                      Nobody wrote down where this came from.
+                    </div>
+                  )
+                ) : (
+                  <div className="mt-0.5 text-[10px] italic leading-snug text-cave-500">
+                    Under a cloth until somebody does the reading. An unstudied piece counts for
+                    its case, but no exhibit can recognise it.
+                  </div>
+                )}
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {!p.identified && (
+                    <button
+                      className="btn px-2 py-1 text-[11px]"
+                      disabled={!canPay}
+                      title={`Study it — ${cost} Scrip`}
+                      onClick={() => dispatch({ type: 'identifyPiece', uid: p.relic.uid })}
+                    >
+                      Study · {cost} Scrip
+                    </button>
+                  )}
+                  {/* Moving is what makes placement a DECISION rather than a
+                      trap: an arrangement you cannot change is a mistake you
+                      made once. */}
+                  {CASES.filter((c) => c.from === 'relic' && c.id !== p.caseId).slice(0, 3).map((c) => (
+                    <button
+                      key={c.id}
+                      className="btn px-2 py-1 text-[11px]"
+                      title={`Move it to ${c.name}`}
+                      onClick={() => dispatch({ type: 'movePiece', uid: p.relic.uid, caseId: c.id })}
+                    >
+                      → {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {CASES.map((c) => {
         const p = caseProgress(state, c.id);

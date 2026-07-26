@@ -9,7 +9,7 @@ import { addCurrency, getCurrency, spendCurrency } from './resources';
 import { doSpiral, gridSlotCost, licenceCost, startChallenge, abandonChallenge } from './systems/spiral';
 import { GRID_CELLS } from './content/shell7/gridModules';
 import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from './systems/relics';
-import { donateToCase, claimExpedition, ROUTE_BY_ID , routeDurationMs } from './systems/museum';
+import { donateToCase, claimExpedition, identifyPiece, movePiece, ROUTE_BY_ID , routeDurationMs } from './systems/museum';
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
@@ -778,6 +778,12 @@ export function handleAction(
       }
       return r;
     }
+
+    case 'identifyPiece':
+      return identifyPiece(state, ctx, action.uid);
+
+    case 'movePiece':
+      return movePiece(state, ctx, action.uid, action.caseId);
 
     case 'renderRelic': {
       const r = renderRelic(state, action.uid);

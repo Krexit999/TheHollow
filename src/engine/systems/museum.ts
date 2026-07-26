@@ -22,8 +22,10 @@
  * Wells and the Observatory, so they run while the tab is shut and their
  * results wait forever — nothing missable, nothing expiring.
  */
-import type { ActionResult, EngineCtx, ExpeditionsState, GameState, MuseumState } from '../types';
+import type { ActionResult, EngineCtx, ExpeditionsState, GameState, MuseumPiece, MuseumState } from '../types';
 import { registerModifier, foldBonus, type Bucket } from '../modifiers';
+import { spendCurrency } from '../resources';
+import { D } from '../decimal';
 import { grantRelic } from './relics';
 import { addMaterial } from './forge';
 import { noteMaterialSeen } from './drops';
@@ -188,6 +190,173 @@ export function museumBonus(state: GameState, bucket: Bucket): number {
 }
 
 /** Museum completion feeds the relic rarity floor — collection lifts luck. */
+// ---------------------------------------------------------------------------
+// EXHIBITS — what the arrangement means (A.47)
+// ---------------------------------------------------------------------------
+/**
+ * A case is a HALL, and which hall you put a relic in is the choice. An exhibit
+ * forms when the pieces standing together in one hall say something — three
+ * from the same run, three out of one drill's work, three from the deep.
+ *
+ * This is the light spatial decision the brief asked for without a grid puzzle:
+ * "where does this belong" is a real question at 380px, and a coordinate grid is
+ * not. Every predicate reads the A.46 find-record, so the identity layer feeds
+ * this one instead of being restated by it.
+ *
+ * PILLAR 5: nothing here is listed before it forms. The player arranges, and
+ * the museum notices — which is the whole difference between a discovery and a
+ * checklist. An UNIDENTIFIED piece is a shape under a cloth and counts for
+ * nothing here: the hall cannot recognise what has not been studied.
+ */
+export interface ExhibitDef {
+  id: string;
+  name: string;
+  line: string;
+  /** How many identified pieces in ONE hall must satisfy it. */
+  need: number;
+  bucket: Bucket;
+  bonus: number;
+  /** Read over the identified pieces of a single hall. */
+  holds: (pieces: MuseumPiece[]) => boolean;
+}
+
+/** Pieces sharing a value, biggest group first. */
+function biggestGroup<T>(pieces: MuseumPiece[], key: (p: MuseumPiece) => T | undefined): number {
+  const counts = new Map<T, number>();
+  for (const p of pieces) {
+    const k = key(p);
+    if (k === undefined) continue;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  let best = 0;
+  for (const n of counts.values()) best = Math.max(best, n);
+  return best;
+}
+
+export const EXHIBITS: ExhibitDef[] = [
+  {
+    id: 'lastShift', name: 'The Last Shift', need: 3, bucket: 'dropRate', bonus: 0.1,
+    line: 'Three things that came up on the same run. Whatever that day was, it was a long one.',
+    holds: (ps) => biggestGroup(ps, (p) => p.relic.found?.run) >= 3,
+  },
+  {
+    id: 'oneHandsWork', name: "One Hand's Work", need: 3, bucket: 'drillSpeed', bonus: 0.12,
+    line: 'All turned up by the same drill. Somebody should put its name on the card.',
+    holds: (ps) => biggestGroup(ps, (p) => p.relic.found?.by) >= 3,
+  },
+  {
+    id: 'outOfTheDeep', name: 'Out of the Deep', need: 3, bucket: 'dustYield', bonus: 0.12,
+    line: 'Nothing here was found in the light. The labels all read the same, past four hundred.',
+    holds: (ps) => ps.filter((p) => (p.relic.found?.depth ?? 0) >= 200).length >= 3,
+  },
+  {
+    id: 'wanderingLife', name: 'A Wandering Life', need: 4, bucket: 'scripGain', bonus: 0.14,
+    line: 'A warren, a well, a warden, the deep shaft. One case, four different lives.',
+    holds: (ps) => new Set(ps.map((p) => p.relic.source)).size >= 4,
+  },
+  {
+    id: 'wokenTogether', name: 'Woken Together', need: 3, bucket: 'regen', bonus: 0.12,
+    line: 'Three that were awake when you gave them up. They have not gone back to sleep.',
+    holds: (ps) => ps.filter((p) => (p.relic.waking ?? 0) >= 2).length >= 3,
+  },
+  {
+    id: 'firstHundred', name: 'The First Hundred', need: 3, bucket: 'xpGain', bonus: 0.12,
+    line: 'Everything here was found in the first stretch, before you knew what any of it meant.',
+    holds: (ps) => ps.filter((p) => (p.relic.found?.depth ?? 1e9) < 100).length >= 3,
+  },
+];
+
+/** Identified pieces standing in one hall. */
+export function piecesInCase(state: GameState, caseId: string): MuseumPiece[] {
+  return state.museum.pieces.filter((p) => p.caseId === caseId && p.identified);
+}
+
+/** Which exhibits the current arrangement forms, with the hall each stands in. */
+export function activeExhibits(state: GameState): Array<{ def: ExhibitDef; caseId: string }> {
+  const out: Array<{ def: ExhibitDef; caseId: string }> = [];
+  for (const c of CASES) {
+    const ps = piecesInCase(state, c.id);
+    for (const def of EXHIBITS) {
+      if (ps.length >= def.need && def.holds(ps)) out.push({ def, caseId: c.id });
+    }
+  }
+  return out;
+}
+
+/** Write down anything the arrangement has newly formed. The bonus applies the
+ *  first time regardless; this only records that it was SEEN. */
+export function noteExhibits(state: GameState, ctx: EngineCtx): void {
+  for (const { def } of activeExhibits(state)) {
+    if (state.museum.exhibitsFound.includes(def.id)) continue;
+    state.museum.exhibitsFound.push(def.id);
+    ctx.emit({ type: 'exhibitFormed', id: def.id });
+    ctx.dirty();
+  }
+}
+
+/** What identifying a piece costs — rarity is most of it. */
+export function identifyCost(piece: MuseumPiece): number {
+  return 40 * (piece.relic.rarity + 1);
+}
+
+/**
+ * IDENTIFY -> VALUE. Studying a piece is what lets the hall recognise it: an
+ * unidentified relic counts toward its case (you did give it) but is invisible
+ * to every exhibit, and its story stays unread. Scrip is the price, which gives
+ * the Guild's currency a use that is not another purchase.
+ */
+export function identifyPiece(state: GameState, ctx: EngineCtx, uid: number): ActionResult {
+  const piece = state.museum.pieces.find((p) => p.relic.uid === uid);
+  if (!piece) return { ok: false, reason: 'Nothing of that name is on display' };
+  if (piece.identified) return { ok: false, reason: 'That one has been studied already' };
+  const cost = identifyCost(piece);
+  if (!spendCurrency(state, 'scrip', D(cost))) {
+    return { ok: false, reason: `The work wants ${cost} Scrip` };
+  }
+  piece.identified = true;
+  noteExhibits(state, ctx);
+  ctx.dirty();
+  return { ok: true, data: { uid } };
+}
+
+/** Move a studied piece to another hall — the arrangement is the whole verb,
+ *  so it must be reversible or it is a trap rather than a decision. */
+export function movePiece(state: GameState, ctx: EngineCtx, uid: number, caseId: string): ActionResult {
+  const piece = state.museum.pieces.find((p) => p.relic.uid === uid);
+  if (!piece) return { ok: false, reason: 'Nothing of that name is on display' };
+  const def = CASE_BY_ID.get(caseId);
+  if (!def) return { ok: false, reason: 'No such hall' };
+  if (def.from !== 'relic') return { ok: false, reason: 'That hall is not for relics' };
+  if (piece.caseId === caseId) return { ok: false, reason: 'It already stands there' };
+  const from = piece.caseId;
+  // The case lists move with it, so `donated` and `pieces` cannot drift apart.
+  const key = `relic:${piece.relic.uid}`;
+  state.museum.donated[from] = (state.museum.donated[from] ?? []).filter((k) => k !== key);
+  const target = (state.museum.donated[caseId] ??= []);
+  if (target.length >= def.need) return { ok: false, reason: 'That hall is full' };
+  target.push(key);
+  piece.caseId = caseId;
+  // Completion can change in BOTH directions when a piece walks out of a hall.
+  for (const id of [from, caseId]) {
+    const cdef = CASE_BY_ID.get(id);
+    const full = cdef ? (state.museum.donated[id]?.length ?? 0) >= cdef.need : false;
+    const at = state.museum.completed.indexOf(id);
+    if (full && at < 0) state.museum.completed.push(id);
+    if (!full && at >= 0) state.museum.completed.splice(at, 1);
+  }
+  state.relics.floorBonus = museumFloorBonus(state);
+  noteExhibits(state, ctx);
+  ctx.dirty();
+  return { ok: true };
+}
+
+/** Every formed exhibit's contribution to a bucket. */
+export function exhibitBonus(state: GameState, bucket: Bucket): number {
+  return activeExhibits(state)
+    .filter(({ def }) => def.bucket === bucket)
+    .reduce((sum, { def }) => sum + def.bonus, 0);
+}
+
 export function museumFloorBonus(state: GameState): number {
   return Math.min(0.5, state.museum.completed.length * 0.08);
 }
@@ -317,6 +486,13 @@ export function donateToCase(
     if (relic.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
     state.relics.held = state.relics.held.filter((r) => r.uid !== relicUid);
     state.relics.equipped = state.relics.equipped.filter((u) => u !== relicUid);
+    // THE PIECE IS KEPT WHOLE (A.47). This used to be the end of the relic:
+    // filtered out of `held` and gone. A.46 had just given every relic a story
+    // — where, when, which drill — so donating one destroyed the only record
+    // of it and the museum became a wall of anonymous plinths. The instance
+    // moves to the hall instead, which is also what lets an exhibit recognise
+    // anything about the things standing in it.
+    state.museum.pieces.push({ relic, caseId, identified: false });
   }
   list.push(key);
 
@@ -395,6 +571,17 @@ export function claimExpedition(state: GameState, ctx: EngineCtx, crewId: string
  * never grants flat income.
  */
 export function registerMuseumModifiers(): void {
+  // Exhibits ride the same registration, so a formed exhibit shows up in the
+  // breakdown popover by name like every other source rather than being an
+  // invisible multiplier the player has to take on trust.
+  for (const bucket of new Set(EXHIBITS.map((e) => e.bucket))) {
+    registerModifier({
+      id: `exhibits.${bucket}`,
+      label: 'Exhibits',
+      bucket,
+      value: (s) => foldBonus(bucket, exhibitBonus(s, bucket)),
+    });
+  }
   const buckets = new Set(CASES.map((c) => c.bucket));
   for (const bucket of buckets) {
     // Same two structural guards as the relic registration. This site is why
@@ -412,7 +599,7 @@ export function registerMuseumModifiers(): void {
 }
 
 export function defaultMuseumState(): MuseumState {
-  return { donated: {}, completed: [] };
+  return { donated: {}, completed: [], pieces: [], exhibitsFound: [] };
 }
 
 export function defaultExpeditionsState(): ExpeditionsState {

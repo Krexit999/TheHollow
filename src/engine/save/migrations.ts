@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 27;
+export const SAVE_VERSION = 28;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -595,6 +595,20 @@ export const MIGRATIONS: Record<number, Migration> = {
     relics['shards'] ??= 0;
     relics['resonancesFound'] ??= [];
     return { ...p, version: 27, state };
+  },
+
+  // v27 -> v28 — the halls keep the relics they are given (A.47), and the
+  // exhibits they form. Both start EMPTY: donating used to DELETE the relic,
+  // so a save from before this genuinely has no instances to recover — the
+  // cases remember their counts, and the pieces standing in them have no
+  // stories because those stories were thrown away at the time. Reconstructing
+  // plausible ones would be inventing a museum.
+  27: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const museum = (state['museum'] ??= {}) as Record<string, unknown>;
+    museum['pieces'] ??= [];
+    museum['exhibitsFound'] ??= [];
+    return { ...p, version: 28, state };
   },
 };
 
