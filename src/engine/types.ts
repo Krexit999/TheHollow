@@ -224,9 +224,38 @@ export interface DrillState {
   /** HEAD archetype id — determines targeting behaviour (a configured component,
    *  not the old `behavior` enum). When set, it supersedes `behavior`. */
   head?: string;
-  /** BIT material — reads traits the way tool parts do (edge → power, cadence →
-   *  speed, heft → wear resistance). A drill is configured, not merely levelled. */
-  bit?: { materialId: string; purity: number };
+  /**
+   * BIT material — reads traits the way tool parts do (edge → power, cadence →
+   * speed, heft → wear resistance). A drill is configured, not merely levelled.
+   *
+   * THE GRAIN (A.52): strikes shape the bit. Unlike the drill's `use` (which
+   * accumulates forever and never decays — switching an implement is never
+   * punished), a bit's grain is a SHAPE: sharpening it for one world is the
+   * same act as blunting it for the others, so this is read as a SHARE, not a
+   * total. That is what eventually asks a question — ride the specialised bit,
+   * or re-cut it flat for the world you are standing in.
+   */
+  bit?: { materialId: string; purity: number; grain?: Record<string, number> };
+}
+
+/**
+ * WHAT THE ROCK IS DOING RIGHT NOW (A.52) — three readings off the live face,
+ * recomputed on the one-second beat. Heads are fitted AGAINST this, so a bay
+ * solved at depth 40 stops being the right bay at depth 300, and a shell whose
+ * signature rearranges the board (Verdance vines, Ferrite's poles, Glassmere's
+ * beam) turns the seam under a bay nobody touched.
+ *
+ * Derived, never authored: it is a cache of a pure read of `face.cells`.
+ */
+export interface SeamProfile {
+  /** 0 = one hot cell and nothing else · 1 = perfectly even face. */
+  spread: number;
+  /** 0 = rich cells scattered · 1 = rich cells sit next to each other. */
+  cluster: number;
+  /** 0 = the shell's roof · 1 = its floor. Depth, normalised. */
+  hardness: number;
+  /** play-seconds it was taken, so the panel can say how fresh it is. */
+  at: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -831,6 +860,19 @@ export interface GameState {
   drills: {
     bayBuilt: boolean;
     units: DrillState[];
+    /**
+     * THE FEED (A.52). Levels of bay supply bought. Every drill DRAWS on one
+     * shared feed, so fitting a heavy head and a fine bit on one chassis is
+     * taken out of what the rest can have. Over-drawing never stops the bay —
+     * it browns out, which leaves value on the table without blocking a player
+     * who never opens the panel (pillar 1).
+     */
+    supply: number;
+    /** Bay-wide arrangements the player has actually seen fire. Discovery, not
+     *  a list (pillar 5) — nothing is shown before it happens once. */
+    synergiesFound: string[];
+    /** Cached read of the live face; see SeamProfile. Absent until first tick. */
+    seam?: SeamProfile;
   };
 
   depth: number;
@@ -1194,6 +1236,7 @@ export type GameEvent =
   | { type: 'relicWoke'; uid: number; step: number }
   | { type: 'resonanceFound'; id: string }
   | { type: 'exhibitFormed'; id: string }
+  | { type: 'baySynergy'; id: string }
   | { type: 'relicFused'; relicId: string; rarity: string }
   | { type: 'expeditionReturned'; crewId: string; haul: number }
   | { type: 'caseCompleted'; caseId: string }
@@ -1397,6 +1440,7 @@ export type GameAction =
   // --- THE FACE CLUSTER (v21) — Drill Bay -------------------------------
   | { type: 'renameDrill'; index: number; name: string }
   | { type: 'repairDrill'; index: number }
+  | { type: 'recutBit'; index: number }
   | { type: 'fitDrillHead'; index: number; head: string | null }
   | { type: 'fitDrillBit'; index: number; materialId: string | null }
   | { type: 'setKilnFuel'; fuelId: string | null }

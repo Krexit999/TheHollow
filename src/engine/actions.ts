@@ -31,7 +31,7 @@ import {
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
 import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount } from './systems/forge';
-import { drillRepairCost } from './systems/drills';
+import { drillRepairCost, recutBit } from './systems/drills';
 import { drillHead } from './content/drillParts';
 import { lightOverstoke } from './systems/kiln';
 import { kilnFuel } from './content/kilnFuel';
@@ -205,6 +205,15 @@ export function handleAction(
       drill.name = name || undefined;
       ctx.dirty();
       return { ok: true };
+    }
+
+    // THE RE-CUT (A.52). Grinding a bit back to a flat edge — the answer to a
+    // bit that has taken the shape of a world you have left. Priced in the
+    // shell's own converted currency, so it is payable wherever you are.
+    case 'recutBit': {
+      const r = recutBit(state, action.index);
+      if (r.ok) ctx.dirty();
+      return r;
     }
 
     case 'repairDrill': {

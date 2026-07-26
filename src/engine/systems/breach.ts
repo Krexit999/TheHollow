@@ -110,7 +110,7 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
     if (!SURVIVES_BREACH.has(def.id)) state.upgrades[def.id] = 0;
   }
   state.kiln = { built: false, heat: 0, feeding: false, progress: D(0) };
-  state.drills = { bayBuilt: false, units: [] };
+  state.drills = { bayBuilt: false, units: [], supply: 0, synergiesFound: [] };
   state.assay.active = null;
   state.assay.boostChips = 0;
   state.assay.reportDepth = null;

@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 29;
+export const SAVE_VERSION = 30;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -640,6 +640,29 @@ export const MIGRATIONS: Record<number, Migration> = {
     // AUTO-SCRAP (A.49) starts OFF, so a load can never eat anything.
     relics['autoScrap'] ??= { on: false, maxRarity: 0, keepPowered: true };
     return { ...p, version: 29, state };
+  },
+
+  // v29 -> v30 — THE BAY IS A BUDGET (A.52). An existing bay keeps every
+  // chassis it has; it simply now draws on a feed it has bought none of.
+  //
+  // WHICH WOULD BROWN IT OUT ON LOAD, so the feed is seeded to cover what the
+  // player already built: a save's drills are grandfathered to a supply level
+  // that leaves them at full power. Nobody loses output for having played
+  // before this existed — the puzzle starts from where they are, not below it.
+  29: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const drills = (state['drills'] ??= {}) as Record<string, unknown>;
+    const units = (drills['units'] ?? []) as Array<Record<string, unknown>>;
+    // The pre-A.52 draw of an existing bay: one per chassis plus its levels and
+    // whatever bit it carries. Rounded UP into feed levels (3 each, base 6).
+    let draw = 0;
+    for (const u of units) {
+      const level = Number(u['level'] ?? 0);
+      draw += 1.35 * (1 + 0.05 * level); // a generous stand-in for head x bit
+    }
+    drills['supply'] ??= Math.max(0, Math.ceil((draw - 6) / 3));
+    drills['synergiesFound'] ??= [];
+    return { ...p, version: 30, state };
   },
 };
 
