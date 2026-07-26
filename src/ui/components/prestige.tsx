@@ -1,4 +1,8 @@
-import { allShells, coresForDepth, fmt, getCurrency, masteryLevel, nextGate } from '../../engine';
+import { useState } from 'react';
+import { allShells, fmt, getCurrency, masteryLevel, nextGate } from '../../engine';
+import { D } from '../../engine/decimal';
+import { FALLS, fallShape, collapsePreview, collapseRetained } from '../../engine/systems/collapseSys';
+import type { CollapseType } from '../../engine/types';
 import {
   CORE_NODES,
   coreNodeCost,
@@ -20,39 +24,161 @@ import { CollapseControls } from './qol';
 // Collapse + Core tree
 // ---------------------------------------------------------------------------
 
+/** mm:ss for a run length — runs are minutes, so hours never appear. */
+function clock(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** A signed delta against the last run, coloured by direction. Neutral when
+ *  there is nothing to compare against — the first fall has no "vs last". */
+function Delta({ now, was, unit = '', lowerIsBetter = false }: {
+  now: number; was: number | null; unit?: string; lowerIsBetter?: boolean;
+}) {
+  if (was === null || was === 0) return null;
+  const d = now - was;
+  if (d === 0) return <span className="text-cave-500"> · same</span>;
+  const good = lowerIsBetter ? d < 0 : d > 0;
+  return (
+    <span className={good ? ' text-emerald-400/80' : ' text-amber-400/80'}>
+      {' '}{d > 0 ? '+' : ''}{fmt(D(d))}{unit}
+    </span>
+  );
+}
+
 export function CollapsePanel() {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
+  const [fall, setFall] = useState<CollapseType>('clean');
   if (!state) return null;
 
-  const gain = coresForDepth(state.depth);
+  const gain = collapsePreview(state);
   const cores = getCurrency(state, 'core');
   const canCollapse = gain.gte(1);
+  const last = state.collapse.lastRun;
+  const runSec = Math.max(0, Math.floor(state.stats.playTimeSec - state.collapse.runStartAt));
+  const peak = Math.max(state.depth, state.shaft?.reached ?? 0);
+  const shape = fallShape(fall);
+  const retained = collapseRetained(state);
+
+  // WHAT THIS BUYS — the cheapest core node this fall puts in reach. The fall
+  // was a number with a button next to it; the reason to press it lived two
+  // panels away in a tree the player had to price themselves.
+  const after = cores.add(gain);
+  const buys = CORE_NODES
+    .filter((n) => (n.tranche !== 2 || state.shell.breachCount >= 1))
+    .map((n) => ({ n, lvl: coreNodeLevel(state, n.id) }))
+    .filter(({ n, lvl }) => lvl < n.maxLevel)
+    .map(({ n, lvl }) => ({ name: n.name, cost: coreNodeCost(lvl), lvl }))
+    .filter((x) => after.gte(x.cost) && cores.lt(x.cost))
+    .sort((a, b) => (a.cost.gt(b.cost) ? 1 : -1))[0];
+
+  const traces = state.collapse.traces ?? [];
 
   return (
     <div className="space-y-2">
       <WardenChallenge />
       <BreachCard />
-      <div className="panel p-4 text-center">
-        <div className="text-[10px] uppercase tracking-widest text-cave-400">Let the shaft fall</div>
-        <div className="mt-2 font-display text-3xl font-bold text-core tnum">
+      <div className="panel p-4">
+        <div className="text-center text-[10px] uppercase tracking-widest text-cave-400">Let the shaft fall</div>
+        <div className="mt-2 text-center font-display text-3xl font-bold text-core tnum">
           +{fmt(gain)} <span className="text-base font-normal">Cores</span>
+          <Delta now={gain.toNumber()} was={last ? last.cores.toNumber() : null} />
         </div>
-        <div className="mt-1 text-[11px] text-cave-400 tnum">⌊2 · (depth {state.depth} / 40)^1.5⌋</div>
+
+        {/* THE RUN, READ BACK. Every number here already existed in state and
+            none of it was ever shown — the most repeated screen in the game
+            told you a formula and nothing about the run you just made. */}
+        <div className="mt-3 grid grid-cols-3 gap-2 rounded-md border border-cave-800 bg-cave-900/40 p-2 text-center">
+          <div>
+            <div className="text-[9px] uppercase tracking-wider text-cave-500">Depth</div>
+            <div className="tnum text-sm text-cave-200">
+              {peak}<Delta now={peak} was={last?.depth ?? null} />
+            </div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-wider text-cave-500">This run</div>
+            <div className="tnum text-sm text-cave-200">
+              {clock(runSec)}
+              <Delta now={runSec} was={last?.sec ?? null} unit="s" lowerIsBetter />
+            </div>
+          </div>
+          <div>
+            <div className="text-[9px] uppercase tracking-wider text-cave-500">Fall no.</div>
+            <div className="tnum text-sm text-cave-200">{state.collapse.count + 1}</div>
+          </div>
+        </div>
+
+        {buys && (
+          <div className="mt-2 rounded-md border border-core/25 bg-core/5 px-2 py-1.5 text-center text-[11px] text-core/90">
+            This fall buys <span className="font-semibold">{buys.name}</span>{' '}
+            <span className="text-cave-400">lv{buys.lvl + 1} · {fmt(buys.cost)} Cores</span>
+          </div>
+        )}
+
+        {/* HOW IT COMES DOWN. Default is Clean, so the common path costs no
+            extra input at all — this fires 24-37 times an arc and a choice
+            that slows it down is a worse screen than no choice. */}
+        <div className="mt-3 grid grid-cols-3 gap-1">
+          {FALLS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFall(f.id)}
+              className={`rounded-md border px-1 py-1.5 text-[11px] transition-colors ${
+                fall === f.id
+                  ? 'border-core/60 bg-core/10 text-core'
+                  : 'border-cave-800 text-cave-400 hover:border-cave-700'
+              }`}
+            >
+              {f.name.replace(' Fall', '')}
+            </button>
+          ))}
+        </div>
+        <div className="mt-1.5 min-h-[2.5rem] text-[11px] leading-relaxed text-cave-400">
+          {shape.blurb}
+          <div className="mt-0.5 text-cave-500">
+            Keeps <span className="tnum text-cave-300">{Math.round(retained * shape.retainMult)}</span> levels
+            of each face upgrade · kiln {shape.heatKeep === 'node' ? 'banks by Ember Memory' : shape.heatKeep === 1 ? 'keeps all heat' : 'goes cold'}
+            {shape.faceFill < 1 && ' · rock returns half full'}
+          </div>
+        </div>
+
         <HoldButton
-          onConfirm={() => dispatch({ type: 'collapse' })}
+          onConfirm={() => dispatch({ type: 'collapse', fall })}
           disabled={!canCollapse}
           holdMs={900}
-          className="btn mt-3 w-full border-core/40 py-2.5 text-sm font-semibold text-core hover:border-core"
+          className="btn mt-2 w-full border-core/40 py-2.5 text-sm font-semibold text-core hover:border-core"
         >
-          {canCollapse ? 'Hold to Collapse' : 'Descend to depth 26+ first'}
+          {canCollapse ? `Hold for the ${shape.name}` : 'Descend to depth 26+ first'}
         </HoldButton>
-        <div className="mt-2 text-[11px] leading-relaxed text-cave-400">
+        <div className="mt-2 text-center text-[11px] leading-relaxed text-cave-400">
           Resets face upgrades, Dust, Brick, and depth. The Kiln, Drill Bay, Delver,
           achievements, and your depth record all survive.
         </div>
+
+        {/* THE COLUMN REMEMBERS. Bars at the depth each fall came down, so the
+            shaft reads as one you dug rather than a fresh tube every time. */}
+        {traces.length > 1 && (
+          <div className="mt-3">
+            <div className="text-[9px] uppercase tracking-wider text-cave-500">The column · last {traces.length} falls</div>
+            <div className="mt-1 flex h-8 items-end gap-[2px]" role="img"
+              aria-label={`Depth of your last ${traces.length} collapses, oldest first`}>
+              {traces.map((t) => {
+                const deepest = Math.max(...traces.map((x) => x.depth), 1);
+                const colour = t.type === 'braced' ? 'bg-sky-500/50'
+                  : t.type === 'ember' ? 'bg-amber-500/50' : 'bg-core/40';
+                return (
+                  <div key={t.count} className={`flex-1 rounded-sm ${colour}`}
+                    style={{ height: `${Math.max(8, (t.depth / deepest) * 100)}%` }}
+                    title={`Fall ${t.count} · depth ${t.depth} · ${fallShape(t.type).name}`} />
+                );
+              })}
+            </div>
+          </div>
+        )}
         {state.collapse.count > 0 && (
-          <div className="mt-1 text-[11px] text-cave-400">
+          <div className="mt-1 text-center text-[11px] text-cave-400">
             Collapses so far: <span className="tnum text-cave-300">{state.collapse.count}</span>
           </div>
         )}

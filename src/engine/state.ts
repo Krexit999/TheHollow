@@ -136,7 +136,7 @@ export function initialState(nowMs: number): GameState {
     mycelium: defaultMyceliumState(),
     brewing: defaultBrewingState(),
     loom: defaultLoomState(),
-    collapse: { count: 0, nodes: {}, lastRun: null, runStartAt: 0 },
+    collapse: { count: 0, nodes: {}, lastRun: null, runStartAt: 0, traces: [] },
     delver: { xp: D(0), level: 1, skillPoints: 1, skills: {} },
     achievements: { unlocked: {} },
     stats: {

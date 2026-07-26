@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 25;
+export const SAVE_VERSION = 26;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -565,6 +565,18 @@ export const MIGRATIONS: Record<number, Migration> = {
     const stats = (state['stats'] ??= {}) as Record<string, unknown>;
     stats['fieldChargeHarvested'] ??= 0;
     return { ...p, version: 25, state };
+  },
+
+  // v25 -> v26 — the column's traces (A.45). A mark per Collapse so the shaft
+  // reads as one you dug. An existing save starts EMPTY rather than
+  // back-filling from collapse.count: the marks carry a depth and a fall type
+  // that were never recorded, and inventing forty of them would put a
+  // fabricated history in front of the player as if it were their own.
+  25: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const collapse = (state['collapse'] ??= {}) as Record<string, unknown>;
+    collapse['traces'] ??= [];
+    return { ...p, version: 26, state };
   },
 };
 

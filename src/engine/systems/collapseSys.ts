@@ -10,7 +10,7 @@ import { D } from '../decimal';
 import type { ModifierCache } from '../modifiers';
 import { addCurrency, allCurrencies } from '../resources';
 import { allUpgrades, stat } from '../upgrades';
-import type { ActionResult, EngineCtx, GameState } from '../types';
+import type { ActionResult, CollapseType, EngineCtx, GameState } from '../types';
 import { coresForDepth } from '../prestigeMath';
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { applyFieldSize, cellCap } from './face';
@@ -32,7 +32,68 @@ export function collapsePreview(state: GameState): ReturnType<typeof coresForDep
   return coresForDepth(shaftPeak(state));
 }
 
-export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx, auto = false): ActionResult {
+/**
+ * THE THREE FALLS (A.45). What the cave-in spares, chosen in one click.
+ *
+ * The Collapse is the most repeated screen in the game — MEASURED at 24-37 per
+ * Loam arc, which is what ranked it first in the A.44 interaction audit — and
+ * it was a confirm dialog. A choice here has to cost no time at all, so this is
+ * three buttons, not a modal, and the middle one is what the button always did.
+ *
+ * DELIBERATELY CORE-NEUTRAL. Every fall pays the same Cores. The A.44 pass
+ * spent a whole checkpoint sizing the Core faucet against the real cadence, and
+ * a fall type that moved the payout would silently re-open it. What moves is
+ * the SHAPE OF THE NEXT OPENING — which is the thing a player who falls thirty
+ * times an arc actually feels, and the thing the Momentum Pass was about.
+ *
+ *   clean   what the button has always done. Bit-for-bit, so every pacing
+ *           number measured before this still describes the default player.
+ *   braced  the props hold: DOUBLE the retained upgrade levels — but the kiln
+ *           goes stone cold and the fresh face comes back half full.
+ *   ember   the fire keeps: ALL kiln heat and a full face — but nothing is
+ *           retained, every resetting upgrade goes to zero.
+ */
+export interface FallShape {
+  id: CollapseType;
+  name: string;
+  /** Multiplier on the retained face-upgrade floor. */
+  retainMult: number;
+  /** Multiplier on kiln heat kept, ON TOP of Ember Memory. 1 = keep it all. */
+  heatKeep: number | 'node';
+  /** Fraction of cell cap the rebuilt face starts at. */
+  faceFill: number;
+  blurb: string;
+}
+
+export const FALLS: FallShape[] = [
+  {
+    id: 'clean', name: 'Clean Fall', retainMult: 1, heatKeep: 'node', faceFill: 1,
+    blurb: 'It comes down the way it always does.',
+  },
+  {
+    id: 'braced', name: 'Braced Fall', retainMult: 2, heatKeep: 0, faceFill: 0.5,
+    blurb: 'You shore the props first. Twice the work survives — the kiln dies and the rock comes back thin.',
+  },
+  {
+    id: 'ember', name: 'Ember Fall', retainMult: 0, heatKeep: 1, faceFill: 1,
+    blurb: 'You save the fire and let the rest go. Full heat, full rock, nothing else kept.',
+  },
+];
+
+/** How many marks the column keeps. A save is not a log file. */
+export const TRACE_LIMIT = 40;
+
+export const fallShape = (id: CollapseType): FallShape =>
+  FALLS.find((f) => f.id === id) ?? FALLS[0]!;
+
+export function doCollapse(
+  state: GameState,
+  mods: ModifierCache,
+  ctx: EngineCtx,
+  auto = false,
+  fall: CollapseType = 'clean',
+): ActionResult {
+  const shape = fallShape(fall);
   // THE SHAFT: the fall pays out on the DEEPEST point reached this run, so
   // climbing up your own column to fetch something never costs you the Collapse.
   const peak = shaftPeak(state);
@@ -47,7 +108,7 @@ export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx
 
   // Momentum core node: retain up to 4 levels of each face upgrade per rank.
   // THE GENTLE FALL (law) retains 20 regardless — the stronger memory wins.
-  const retained = collapseRetained(state);
+  const retained = Math.round(collapseRetained(state) * shape.retainMult);
   // CARRY ONE (Phase 21): one marked face upgrade keeps its full level through
   // this fall. Non-stacking, and the mark is spent here. Sim-bounded — see
   // scripts/carry-verify.ts: one upgrade can never take return-to-peak under 10%.
@@ -75,7 +136,9 @@ export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx
   state.depth = 0;
   resetShaftRun(state); // the run's cleared floor washes; the RAIL does not
   // Ember Memory core node: the kiln keeps 10% heat per level.
-  state.kiln.heat = state.kiln.heat * 0.1 * coreNodeLevel(state, 'emberMemory');
+  state.kiln.heat = shape.heatKeep === 'node'
+    ? state.kiln.heat * 0.1 * coreNodeLevel(state, 'emberMemory')
+    : state.kiln.heat * shape.heatKeep;
   state.kiln.progress = D(0);
 
   state.collapse.count += 1;
@@ -87,7 +150,7 @@ export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // rock is the one consolation of the cave-in.
   applyFieldSize(state, mods);
   const cap = cellCap(state, mods);
-  state.face.cells = new Array(state.face.w * state.face.h).fill(cap);
+  state.face.cells = new Array(state.face.w * state.face.h).fill(cap * shape.faceFill);
   runFaceReset(state, 'collapse'); // signatures re-roll their face state
 
   grantXP(state, mods, ctx, cores.mul(8));
@@ -96,8 +159,19 @@ export function doCollapse(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // the new "last run" for the next Collapse to measure itself by.
   const sec = Math.max(0, Math.floor(state.stats.playTimeSec - state.collapse.runStartAt));
   const prev = state.collapse.lastRun;
-  state.collapse.lastRun = { depth: depthAtCollapse, cores, sec, count: state.collapse.count, carried: carriedInfo };
+  state.collapse.lastRun = {
+    depth: depthAtCollapse, cores, sec, count: state.collapse.count, carried: carriedInfo, type: fall,
+  };
   state.collapse.runStartAt = state.stats.playTimeSec;
+
+  // THE COLUMN REMEMBERS (A.45). A mark at the depth this one came down, kept
+  // so the shaft you climb is visibly one you dug rather than a fresh tube
+  // every time. Bounded: this fires 24-37 times an arc and a save is not a log
+  // file. Newest last, oldest dropped.
+  state.collapse.traces = [
+    ...(state.collapse.traces ?? []),
+    { depth: depthAtCollapse, count: state.collapse.count, type: fall },
+  ].slice(-TRACE_LIMIT);
 
   ctx.emit({ type: 'collapse', cores, depth: depthAtCollapse, sec, prev, auto });
   return { ok: true, data: { cores, depth: depthAtCollapse, sec, prev, auto } };

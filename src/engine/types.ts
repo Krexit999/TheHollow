@@ -837,6 +837,10 @@ export interface GameState {
     lastRun: RunSummary | null;
     /** play-time seconds at the run's start, to clock its duration. */
     runStartAt: number;
+    /** Marks the column keeps, newest last, bounded. Per-shell: the column you
+     *  are standing in is the one that remembers, so a Breach starts a fresh
+     *  one. */
+    traces: CollapseTrace[];
   };
 
   delver: {
@@ -901,11 +905,34 @@ export interface GameState {
 // ---------------------------------------------------------------------------
 
 /** One run's closing ledger, kept so the next Collapse can compare against it. */
+/**
+ * HOW THE SHAFT CAME DOWN (A.45). The Collapse fires 24-37 times in a Loam arc
+ * — measured, the most repeated screen in the game — so the choice attached to
+ * it has to be ONE CLICK and never a modal. Ceremony is the enemy here.
+ *
+ * Every type pays IDENTICAL Cores. What differs is what the cave-in spares, so
+ * the Core faucet is untouched and A.44's ladder sizing still stands; the
+ * choice shapes the next run's OPENING, not its payout. `clean` is the old
+ * behaviour bit-for-bit, which is why no pacing number needs re-baselining.
+ */
+export type CollapseType = 'clean' | 'braced' | 'ember';
+
+/** A mark the column keeps. Traces survive the fall that made them — the point
+ *  is that the shaft accumulates a history you can see. */
+export interface CollapseTrace {
+  depth: number;
+  /** Which collapse this was, so the column reads in order. */
+  count: number;
+  type: CollapseType;
+}
+
 export interface RunSummary {
   depth: number;
   cores: Decimal;
   sec: number;
   count: number;
+  /** How it came down. Absent on saves from before types existed. */
+  type?: CollapseType;
   /** What the CARRY-ONE mark saved this fall: the upgrade kept and the levels it
    *  held that would otherwise have reset. Optional — absent when nothing carried
    *  (and on saves from before it was recorded). */
@@ -1141,7 +1168,7 @@ export type GameAction =
   | { type: 'installLift' }
   | { type: 'rideLift' }
   | { type: 'workExcavation'; id: string }
-  | { type: 'collapse' }
+  | { type: 'collapse'; fall?: CollapseType }
   | { type: 'placeMotif'; q: number; r: number; shape: MotifShape; rank: number }
   | { type: 'removeMotif'; q: number; r: number }
   | { type: 'upgradeMotif'; q: number; r: number }

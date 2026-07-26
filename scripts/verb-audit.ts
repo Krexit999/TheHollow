@@ -62,10 +62,10 @@ const AUDIT: Entry[] = [
     note: 'A pure number, met more often than anything else in the game. The Settling and the rail sit behind it but are not things you DO.' },
 
   // --- per-run --------------------------------------------------------------
-  { system: 'The Collapse', kind: 'number', frequency: 'per-run',
-    verb: 'confirm a reset',
+  { system: 'The Collapse', kind: 'choosing', frequency: 'per-run',
+    verb: 'read the run back, then choose HOW it comes down — Clean, Braced or Ember',
     actions: ['collapse', 'setAutoCollapseDepth', 'setCarryUpgrade'],
-    note: 'MEASURED 24-37 times per Loam arc — the most repeated screen in the game, and it is a confirm dialog. Highest interaction-per-cost item on this list; SYSTEM_IMPROVEMENTS proposes a real run summary, a felt reward, and persistent shaft traces.' },
+    note: 'A.45: was the top-ranked `number` on this list (measured 24-37 times per Loam arc and it was a confirm dialog). Now carries a run summary vs the last fall, what the Cores buy next, three fall types, and the column\'s trace history. Core-NEUTRAL by construction — every fall pays the same, so A.44\'s faucet sizing stands — and Clean is the default, so the common path still costs zero extra input.' },
   { system: 'The Forge', kind: 'choosing', frequency: 'per-run',
     verb: 'choose recipe, parts, materials and traits; stage a hand-craft; socket gems and alloys',
     actions: ['craftTool', 'craftFromParts', 'replacePart', 'beginCraft', 'craftStage', 'socketGem', 'socketAlloy'] },

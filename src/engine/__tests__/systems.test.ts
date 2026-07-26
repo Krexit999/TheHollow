@@ -6,6 +6,7 @@ import { KILN_DUST_PER_BRICK } from '../systems/kiln';
 import type { GameState } from '../types';
 import { xpToLevel } from '../prestigeMath';
 import { CORE_NODES, coreNodeCost } from '../content/shell1/coreTree';
+import { TRACE_LIMIT } from '../systems/collapseSys';
 
 describe('the kiln', () => {
   it('conserves dust: consumed * efficiency = progress + bricks fired', () => {
@@ -122,6 +123,79 @@ describe('collapse', () => {
     expect(s.kiln.built).toBe(true); // structures persist
     expect(s.kiln.heat).toBe(0); // ...but the fire dies (no Ember Memory)
     expect(s.face.cells.every((c) => c === 8)).toBe(true); // fresh full face
+  });
+
+  /**
+   * THE THREE FALLS (A.45). The Collapse is the most repeated screen in the
+   * game — measured 24-37 times per Loam arc — and it was a confirm dialog.
+   * The choice added here is deliberately CORE-NEUTRAL, because A.44 spent a
+   * checkpoint sizing the Core faucet and a fall type that moved the payout
+   * would silently re-open it.
+   *
+   * This is the load-bearing assertion of the whole feature: what the fall
+   * changes is the shape of the next opening, never what it pays.
+   */
+  it('every fall type pays IDENTICAL Cores', () => {
+    const paid = (fall: 'clean' | 'braced' | 'ember') => {
+      const { engine, s } = atDepth(120);
+      expect(engine.dispatch({ type: 'collapse', fall }).ok).toBe(true);
+      return s.currencies['core']!.toNumber();
+    };
+    const clean = paid('clean');
+    expect(paid('braced')).toBe(clean);
+    expect(paid('ember')).toBe(clean);
+    expect(clean).toBeGreaterThan(0);
+  });
+
+  /** `clean` must be the old behaviour bit-for-bit — it is why no pacing
+   *  number measured before this needs re-baselining. */
+  it('a Clean Fall is the default and matches an unspecified collapse', () => {
+    const explicit = (() => {
+      const { engine, s } = atDepth(120);
+      s.collapse.nodes['momentum'] = 2;
+      engine.dispatch({ type: 'collapse', fall: 'clean' });
+      return { blade: s.upgrades['blade'], heat: s.kiln.heat, cell: s.face.cells[0] };
+    })();
+    const implicit = (() => {
+      const { engine, s } = atDepth(120);
+      s.collapse.nodes['momentum'] = 2;
+      engine.dispatch({ type: 'collapse' });
+      return { blade: s.upgrades['blade'], heat: s.kiln.heat, cell: s.face.cells[0] };
+    })();
+    expect(implicit).toEqual(explicit);
+  });
+
+  it('Braced keeps double the levels but kills the kiln and thins the rock', () => {
+    const { engine, s } = atDepth(120);
+    s.collapse.nodes['momentum'] = 2; // retain 8
+    s.collapse.nodes['emberMemory'] = 5;
+    const capBefore = s.face.cells[0]!;
+    engine.dispatch({ type: 'collapse', fall: 'braced' });
+    expect(s.upgrades['blade']).toBe(16); // 8 × 2
+    expect(s.kiln.heat).toBe(0);
+    expect(s.face.cells[0]).toBeLessThan(capBefore);
+  });
+
+  it('Ember keeps the fire and a full face but retains nothing', () => {
+    const { engine, s } = atDepth(120);
+    s.collapse.nodes['momentum'] = 2;
+    s.kiln.heat = 0.8;
+    engine.dispatch({ type: 'collapse', fall: 'ember' });
+    expect(s.upgrades['blade']).toBe(0);
+    expect(s.kiln.heat).toBeCloseTo(0.8, 5);
+  });
+
+  it('the column keeps a bounded trace of each fall', () => {
+    const { engine, s } = atDepth(120);
+    engine.dispatch({ type: 'collapse', fall: 'ember' });
+    expect(s.collapse.traces.at(-1)).toMatchObject({ depth: 120, type: 'ember', count: 1 });
+    // Bounded: this fires dozens of times an arc and a save is not a log file.
+    for (let i = 0; i < TRACE_LIMIT + 5; i++) {
+      s.depth = 120; s.maxDepthRecord = 120; s.upgrades['blade'] = 20;
+      engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 5000 });
+      engine.dispatch({ type: 'collapse' });
+    }
+    expect(s.collapse.traces.length).toBe(TRACE_LIMIT);
   });
 
   it('Momentum retains face-upgrade levels; Ember Memory keeps heat', () => {

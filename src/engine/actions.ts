@@ -286,7 +286,7 @@ export function handleAction(
       if (sealed(state, 'sealCollapse')) {
         return { ok: false, reason: 'This world does not fall. You go on from where you are.' };
       }
-      return doCollapse(state, mods, ctx);
+      return doCollapse(state, mods, ctx, false, action.fall ?? 'clean');
 
     case 'placeMotif':
       return placeMotif(state, mods, ctx, action.q, action.r, action.shape, action.rank);
