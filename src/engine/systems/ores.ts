@@ -42,6 +42,16 @@ export const ORE_VEIN_MAX = 5;
 
 /** How full a pocket must be before a machine thinks it worth six seconds. */
 export const ORE_WORTH_OPENING = 0.7;
+/**
+ * ...and how full it must be for a drill routed at ORE FIRST, which goes for
+ * them sooner. This is a TRADE and not an upgrade: a pocket taken at 35% pays
+ * out 35%, and the six seconds cost the same either way. A.55 measured exactly
+ * this shape as a trap when it was the DEFAULT — the ore-heavy arm ran 0.82x of
+ * the control because pockets were being opened barely started. As a routing
+ * choice made on one machine, with the cost said out loud in the panel, it is a
+ * real decision instead: more pockets, less in each.
+ */
+export const ORE_EAGER_OPENING = 0.35;
 
 /** A drill opens a pocket FASTER than hands can... */
 export const DRILL_ORE_SPEED = 0.8;

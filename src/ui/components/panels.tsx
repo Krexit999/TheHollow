@@ -375,8 +375,8 @@ export const PRIORITY_LABEL: Record<DrillPriority, string> = {
 };
 
 const PRIORITY_BLURB: Record<DrillPriority, string> = {
-  both: 'Works the fullest rock it can reach, and takes a pocket when one is going spare.',
-  oresFirst: 'First refusal on every pocket in its zone. Chips rock while it waits.',
+  both: 'Works the fullest rock it can reach, and takes a pocket once it is worth the trip — about seven-tenths full.',
+  oresFirst: 'Goes for pockets at a THIRD full instead of seven-tenths, and gets first refusal on them. More pockets, less in each — a trade, not a bargain.',
   ores: 'Pockets and nothing else. It will stand idle rather than chip — that is the trade.',
   rock: 'Never touches a pocket, so yours keep until you dig them by hand.',
 };
@@ -606,6 +606,38 @@ export function DrillsPanel() {
 
   return (
     <div className="space-y-2">
+      {/* ══ HOW DO I GET ONE AT ALL ═══════════════════════════════════════
+          Shown until the player has made their first ability, because until
+          then NOTHING on this screen says where abilities come from. The bay
+          had a "go to the alloy bench" button buried under a paragraph and
+          that was the entire signpost — a player who did not already know the
+          Forge made drill alloys had no way to find out. Three numbered steps
+          and a button; it disappears the moment it is no longer needed. */}
+      {knownAbilities(state).length === 0 && (
+        <div className="panel border-lamp-500/40 p-3" data-testid="ability-howto">
+          <div className="text-xs font-semibold uppercase tracking-wider text-lamp-300">
+            Your drills can do more than chip
+          </div>
+          <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+            An ALLOY poured into a drill gives it something it does on its own — a blast, an arc
+            that walks the face, a beam through a whole row. Nobody wrote down which mix makes
+            which. The materials&apos; TRAITS are the clue.
+          </p>
+          <ol className="mt-1.5 space-y-1 text-[11px] text-cave-300">
+            <li><span className="text-lamp-300">1.</span> Go to the Forge&apos;s alloy bench.</li>
+            <li><span className="text-lamp-300">2.</span> Pick a drill, then two or three materials that lean hard on ONE trait.</li>
+            <li><span className="text-lamp-300">3.</span> Pour. If it takes, that drill has it from then on and fires it by itself.</li>
+          </ol>
+          <button
+            className="btn btn-warm mt-2 w-full py-1 text-[11px]"
+            data-testid="goto-bench"
+            onClick={() => openAlloyBench(state.drills.units.length > 0 ? [0] : [])}
+          >
+            Open the alloy bench
+          </button>
+        </div>
+      )}
+
       <div className="panel p-3">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-cave-300">The bay</span>
@@ -863,13 +895,30 @@ export function DrillsPanel() {
               {fits.map((f) => {
                 const pct = Math.min(1, f.charge / Math.max(1, f.def.charge.need));
                 return (
-                  <div key={f.slot} className="mt-0.5 flex items-center gap-1.5" data-testid={`charge-${i}-${f.slot}`}>
-                    <span
-                      className="shrink-0 text-[9px] uppercase tracking-wider"
-                      style={{ color: `#${f.def.color.toString(16).padStart(6, '0')}` }}
-                    >
-                      {f.def.name}
-                    </span>
+                  <div key={f.slot} className="mt-0.5" data-testid={`charge-${i}-${f.slot}`}>
+                    {/* WHAT IT IS, WHEN IT GOES OFF, AND HOW FAR ALONG IT IS.
+                        The first cut showed a coloured bar and a percentage and
+                        nothing else, so a player could see SOMETHING filling
+                        without knowing what it was for or what would happen at
+                        the end of it. The line now says the ability, its firing
+                        rule, and the count — "SLAGBURST · every 30 strokes ·
+                        12/30" — which is the whole of what there is to know. */}
+                    <div className="flex items-baseline gap-1.5">
+                      <span
+                        className="shrink-0 text-[9px] font-semibold uppercase tracking-wider"
+                        style={{ color: `#${f.def.color.toString(16).padStart(6, '0')}` }}
+                      >
+                        {f.def.name}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-[9px] text-cave-500">
+                        every {f.def.charge.need} strokes
+                        {f.def.charge.roll ? ' · or whenever it feels like it' : ''}
+                      </span>
+                      <span className={`tnum shrink-0 text-[9px] ${f.ready ? 'text-white' : 'text-cave-500'}`}>
+                        {f.ready ? 'READY' : `${Math.min(f.charge, f.def.charge.need)}/${f.def.charge.need}`}
+                      </span>
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5">
                     <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-cave-800">
                       <div
                         className="h-full transition-[width] duration-150"
@@ -891,8 +940,13 @@ export function DrillsPanel() {
                       title={f.ready ? `Set ${f.def.name} off now` : `${f.def.name} charges as the drill works — it fires itself when it is full`}
                       onClick={() => dispatch({ type: 'fireAbility', index: i, slot: f.slot })}
                     >
-                      {f.ready ? 'Fire' : `${Math.round(pct * 100)}%`}
+                      {f.ready ? '▶ Fire' : `${Math.round(pct * 100)}%`}
                     </button>
+                    </div>
+                    {/* What it will DO, once — a player who has just poured
+                        their first alloy has no idea, and the Forge card that
+                        said so is two rooms away. */}
+                    <div className="mt-0.5 text-[9px] leading-snug text-cave-600">{f.def.effect}</div>
                   </div>
                 );
               })}

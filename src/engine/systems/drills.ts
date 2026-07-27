@@ -41,7 +41,7 @@ import { lawNum } from '../laws';
 import { relicRule } from './relicPowers';
 import { advanceCharges, rotBite, wireBurnHarvest, wireFireDeps } from './drillAlloys';
 import {
-  DRILL_ORE_SPEED, ORE_WORTH_OPENING, oreAt, openOre, plantOre,
+  DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, oreAt, openOre, plantOre,
 } from './ores';
 import { oreRichness } from '../content/ores';
 
@@ -162,13 +162,18 @@ function openPockets(
 
   let out: number[] | null = null;
   const base = cellCap(state, mods);
+  // The list is built on the LOWEST bar any machine in this bay uses, and each
+  // drill applies its OWN bar when it claims — so one eager machine does not
+  // force half-full pockets on everybody else.
+  const floor = state.drills.units.some((u) => drillPriority(state, u) === 'oresFirst')
+    ? ORE_EAGER_OPENING : ORE_WORTH_OPENING;
   for (let i = 0; i < ore.length; i++) {
     const id = ore[i];
     if (!id || claimedBy.has(i) || skip(i)) continue;
     // A MACHINE WILL NOT SPEND SIX SECONDS ON AN EMPTY POCKET. Without this the
     // sim's ore-heavy arm ran 0.82x of the control: pockets spawned faster than
     // they filled, and buying the spawn-rate upgrade made income go DOWN.
-    if ((state.face.cells[i] ?? 0) < base * oreRichness(id) * ORE_WORTH_OPENING) continue;
+    if ((state.face.cells[i] ?? 0) < base * oreRichness(id) * floor) continue;
     (out ??= []).push(i);
   }
   out?.sort((a, b) => (state.face.cells[b] ?? 0) - (state.face.cells[a] ?? 0));
@@ -179,6 +184,23 @@ function openPockets(
 function claimRank(state: GameState, i: number): number {
   const p = drillPriority(state, state.drills.units[i]!);
   return p === 'ores' ? 0 : p === 'oresFirst' ? 1 : 2;
+}
+
+/**
+ * HOW FULL A POCKET HAS TO BE BEFORE THIS MACHINE WILL TAKE IT.
+ *
+ * THIS IS WHAT "ORE FIRST" WAS MISSING, and why it measured IDENTICAL to
+ * "rock and ore" — 140 pockets and 248 strikes for both, to the unit. All the
+ * setting did was sort the claim queue, and a queue only matters when two
+ * drills want the same pocket in the same tick, which almost never happens. So
+ * the option existed, read as a real choice in the menu, and changed nothing.
+ *
+ * Now it also lowers the bar: an ore-first machine goes for a pocket at 35%
+ * where everyone else waits for 70%. That is a TRADE, not a buff — a pocket
+ * taken at 35% pays 35% and costs the same six seconds — and the panel says so.
+ */
+function worthTheTrip(p: DrillPriority): number {
+  return p === 'oresFirst' ? ORE_EAGER_OPENING : ORE_WORTH_OPENING;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,8 +245,11 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
     }
     if (drill.oreCell === undefined && offered && offered.length > 0 && priority !== 'rock') {
       // A zoned drill takes the best pocket INSIDE its zone and leaves the rest
-      // for somebody who can reach them.
-      const at = zone ? offered.findIndex((c) => zone.has(c)) : 0;
+      // for somebody who can reach them — and every machine applies its own bar
+      // for how full is full enough.
+      const bar = capNow * worthTheTrip(priority);
+      const at = offered.findIndex((c) => (!zone || zone.has(c))
+        && (state.face.cells[c] ?? 0) >= bar * oreRichness(state.face.ore?.[c]));
       if (at >= 0) {
         const claim = offered.splice(at, 1)[0]!;
         drill.oreCell = claim;

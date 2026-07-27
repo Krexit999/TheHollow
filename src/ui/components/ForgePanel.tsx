@@ -8,7 +8,7 @@ import { convCurrencyId, currencyDef, fmtNum, getCurrency, maxToolTier } from '.
 import type { GameState, Stack } from '../../engine';
 import { GEMS, gemDef, materialDef, MATERIALS } from '../../engine/materials';
 import {
-  ABILITY_BY_ID, alloyHint, matchDrillAlloy, gradeStep, shellOrdinal,
+  ABILITY_BY_ID, alloyHint, matchDrillAlloy, gradeStep, shellOrdinal, traitPool,
 } from '../../engine/content/drillAlloys';
 import {
   POUR_SLOTS, alloyCost, drillsCarrying, knownAbilities, slagCost,
@@ -26,7 +26,7 @@ import {
 import { headTierCap } from '../../engine/systems/toolParts';
 import { markLabel } from '../../engine/systems/heirloom';
 import { opinionRead } from '../../engine/systems/opinions';
-import { traitsOf, TRAITS } from '../../engine/traits';
+import { traitsOf, TRAITS, type TraitId } from '../../engine/traits';
 import { dispatch, useGame } from '../store';
 import { GemIcon, MaterialIcon } from './MaterialIcon';
 import { Amount, TraitTag } from './shared';
@@ -472,6 +472,8 @@ function TierChip({ shellId, newest }: { shellId: string; newest?: boolean }) {
 function AlloyBench({ state }: { state: GameState }) {
   const [picks, setPicks] = useState<string[]>([]);
   const [aim, setAim] = useState<string | null>(null);
+  /** THE FIX FOR "guess blind across 100 materials". */
+  const [traitFilter, setTraitFilter] = useState<TraitId | null>(null);
   const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null);
   const targets = useGame((s) => s.alloyTargets);
   const setTargets = useGame((s) => s.setAlloyTargets);
@@ -490,8 +492,13 @@ function AlloyBench({ state }: { state: GameState }) {
   // NEWEST FIRST. The pool is sorted by shell descending, then rarity, so the
   // metal that just started dropping is at the top of the list rather than
   // buried under eighty rows of Loam commons.
-  const owned = MATERIALS
-    .filter((m) => materialCount(state, m.id) > 0)
+  const ownedAll = MATERIALS.filter((m) => materialCount(state, m.id) > 0);
+  /** Which traits the player actually HOLDS, and how many materials carry each.
+   *  A filter offering traits you own nothing of is just more noise. */
+  const traitCounts = new Map<TraitId, number>();
+  for (const m of ownedAll) for (const t of traitsOf(m.id)) traitCounts.set(t, (traitCounts.get(t) ?? 0) + 1);
+  const owned = ownedAll
+    .filter((m) => !traitFilter || traitsOf(m.id).includes(traitFilter))
     .sort((a, b) => shellOrdinal(b.shellId) - shellOrdinal(a.shellId)
       || RARITY_RANK.indexOf(b.rarity) - RARITY_RANK.indexOf(a.rarity)
       || a.name.localeCompare(b.name));
@@ -708,6 +715,30 @@ function AlloyBench({ state }: { state: GameState }) {
         </div>
       )}
 
+      {/* ══ WHAT YOU HAVE PUT IN, IN TRAITS ═══════════════════════════════
+          The pooled trait counts of the current crucible. This is a PROPERTY
+          of what the player selected, not a recipe — the same class as showing
+          traits on a material row (traits.ts rule 3) — and it is the difference
+          between "I am mixing rocks" and "I am holding two brittle". Every
+          signature in the game is a count of traits, so this is the number the
+          player is actually playing with, and until now it was invisible. */}
+      {picks.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-1.5 rounded border border-cave-800 px-2 py-1.5" data-testid="pool-traits">
+          <span className="text-[9px] uppercase tracking-widest text-cave-500">In the mix</span>
+          {Object.entries(traitPool(picks))
+            .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+            .map(([t, n]) => (
+              <span
+                key={t}
+                className={`rounded px-1 text-[10px] ${(n ?? 0) >= 2 ? 'bg-lamp-500/20 text-lamp-200' : 'text-cave-400'}`}
+                title={TRAITS[t as TraitId].blurb}
+              >
+                {t} ×{n}
+              </span>
+            ))}
+        </div>
+      )}
+
       {/* HINT — reads the MIX, never the answer. */}
       {hint && (
         <p className="mt-1.5 rounded border border-cave-800 px-2 py-1.5 text-[11px] italic leading-snug text-[#c7a35a]">
@@ -755,7 +786,44 @@ function AlloyBench({ state }: { state: GameState }) {
           property, not a solution (traits.ts rule 3) — this is the reasoning. */}
       <div className="mt-2 flex items-baseline justify-between gap-2">
         <span className="text-[10px] uppercase tracking-widest text-cave-500">What you hold</span>
-        <span className="text-[9px] text-cave-600">newest metal first</span>
+        <span className="text-[9px] text-cave-600">
+          {traitFilter ? `${owned.length} carry ${traitFilter}` : 'newest metal first'}
+        </span>
+      </div>
+      {/* ══ FILTER BY TRAIT ═══════════════════════════════════════════════
+          The single biggest thing standing between a player and their first
+          ability. Every signature is "N of trait X", the traits were printed on
+          every row, and the player still had to eyeball a hundred rows to find
+          two that shared one. Now: tap BRITTLE, and see only brittle.
+
+          It gives away nothing. Which traits exist is already public (the
+          Compendium glossary, every material row); what a COMBINATION does is
+          still found by pouring. This turns a search problem into a decision,
+          which is what pillar 5 wanted in the first place. */}
+      <div className="mt-1 flex flex-wrap gap-1" data-testid="trait-filter">
+        <button
+          className={`rounded border px-1.5 py-0.5 text-[10px] ${
+            traitFilter === null ? 'border-lamp-500/50 bg-lamp-500/10 text-lamp-200' : 'border-cave-800 text-cave-400 hover:bg-cave-800'
+          }`}
+          onClick={() => setTraitFilter(null)}
+        >
+          everything
+        </button>
+        {[...traitCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([t, n]) => (
+            <button
+              key={t}
+              data-testid={`trait-${t}`}
+              title={TRAITS[t].blurb}
+              className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                traitFilter === t ? 'border-lamp-500/50 bg-lamp-500/10 text-lamp-200' : 'border-cave-800 text-cave-400 hover:bg-cave-800'
+              }`}
+              onClick={() => setTraitFilter(traitFilter === t ? null : t)}
+            >
+              {t} <span className="tnum text-cave-600">{n}</span>
+            </button>
+          ))}
       </div>
       <div className="mt-1 max-h-52 space-y-1 overflow-y-auto scroll-thin">
         {owned.length === 0 && (
