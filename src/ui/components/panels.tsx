@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   allUpgrades,
   fmt,
@@ -405,7 +405,49 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
   const h = state.face.h;
   const [draft, setDraft] = useState<Set<number>>(() => new Set(unit.zone ?? []));
   const paint = useRef<null | boolean>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const grid = useRef<HTMLDivElement>(null);
   const prio = drillPriority(state, unit);
+
+  /**
+   * BRING ITSELF INTO VIEW. The painter renders at the BOTTOM of the room,
+   * below every drill row — and with twenty-four machines each carrying a name
+   * row, an alloy row, a charge row per fitted ability and a routing row, that
+   * is thousands of pixels below the button that opened it. Clicking ROUTE
+   * therefore looked like it did nothing at all: a brief pause while React
+   * built a grid of up to four hundred buttons, and then no visible change.
+   *
+   * It is not a bug in the picker, which mounts and works perfectly. It is a
+   * control that opens where the player is not looking, which amounts to the
+   * same thing from the chair. The driver script needed a
+   * `scrollIntoViewIfNeeded` to test it at all — and by this project's own
+   * working rule, a harness that has to route around the layout is a bug
+   * report about the layout.
+   */
+  useEffect(() => {
+    /**
+     * SCROLL THE GRID, NOT THE PANEL — and measure against the SCROLLING
+     * ANCESTOR, which is the whole of what was wrong here.
+     *
+     * At 380x900 the face canvas, the depth panel, the hint strip and the room
+     * selector eat the top ~590px, leaving the room's own scroll viewport about
+     * 290px tall. Centring the PANEL therefore put its header in view and
+     * pushed the first row of the grid up out of the container — clipped, not
+     * off-window. `getBoundingClientRect` still reported the cell at y=536, so
+     * a check written against the WINDOW said "visible" while
+     * `elementFromPoint` at those exact coordinates returned the room selector.
+     * Every pointer event went to the wrong element and the painter looked dead.
+     *
+     * So: bring the GRID into view, and let the header scroll off if it must.
+     * The thing the player has to be able to touch is the squares.
+     */
+    // CENTRE THE GRID, not the panel and not the panel's top edge. Tried both:
+    // centring the PANEL clipped the first grid row above the container, and
+    // 'start' on the panel pushed the LAST row five pixels below the fold —
+    // the room only has ~294px once the face canvas has taken its share. The
+    // grid is the part that has to be reachable, so the grid is what is aimed.
+    grid.current?.scrollIntoView({ block: 'center' });
+  }, []);
 
   const apply = (cell: number, on: boolean) => {
     setDraft((cur) => {
@@ -423,7 +465,7 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
   };
 
   return (
-    <div className="panel border-[#9ad4e8]/40 p-3" data-testid="route-picker">
+    <div ref={box} className="panel border-[#9ad4e8]/40 p-3" data-testid="route-picker">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#9ad4e8]">
           Route · {unit.name ?? `Drill ${index + 1}`}
@@ -433,13 +475,17 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
         </span>
       </div>
       <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-        Drag across the squares this one is allowed to work. Select none — or all — and it goes
-        back to working wherever it likes.
+        Drag across the squares it may work. None — or all — means anywhere.
       </p>
 
+      {/* CAPPED, so the whole grid fits the ~290px the room actually has on a
+          phone. Uncapped, a 6-wide face gave 47px cells and a 300px-tall grid
+          that could not be shown all at once — and a painter you have to scroll
+          WHILE dragging is not a painter. */}
       <div
-        className="mt-2 grid gap-[2px] rounded border border-cave-800 bg-cave-900/60 p-1"
-        style={{ gridTemplateColumns: `repeat(${w}, minmax(0, 1fr))` }}
+        ref={grid}
+        className="mx-auto mt-2 grid gap-[2px] rounded border border-cave-800 bg-cave-900/60 p-1"
+        style={{ gridTemplateColumns: `repeat(${w}, minmax(0, 1fr))`, maxWidth: 'min(100%, 232px)' }}
         onPointerUp={() => { paint.current = null; }}
         onPointerLeave={() => { paint.current = null; }}
       >
@@ -515,6 +561,15 @@ export function DrillsPanel() {
   const state = useGame((s) => s.state);
   const openAlloyBench = useGame((s) => s.openAlloyBench);
   const [routing, setRouting] = useState<number | null>(null);
+  /** One entry per drill row, so DONE can put the player back where they were.
+   *  Closing the painter shortens the room by several hundred pixels, so the
+   *  scroll has to happen AFTER the unmount or it lands on the wrong thing. */
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const closeRouting = () => {
+    const back = routing === null ? null : rowRefs.current.get(routing) ?? null;
+    setRouting(null);
+    requestAnimationFrame(() => back?.scrollIntoView({ block: 'center' }));
+  };
   const m = useFreshMods();
   if (!state) return null;
 
@@ -724,6 +779,10 @@ export function DrillsPanel() {
             <div
               key={i}
               data-testid={`drill-row-${i}`}
+              ref={(el) => {
+                if (el) rowRefs.current.set(i, el);
+                else rowRefs.current.delete(i);
+              }}
               className={`mt-1 border-t pt-1 first:border-t-0 first:pt-0 ${unit.prize ? 'border-[#e8d48f]/30' : 'border-cave-800'}`}
             >
               <div className="flex items-center gap-2">
@@ -850,22 +909,40 @@ export function DrillsPanel() {
                       : 'border-cave-700 text-cave-400 hover:bg-cave-800'
                   }`}
                   title="Choose which squares this drill works, and what it prefers"
-                  onClick={() => setRouting(i)}
+                  onClick={() => (routing === i ? closeRouting() : setRouting(i))}
                 >
-                  Route
+                  {routing === i ? 'Editing' : 'Routing'}
                 </button>
                 <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500" data-testid={`route-state-${i}`}>
                   {zoned > 0 ? `${zoned} squares` : 'whole face'} · {PRIORITY_LABEL[prio]}
                 </span>
               </div>
+
+              {/* ══ THE PAINTER, UNDER THE MACHINE IT BELONGS TO ═══════════
+                  It used to render at the BOTTOM of the room, below every
+                  drill row, and that was two separate defects wearing one
+                  symptom ("clicking Route does nothing but hang").
+
+                  1  IT OPENED WHERE NOBODY WAS LOOKING. With eight machines it
+                     was ~1,500px below the button; with twenty-four, far more.
+                     The mount and the paint logic were fine the whole time.
+                  2  IT WALKED UNDER THE POINTER. Measured, not guessed: cell 0
+                     sat at y=523 and 1.2 seconds later at y=720. PRIZE DRILLS
+                     ARRIVE ON THE ONE-SECOND BEAT and are appended to the list
+                     ABOVE the painter, so every one that landed shoved the grid
+                     ~65px down mid-drag. A real player routing a drill while an
+                     achievement lands gets the same thing.
+
+                  Rendering it under its OWN row fixes both: the scroll is short,
+                  and a drill appended to the END of the list cannot move a
+                  painter that sits above the end. (This is the same class as the
+                  hover-flicker note — a live-data control that walks under the
+                  cursor is not a control.) */}
+              {routing === i && <RoutePicker index={i} onClose={closeRouting} />}
             </div>
           );
         })}
       </div>
-
-      {routing !== null && state.drills.units[routing] && (
-        <RoutePicker index={routing} onClose={() => setRouting(null)} />
-      )}
     </div>
   );
 }
