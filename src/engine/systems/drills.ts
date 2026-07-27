@@ -118,8 +118,40 @@ export function zoneSet(drill: DrillState): Set<number> | null {
  * come back to one it has softened, so an ability whose whole point is "this
  * rock gives up easier now" would never get a second bite.
  */
+/**
+ * HOW MUCH A CELL IS WORTH LESS FOR HAVING A MACHINE ON OR BESIDE IT.
+ *
+ * THE SWARM WAS NEVER TWO DRILLS ON ONE CELL — that was measured and ruled out.
+ * Five machines already took five DIFFERENT cells (4.98 distinct of 5 over 240
+ * ticks), because each strike drains its cell below its neighbours and the next
+ * drill therefore picks the next one along. A simple "don't take a claimed
+ * cell" rule was written, measured, and found to change nothing at all.
+ *
+ * What a player actually sees is a MARCHING BLOCK: five drills on cells 0,1,2,
+ * 3,4, then 5,6,7,8,9 — distinct, adjacent, and moving as one lump across the
+ * top-left of the grid. On a full face every cell scores identically, so the
+ * tie goes to the lowest index every time and the fleet crowds into a corner.
+ *
+ * So crowding is priced instead of forbidden. Taking a cell discounts it and
+ * its neighbours for the rest of the tick, which on a flat face pushes the next
+ * machine at least two cells away — but a genuinely richer cell still wins,
+ * because this is a preference and not a rule. It is a soft term on the same
+ * score, so the bay still works the best rock it can reach.
+ *
+ * Pillar 2 is untouched: this changes WHICH cell each drill empties, never how
+ * much charge the field made.
+ */
+const CROWD_SELF = 0.55;
+const CROWD_NEAR = 0.3;
+
+function crowdOut(state: GameState, crowd: number[], cell: number): void {
+  crowd[cell] = Math.max(crowd[cell] ?? 0, CROWD_SELF);
+  for (const n of neighbors(state, cell)) crowd[n] = Math.max(crowd[n] ?? 0, CROWD_NEAR);
+}
+
 function pickTarget(
   state: GameState, skip: (i: number) => boolean, zone: Set<number> | null, rotted: boolean,
+  crowd?: number[],
 ): number {
   const cells = state.face.cells;
   const ore = state.face.ore;
@@ -130,7 +162,8 @@ function pickTarget(
     if (zone && !zone.has(i)) continue;
     // A pocket is never an ordinary target: it will not come away in one bite.
     if (ore?.[i]) continue;
-    const score = rotted ? cells[i]! * rotBite(state, i) : cells[i]!;
+    let score = rotted ? cells[i]! * rotBite(state, i) : cells[i]!;
+    if (crowd) score *= 1 - (crowd[i] ?? 0);
     if (score > bestScore) { bestScore = score; best = i; }
   }
   return best;
@@ -218,6 +251,12 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // Is ANY rot on the rock? One array read, so the targeting scan does not have
   // to ask per cell — the A.56 lesson about the per-cell hot path.
   const rotted = (state.drills.rot?.some((v) => v > 0)) ?? false;
+  // WHERE THIS TICK'S MACHINES HAVE ALREADY GONE. Allocated once per tick and
+  // only when there is more than one machine to keep apart — a single drill has
+  // nobody to crowd, and the bay spends most of a long warp with the array
+  // untouched.
+  const crowd: number[] | undefined = state.drills.units.length > 1
+    ? new Array<number>(state.face.cells.length).fill(0) : undefined;
 
   // Only SORT when somebody actually asked to be served first. A bay with no
   // routing set — every bay, until a player opens the menu — keeps plain index
@@ -255,6 +294,9 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
         drill.oreCell = claim;
         drill.oreProgress = 0;
         drill.lastCell = claim;
+        // A machine settling onto a pocket crowds the rock around it too, so
+        // the rest of the bay does not park on top of the one that is digging.
+        if (crowd) crowdOut(state, crowd, claim);
       }
     }
     if (drill.oreCell !== undefined) {
@@ -281,8 +323,9 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
     while (drill.timer >= interval && strikes < 4) {
       drill.timer -= interval;
       strikes++;
-      const target = pickTarget(state, skip, zone, rotted);
+      const target = pickTarget(state, skip, zone, rotted, crowd);
       if (target < 0) continue; // every cell vined or out of zone — it idles
+      if (crowd) crowdOut(state, crowd, target);
 
       // THE SECOND BITE (A.48 relic power). Deliberately NOT the 'Two Hands'
       // Axiom in cheaper clothes: the Axiom gives a second cell at FULL power,
@@ -294,12 +337,17 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
       if (hands > 1) {
         let second = -1;
         let secondCharge = 0;
+        // The second hand is crowded away from the first on the same term.
         for (let i = 0; i < state.face.cells.length; i++) {
           if (i === target || skip(i)) continue;
           if (zone && !zone.has(i)) continue;
-          if (state.face.cells[i]! > secondCharge) { secondCharge = state.face.cells[i]!; second = i; }
+          const c = state.face.cells[i]! * (1 - (crowd?.[i] ?? 0));
+          if (c > secondCharge) { secondCharge = c; second = i; }
         }
-        if (second >= 0) handCells.push(second);
+        if (second >= 0) {
+          handCells.push(second);
+          if (crowd) crowdOut(state, crowd, second);
+        }
       }
 
       // Was the cell nearly full? Several abilities charge faster off a full

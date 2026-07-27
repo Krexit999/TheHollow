@@ -214,23 +214,21 @@ function DebugPanel() {
         >
           Give All · 999Qa of everything
         </button>
-        <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e4 })}>
-          +10K Dust
+        {/* UNLOCK EVERYTHING — every shell reached, every room open, every
+            structure raised. The six single-currency grant buttons that used to
+            sit here are gone: "Give All" above already hands out 999Qa of every
+            currency in the registry, so +10K Dust and +1B Dust were a slower
+            version of a button six pixels away. What was missing was ACCESS —
+            a way to look at a Cinder or Hollow system without playing to it. */}
+        <button
+          className="btn btn-warm col-span-2 py-1 text-[11px]"
+          title="Every shell reached, every room open, every structure built"
+          onClick={() => dispatch({ type: 'debug', op: 'unlockAll' })}
+        >
+          Unlock Everything · all shells &amp; systems
         </button>
-        <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'grant', currency: 'brick', amount: 100 })}>
-          +100 Brick
-        </button>
-        <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 50 })}>
-          +50 Cores
-        </button>
-        <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'warp', seconds: 3600 })}>
+        <button className="btn col-span-2 py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'warp', seconds: 3600 })}>
           Warp 1h (live)
-        </button>
-        <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'applyOffline', seconds: 8 * 3600 })}>
-          Offline 8h
-        </button>
-        <button className="btn py-1 text-[11px]" onClick={() => dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e9 })}>
-          +1B Dust
         </button>
       </div>
     </div>

@@ -1523,7 +1523,11 @@ export type GameAction =
   | { type: 'practiceRunes'; sequence: (string | null)[] }
   | { type: 'debug'; op: 'grant'; currency: string; amount: number }
   | { type: 'debug'; op: 'warp'; seconds: number }
-  | { type: 'debug'; op: 'giveAll' };
+  | { type: 'debug'; op: 'giveAll' }
+  /** UNLOCK EVERYTHING — every shell reached, every room open, every structure
+   *  raised. A dev-build shortcut past the whole progression, so any system can
+   *  be looked at without playing to it. */
+  | { type: 'debug'; op: 'unlockAll' };
 
 export interface ActionResult {
   ok: boolean;

@@ -372,6 +372,11 @@ export class FaceView {
     this.active = active;
     if (active) {
       for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.rotBand = -1; t.burnBand = -1; t.oreId = '?'; t.digBand = -1; }
+      // ANY LIVE ABILITY FIGURE BELONGS TO THE FACE THAT IS BEING REPLACED.
+      // Re-activating (a hard reset, a shell change, coming back from the
+      // Shaft) rebuilds the board under them, and a figure drawn against the
+      // old one is at best in the wrong place. Dropped rather than carried.
+      this.dropAbilityFx();
       this.layout(); // the hero height differs between Shaft and Dig on phone
       // Start the ticker but do NOT render synchronously: this call runs inside
       // a React effect, in the same commit where the OTHER view is about to be
@@ -1321,6 +1326,16 @@ export class FaceView {
     return `${ids}+${step}${unit.prize ? '*' : ''}`;
   }
 
+  /** Drop every live ability figure, safely, whatever state they are in. */
+  private dropAbilityFx(): void {
+    for (const fx of this.abilityFx) {
+      if (fx.g.destroyed) continue;
+      this.fxLayer.removeChild(fx.g);
+      fx.g.destroy();
+    }
+    this.abilityFx.length = 0;
+  }
+
   private syncDrills(): void {
     const st = this.engine.getState();
     const units = st.drills.units;
@@ -1489,6 +1504,13 @@ export class FaceView {
     // in here would freeze the whole face permanently (the A.38 report).
     for (let i = this.abilityFx.length - 1; i >= 0; i--) {
       const fx = this.abilityFx[i]!;
+      // A DESTROYED GRAPHICS MUST NEVER REACH THE BATCHER. Pixi throws from
+      // deep inside its own render pass ("Cannot read properties of null
+      // (reading 'clear')" in DefaultBatcher.break) if a dead display object is
+      // still parented, and that throw lands OUTSIDE this loop's try — the
+      // frame guard catches it and the face skips a frame. Checked here so it
+      // never gets that far.
+      if (fx.g.destroyed) { this.abilityFx.splice(i, 1); continue; }
       fx.life += dt;
       if (fx.life >= fx.max) {
         this.fxLayer.removeChild(fx.g);
@@ -1536,6 +1558,12 @@ export class FaceView {
     const units = state.drills.units;
     for (let i = 0; i < this.drillSprites.length; i++) {
       const sprite = this.drillSprites[i]!;
+      // A DESTROYED SPRITE MUST NOT BE TOUCHED. `.clear()` on a destroyed
+      // Graphics reads a null context, and a destroyed display object still
+      // parented makes Pixi throw from inside its own batcher — both land as a
+      // skipped frame via the A.38 guard rather than as anything a player can
+      // act on. Cheap to check, and it is the same class of defect either way.
+      if (sprite.root.destroyed || sprite.beam.destroyed) continue;
       const unit = units[i];
       if (!unit) continue;
       const at = this.cellCenter(unit.lastCell);

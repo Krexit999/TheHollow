@@ -51,8 +51,8 @@ import {
 import { craftGear, unequipGear } from './combat/gear';
 import { buyStock, presentIds, sellMaterial, spendCharter } from './guild/guild';
 import { acceptContract, completeContract, rerollContract } from './guild/contracts';
-import { hire } from './guild/hirelings';
-import { markFragmentRead, translateFragment } from './guild/sable';
+import { hire, HIRELING_DEFS } from './guild/hirelings';
+import { markFragmentRead, translateFragment, FRAGMENTS } from './guild/sable';
 import { useTechnique } from './techniques';
 import { placeKeystone } from './systems/keystones';
 import { equipTitle } from './guild/titles';
@@ -62,6 +62,7 @@ import { collectObservation, startObservation } from './content/shell4/observato
 import { benchAttempt, equipLens, grindChartLens } from './content/shell4/bench';
 import { warrenAnswer, warrenClaim, warrenEnter, warrenLeave } from './content/shell4/warrens';
 import { inscribe } from './content/shell4/runes';
+import { RUNES } from './content/shell4/runes';
 import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
 import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw, installSocket } from './content/shell5/emberArray';
 import { produceExport } from './content/exports';
@@ -76,14 +77,14 @@ import { collectWell, commitToWell } from './content/shell5/wells';
 import { answerAnomaly } from './systems/anomalies';
 import { listen, rebuildCell } from './systems/absence';
 import { buyAxiom, doRecursion } from './systems/recursionSys';
-import { wardenOf } from './combat/species';
+import { wardenOf, SPECIES } from './combat/species';
 import { lawFlag, sealed } from './laws';
 import { harvestPlot, plantSeed, installFrame } from './content/shell3/greenhouse';
 import { feedMycelium, inoculate } from './content/shell3/mycelium';
 import { brewExperiment, drinkBrew } from './content/shell3/brews';
 import { commitWeave, setThread, spinThread, installLoomFrame } from './content/shell3/loomSystem';
-import { convCurrencyId, resolveCurrencyId } from './shells';
-import { MAX_DRILLS } from './systems/drills';
+import { allShells, convCurrencyId, resolveCurrencyId } from './shells';
+import { MAX_DRILLS, newDrill, defaultDrillName } from './systems/drills';
 import { grantXP } from './systems/xp';
 import { initialState } from './state';
 
@@ -970,6 +971,87 @@ export function handleAction(
         for (const g of GEMS) state.materials.gems[g.id] = (state.materials.gems[g.id] ?? 0) + GIVE_ALL_AMOUNT;
         state.materials.geodes += GIVE_ALL_AMOUNT;
         state.relics.shards += GIVE_ALL_AMOUNT;
+        ctx.dirty();
+        return { ok: true };
+      }
+      if (action.op === 'unlockAll') {
+        /**
+         * UNLOCK EVERYTHING — a dev-build shortcut past the entire progression.
+         *
+         * WHAT IT SETS is driven by what the ROOMS actually gate on (`ui/nav.ts`
+         * `CLUSTERS[].visible`) plus the `built`/`unlocked` flags the panels
+         * read, because those two lists ARE the definition of "every system" in
+         * this game. Anything gated on a depth record gets the record; anything
+         * gated on a structure gets the structure.
+         *
+         * DEPTH RECORDS FOR ALL SEVEN SHELLS is the load-bearing line: the
+         * ability pool, the tool-tier cap, the alloy loadout budget, the
+         * Vents/Greenhouse/Bench/Array/Chamber rooms and the shell bands all
+         * read `depthRecords`, so setting them opens most of the game at once.
+         */
+        for (const shell of allShells()) state.depthRecords[shell.id] = 200;
+        state.maxDepthRecord = Math.max(state.maxDepthRecord, 200);
+        // Every signature carried, as a full run of Breaches would leave them.
+        for (const shell of allShells()) {
+          if (shell.signatureId && !state.shell.signatures.includes(shell.signatureId)) {
+            state.shell.signatures.push(shell.signatureId);
+          }
+        }
+        state.shell.breachCount = Math.max(state.shell.breachCount, 6);
+        // The structures, which are flags rather than records.
+        state.kiln.built = true;
+        state.forge.built = true;
+        state.lattice.unlocked = true;
+        state.guild.discovered = true;
+        state.drills.bayBuilt = true;
+        if (state.drills.units.length === 0) state.drills.units.push(newDrill(defaultDrillName(0)));
+        // Rooms that open on a COUNTER rather than a flag. Each is nudged to
+        // the smallest value its gate accepts — the point is to open the door,
+        // not to hand out the contents.
+        state.materials.totalDrops = Math.max(state.materials.totalDrops, 1);
+        state.collapse.count = Math.max(state.collapse.count, 1);
+        state.recursion.count = Math.max(state.recursion.count, 1);
+        state.spiral.count = Math.max(state.spiral.count, 1);
+        state.relics.found = Math.max(state.relics.found, 1);
+        // Every one-off STRUCTURE upgrade, registry-driven so a new one added
+        // later needs no edit here: anything that is a single level and does not
+        // reset on Collapse is a thing you build once, and `onPurchase` is what
+        // actually flips its flag.
+        for (const def of allUpgrades()) {
+          if (def.maxLevel !== 1 || def.resetsOnCollapse) continue;
+          if ((state.upgrades[def.id] ?? 0) > 0) continue;
+          state.upgrades[def.id] = 1;
+          def.onPurchase?.(state, 1);
+        }
+        /**
+         * THE FOUR COLLECTION-GATED ROOMS. Runes, Bestiary, Journal and
+         * Expeditions do not open on a structure or a depth — they open on
+         * HAVING FOUND SOMETHING, so setting a flag does nothing and the first
+         * pass of this left them shut (caught by the driver counting rooms,
+         * which is why it counts rooms rather than trusting the list).
+         *
+         * Each is seeded with ONE real entry taken from its own registry, never
+         * a fabricated id: a panel that renders a record with no definition
+         * behind it is the def-lookup black screen from A.36 all over again.
+         */
+        if (!Object.values(state.runes.found).some((n) => n > 0)) {
+          for (const r of RUNES) state.runes.found[r] = Math.max(1, state.runes.found[r] ?? 0);
+        }
+        if (state.combat.seen.length === 0) {
+          for (const sp of SPECIES) if (!state.combat.seen.includes(sp.id)) state.combat.seen.push(sp.id);
+        }
+        if (state.guild.sable.found.length === 0) {
+          for (const f of FRAGMENTS) if (!state.guild.sable.found.includes(f.id)) state.guild.sable.found.push(f.id);
+        }
+        if (Object.keys(state.guild.hirelings).length === 0) {
+          // Berths first, or the crew loft refuses the hire it is being handed.
+          state.guild.berths = Math.max(state.guild.berths, 4);
+          for (const h of HIRELING_DEFS.slice(0, 2)) {
+            state.guild.hirelings[h.npcId] = {
+              level: 0, xp: 0, status: 'well', hiredAtMs: state.guild.clockMs,
+            };
+          }
+        }
         ctx.dirty();
         return { ok: true };
       }
