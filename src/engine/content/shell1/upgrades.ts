@@ -227,25 +227,28 @@ export function registerShell1Upgrades(): void {
     currency: 'CONV',
     baseCost: D(6),
     /**
-     * A.56 — STRUCTURAL, NOT STANDARD. This row shipped at r = 1.25 over 23
-     * levels, which is PILLARS' "Spam/Standard" class: forty-to-a-hundred
-     * levels, the price class for a thing you stop thinking about. The whole
-     * bay therefore cost about 5,000 CONV, which a Loam arc pays for several
-     * times over, so every player arrived at the alloy decision already owning
-     * every machine it could apply to.
+     * A.57 — FOUR BANDS, NOT ONE EXPONENT.
      *
-     * r = 1.75 over 15 levels is the STRUCTURAL class exactly as PILLARS
-     * defines it (6–15 levels), and it makes the bay ~93,000 — eighteen times
-     * the old total, with the last chassis alone costing more than the entire
-     * old row. A drill is now a decision.
+     * A.56 moved this row from the "Standard" spam class (r=1.25, 23 levels,
+     * ~5,100 for the whole bay) to "Structural" (r=1.75, 15 levels). That was
+     * the right direction and the wrong shape: a single ratio makes the FIRST
+     * drills feel as punishing as the last, and the first four are supposed to
+     * arrive easily — they are how a new bay stops being a curiosity.
      *
-     * THE CAP CAME DOWN WITH THE PRICE, and that is the half that keeps this
-     * from being a straight nerf: sixteen rails are bought, the other eight are
-     * PRIZES from other systems (systems/prizeDrills.ts) and are strictly
-     * better than anything on this row. The bay still fills; it fills from two
-     * places now, and the second place is the interesting one.
+     * So the ratio escalates in bands, which is the shape the brief describes
+     * and which no single r can draw:
+     *
+     *   levels 0-3   x1.35   the first four: easy, almost impulse buys
+     *   levels 4-7   x1.70   harder — you notice these
+     *   levels 8-11  x2.10   very hard, one at a time, between other goals
+     *   levels 12-14 x2.60   brutal, and worth it
+     *
+     * The 16th chassis lands near 900k CONV against a first one at 6, which is
+     * a five-order-of-magnitude spread across one row. The other eight rails
+     * are not for sale at any price (systems/prizeDrills.ts).
      */
-    ratio: 1.75,
+    ratio: 1.7, // the fallback; `ratioAt` is what actually prices it
+    ratioAt: (level: number) => (level < 4 ? 1.35 : level < 8 ? 1.7 : level < 12 ? 2.1 : 2.6),
     maxLevel: 15, // bay build grants the 1st; 16 bought, 8 prize, 24 rails
     resetsOnCollapse: false,
     visible: hasBay,

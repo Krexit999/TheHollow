@@ -16,8 +16,11 @@ import {
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
-import { residueLevel, richnessLevel, burnLevel } from '../../engine/systems/drillAlloys';
+import {
+  rotLevel, burnLevel, chargeLevel, drillReady,
+} from '../../engine/systems/drillAlloys';
 import { ABILITY_BY_ID, gradeStep } from '../../engine/content/drillAlloys';
+import { makeFx, type LiveFx } from './abilityFx';
 import { digProgress } from '../../engine/systems/ores';
 import { oreDef } from '../../engine/content/ores';
 import { ModifierCache } from '../../engine/modifiers';
@@ -148,26 +151,16 @@ const FACE_THEMES: Record<string, FaceTheme> = {
  * behaviour selector; what a drill wears now is the BAY-WIDE ALLOY, so
  * equipping one visibly re-liveries every machine on the rails.
  */
-const ALLOY_LOOK: Record<string, number> = {
-  plain: 0xfbbf24,   // amber — a bare drill, going for the richest rock
-  arcvein: 0x8fd8ff, // pale lightning
-  lodecall: 0xd9b64a, // gold, pulling
-  emberset: 0xe0703c, // ember left in the stone
-  // A.56 — twelve more, one colour family per shell so a mixed bay reads as a
-  // history of where the player has been as well as what it is running.
-  ganglock: 0x9aa6b2,    // ferrite grey, bolted
-  halfmark: 0xb9c4d0,    // the same grey, half there
-  creepvine: 0x8fd8a0,   // verdance green, crawling
-  seedset: 0x6fbf7f,     // deeper green, growing
-  prismcut: 0x9ad4e8,    // glassmere blue, split
-  longlens: 0xc8ecf7,    // pale, gathering
-  slagburst: 0xe8956a,   // cinder orange, going off
-  cinderhold: 0xff8a4c,  // hotter, still burning
-  throughline: 0xc0a8e0, // hollow violet, through
-  unmaking: 0x8f7ab8,    // darker violet, absent
-  recurrence: 0xe8d48f,  // aleph gold, again
-  everywhen: 0xfff0c0,   // near-white, everywhere
-};
+/**
+ * WHAT A DRILL LOOKS LIKE. A.57: twenty-nine abilities each carry their own
+ * colour in the def (one family per shell), so the livery reads a def rather
+ * than a hand-kept table that could rot away from the content. A bare machine
+ * is amber, as it has always been.
+ */
+const BARE_LOOK = 0xfbbf24;
+function lookColor(id: string): number {
+  return ABILITY_BY_ID.get(id)?.color ?? BARE_LOOK;
+}
 
 function lerpColor(a: number, b: number, t: number): number {
   const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
@@ -200,8 +193,7 @@ interface TileEntry {
   fruitBand: number;
   /** DRILL ALLOY marks (A.53), banded so they join the redraw gate rather than
    *  forcing a repaint every frame: THE SET's warmth and THE CALL's gather. */
-  setBand: number;
-  callBand: number;
+  rotBand: number;
   burnBand: number;
   /** ORES: which pocket type sits in this cell (`''` for none), and the dig
    *  ring's step. Both join the redraw gate — see drawTile. */
@@ -262,6 +254,9 @@ export class FaceView {
   private shellId = 'loam';
   private lampSprite: Sprite | null = null;
   private chainArcs: { g: Graphics; life: number }[] = [];
+  /** LIVE ABILITY FIGURES (A.57). Each redraws itself from one number every
+   *  frame and is dropped when its life runs out. */
+  private abilityFx: LiveFx[] = [];
   private lastChainCell = -1;
   private magnetLayer = new Graphics();
   private beamLayer = new Graphics();
@@ -376,7 +371,7 @@ export class FaceView {
     if (this.active === active || !this.app?.ticker) return;
     this.active = active;
     if (active) {
-      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.setBand = -1; t.callBand = -1; t.burnBand = -1; t.oreId = '?'; t.digBand = -1; }
+      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.rotBand = -1; t.burnBand = -1; t.oreId = '?'; t.digBand = -1; }
       this.layout(); // the hero height differs between Shaft and Dig on phone
       // Start the ticker but do NOT render synchronously: this call runs inside
       // a React effect, in the same commit where the OTHER view is about to be
@@ -451,7 +446,7 @@ export class FaceView {
       this.tileLayer.addChild(g);
       // oreId starts as a string no def can ever have, so the first paint of a
       // plain cell still counts as a change and the gate does not swallow it.
-      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, setBand: -1, callBand: -1, burnBand: -1, oreId: '?', digBand: -1 };
+      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, rotBand: -1, burnBand: -1, oreId: '?', digBand: -1 };
     });
     this.layout();
   }
@@ -471,8 +466,7 @@ export class FaceView {
     // DRILL ALLOY marks. Banded to 5 steps so they take part in the redraw
     // gate below — a smoothly-decaying float would repaint every tile every
     // frame, which is exactly what the gate exists to prevent.
-    const setBand = Math.round(residueLevel(gstate, i) * 4);
-    const callBand = Math.round(richnessLevel(gstate, i) * 4);
+    const rotBand = Math.round(rotLevel(gstate, i) * 4);
     // CINDERHOLD (A.56): the cell is still burning and still giving.
     const burnBand = Math.round(burnLevel(gstate, i) * 4);
     // ORES. The one thing in this phase that CANNOT be a hidden number — a
@@ -483,14 +477,13 @@ export class FaceView {
     const oreId = gstate.face.ore?.[i] ?? '';
     const digBand = oreId ? Math.round(digProgress(gstate, i) * 12) : 0;
     if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
-      && setBand === tile.setBand && callBand === tile.callBand && burnBand === tile.burnBand
+      && rotBand === tile.rotBand && burnBand === tile.burnBand
       && oreId === tile.oreId && digBand === tile.digBand && tile.flash <= 0) return;
     tile.band = band;
     tile.crackStage = crackStage;
     tile.vine = vine;
     tile.fruitBand = fruitBand;
-    tile.setBand = setBand;
-    tile.callBand = callBand;
+    tile.rotBand = rotBand;
     tile.burnBand = burnBand;
     tile.oreId = oreId;
     tile.digBand = digBand;
@@ -605,14 +598,14 @@ export class FaceView {
     // is the whole point of them: an ability that cannot be seen happening
     // does not belong in the system.
     // ------------------------------------------------------------------
-    if (setBand > 0) {
+    if (rotBand > 0) {
       // THE SET: rock a drill has just worked stays hot and soft. An ember
       // wash across the slab plus a bright fracture through it — it reads as
       // "this one is still giving" without needing a number.
       // Alpha is pitched to be read against a DRAINED cell — which is exactly
       // when the mark matters, since the rock is soft because a drill just
       // emptied it. Tuned against a 380px screenshot, where a tile is ~55px.
-      const heat = setBand / 4;
+      const heat = rotBand / 4;
       g.roundRect(m, m, w, w, r).fill({ color: 0xe0703c, alpha: 0.16 + heat * 0.34 });
       g.moveTo(m + w * 0.2, m + w * 0.78)
         .lineTo(m + w * 0.48, m + w * 0.44)
@@ -633,22 +626,6 @@ export class FaceView {
           .lineTo(fx + w * 0.06, m + w * (0.34 - fire * 0.14))
           .stroke({ width: 1.1 + fire * 0.9, color: 0xffb066, alpha: 0.45 + fire * 0.5 });
       }
-    }
-    if (callBand > 0) {
-      // THE CALL: ore gathering under the cell. Rings drawing inward, and a
-      // core that brightens as the gather fills — when it is full the next
-      // drop out of this cell rolls as if the seam were deeper.
-      const pull = callBand / 4;
-      const cx = m + w / 2;
-      const cy = m + w / 2;
-      for (let ring = 3; ring >= 1; ring--) {
-        g.circle(cx, cy, w * 0.15 * ring * (1.25 - pull * 0.35))
-          .stroke({ width: 1.3, color: 0xf0c95e, alpha: 0.22 + pull * 0.48 });
-      }
-      // A soft pool under the core, so the gather still reads when a drill
-      // sprite is parked on the cell it is gathering under.
-      g.circle(cx, cy, w * 0.2).fill({ color: 0xd9b64a, alpha: 0.08 + pull * 0.16 });
-      g.circle(cx, cy, w * 0.06 + w * 0.05 * pull).fill({ color: 0xffefb0, alpha: 0.5 + pull * 0.5 });
     }
 
     // ------------------------------------------------------------------
@@ -1205,7 +1182,7 @@ export class FaceView {
     const prize = (rest ?? '').includes('*');
     const grade = Math.max(0, parseInt(rest ?? '0', 10) || 0);
     const primary = ids[0] ?? 'plain';
-    const color = ALLOY_LOOK[primary] ?? ALLOY_LOOK['plain']!;
+    const color = lookColor(primary);
     const r = Math.max(6, this.cellSize * 0.17) * (prize ? 1.55 : 1);
     // Hex chassis
     for (let i = 0; i <= 6; i++) {
@@ -1227,12 +1204,12 @@ export class FaceView {
     const second = ids[1];
     if (second) {
       g.setStrokeStyle({ width: 1 });
-      const c2 = ALLOY_LOOK[second] ?? ALLOY_LOOK['plain']!;
+      const c2 = lookColor(second);
       g.circle(r * 0.62, r * 0.62, gr * 0.55).fill(c2);
     }
     const third = ids[2];
     if (third) {
-      const c3 = ALLOY_LOOK[third] ?? ALLOY_LOOK['plain']!;
+      const c3 = lookColor(third);
       g.circle(-r * 0.62, r * 0.62, gr * 0.55).fill(c3);
     }
     // GRADE TICKS — one per step above the ability's own shell, around the top.
@@ -1242,77 +1219,88 @@ export class FaceView {
     }
   }
 
-  /** One glyph per ability id — the shape half of the livery. */
+  /**
+   * THE GLYPH — the shape half of the livery, keyed on the ability's FIGURE
+   * rather than on its id. Twenty-nine abilities share sixteen figures, so the
+   * badge on a chassis tells you what KIND of thing it is about to do (it
+   * explodes / it arcs / it beams / it opens a hole) without needing
+   * twenty-nine bespoke doodles that would be indistinguishable at 8px anyway.
+   */
   private drawAlloyGlyph(g: Graphics, look: string, gr: number, color: number): void {
-    switch (look) {
-      case 'arcvein':
-        g.moveTo(-gr * 0.5, -gr).lineTo(gr * 0.2, -gr * 0.1).lineTo(-gr * 0.2, gr * 0.1).lineTo(gr * 0.5, gr)
-          .stroke({ width: 1.6, color });
-        return;
-      case 'lodecall':
-        g.circle(0, 0, gr).stroke({ width: 1.2, color, alpha: 0.8 });
-        g.circle(0, 0, gr * 0.45).fill(color);
-        return;
-      case 'emberset':
-        g.circle(0, 0, gr * 0.7).fill(color);
-        g.circle(0, 0, gr).stroke({ width: 1, color, alpha: 0.5 });
-        return;
-      case 'ganglock': // two bodies, one bar
-        g.circle(-gr * 0.6, 0, gr * 0.4).fill(color);
-        g.circle(gr * 0.6, 0, gr * 0.4).fill(color);
-        g.moveTo(-gr * 0.6, 0).lineTo(gr * 0.6, 0).stroke({ width: 1.4, color });
-        return;
-      case 'halfmark': // solid, and its half-there twin
-        g.circle(-gr * 0.35, 0, gr * 0.5).fill(color);
-        g.circle(gr * 0.5, 0, gr * 0.5).fill({ color, alpha: 0.35 });
-        return;
-      case 'creepvine': // a crawling line
-        g.moveTo(-gr, gr * 0.6).lineTo(-gr * 0.2, gr * 0.6).lineTo(-gr * 0.2, -gr * 0.2)
-          .lineTo(gr * 0.7, -gr * 0.2).stroke({ width: 1.5, color });
-        return;
-      case 'seedset': // a seed with a shoot
-        g.circle(0, gr * 0.4, gr * 0.45).fill(color);
-        g.moveTo(0, gr * 0.1).lineTo(0, -gr).stroke({ width: 1.2, color });
-        return;
-      case 'prismcut': // one in, three out
-        g.moveTo(-gr, 0).lineTo(0, 0).stroke({ width: 1.5, color });
-        g.moveTo(0, 0).lineTo(gr, -gr * 0.7).stroke({ width: 1, color });
-        g.moveTo(0, 0).lineTo(gr, 0).stroke({ width: 1, color });
-        g.moveTo(0, 0).lineTo(gr, gr * 0.7).stroke({ width: 1, color });
-        return;
-      case 'longlens': // a lens, edge on
-        g.ellipse(0, 0, gr * 0.45, gr).fill({ color, alpha: 0.5 });
-        g.ellipse(0, 0, gr * 0.45, gr).stroke({ width: 1.2, color });
-        return;
-      case 'slagburst': // a ring going out
-        g.circle(0, 0, gr * 0.3).fill(color);
-        g.circle(0, 0, gr).stroke({ width: 1.4, color, alpha: 0.8 });
-        g.circle(0, 0, gr * 1.4).stroke({ width: 0.8, color, alpha: 0.4 });
-        return;
-      case 'cinderhold': // an ember with heat above it
-        g.circle(0, gr * 0.3, gr * 0.55).fill(color);
-        g.moveTo(-gr * 0.4, -gr * 0.4).lineTo(0, -gr).lineTo(gr * 0.4, -gr * 0.4)
-          .stroke({ width: 1.1, color, alpha: 0.7 });
-        return;
-      case 'throughline': // straight through, out both sides
-        g.moveTo(-gr * 1.3, gr * 0.8).lineTo(gr * 1.3, -gr * 0.8).stroke({ width: 1.5, color });
-        g.circle(0, 0, gr * 0.35).fill(color);
-        return;
-      case 'unmaking': // a hole where the glyph should be
-        g.circle(0, 0, gr).stroke({ width: 1.4, color });
-        g.circle(0, 0, gr * 0.55).fill(0x0c0a09);
-        return;
-      case 'recurrence': // three, receding
-        g.circle(-gr * 0.55, 0, gr * 0.5).fill(color);
-        g.circle(gr * 0.1, 0, gr * 0.35).fill({ color, alpha: 0.7 });
-        g.circle(gr * 0.65, 0, gr * 0.22).fill({ color, alpha: 0.45 });
-        return;
-      case 'everywhen': // a scatter of everything
+    const figure = ABILITY_BY_ID.get(look)?.figure ?? '';
+    switch (figure) {
+      case 'burst':
+      case 'plume':
+        g.circle(0, 0, gr * 0.34).fill(color);
         for (let i = 0; i < 6; i++) {
           const a = (i / 6) * Math.PI * 2;
-          g.circle(Math.cos(a) * gr * 0.8, Math.sin(a) * gr * 0.8, gr * 0.2).fill({ color, alpha: 0.8 });
+          g.moveTo(Math.cos(a) * gr * 0.5, Math.sin(a) * gr * 0.5)
+            .lineTo(Math.cos(a) * gr, Math.sin(a) * gr).stroke({ width: 1.2, color });
         }
-        g.circle(0, 0, gr * 0.25).fill(color);
+        return;
+      case 'bolt':
+        g.moveTo(-gr * 0.5, -gr).lineTo(gr * 0.2, -gr * 0.1).lineTo(-gr * 0.2, gr * 0.1)
+          .lineTo(gr * 0.5, gr).stroke({ width: 1.6, color });
+        return;
+      case 'beam':
+        g.moveTo(-gr, 0).lineTo(0, 0).stroke({ width: 1.6, color });
+        g.moveTo(0, 0).lineTo(gr, -gr * 0.7).stroke({ width: 1, color });
+        g.moveTo(0, 0).lineTo(gr, gr * 0.7).stroke({ width: 1, color });
+        return;
+      case 'ring':
+      case 'push':
+        g.circle(0, 0, gr * 0.3).fill(color);
+        g.circle(0, 0, gr).stroke({ width: 1.3, color, alpha: 0.85 });
+        return;
+      case 'implode':
+        g.circle(0, 0, gr * 0.28).fill(color);
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+          g.moveTo(Math.cos(a) * gr * 1.1, Math.sin(a) * gr * 1.1)
+            .lineTo(Math.cos(a) * gr * 0.45, Math.sin(a) * gr * 0.45).stroke({ width: 1.2, color });
+        }
+        return;
+      case 'sequence':
+      case 'blot':
+        g.circle(-gr * 0.6, 0, gr * 0.34).fill(color);
+        g.circle(0, 0, gr * 0.34).fill({ color, alpha: 0.75 });
+        g.circle(gr * 0.6, 0, gr * 0.34).fill({ color, alpha: 0.45 });
+        return;
+      case 'outline':
+        g.rect(-gr, -gr, gr * 2, gr * 2).stroke({ width: 1.4, color });
+        g.circle(0, 0, gr * 0.3).fill(color);
+        return;
+      case 'arcs':
+        g.moveTo(-gr, gr * 0.6);
+        for (let k = 1; k <= 8; k++) {
+          const u = k / 8;
+          g.lineTo(-gr + u * gr * 2, gr * 0.6 - Math.sin(u * Math.PI) * gr);
+        }
+        g.stroke({ width: 1.3, color });
+        return;
+      case 'hole':
+        g.circle(0, 0, gr).stroke({ width: 1.4, color });
+        g.circle(0, 0, gr * 0.6).fill(0x0c0a09);
+        return;
+      case 'ghost':
+        g.rect(-gr * 0.9, -gr * 0.9, gr * 1.8, gr * 1.8).fill({ color, alpha: 0.3 });
+        g.rect(-gr * 0.9, -gr * 0.9, gr * 1.8, gr * 1.8).stroke({ width: 1.2, color });
+        return;
+      case 'blink':
+        g.circle(-gr * 0.6, 0, gr * 0.32).fill(color);
+        g.circle(gr * 0.6, 0, gr * 0.32).fill({ color, alpha: 0.4 });
+        g.moveTo(-gr * 0.3, 0).lineTo(gr * 0.3, 0).stroke({ width: 1, color, alpha: 0.6 });
+        return;
+      case 'slam':
+        g.circle(0, 0, gr * 0.45).fill(color);
+        g.circle(0, 0, gr).stroke({ width: 2, color, alpha: 0.7 });
+        return;
+      case 'cataclysm':
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2;
+          g.moveTo(0, 0).lineTo(Math.cos(a) * gr, Math.sin(a) * gr).stroke({ width: 1.1, color });
+        }
+        g.circle(0, 0, gr * 0.3).fill(0xffffff);
         return;
       default:
         // Bare: the diamond that has always meant "the richest cell".
@@ -1455,66 +1443,66 @@ export class FaceView {
         }
         if (ev.chain >= 2) this.spawnPop(at.x, at.y - this.cellSize * 0.3, `×${ev.chain}`, ev.chain >= 6);
         this.lastChainCell = ev.cell;
-      } else if (ev.type === 'drillArc') {
-        // THE ARC (drill alloy): the strike jumped. Drawn as forked lightning
-        // from the struck cell to each cell it reached, on the same fading
-        // fx layer the polarity chain uses — so an arcing bay is unmistakable
-        // even from across the room.
-        if (!this.reducedMotion) {
-          const from = this.cellCenter(ev.from);
-          for (const t of ev.to) {
-            const to = this.cellCenter(t);
-            const arc = new Graphics();
-            // A jagged path rather than a straight line: it should read as
-            // something jumping, not as a ruler laid between two squares.
-            const mx = (from.x + to.x) / 2;
-            const my = (from.y + to.y) / 2;
-            const nx = -(to.y - from.y);
-            const ny = to.x - from.x;
-            const len = Math.max(1, Math.hypot(nx, ny));
-            const kick = this.cellSize * 0.16;
-            arc.moveTo(from.x, from.y)
-              .lineTo(mx + (nx / len) * kick, my + (ny / len) * kick)
-              .lineTo(to.x, to.y)
-              .stroke({ width: 3, color: 0x8fd8ff, alpha: 0.35 });
-            arc.moveTo(from.x, from.y)
-              .lineTo(mx + (nx / len) * kick, my + (ny / len) * kick)
-              .lineTo(to.x, to.y)
-              .stroke({ width: 1.2, color: 0xeaf8ff, alpha: 0.95 });
-            arc.circle(to.x, to.y, 3.5).fill({ color: 0x8fd8ff, alpha: 0.8 });
-            this.fxLayer.addChild(arc);
-            this.chainArcs.push({ g: arc, life: 0 });
+      } else if (ev.type === 'abilityFire') {
+        // ══ THE WHOLE POINT OF A.57 ══════════════════════════════════════
+        // An ability fired. Twenty-nine of them, sixteen figures, one path
+        // through the renderer. The engine says WHAT happened and WHERE; this
+        // decides what it looks like (ui/face/abilityFx.ts).
+        //
+        // The name is popped over the origin as well as the figure being drawn,
+        // because the previous two ability passes failed on exactly this: a
+        // player could not tell what had just happened, or that anything had.
+        const pts = ev.cells.map((c) => this.cellCenter(c));
+        const fx = makeFx({
+          figure: ev.figure,
+          color: ev.color,
+          cells: pts,
+          path: ev.path?.map((c) => this.cellCenter(c)),
+          from: this.cellCenter(ev.from),
+          size: this.cellSize,
+        }, this.fxLayer, this.reducedMotion);
+        if (fx) {
+          this.abilityFx.push(fx);
+          // A hard cap, because Cataclysm fires every ability in the bay at
+          // once and a twenty-four-drill Aleph bay can put a lot on screen in
+          // one frame. Oldest goes first.
+          while (this.abilityFx.length > 40) {
+            const old = this.abilityFx.shift()!;
+            this.fxLayer.removeChild(old.g);
+            old.g.destroy();
           }
         }
-      } else if (ev.type === 'drillReach') {
-        // THE REACH FAMILY (A.56) — halfmark / prismcut / slagburst /
-        // throughline / everywhen. A straight, clean line to every cell the
-        // stroke also landed on, deliberately NOT the arc's jagged fork: the
-        // arc jumps and these REACH, and two abilities that look identical on
-        // the face are two abilities the player cannot tell apart.
-        if (!this.reducedMotion) {
-          const from = this.cellCenter(ev.from);
-          for (const t of ev.to) {
-            const to = this.cellCenter(t);
-            const g = new Graphics();
-            g.moveTo(from.x, from.y).lineTo(to.x, to.y)
-              .stroke({ width: 2.4, color: 0xffe9b0, alpha: 0.22 });
-            g.moveTo(from.x, from.y).lineTo(to.x, to.y)
-              .stroke({ width: 1, color: 0xfff6dd, alpha: 0.8 });
-            g.circle(to.x, to.y, 2.6).fill({ color: 0xffe9b0, alpha: 0.85 });
-            this.fxLayer.addChild(g);
-            this.chainArcs.push({ g, life: 0 });
-          }
-        }
-      } else if (ev.type === 'drillHold') {
-        // LONGLENS gathering. One ring that closes as it fills, on the machine
-        // itself — so "nothing is happening" reads as "something is coming".
-        const sprite = this.drillSprites[ev.drill];
-        if (sprite && !this.reducedMotion) sprite.pulse = Math.max(sprite.pulse, ev.at * 0.9);
+        const at = this.cellCenter(ev.from);
+        const named = ABILITY_BY_ID.get(ev.id);
+        if (named) this.spawnPop(at.x, at.y - this.cellSize * 0.5, named.name.toUpperCase(), true);
+        if (ev.shake) this.addShake(ev.shake);
       } else if (ev.type === 'chainBroken') {
         const at = this.cellCenter(ev.at);
         this.spawnPop(at.x, at.y - this.cellSize * 0.3, 'snap', false);
         this.lastChainCell = -1;
+      }
+    }
+
+    // ABILITY FIGURES. One number each: t from 0 to 1, redrawn every frame.
+    // A figure that throws is DROPPED rather than allowed to kill the ticker —
+    // Pixi v8 reschedules its rAF after the listener returns, so one bad frame
+    // in here would freeze the whole face permanently (the A.38 report).
+    for (let i = this.abilityFx.length - 1; i >= 0; i--) {
+      const fx = this.abilityFx[i]!;
+      fx.life += dt;
+      if (fx.life >= fx.max) {
+        this.fxLayer.removeChild(fx.g);
+        fx.g.destroy();
+        this.abilityFx.splice(i, 1);
+        continue;
+      }
+      try {
+        fx.g.clear();
+        fx.draw(fx.g, fx.life / fx.max);
+      } catch {
+        this.fxLayer.removeChild(fx.g);
+        fx.g.destroy();
+        this.abilityFx.splice(i, 1);
       }
     }
 
@@ -1568,11 +1556,34 @@ export class FaceView {
           sprite.beam
             .moveTo(0, 0)
             .lineTo(0, this.cellSize * 0.34)
-            .stroke({ width: 2, color: (ALLOY_LOOK[sprite.look] ?? ALLOY_LOOK['plain']!), alpha: sprite.pulse * 0.8 });
+            .stroke({ width: 2, color: lookColor(sprite.look.split('|')[0] ?? ''), alpha: sprite.pulse * 0.8 });
         }
       } else {
         sprite.body.scale.set(1);
         sprite.beam.clear();
+        // ── THE CHARGE METER, ON THE MACHINE ──────────────────────────────
+        // An arc round the chassis that closes as the ability fills, and a
+        // full bright ring when it is READY. This is what makes "saved and
+        // unleashed on purpose" a thing a player can actually see coming —
+        // without it, a manual fire is a button with no tension behind it.
+        const unit = units[i];
+        if (unit?.fits && unit.fits.length > 0) {
+          const rr = Math.max(6, this.cellSize * 0.17) * (unit.prize ? 1.55 : 1) * 1.5;
+          for (let sl = 0; sl < unit.fits.length; sl++) {
+            const lvl = chargeLevel(state, unit, sl);
+            if (lvl <= 0.02) continue;
+            const col = lookColor(unit.fits[sl]!.id);
+            const r0 = rr + sl * 2.6;
+            const a0 = -Math.PI / 2;
+            const a1 = a0 + Math.PI * 2 * lvl;
+            sprite.beam.arc(0, 0, r0, a0, a1)
+              .stroke({ width: 2, color: col, alpha: lvl >= 1 ? 1 : 0.55 });
+          }
+          if (drillReady(unit)) {
+            sprite.beam.circle(0, 0, rr + 4)
+              .stroke({ width: 1.4, color: 0xffffff, alpha: 0.35 + Math.sin(performance.now() / 160) * 0.25 });
+          }
+        }
         // Idle bob so the bay feels alive.
         if (!this.reducedMotion) {
           sprite.root.position.y += Math.sin(performance.now() / 400 + i) * 0.15;

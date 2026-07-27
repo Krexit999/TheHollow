@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 34;
+export const SAVE_VERSION = 35;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -764,6 +764,65 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     drills['burn'] ??= [];
     return { ...p, version: 34, state };
+  },
+
+  // v34 -> v35 — THE ABILITY SET IS REPLACED (A.57).
+  //
+  // All fifteen A.53/A.56 abilities are gone and twenty-nine new ones stand in
+  // their place. Nothing about a save's MACHINES changes — every drill, level,
+  // name, prize, zone and priority survives untouched. What cannot survive is a
+  // fitted ability whose id no longer exists.
+  //
+  // THREE OF THEM MAP CLEANLY, and those are mapped rather than dropped,
+  // because they are the three a real save is overwhelmingly likely to hold:
+  //   arcvein  -> chainbreaker  (a strike that jumps onward, and keeps going)
+  //   lodecall -> veinminer     (the ore-seeking one)
+  //   emberset -> heavystrike   (the one that hits harder than it should)
+  // All three successors are LOAM, so a Loam save is not handed something from
+  // a world it has never seen.
+  //
+  // The other twelve are dropped from `fits` and from the discovery record.
+  // That is a real loss and it is deliberate: leaving an id in `alloys` that
+  // no def answers to would put a permanent blank row in the codex, and the
+  // A.53 marks arrays (`residue`/`richness`) describe rules nothing reads any
+  // more. Re-pouring is a bench visit; a corrupt codex is forever.
+  34: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const drills = (state['drills'] ??= {}) as Record<string, unknown>;
+    const MAP: Record<string, string> = {
+      arcvein: 'chainbreaker', lodecall: 'veinminer', emberset: 'heavystrike',
+    };
+    const LIVE = new Set([
+      'veinminer', 'slagburst', 'chainbreaker', 'tunnelbore', 'heavystrike',
+      'arclightning', 'magneticpull', 'staticoverload', 'repulsor',
+      'rootbreaker', 'bloomharvest', 'seedspread', 'parasite',
+      'prismshot', 'ricochet', 'refraction', 'overchargebeam',
+      'magmaburst', 'heatwave', 'pressureblast', 'moltencore',
+      'voidconsumption', 'realityskip', 'echomine', 'nullpulse',
+      'cataclysm', 'cascade', 'singularity', 'genesis',
+    ]);
+    const carry = (id: unknown): string | null => {
+      if (typeof id !== 'string') return null;
+      const next = MAP[id] ?? id;
+      return LIVE.has(next) ? next : null;
+    };
+    for (const u of (drills['units'] ?? []) as Array<Record<string, unknown>>) {
+      const fits = (u['fits'] ?? []) as Array<Record<string, unknown>>;
+      const kept: Array<Record<string, unknown>> = [];
+      for (const f of fits) {
+        const id = carry(f['id']);
+        // `ch` starts at 0: a migrated ability arrives uncharged rather than
+        // firing the instant the save loads, which would be a jump-scare.
+        if (id) kept.push({ id, grade: f['grade'] ?? 1, ch: 0 });
+      }
+      if (kept.length > 0) u['fits'] = kept; else delete u['fits'];
+    }
+    const known = (drills['alloys'] ?? []) as unknown[];
+    drills['alloys'] = [...new Set(known.map(carry).filter(Boolean))];
+    delete drills['residue'];
+    delete drills['richness'];
+    drills['rot'] ??= [];
+    return { ...p, version: 35, state };
   },
 };
 

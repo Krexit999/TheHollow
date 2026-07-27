@@ -17,6 +17,7 @@ import {
 } from '../../engine/systems/drills';
 import {
   drillsCarrying, knownAbilities, drillFits, drillSlots, bestGradeOf,
+  abilityBudget, loadoutUsed,
 } from '../../engine/systems/drillAlloys';
 import { PRIZE_SOURCES } from '../../engine/systems/prizeDrills';
 import { ROMAN as ROMAN_G } from '../../engine/content/drillAlloys';
@@ -540,6 +541,8 @@ export function DrillsPanel() {
     .map((a) => ({ def: a, on: drillsCarrying(state, a.id), grade: bestGradeOf(state, a.id) }))
     .filter((x) => x.on.length > 0);
   const bare = state.drills.units.filter((u) => (u.fits?.length ?? 0) === 0).length;
+  const budget = abilityBudget(state);
+  const used = loadoutUsed(state);
   const prizes = state.drills.units.filter((u) => u.prize).length;
   const nextPrize = PRIZE_SOURCES.find((p) => !state.drills.units.some((u) => u.prize === p.id));
   const hunting = state.drills.huntOres !== false;
@@ -592,6 +595,34 @@ export function DrillsPanel() {
             {hunting ? 'On' : 'Off'}
           </button>
         </div>
+      </div>
+
+      {/* ══ THE LOADOUT ══════════════════════════════════════════════════
+          You can only run so many broken things at once, and the limit grows
+          with every shell you have reached. Shown as a bar because the
+          interesting state is "how much room is left", not a number — and
+          because a pour that would overflow is REFUSED, so a player needs to
+          see the wall before they hit it. */}
+      <div className="panel p-3" data-testid="loadout">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#e8d48f]">The limit</span>
+          <span className="tnum text-[10px] text-cave-400" data-testid="loadout-count">
+            {used}/{budget} carried
+          </span>
+        </div>
+        <div className="mt-1.5 flex h-2 gap-[2px] overflow-hidden rounded-sm">
+          {Array.from({ length: budget }, (_, i) => (
+            <div
+              key={i}
+              className="h-full flex-1"
+              style={{ background: i < used ? '#e8d48f' : 'rgba(255,255,255,0.07)' }}
+            />
+          ))}
+        </div>
+        <p className="mt-1.5 text-[11px] italic leading-snug text-cave-400">
+          The rails will only carry so much at once, and the worse an ability is the more of the
+          limit it eats. Every shell you reach buys room for more of them — {budget} now.
+        </p>
       </div>
 
       {/* THE MIX. Alloys are made at the Forge and poured into named drills;
@@ -760,6 +791,52 @@ export function DrillsPanel() {
                   </button>
                 )}
               </div>
+
+              {/* ══ THE CHARGE METERS ═══════════════════════════════════════
+                  One row per fitted ability: what it is, how full it is, and —
+                  once it is full — a button to set it off NOW instead of
+                  waiting for the next stroke to do it.
+
+                  CLICKING IS NEVER REQUIRED. The meter fires itself the moment
+                  it fills, so an away player receives every ability without
+                  ever seeing this row (pillar 1). What the button buys is
+                  TIMING, which is the only thing worth paying for. */}
+              {fits.map((f) => {
+                const pct = Math.min(1, f.charge / Math.max(1, f.def.charge.need));
+                return (
+                  <div key={f.slot} className="mt-0.5 flex items-center gap-1.5" data-testid={`charge-${i}-${f.slot}`}>
+                    <span
+                      className="shrink-0 text-[9px] uppercase tracking-wider"
+                      style={{ color: `#${f.def.color.toString(16).padStart(6, '0')}` }}
+                    >
+                      {f.def.name}
+                    </span>
+                    <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-cave-800">
+                      <div
+                        className="h-full transition-[width] duration-150"
+                        data-testid={`charge-bar-${i}-${f.slot}`}
+                        style={{
+                          width: `${Math.round(pct * 100)}%`,
+                          background: f.ready ? '#ffffff' : `#${f.def.color.toString(16).padStart(6, '0')}`,
+                        }}
+                      />
+                    </div>
+                    <button
+                      data-testid={`fire-${i}-${f.slot}`}
+                      disabled={!f.ready}
+                      className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                        f.ready
+                          ? 'border-white/70 bg-white/10 text-white'
+                          : 'border-cave-800 text-cave-700'
+                      }`}
+                      title={f.ready ? `Set ${f.def.name} off now` : `${f.def.name} charges as the drill works — it fires itself when it is full`}
+                      onClick={() => dispatch({ type: 'fireAbility', index: i, slot: f.slot })}
+                    >
+                      {f.ready ? 'Fire' : `${Math.round(pct * 100)}%`}
+                    </button>
+                  </div>
+                );
+              })}
 
               {/* ROUTING (A.56). One button, and it says the current state on
                   its face — "whole face · both" is the default and reads as a

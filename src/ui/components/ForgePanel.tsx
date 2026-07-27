@@ -13,6 +13,7 @@ import {
 import {
   POUR_SLOTS, alloyCost, drillsCarrying, knownAbilities, slagCost,
   drillFits, drillSlots, mixGrade, reachedOrdinal, abilitiesReached, bestGradeOf,
+  abilityBudget, loadoutUsed,
 } from '../../engine/systems/drillAlloys';
 import {
   equippedTool,
@@ -483,6 +484,8 @@ function AlloyBench({ state }: { state: GameState }) {
   const known = knownAbilities(state);
   const reached = reachedOrdinal(state);
   const inWorld = abilitiesReached(state);
+  const budget = abilityBudget(state);
+  const used = loadoutUsed(state);
 
   // NEWEST FIRST. The pool is sorted by shell descending, then rarity, so the
   // metal that just started dropping is at the top of the list rather than
@@ -565,6 +568,16 @@ function AlloyBench({ state }: { state: GameState }) {
         behaviour the mix sets into. Nobody wrote down which mixes make what — the traits are
         the clue, and the deeper the metal, the stronger whatever comes out.
       </p>
+      {/* THE LIMIT, at the bench as well as at the bay — because this is where
+          a player finds out they cannot fit the thing they just paid for, and
+          finding that out AFTER the spend would be the wrong order. */}
+      <div className="mt-1.5 flex items-baseline justify-between gap-2 rounded border border-[#e8d48f]/30 bg-[#e8d48f]/5 px-2 py-1 text-[10px]">
+        <span className="uppercase tracking-wider text-cave-500">The rails carry</span>
+        <span className="tnum font-semibold text-[#e8d48f]" data-testid="bench-loadout">
+          {used}/{budget}
+          <span className="ml-1 text-cave-500">· more with every shell you reach</span>
+        </span>
+      </div>
 
       {units.length === 0 ? (
         <p className="mt-2 text-[11px] italic text-cave-600">
@@ -806,6 +819,9 @@ function AlloyBench({ state }: { state: GameState }) {
                     {a.name}
                     <span className="ml-1 text-[9px] uppercase tracking-wider text-cave-500">
                       shell {ROMAN[shellOrdinal(a.shell)]}
+                    </span>
+                    <span className="ml-1 text-[9px] uppercase tracking-wider text-[#e8d48f]" title="What it costs of the bay's limit">
+                      {'◆'.repeat(a.power)}
                     </span>
                     {at > 0 && (
                       <span className="ml-1 text-[9px] font-semibold text-[#e8d48f]">

@@ -17,6 +17,17 @@ export interface UpgradeDef {
   baseCost: Decimal;
   /** Cost ratio r. Spam 1.15 / Standard 1.25 / Structural 1.75 / Tree 1.55. */
   ratio: number;
+  /**
+   * AN ESCALATING RATIO, for a curve a single r cannot draw (A.57).
+   *
+   * The drill row wants "first four easy, four to eight harder, eight to twelve
+   * very hard, twelve to fifteen brutal" — four bands, not one exponent. When
+   * this is present it REPLACES `ratio` per level: the price of level n is
+   * base × Π(ratioAt(k)) for k < n. Every cost function below handles it by
+   * walking the levels, which is affordable only because a def with one of
+   * these has a small `maxLevel` — and that is asserted, not assumed.
+   */
+  ratioAt?: (level: number) => number;
   maxLevel: number;
   /** Wiped by Collapse (face upgrades). Structures (kiln, drills) survive. */
   resetsOnCollapse: boolean;
@@ -64,12 +75,23 @@ export function upgradeLevel(state: GameState, id: string): number {
 
 /** Cost of a single level when `level` levels are already owned. */
 export function nextCost(def: UpgradeDef, level: number): Decimal {
+  if (def.ratioAt) {
+    let c = def.baseCost;
+    for (let k = 0; k < level; k++) c = c.mul(def.ratioAt(k));
+    return c;
+  }
   return def.baseCost.mul(Decimal.pow(def.ratio, level));
 }
 
 /** totalCost(n) = base * (r^n - 1) / (r - 1) — cost of the first n levels.
  *  Degenerates to base * n when r = 1 (one-off structures). */
 export function totalCost(def: UpgradeDef, n: number): Decimal {
+  if (def.ratioAt) {
+    let sum = D(0);
+    let c = def.baseCost;
+    for (let k = 0; k < n; k++) { sum = sum.add(c); c = c.mul(def.ratioAt(k)); }
+    return sum;
+  }
   if (def.ratio === 1) return def.baseCost.mul(n);
   return def.baseCost.mul(Decimal.pow(def.ratio, n).sub(1)).div(def.ratio - 1);
 }
@@ -86,6 +108,13 @@ export function costForLevels(def: UpgradeDef, level: number, count: number): De
 export function maxAffordable(def: UpgradeDef, level: number, budget: Decimal): number {
   const headroom = def.maxLevel - level;
   if (headroom <= 0 || budget.lte(0)) return 0;
+  // A banded curve has no closed form, and does not need one: it is bounded by
+  // a small maxLevel, so walking it is a handful of multiplies.
+  if (def.ratioAt) {
+    let k = 0;
+    while (k < headroom && costForLevels(def, level, k + 1).lte(budget)) k++;
+    return k;
+  }
   const first = nextCost(def, level);
   if (budget.lt(first)) return 0;
   if (def.ratio === 1) {

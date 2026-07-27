@@ -119,23 +119,19 @@ export function digProgress(state: GameState, cell: number): number {
 /**
  * Cells that could become pocket: plain rock, not vined, not already one.
  *
- * THE CALL (lodecall, the ore-attract alloy) puts its thumb on this scale. Its
- * text has always been "worked cells draw the richer seam toward them", and
- * until now that only meant a deeper drop roll — a cell it has gathered under
- * is listed TWICE here, so a pocket is likelier to form where that drill has
- * been working. It is a weight, not a guarantee, and it changes WHERE ore
- * appears rather than HOW MUCH: the cap and the trickle rate are untouched, so
- * an attract drill cannot pave the grid.
+ * A.57 note: this used to weight cells a LODECALL drill had gathered under, and
+ * that ability is gone with the rest of the A.53/A.56 set. Ore placement is
+ * back to being the trickle's own business — SEED SPREAD is the only thing that
+ * puts a pocket somewhere on purpose now, and it does it through `plantOre`,
+ * which respects the same cap.
  */
 function spawnable(state: GameState): number[] {
   const ore = oreArray(state);
-  const gathered = state.drills.richness;
   const out: number[] = [];
   for (let i = 0; i < ore.length; i++) {
     if (ore[i]) continue;
     if ((state.growth.stage[i] ?? 0) > 0) continue;
     out.push(i);
-    if ((gathered?.[i] ?? 0) > 0) out.push(i);
   }
   return out;
 }
@@ -165,7 +161,7 @@ function veinFrom(state: GameState, seed: number, size: number, rng: () => numbe
 }
 
 /**
- * SEEDSET (A.56 drill alloy): a pocket forms at ONE named cell, the one the
+ * SEED SPREAD (A.57 ability): a pocket forms at ONE named cell, the one the
  * drill has just been working. Everything the ordinary trickle respects is
  * respected here too — the ORE_CAP_SHARE ceiling, plain unvined rock only, one
  * rolled type — which is what keeps it a redistribution of where ore appears

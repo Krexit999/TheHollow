@@ -31,7 +31,7 @@ import {
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
 import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount, addMaterial } from './systems/forge';
-import { forgeDrillAlloy, clearDrillAlloy } from './systems/drillAlloys';
+import { forgeDrillAlloy, clearDrillAlloy, fireNow } from './systems/drillAlloys';
 import { digComplete, openOre, workOre } from './systems/ores';
 import { lightOverstoke } from './systems/kiln';
 import { kilnFuel } from './content/kilnFuel';
@@ -215,6 +215,12 @@ export function handleAction(
         prefer: action.prefer && state.drills.alloys.includes(action.prefer) ? action.prefer : null,
         slot: action.slot,
       });
+
+    // FIRE IT NOW (A.57). The same firing the meter would do on its own, taken
+    // early and aimed. Clicking is never required and never pays more — it pays
+    // timing, which is the only thing worth paying for.
+    case 'fireAbility':
+      return fireNow(state, mods, ctx, action.index, action.slot, action.cell);
 
     case 'clearDrillAlloy': {
       const r = clearDrillAlloy(state, action.index, action.slot);

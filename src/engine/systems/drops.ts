@@ -13,7 +13,6 @@
 import { D } from '../decimal';
 import { maybeDropRelic, relicChanceForDepth } from './relics';
 import { lawFlag , sealed } from '../laws';
-import { attractDepthBonus } from './drillAlloys';
 import type { ModifierCache } from '../modifiers';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
@@ -95,9 +94,14 @@ export function rollForDrop(
   weight: number,
   /** The drill that struck, when a drill did — a relic remembers who found it. */
   by?: string,
-  /** Which cell was struck. THE CALL (drill alloy) reads it: a cell that has
-   *  gathered enough rolls its drop as if the seam there were deeper. */
-  cell?: number,
+  /**
+   * Which cell was struck. THE CALL used to read this — a drill alloy that
+   * rolled a gathered cell's drop as if the seam were deeper — and A.57
+   * replaced the whole ability set, so nothing reads it now. The parameter
+   * STAYS because four call sites pass it and a drop that knows which cell it
+   * came from is the obvious hook for the next thing that wants one.
+   */
+  _cell?: number,
   /**
    * An ORE's own depth bonus, when this roll is a pocket opening. Separate from
    * THE CALL's because they stack honestly: the pocket was rich AND the cell
@@ -123,7 +127,7 @@ export function rollForDrop(
   // shifts what you find without touching the regen ceiling (pillar 2).
   applyDrop(state, ctx, rollDrop(
     currentShell(state).id,
-    state.depth + attractDepthBonus(state, cell) + oreDepthBonus,
+    state.depth + oreDepthBonus,
   ));
 }
 

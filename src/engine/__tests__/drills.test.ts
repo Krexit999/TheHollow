@@ -164,10 +164,12 @@ describe('the save chain, v21 through A.54', () => {
     // exactly the numbers the save was already running.
     for (const u of units) {
       expect(u['alloy']).toBeUndefined();
-      expect(u['fits']).toEqual([{ id: 'arcvein', grade: 1 }]);
+      // A.57 (v35) replaced the ability set; `arcvein` maps onto Chainbreaker,
+      // its Loam successor, and arrives uncharged rather than firing on load.
+      expect(u['fits']).toEqual([{ id: 'chainbreaker', grade: 1, ch: 0 }]);
       expect(u['slots']).toBe(1);
     }
-    expect(bay['alloys']).toEqual(['arcvein']);
+    expect(bay['alloys']).toEqual(['chainbreaker']);
     expect(bay['equipped']).toBeUndefined();
   });
 

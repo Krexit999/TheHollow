@@ -226,7 +226,7 @@ export interface DrillState {
    * pour and never moves: making a better one means pouring a better one.
    * Absent or empty = a bare machine, which mines perfectly well.
    */
-  fits?: { id: string; grade: number }[];
+  fits?: { id: string; grade: number; ch?: number }[];
   /** How many alloys this chassis holds. Absent = 1. Only a PRIZE drill has
    *  more, and that is most of what makes it a prize. */
   slots?: number;
@@ -897,11 +897,14 @@ export interface GameState {
     /** Per-cell marks, parallel to face.cells, written by whichever drill
      *  carries the ability and read by ANY drill that comes to that cell.
      *  Created lazily, decayed on their own beat, resized with the face.
-     *  THE SET writes `residue`; THE CALL writes `richness`; CINDERHOLD writes
-     *  `burn` (A.56), the seconds a struck cell keeps giving for. */
-    residue?: number[];
-    richness?: number[];
+     *  PARASITE writes `rot` (rock that gives up a bigger share of what it
+     *  holds); MAGMA BURST and MOLTEN CORE write `burn` (seconds the cell keeps
+     *  giving on its own). Both decay on the one-second beat. */
+    rot?: number[];
     burn?: number[];
+    /** ECHO MINE: the cells the last ability cleared, so the shape can happen
+     *  again somewhere else. Trimmed to 24 — a record, not a replay buffer. */
+    lastShape?: number[];
   };
 
   depth: number;
@@ -1268,6 +1271,16 @@ export type GameEvent =
   | { type: 'exhibitFormed'; id: string }
   | { type: 'drillAlloyFound'; id: string }
   /** THE ARC: a strike jumped from one cell to these. The face draws it. */
+  /**
+   * AN ABILITY FIRED (A.57). One event for all twenty-nine, because the engine
+   * only knows "this happened, here, to these cells" — the renderer owns what
+   * each `figure` looks like. `path` is ORDERED where order is the point (a
+   * bolt travelling, a domino going off); `cells` is the set.
+   */
+  | {
+      type: 'abilityFire'; id: string; figure: string; color: number;
+      from: number; cells: number[]; path?: number[]; shake?: number; drill: number;
+    }
   | { type: 'drillArc'; from: number; to: number[] }
   /** A.56 REACH family — halfmark / prismcut / slagburst / throughline /
    *  everywhen. One event for all five: the renderer draws a different figure
@@ -1491,6 +1504,10 @@ export type GameAction =
       slot?: number;
     }
   | { type: 'clearDrillAlloy'; index: number; slot?: number }
+  /** MANUAL FIRE (A.57). Never required — auto-fire covers the idle player —
+   *  and refused unless the meter is genuinely full, so it can never be
+   *  clicked into a free extra firing. */
+  | { type: 'fireAbility'; index: number; slot: number; cell?: number }
   /** ROUTING (A.56). An empty/absent `cells` clears the zone back to the whole
    *  face, which is the shape every drill ships with. */
   | { type: 'setDrillZone'; index: number; cells: number[] }

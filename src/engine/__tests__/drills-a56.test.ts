@@ -1,23 +1,18 @@
 /**
- * A.56 — FINISH DRILLS. Three parts, and the tests are grouped by the claim
- * each part makes rather than by the file each touches.
+ * ROUTING AND ACQUISITION — the two A.56 parts that A.57 did not replace.
  *
- *  1  THE POOL GROWS AND DEEPENS. Twelve new abilities across six shells, all
- *     visible grid behaviours, all bounded by regen; and a GRADE that makes an
- *     old ability stronger when it is poured from newer metal.
- *  2  ROUTING. A drill works the squares you painted and prefers what you told
- *     it to prefer — and a drill you never touched behaves exactly as it did
- *     before routing existed (pillar 1 is defended by the DEFAULT, not by a
- *     promise).
- *  3  ACQUISITION. Sixteen bought at a structural price, eight earned and
- *     better — more bite, more slots.
+ * A.56's PART 1 (twelve alloy abilities and a grade) was thrown out wholesale
+ * when A.57 rebuilt the ability set, and its tests went with it: they asserted
+ * `kind` unions and mark arrays that no longer exist. What survives untouched
+ * is everything about the MACHINES —
  *
- * THE LOAD-BEARING TEST IN HERE is `every new ability obeys the ceiling`: it
- * runs each of the fifteen against a face with regen switched off and asserts
- * that no arrangement of them takes more charge out than the field contained.
- * A.53's own history is why — 28 unit tests passed while THE SET was worth
- * exactly 1.00x, because every one of them asserted a mechanism in isolation
- * and none asserted what the bay would do with it.
+ *   ROUTING. A drill works the squares you painted and prefers what you told it
+ *     to prefer, and a drill you never touched behaves exactly as it did before
+ *     routing existed (pillar 1 is defended by the DEFAULT, not by a promise).
+ *   ACQUISITION. Sixteen bought on a steep banded curve, eight earned from
+ *     other systems and strictly better — more bite, more slots.
+ *
+ * The A.57 ability system has its own file (drills-a57.test.ts).
  */
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
@@ -28,11 +23,8 @@ import {
   newDrill, newPrizeDrill, tickDrills, drillPower, drillPriority, zoneSet,
   MAX_DRILLS, BOUGHT_DRILLS, PRIZE_POWER,
 } from '../systems/drills';
-import {
-  drillFits, drillSlots, forgeDrillAlloy, reachedOrdinal, tickAlloys,
-} from '../systems/drillAlloys';
+import { drillFits, drillSlots, forgeDrillAlloy } from '../systems/drillAlloys';
 import { addMaterial } from '../systems/forge';
-import { DRILL_ABILITIES, ABILITY_BY_ID, abilityParams } from '../content/drillAlloys';
 import { PRIZE_SOURCES, grantPrizeDrill, checkPrizeDrills } from '../systems/prizeDrills';
 import { applyFieldSize } from '../systems/face';
 import { allUpgrades } from '../upgrades';
@@ -63,234 +55,10 @@ const fit = (s: GameState, id: string, index = 0, grade = 1, slot = 0): void => 
   drill.fits = fits.filter(Boolean);
   if (!s.drills.alloys.includes(id)) s.drills.alloys.push(id);
 };
-/**
- * STEP THE BAY, don't hand it one enormous dt. `tickDrills` deliberately caps
- * a machine at four strikes per call however long the tick is (the cells it
- * would have hit are regen-limited anyway), so `tickDrills(s, …, 600)` is FOUR
- * STROKES, not three hundred. Anything counting strokes has to step.
- */
-const run = (s: GameState, seconds: number, step = 1): void => {
-  for (let t = 0; t < seconds; t += step) tickDrills(s, mods(), ctx, step);
-};
-/** Every ability that lands strokes on cells other than the one it aimed at. */
-const REACHERS = ['arcvein', 'halfmark', 'prismcut', 'slagburst', 'throughline', 'everywhen'];
 
 // ---------------------------------------------------------------------------
 // PART 1 — the pool
 // ---------------------------------------------------------------------------
-
-describe('PART 1 — twelve more abilities, and every one of them does something', () => {
-  /**
-   * A def with no hook is a lie in a registry. For each ability, fit it alone
-   * on a one-drill bay and require the bay to behave DIFFERENTLY from bare —
-   * more cells touched, or a different cell chosen, or a different tempo. What
-   * "differently" means varies; that it must differ does not.
-   */
-  it('every ability changes what the bay does, measured against a bare bay', () => {
-    // SEEDED, AND IT HAS TO BE. This probe compares an arm against a bare
-    // control, and RECURRENCE rolls Math.random while every drop roll shifts
-    // the shared stream — so on free-running RNG two arms that differ by one
-    // extra drop read differently for reasons that have nothing to do with the
-    // ability. It passed alone and failed in the full suite exactly once, which
-    // is the worst way for a test to behave. Same fix as the A.53 sim: an LCG,
-    // reset before every arm, so "differs from bare" means the ability.
-    const real = Math.random;
-    let rng = 20260726;
-    Math.random = (): number => {
-      rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
-      return rng / 4294967296;
-    };
-    const touched = (id: string | null): { cells: number; dust: number } => {
-      rng = 20260726;
-      const s = fresh();
-      // THREE MACHINES, not one. GANGLOCK is a bay-level agreement — binding a
-      // single drill to itself is genuinely a no-op, and the probe correctly
-      // said so, which is a fair reading of a one-drill bay and a useless one
-      // of the ability. With three, bare drills spread across the face as each
-      // takes the next-fullest cell and bound ones do not, so the difference is
-      // the thing the ability actually does.
-      bay(s, 3);
-      if (id) for (let i = 0; i < 3; i++) fit(s, id, i);
-      const before = s.face.cells.slice();
-      // STEPPED, so the four-strikes-per-call cap does not reduce the whole
-      // window to four strokes. RECURRENCE is why this matters: its repeat is a
-      // 38% roll, and across four draws it fails outright about one time in
-      // seven — the probe read "identical to bare" for an ability that works.
-      run(s, 30);
-      // CINDERHOLD burns on the one-second beat, not in the strike loop — a
-      // probe that only ticks the drills cannot see it at all.
-      for (let t = 0; t < 8; t++) tickAlloys(s, mods(), ctx, 1);
-      let cells = 0;
-      for (let i = 0; i < before.length; i++) if ((s.face.cells[i] ?? 0) < before[i]! - 1e-9) cells++;
-      return { cells, dust: s.totals['dust']?.toNumber() ?? 0 };
-    };
-    const bare = touched(null);
-    expect(bare.dust).toBeGreaterThan(0);
-    for (const a of DRILL_ABILITIES) {
-      const got = touched(a.id);
-      // Every ability must move SOMETHING. `bloom` and `attract` change what
-      // drops rather than what is struck, so they are allowed to match on both
-      // counts — they are asserted directly further down instead.
-      if (a.kind === 'attract' || a.kind === 'bloom') continue;
-      const differs = got.cells !== bare.cells || Math.abs(got.dust - bare.dust) > 1e-6;
-      expect(differs, `${a.name} (${a.kind}) behaves identically to a bare drill`).toBe(true);
-    }
-    Math.random = real;
-  });
-
-  /**
-   * PILLAR 2, THE ONE THAT MATTERS. Regen off, a fixed amount of charge in the
-   * rock, every ability in turn: the bay cannot take out more than was there.
-   * This is stated as charge, not currency, for the A.42/A.53 reason — a
-   * currency measure moves with yield multipliers on both sides and cannot see
-   * the ceiling at all.
-   */
-  it('no ability can take more charge out of the field than the field held', () => {
-    for (const a of DRILL_ABILITIES) {
-      const s = fresh();
-      bay(s, 3);
-      for (let i = 0; i < 3; i++) fit(s, a.id, i, 7); // the strongest grade
-      const held = s.face.cells.reduce((n, c) => n + c, 0);
-      const before = (s.stats.fieldChargeHarvested ?? D(0)).toNumber();
-      // No regen: `tickDrills` alone, never the engine's field tick — and
-      // STEPPED, so the four-strikes-per-call cap does not quietly turn a
-      // ten-minute window into four strokes and a green tick.
-      run(s, 600);
-      const took = (s.stats.fieldChargeHarvested ?? D(0)).toNumber() - before;
-      const left = s.face.cells.reduce((n, c) => n + c, 0);
-      expect(took, `${a.name} took ${took} from a field holding ${held}`)
-        .toBeLessThanOrEqual(held + 1e-6);
-      expect(left).toBeGreaterThanOrEqual(-1e-9);
-      expect(took + left).toBeLessThanOrEqual(held + 1e-6);
-    }
-  });
-
-  it('the reach family lands strokes on cells the drill did not aim at', () => {
-    for (const id of REACHERS) {
-      const s = fresh();
-      bay(s, 1);
-      fit(s, id, 0, 7);
-      const before = s.face.cells.slice();
-      tickDrills(s, mods(), ctx, 2.2); // one stroke's worth
-      let hit = 0;
-      for (let i = 0; i < before.length; i++) if ((s.face.cells[i] ?? 0) < before[i]! - 1e-9) hit++;
-      expect(hit, `${id} touched ${hit} cells in one stroke`).toBeGreaterThan(1);
-    }
-  });
-
-  it('GANGLOCK puts every bound drill on the same cell', () => {
-    const s = fresh();
-    bay(s, 4);
-    for (let i = 0; i < 4; i++) fit(s, 'ganglock', i);
-    tickDrills(s, mods(), ctx, 2.2);
-    const cells = new Set(s.drills.units.map((u) => u.lastCell));
-    expect(cells.size).toBe(1);
-  });
-
-  it('CREEPVINE crawls to a neighbour and bites harder the longer it runs', () => {
-    const s = fresh();
-    bay(s, 1);
-    fit(s, 'creepvine');
-    const drill = s.drills.units[0]!;
-    const w = s.face.w;
-    let jumps = 0;
-    for (let i = 0; i < 12; i++) {
-      // Topped back up each step: a crawl that empties its neighbourhood is
-      // ALLOWED to fall back to the ordinary rule (a drill that stopped
-      // working because it cornered itself would be a bug), and this test is
-      // about the crawl, not the fallback.
-      s.face.cells = s.face.cells.map(() => 8);
-      const from = drill.lastCell;
-      tickDrills(s, mods(), ctx, 2.2);
-      const to = drill.lastCell;
-      const dx = Math.abs((to % w) - (from % w));
-      const dy = Math.abs(Math.floor(to / w) - Math.floor(from / w));
-      if (dx > 1 || dy > 1) jumps++;
-    }
-    expect(jumps, 'a creeping drill teleported across the face').toBe(0);
-    expect(drill.creepRun ?? 0).toBeGreaterThan(0);
-  });
-
-  it('SEEDSET grows a pocket where the drill was standing', () => {
-    const s = fresh();
-    bay(s, 1);
-    fit(s, 'seedset', 0, 7); // grade shortens `every`
-    s.depth = 30; // pockets roll from a depth-banded table
-    s.face.ore = new Array(s.face.cells.length).fill('');
-    const before = (s.face.ore ?? []).filter(Boolean).length;
-    run(s, 600);
-    const after = (s.face.ore ?? []).filter(Boolean).length;
-    expect(after).toBeGreaterThan(before);
-  });
-
-  it('LONGLENS says nothing for several beats and then takes a great deal', () => {
-    const s = fresh();
-    bay(s, 1);
-    fit(s, 'longlens');
-    const drill = s.drills.units[0]!;
-    tickDrills(s, mods(), ctx, 2.2);
-    expect(drill.hold).toBe(1);
-    expect(s.totals['dust']?.toNumber() ?? 0).toBe(0); // nothing yet
-    tickDrills(s, mods(), ctx, 2.2 * 3);
-    expect(drill.hold).toBe(0);
-    expect(s.totals['dust']?.toNumber() ?? 0).toBeGreaterThan(0);
-  });
-
-  it('UNMAKING empties the cell outright, then has to stand there', () => {
-    const s = fresh();
-    bay(s, 1);
-    fit(s, 'unmaking');
-    tickDrills(s, mods(), ctx, 2.2);
-    const emptied = s.face.cells.filter((c) => c <= 1e-9).length;
-    expect(emptied).toBe(1);
-    // The rest shows as a negative timer — it owes time before the next bite.
-    expect(s.drills.units[0]!.timer).toBeLessThan(0);
-  });
-
-  it('CINDERHOLD leaves the rock burning, and burning rock keeps giving', () => {
-    const s = fresh();
-    bay(s, 1);
-    fit(s, 'cinderhold');
-    tickDrills(s, mods(), ctx, 2.2);
-    const burning = (s.drills.burn ?? []).filter((b) => b > 0).length;
-    expect(burning).toBeGreaterThan(0);
-  });
-
-  it('a Loam ability poured from newer metal is stronger, and the old one is untouched', () => {
-    const arc = ABILITY_BY_ID.get('arcvein')!;
-    expect(abilityParams(arc, 1)['jumps']).toBe(2);
-    expect(abilityParams(arc, 4)['jumps']).toBe(5);
-
-    // And it shows in play: the graded drill reaches more of the face per
-    // stroke than the ungraded one does.
-    const reachOf = (grade: number): number => {
-      const s = fresh();
-      bay(s, 1);
-      fit(s, 'arcvein', 0, grade);
-      // A CORNER HAS THREE NEIGHBOURS, so 2 jumps and 5 jumps land identically
-      // there — the probe has to aim the drill at the middle of the face or it
-      // measures the grid's edges instead of the ability.
-      const mid = Math.floor(s.face.h / 2) * s.face.w + Math.floor(s.face.w / 2);
-      s.face.cells[mid] = 40;
-      const before = s.face.cells.slice();
-      tickDrills(s, mods(), ctx, 2.2);
-      let hit = 0;
-      for (let i = 0; i < before.length; i++) if ((s.face.cells[i] ?? 0) < before[i]! - 1e-9) hit++;
-      return hit;
-    };
-    expect(reachOf(4)).toBeGreaterThan(reachOf(1));
-  });
-
-  it('an ability from a shell you have not reached cannot come out of a crucible', () => {
-    const s = fresh();
-    expect(reachedOrdinal(s)).toBe(1);
-    s.depthRecords['cinder'] = 10;
-    expect(reachedOrdinal(s)).toBe(5);
-    // And a Recursion (back to Loam, records kept) does not take it away.
-    s.shell.current = 'loam';
-    expect(reachedOrdinal(s)).toBe(5);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // PART 2 — routing
@@ -406,16 +174,28 @@ describe('PART 2 — the player paints where a drill works', () => {
 // ---------------------------------------------------------------------------
 
 describe('PART 3 — sixteen bought, eight earned', () => {
-  it('the shop row is priced structural, not standard', () => {
+  it('the shop row escalates in bands — easy, then hard, then brutal', () => {
     const def = allUpgrades().find((u) => u.id === 'drillCount')!;
-    expect(def.ratio).toBe(1.75);
+    // A.57: a single exponent cannot draw "first four easy, last three brutal",
+    // so the ratio steps per band. The SHAPE is the assertion, not one number.
+    expect(def.ratioAt, 'the banded curve is gone').toBeDefined();
+    expect(def.ratioAt!(0)).toBeLessThan(def.ratioAt!(5));
+    expect(def.ratioAt!(5)).toBeLessThan(def.ratioAt!(9));
+    expect(def.ratioAt!(9)).toBeLessThan(def.ratioAt!(13));
     expect(def.maxLevel).toBe(15);
     expect(BOUGHT_DRILLS).toBe(16);
     expect(BOUGHT_DRILLS + PRIZE_SOURCES.length).toBeLessThanOrEqual(MAX_DRILLS);
-    // The last chassis costs more than the entire old row did (6·(1.25^24−1)/.25
-    // ≈ 5,100), which is the whole point of the re-price.
-    const last = 6 * Math.pow(def.ratio, def.maxLevel!);
-    expect(last).toBeGreaterThan(5_100);
+    // The last chassis costs more than the entire OLD row did (6·(1.25^24−1)/.25
+    // ≈ 5,100), which is the whole point of the re-price — and the first four
+    // together stay cheap enough to be near-impulse.
+    let c = 6;
+    let firstFour = 0;
+    for (let k = 0; k < def.maxLevel!; k++) {
+      if (k < 4) firstFour += c;
+      c *= def.ratioAt!(k);
+    }
+    expect(c, 'the last chassis is not an investment').toBeGreaterThan(5_100);
+    expect(firstFour, 'the first four are meant to be easy').toBeLessThan(60);
   });
 
   it('a prize drill bites harder than a bought one at the same level', () => {
@@ -427,18 +207,16 @@ describe('PART 3 — sixteen bought, eight earned', () => {
       .toBeCloseTo(drillPower(s, m, s.drills.units[0]!) * PRIZE_POWER, 6);
   });
 
-  it('a prize drill holds more than one alloy, and both of them fire', () => {
+  it('a prize drill holds more than one ability at once', () => {
     const s = fresh();
     s.drills.units.push(newPrizeDrill('The Foreman', 'ach10', 2));
     s.face.cells = s.face.cells.map(() => 8);
     expect(drillSlots(s.drills.units[0]!)).toBe(2);
-    fit(s, 'arcvein', 0, 1, 0);
-    fit(s, 'emberset', 0, 1, 1);
-    expect(drillFits(s.drills.units[0]!).map((f) => f.def.id)).toEqual(['arcvein', 'emberset']);
-    tickDrills(s, mods(), ctx, 6);
-    // The arc reached, and the set left its mark: both hooks ran on one drill.
-    expect(s.face.cells.filter((c) => c < 8 - 1e-9).length).toBeGreaterThan(1);
-    expect((s.drills.residue ?? []).some((r) => r > 0)).toBe(true);
+    fit(s, 'slagburst', 0, 1, 0);
+    fit(s, 'heavystrike', 0, 1, 1);
+    expect(drillFits(s.drills.units[0]!).map((f) => f.def.id)).toEqual(['slagburst', 'heavystrike']);
+    // That BOTH of them fire is asserted in drills-a57.test.ts, where the
+    // firing machinery lives; this file is about the chassis.
   });
 
   it('a bought chassis holds exactly one', () => {
@@ -449,16 +227,18 @@ describe('PART 3 — sixteen bought, eight earned', () => {
     const s = fresh();
     s.drills.units.push(newPrizeDrill('The Foreman', 'ach10', 2));
     s.face.cells = s.face.cells.map(() => 8);
-    fit(s, 'arcvein', 0, 1, 0);
-    fit(s, 'emberset', 0, 1, 1);
+    fit(s, 'slagburst', 0, 1, 0);
+    fit(s, 'heavystrike', 0, 1, 1);
+    s.drills.alloys = ['slagburst', 'heavystrike'];
     s.currencies['brick'] = D(1e9);
-    addMaterial(s, 'rootglass', 60, 99);
-    addMaterial(s, 'umberjade', 60, 99);
-    const r = forgeDrillAlloy(s, ctx, ['rootglass', 'umberjade'], [0], { slot: 1 });
+    addMaterial(s, 'duskflint', 60, 99);
+    addMaterial(s, 'bonechalk', 60, 99);
+    // duskflint + bonechalk is two `brittle` — Slagburst's signature.
+    const r = forgeDrillAlloy(s, ctx, ['duskflint', 'bonechalk'], [0], { slot: 1 });
     expect(r.ok).toBe(true);
-    // Arcvein was ALREADY in slot 0, so a second pour of it lands there rather
-    // than eating the second slot — two copies of one ability is never useful.
-    expect(drillFits(s.drills.units[0]!).map((f) => f.def.id)).toEqual(['arcvein', 'emberset']);
+    // Slagburst was ALREADY in slot 0, so a second pour of it lands there
+    // rather than eating the second slot — two copies is never useful.
+    expect(drillFits(s.drills.units[0]!).map((f) => f.def.id)).toEqual(['slagburst', 'heavystrike']);
   });
 
   it('a prize is granted once, and never twice', () => {
@@ -520,11 +300,14 @@ describe('the save survives all three', () => {
     const out = runMigrations(payload);
     const bayState = (out.state as { drills: Record<string, unknown> }).drills;
     const units = bayState['units'] as Array<Record<string, unknown>>;
-    expect(units[0]!['fits']).toEqual([{ id: 'arcvein', grade: 1 }]);
+    // A.57 (v35) replaced the ability set and maps the three A.53 ids onto
+    // their Loam successors — arcvein was "a strike that jumps onward", which
+    // is Chainbreaker. A migrated ability arrives UNCHARGED.
+    expect(units[0]!['fits']).toEqual([{ id: 'chainbreaker', grade: 1, ch: 0 }]);
     expect(units[0]!['level']).toBe(7);
     expect(units[1]!['fits']).toBeUndefined();
     expect(units.length).toBe(2);
-    expect(bayState['alloys']).toEqual(['arcvein', 'emberset']);
+    expect(bayState['alloys']).toEqual(['chainbreaker', 'heavystrike']);
   });
 
   it('a save holding more than sixteen bought drills keeps every one of them', () => {

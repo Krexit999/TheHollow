@@ -244,7 +244,7 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(34); // A.56 — alloy grades, routing, prize drills
+    expect(SAVE_VERSION).toBe(35); // A.57 — the ability set replaced
     const st = out.state as Record<string, unknown>;
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();
