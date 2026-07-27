@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react';
 import {
   allUpgrades,
   fmt,
@@ -10,9 +11,15 @@ import { lawFlag } from '../../engine/laws';
 import { cellCap, cellRegen, chipYield, dpsMax } from '../../engine/systems/face';
 import { kilnRate, kilnEfficiency, KILN_DUST_PER_BRICK, overstokeActive, overstokeReady, overstokeCost } from '../../engine/systems/kiln';
 import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '../../engine/content/kilnFuel';
-import { drillInterval, drillPower, MAX_DRILLS } from '../../engine/systems/drills';
-import { drillsCarrying, knownAbilities } from '../../engine/systems/drillAlloys';
-import { ABILITY_BY_ID } from '../../engine/content/drillAlloys';
+import {
+  drillInterval, drillPower, MAX_DRILLS, BOUGHT_DRILLS, PRIZE_POWER, drillPriority,
+  type DrillPriority,
+} from '../../engine/systems/drills';
+import {
+  drillsCarrying, knownAbilities, drillFits, drillSlots, bestGradeOf,
+} from '../../engine/systems/drillAlloys';
+import { PRIZE_SOURCES } from '../../engine/systems/prizeDrills';
+import { ROMAN as ROMAN_G } from '../../engine/content/drillAlloys';
 import { oreCount } from '../../engine/systems/ores';
 import { oreDef, oreOddsHint } from '../../engine/content/ores';
 import { materialCount } from '../../engine/systems/forge';
@@ -359,9 +366,154 @@ const KILN_PREVIEW: PreviewStat[] = [
  * bay-wide, granting an ability you can watch happen on the face. This panel
  * only says which one is running and what it does.
  */
+export const PRIORITY_LABEL: Record<DrillPriority, string> = {
+  both: 'rock and ore',
+  oresFirst: 'ore first',
+  ores: 'ore only',
+  rock: 'rock only',
+};
+
+const PRIORITY_BLURB: Record<DrillPriority, string> = {
+  both: 'Works the fullest rock it can reach, and takes a pocket when one is going spare.',
+  oresFirst: 'First refusal on every pocket in its zone. Chips rock while it waits.',
+  ores: 'Pockets and nothing else. It will stand idle rather than chip — that is the trade.',
+  rock: 'Never touches a pocket, so yours keep until you dig them by hand.',
+};
+
+/**
+ * THE ROUTING GUI — paint the squares, pick what it prefers, done.
+ *
+ * PLAIN HTML, and that is a standing ruling in this project, not a shortcut:
+ * canvas UI has been tried twice on this codebase and reverted twice. The grid
+ * below is a CSS grid of buttons over the live face dimensions, so it reads the
+ * same shape the renderer draws without going near the renderer.
+ *
+ * PAINTING IS A DRAG, not twenty clicks. `pointerdown` sets the brush from
+ * whatever the first cell was (down on a selected cell erases, down on a bare
+ * one fills), and `pointerenter` while held continues it — the standard
+ * minesweeper/spreadsheet gesture, and the only one that makes a 20×20 face
+ * tolerable.
+ *
+ * NOTHING IS COMMITTED UNTIL DONE. The draft lives in component state, so a
+ * player can scrub a selection about without the bay reacting mid-gesture.
+ */
+function RoutePicker({ index, onClose }: { index: number; onClose: () => void }) {
+  const state = useGame((s) => s.state)!;
+  const unit = state.drills.units[index]!;
+  const w = state.face.w;
+  const h = state.face.h;
+  const [draft, setDraft] = useState<Set<number>>(() => new Set(unit.zone ?? []));
+  const paint = useRef<null | boolean>(null);
+  const prio = drillPriority(state, unit);
+
+  const apply = (cell: number, on: boolean) => {
+    setDraft((cur) => {
+      const next = new Set(cur);
+      if (on) next.add(cell); else next.delete(cell);
+      return next;
+    });
+  };
+
+  const done = () => {
+    // A full selection IS no selection — the engine stores nothing, so the
+    // drill keeps the whole face even after an expansion renumbers the grid.
+    dispatch({ type: 'setDrillZone', index, cells: [...draft] });
+    onClose();
+  };
+
+  return (
+    <div className="panel border-[#9ad4e8]/40 p-3" data-testid="route-picker">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[#9ad4e8]">
+          Route · {unit.name ?? `Drill ${index + 1}`}
+        </span>
+        <span className="tnum text-[10px] text-cave-500" data-testid="route-count">
+          {draft.size === 0 || draft.size >= w * h ? 'whole face' : `${draft.size} squares`}
+        </span>
+      </div>
+      <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+        Drag across the squares this one is allowed to work. Select none — or all — and it goes
+        back to working wherever it likes.
+      </p>
+
+      <div
+        className="mt-2 grid gap-[2px] rounded border border-cave-800 bg-cave-900/60 p-1"
+        style={{ gridTemplateColumns: `repeat(${w}, minmax(0, 1fr))` }}
+        onPointerUp={() => { paint.current = null; }}
+        onPointerLeave={() => { paint.current = null; }}
+      >
+        {Array.from({ length: w * h }, (_, c) => {
+          const on = draft.has(c);
+          const hasOre = !!state.face.ore?.[c];
+          return (
+            <button
+              key={c}
+              data-testid={`zone-cell-${c}`}
+              aria-pressed={on}
+              aria-label={`Cell ${c % w + 1}, ${Math.floor(c / w) + 1}`}
+              className={`aspect-square rounded-[2px] border ${
+                on ? 'border-[#9ad4e8]/70 bg-[#9ad4e8]/30' : 'border-cave-800 bg-cave-800/40'
+              } ${hasOre ? 'ring-1 ring-inset ring-[#e8d48f]/60' : ''}`}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                paint.current = !on;
+                apply(c, !on);
+              }}
+              onPointerEnter={() => { if (paint.current !== null) apply(c, paint.current); }}
+            />
+          );
+        })}
+      </div>
+
+      <div className="mt-1.5 flex gap-1">
+        <button
+          className="flex-1 rounded border border-cave-700 py-1 text-[10px] uppercase tracking-wider text-cave-300 hover:bg-cave-800"
+          data-testid="zone-all"
+          onClick={() => setDraft(new Set(Array.from({ length: w * h }, (_, c) => c)))}
+        >
+          All
+        </button>
+        <button
+          className="flex-1 rounded border border-cave-700 py-1 text-[10px] uppercase tracking-wider text-cave-300 hover:bg-cave-800"
+          data-testid="zone-none"
+          onClick={() => setDraft(new Set())}
+        >
+          None
+        </button>
+      </div>
+
+      {/* PRIORITY. Four states, plain words, applied immediately — unlike the
+          zone there is nothing to scrub, so waiting for Done would just be a
+          step. */}
+      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">And it prefers</div>
+      <div className="mt-1 grid grid-cols-2 gap-1">
+        {(['both', 'oresFirst', 'ores', 'rock'] as DrillPriority[]).map((p) => (
+          <button
+            key={p}
+            data-testid={`priority-${p}`}
+            aria-pressed={prio === p}
+            className={`rounded border px-1.5 py-1 text-[10px] ${
+              prio === p ? 'border-[#9ad4e8]/60 bg-[#9ad4e8]/10 text-[#9ad4e8]' : 'border-cave-800 text-cave-300 hover:bg-cave-800'
+            }`}
+            onClick={() => dispatch({ type: 'setDrillPriority', index, priority: p })}
+          >
+            {PRIORITY_LABEL[p]}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] leading-snug text-cave-500">{PRIORITY_BLURB[prio]}</p>
+
+      <button className="btn btn-warm mt-2 w-full py-1 text-[11px]" data-testid="route-done" onClick={done}>
+        Done
+      </button>
+    </div>
+  );
+}
+
 export function DrillsPanel() {
   const state = useGame((s) => s.state);
   const openAlloyBench = useGame((s) => s.openAlloyBench);
+  const [routing, setRouting] = useState<number | null>(null);
   const m = useFreshMods();
   if (!state) return null;
 
@@ -385,9 +537,11 @@ export function DrillsPanel() {
   // the readout that replaced "the alloy" — there is no single answer any more,
   // and a bay running three things should say so.
   const fitted = knownAbilities(state)
-    .map((a) => ({ def: a, on: drillsCarrying(state, a.id) }))
+    .map((a) => ({ def: a, on: drillsCarrying(state, a.id), grade: bestGradeOf(state, a.id) }))
     .filter((x) => x.on.length > 0);
-  const bare = state.drills.units.filter((u) => !u.alloy).length;
+  const bare = state.drills.units.filter((u) => (u.fits?.length ?? 0) === 0).length;
+  const prizes = state.drills.units.filter((u) => u.prize).length;
+  const nextPrize = PRIZE_SOURCES.find((p) => !state.drills.units.some((u) => u.prize === p.id));
   const hunting = state.drills.huntOres !== false;
   const pockets = oreCount(state);
   const orePocket = pockets === 0 ? 'Nothing' : `${pockets} pocket${pockets === 1 ? '' : 's'}`;
@@ -453,10 +607,13 @@ export function DrillsPanel() {
         </div>
         {fitted.length > 0 ? (
           <>
-            {fitted.map(({ def, on }) => (
-              <div key={def.id} className="mt-1.5 border-t border-cave-800 pt-1.5 first:border-t-0 first:pt-0">
+            {fitted.map(({ def, on, grade }) => (
+              <div key={def.id} data-testid={`mix-${def.id}`} className="mt-1.5 border-t border-cave-800 pt-1.5 first:border-t-0 first:pt-0">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-[12px] font-semibold text-[#8fd8c0]">{def.name}</span>
+                  <span className="text-[12px] font-semibold text-[#8fd8c0]">
+                    {def.name}
+                    <span className="ml-1 text-[10px] font-semibold text-[#e8d48f]">grade {ROMAN_G[grade]}</span>
+                  </span>
                   <span className="tnum shrink-0 text-[10px] text-cave-500">×{on.length}</span>
                 </div>
                 <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{def.effect}</div>
@@ -491,15 +648,53 @@ export function DrillsPanel() {
 
       {state.drills.units.length < MAX_DRILLS && <UpgradeRow def={countDef} />}
 
+      {/* WHERE THE OTHER RAILS COME FROM (A.56). Sixteen chassis are bought at
+          a structural price; the last eight are earned, and they are better.
+          Showing what is next is not a pillar-5 problem — a milestone reward is
+          not a recipe, and a player who cannot see that a better machine exists
+          has no reason to go and get it. */}
+      <div className="panel border-[#e8d48f]/30 p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#e8d48f]">Not for sale</span>
+          <span className="tnum text-[10px] text-cave-500" data-testid="prize-count">
+            {prizes}/{PRIZE_SOURCES.length} earned · {Math.min(state.drills.units.length, BOUGHT_DRILLS)}/{BOUGHT_DRILLS} bought
+          </span>
+        </div>
+        <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+          Sixteen rails you can buy. The rest arrive from somewhere else — and those are bigger
+          machines: they bite harder and they hold more than one alloy at a time.
+        </p>
+        {nextPrize ? (
+          <div className="mt-1.5 flex items-baseline justify-between gap-2 border-t border-cave-800 pt-1.5">
+            <span className="min-w-0 text-[11px] text-cave-300">
+              {nextPrize.requirement}
+            </span>
+            <span className="shrink-0 text-[10px] text-[#e8d48f]">◆ {nextPrize.slots} slots</span>
+          </div>
+        ) : (
+          <p className="mt-1.5 border-t border-cave-800 pt-1.5 text-[11px] text-[#e8d48f]">
+            Every one of them is down here.
+          </p>
+        )}
+      </div>
+
       {/* One compact row per chassis: a name, a level, a buy button. */}
       <div className="panel p-3">
         <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-cave-300">On the rails</div>
         {state.drills.units.map((unit, i) => {
           const upCost = D(5).mul(Math.pow(1.25, unit.level));
           const canUp = unit.level < 25 && getCurrency(state, conv).gte(upCost);
-          const carried = unit.alloy ? ABILITY_BY_ID.get(unit.alloy) : null;
+          const fits = drillFits(unit);
+          const slots = drillSlots(unit);
+          const carried = fits[0]?.def ?? null;
+          const zoned = unit.zone?.length ?? 0;
+          const prio = drillPriority(state, unit);
           return (
-            <div key={i} className="mt-1 border-t border-cave-800 pt-1 first:border-t-0 first:pt-0">
+            <div
+              key={i}
+              data-testid={`drill-row-${i}`}
+              className={`mt-1 border-t pt-1 first:border-t-0 first:pt-0 ${unit.prize ? 'border-[#e8d48f]/30' : 'border-cave-800'}`}
+            >
               <div className="flex items-center gap-2">
                 <button
                   className="min-w-0 flex-1 text-left"
@@ -509,8 +704,18 @@ export function DrillsPanel() {
                     if (name !== undefined) dispatch({ type: 'renameDrill', index: i, name });
                   }}
                 >
-                  <span className="truncate text-[11px] text-cave-200">{unit.name ?? `Drill ${i + 1}`}</span>
+                  {/* A PRIZE READS AS A PRIZE from the row, not just on the
+                      face: gold name, the source it came from, and the slot
+                      count that is the actual reason it is better. */}
+                  <span className={`truncate text-[11px] ${unit.prize ? 'font-semibold text-[#e8d48f]' : 'text-cave-200'}`}>
+                    {unit.prize && '★ '}{unit.name ?? `Drill ${i + 1}`}
+                  </span>
                   <span className="tnum ml-1.5 text-[10px] text-cave-500">Lv {unit.level}</span>
+                  {unit.prize && (
+                    <span className="ml-1.5 text-[9px] uppercase tracking-wider text-[#e8d48f]/80">
+                      prize · {slots} slots · ×{PRIZE_POWER} bite
+                    </span>
+                  )}
                 </button>
                 <span className="tnum shrink-0 text-[10px] text-cave-500">
                   {fmtNum(drillPower(state, m, unit), 1)} / {fmtNum(drillInterval(state, m, unit), 2)}s
@@ -538,25 +743,52 @@ export function DrillsPanel() {
                   title={carried ? `Running ${carried.name} — re-pour at the Forge` : 'Pour an alloy into this drill at the Forge'}
                   onClick={() => openAlloyBench([i])}
                 >
-                  Alloy
+                  Alloy{slots > 1 ? ` ${fits.length}/${slots}` : ''}
                 </button>
-                <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500">
-                  {carried ? carried.effect : 'runs bare'}
+                <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500" data-testid={`drill-fits-${i}`}>
+                  {fits.length === 0
+                    ? 'runs bare'
+                    : fits.map((f) => `${f.def.name} ${ROMAN_G[f.grade]}`).join(' + ')}
                 </span>
-                {carried && (
+                {fits.length > 0 && (
                   <button
                     className="shrink-0 text-[9px] uppercase tracking-wider text-cave-600 hover:text-cave-300"
-                    title="Take the alloy out. Free — but putting one back is another pour."
+                    title="Take the alloys out. Free — but putting one back is another pour."
                     onClick={() => dispatch({ type: 'clearDrillAlloy', index: i })}
                   >
                     strip
                   </button>
                 )}
               </div>
+
+              {/* ROUTING (A.56). One button, and it says the current state on
+                  its face — "whole face · both" is the default and reads as a
+                  default, so nobody has to open it to find out nothing is set. */}
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <button
+                  data-testid={`route-${i}`}
+                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                    zoned > 0 || unit.priority
+                      ? 'border-[#9ad4e8]/50 bg-[#9ad4e8]/10 text-[#9ad4e8]'
+                      : 'border-cave-700 text-cave-400 hover:bg-cave-800'
+                  }`}
+                  title="Choose which squares this drill works, and what it prefers"
+                  onClick={() => setRouting(i)}
+                >
+                  Route
+                </button>
+                <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500" data-testid={`route-state-${i}`}>
+                  {zoned > 0 ? `${zoned} squares` : 'whole face'} · {PRIORITY_LABEL[prio]}
+                </span>
+              </div>
             </div>
           );
         })}
       </div>
+
+      {routing !== null && state.drills.units[routing] && (
+        <RoutePicker index={routing} onClose={() => setRouting(null)} />
+      )}
     </div>
   );
 }

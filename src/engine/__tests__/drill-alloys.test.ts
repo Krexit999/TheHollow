@@ -22,14 +22,19 @@ import {
   ARC_SHARE, ALLOY_POUR_BASE, POUR_SLOTS,
   alloyCost, arcTargets, attractDepthBonus, bayAbility, clearDrillAlloy, drillAbility,
   drillsCarrying, forgeDrillAlloy, knownAbilities, markResidue, markRichness,
-  residueBite, residueLevel, richnessLevel, tickAlloys,
+  residueBite, residueLevel, richnessLevel, tickAlloys, drillCarries, mixGrade,
 } from '../systems/drillAlloys';
 import {
-  ABILITY_BY_ID, DRILL_ABILITIES, alloyHint, matchDrillAlloy, traitPool,
+  ABILITY_BY_ID, DRILL_ABILITIES, abilityParams, alloyHint, gradeStep, matchDrillAlloy, traitPool,
 } from '../content/drillAlloys';
 import { MATERIAL_TRAITS } from '../traits';
 import { MATERIALS } from '../materials';
 import { allShells } from '../shells';
+
+// THE SHELLS MUST EXIST BEFORE THE FIRST ASSERTION READS THEM. `allShells()`
+// is populated by `createEngine`, and the reach test below used to run before
+// any engine existed — so it looped over nothing and passed for three phases.
+createEngine({ nowMs: 0 });
 
 const ctx: EngineCtx = { emit() {}, dirty() {} };
 const mods = () => new ModifierCache();
@@ -48,20 +53,68 @@ const bay = (s: GameState, n = 1) => {
 };
 /** Put an ability straight into a drill, bypassing the bench, for the mechanism
  *  tests. The PRICED path is exercised separately in the discovery block. */
+/** A.56: the mark hooks take a RESOLVED fit ({def, grade, p}), not a bare def,
+ *  because a grade scales an ability's params. Grade 1 = step 0 = the shipped
+ *  A.53 numbers, so every assertion below still measures what it used to. */
+const carried = (id: string, grade = 1) => {
+  const def = ABILITY_BY_ID.get(id)!;
+  return { def, grade, p: abilityParams(def, grade) };
+};
 const fit = (s: GameState, id: string, index = 0) => {
   if (!s.drills.alloys.includes(id)) s.drills.alloys.push(id);
-  s.drills.units[index]!.alloy = id;
+  s.drills.units[index]!.fits = [{ id, grade: 1 }];
 };
 
 // ---------------------------------------------------------------------------
 
+/** Every trait a shell's OWN rock drops, counted. Not worked, not combat. */
+const shellPool = (shellId: string): Record<string, number> => {
+  const pool: Record<string, number> = {};
+  for (const m of MATERIALS) {
+    if (m.shellId !== shellId || m.worked || m.source) continue;
+    for (const t of MATERIAL_TRAITS[m.id] ?? []) pool[t] = (pool[t] ?? 0) + 1;
+  }
+  return pool;
+};
+
 describe('the framework', () => {
   it('every ability is a RULE with a kind and a hook, never a bare stat', () => {
+    // A.56: the union grew from three kinds to fifteen. The assertion is that
+    // every DEF has a kind the runtime actually reads — checked against the
+    // hooks, not against a hand-copied list that can rot away from them.
+    const LIVE_KINDS = [
+      'arc', 'attract', 'residue', 'bind', 'phantom', 'creep', 'bloom',
+      'refract', 'lens', 'burst', 'kindle', 'phase', 'unmake', 'recur', 'disperse',
+    ];
+    expect(DRILL_ABILITIES.length).toBe(15);
     for (const a of DRILL_ABILITIES) {
-      expect(['arc', 'attract', 'residue']).toContain(a.kind);
+      expect(LIVE_KINDS).toContain(a.kind);
       expect(a.effect.length).toBeGreaterThan(10);
       expect(Object.keys(a.needs).length).toBeGreaterThan(0);
       expect(a.weight).toBeGreaterThan(0);
+    }
+    // No two abilities share a kind-and-shell, so each is a distinct thing to
+    // find rather than the same hook wearing two names.
+    const ids = new Set(DRILL_ABILITIES.map((a) => a.id));
+    expect(ids.size).toBe(DRILL_ABILITIES.length);
+  });
+
+  it('every shell has two to four of its own, and they get heavier as you descend', () => {
+    const byShell = new Map<string, typeof DRILL_ABILITIES>();
+    for (const a of DRILL_ABILITIES) {
+      const arr = byShell.get(a.shell) ?? [];
+      arr.push(a);
+      byShell.set(a.shell, arr);
+    }
+    expect(byShell.size).toBe(7);
+    let prevMax = 0;
+    for (const shell of allShells()) {
+      const arr = byShell.get(shell.id) ?? [];
+      expect(arr.length, `${shell.id} has ${arr.length} abilities`).toBeGreaterThanOrEqual(2);
+      expect(arr.length).toBeLessThanOrEqual(4);
+      const max = Math.max(...arr.map((a) => a.weight));
+      expect(max, `${shell.id} is not stronger than the shell above it`).toBeGreaterThanOrEqual(prevMax);
+      prevMax = max;
     }
   });
 
@@ -69,40 +122,134 @@ describe('the framework', () => {
    * THE REACH RULE, and the test has to be strict about it or it proves
    * nothing: for EVERY shell, count only the materials that shell's own rock
    * actually drops (not worked, not combat-only), and require that its pool
-   * alone satisfies every signature. An ability nobody can pour after Loam is
-   * a dead system — the Silica problem, in a new place.
+   * alone satisfies the signature. An ability nobody can pour after Loam is a
+   * dead system — the Silica problem, in a new place.
+   *
+   * THIS TEST WAS VACUOUS UNTIL A.56 AND NOBODY NOTICED. It read `allShells()`,
+   * which is populated by `createEngine`, from a position in the file where no
+   * engine had been created yet — so it looped over an EMPTY array and passed
+   * by doing nothing, for three phases. `bootShells()` below fixes it, and the
+   * moment it did, it found a real gap (see the next test). Exactly the
+   * "a green number that counted nothing" failure PILLARS names.
    */
-  it('every signature is forgeable from EVERY shell\'s own mineable rock', () => {
-    for (const shell of allShells()) {
-      const mineable = MATERIALS.filter((m) => m.shellId === shell.id && !m.worked && !m.source);
-      const pool: Record<string, number> = {};
-      for (const m of mineable) {
-        for (const t of MATERIAL_TRAITS[m.id] ?? []) pool[t] = (pool[t] ?? 0) + 1;
-      }
+  it('every A.56 signature is forgeable from EVERY shell\'s own mineable rock', () => {
+    const shells = allShells();
+    expect(shells.length, 'the reach test must actually see the shells').toBe(7);
+    for (const shell of shells) {
+      const pool = shellPool(shell.id);
       for (const a of DRILL_ABILITIES) {
+        if (a.shell === 'loam') continue; // the A.53 three — see the next test
         for (const [trait, n] of Object.entries(a.needs)) {
           expect(
             pool[trait] ?? 0,
             `${shell.id} cannot pour ${a.name}: only ${pool[trait] ?? 0} ${trait} materials drop there`,
-          ).toBeGreaterThanOrEqual(n);
+          ).toBeGreaterThanOrEqual(n as number);
         }
       }
     }
   });
 
+  /**
+   * THE PRE-EXISTING GAP, PINNED RATHER THAN HIDDEN.
+   *
+   * The A.53 Loam trio uses `dense: 2` and `warm: 2`, and neither is available
+   * from local rock in every world: Verdance and Glassmere drop ONE dense
+   * material each, and Hollow and Aleph drop no warm material at all. It is
+   * survivable — materials cross a Breach, so a player descending carries the
+   * stone — and it is not something A.56 introduced. It is asserted here so
+   * that the gap is a known quantity with a shape, and so that anyone who
+   * closes it (by re-signing the trio, or by giving those shells warm rock)
+   * finds this test in their way and has to say so.
+   */
+  it('names the A.53 trio\'s reach gap exactly, instead of claiming there is none', () => {
+    const short: string[] = [];
+    for (const shell of allShells()) {
+      const pool = shellPool(shell.id);
+      for (const a of DRILL_ABILITIES) {
+        if (a.shell !== 'loam') continue;
+        for (const [trait, n] of Object.entries(a.needs)) {
+          if ((pool[trait] ?? 0) < (n as number)) short.push(`${shell.id}/${a.id}`);
+        }
+      }
+    }
+    expect(short.sort()).toEqual([
+      'aleph/emberset',
+      'glassmere/emberset', 'glassmere/lodecall',
+      'hollow/emberset',
+      'verdance/lodecall',
+    ]);
+  });
+
   it('matches on the POOLED traits, so the mix is the recipe and not a list', () => {
     // rootglass is charged+brittle, umberjade is brittle+charged — two charged
-    // between them satisfies the arc, in either order.
-    expect(matchDrillAlloy(['rootglass', 'umberjade'])?.id).toBe('arcvein');
-    expect(matchDrillAlloy(['umberjade', 'rootglass'])?.id).toBe('arcvein');
+    // between them satisfies the arc, in either order. `reached: 1` because
+    // that is where a player making this mix actually is: nothing below Loam
+    // exists yet, which is the whole of the A.56 unlock rule.
+    expect(matchDrillAlloy(['rootglass', 'umberjade'], { reached: 1 })?.id).toBe('arcvein');
+    expect(matchDrillAlloy(['umberjade', 'rootglass'], { reached: 1 })?.id).toBe('arcvein');
     expect(traitPool(['rootglass', 'umberjade'])['charged']).toBe(2);
+  });
+
+  it('an ability does not exist before you have been to the shell it belongs to', () => {
+    // The same mix that makes Arcvein in Loam makes SEEDSET once Verdance has
+    // been reached — a richer signature, from a deeper world, taking priority.
+    expect(matchDrillAlloy(['rootglass', 'umberjade'], { reached: 3 })?.id).toBe('seedset');
+    expect(matchDrillAlloy(['rootglass', 'umberjade'], { reached: 2 })?.id).toBe('arcvein');
+  });
+
+  it('AIMING re-reaches an old favourite that a deeper signature would shadow', () => {
+    // Without an aim the deep one wins; with one, the old one comes back. This
+    // is the mechanism that stops early discoveries becoming dead weight.
+    expect(matchDrillAlloy(['rootglass', 'umberjade'], { reached: 7 })?.id).toBe('seedset');
+    expect(matchDrillAlloy(['rootglass', 'umberjade'], { reached: 7, prefer: 'arcvein' })?.id).toBe('arcvein');
+    // And an aim the mix cannot carry is ignored rather than obeyed — it falls
+    // through to what the metal really is, so aiming is never a free reroll.
+    expect(matchDrillAlloy(['rootglass', 'umberjade'], { reached: 7, prefer: 'throughline' })?.id).toBe('seedset');
   });
 
   it('a mix that reaches for nothing is slag', () => {
     // marl is light+springy, wormsilk is springy+light — lively, and no
     // authored ability reads springy.
-    expect(matchDrillAlloy(['marl', 'wormsilk'])).toBeNull();
-    expect(matchDrillAlloy([])).toBeNull();
+    expect(matchDrillAlloy(['marl', 'wormsilk'], { reached: 7 })).toBeNull();
+    expect(matchDrillAlloy([], { reached: 7 })).toBeNull();
+  });
+});
+
+describe('THE GRADE — an old ability, poured from newer metal', () => {
+  it('is the DEEPEST shell in the pour, not the average', () => {
+    // One Ferrite stone among two Loam ones is still Ferrite metal in the mix.
+    expect(mixGrade(['rootglass', 'umberjade'])).toBe(1);
+    expect(mixGrade(['rootglass', 'lodestone'])).toBe(2);
+  });
+
+  it('a Loam ability forged with newer metal is strictly stronger', () => {
+    const arcDef = ABILITY_BY_ID.get('arcvein')!;
+    const at1 = abilityParams(arcDef, 1);
+    const at4 = abilityParams(arcDef, 4);
+    expect(at4['jumps']).toBeGreaterThan(at1['jumps']!);
+    expect(at4['share']).toBeGreaterThan(at1['share']!);
+    // And the shipped grade-I numbers are UNTOUCHED, so nothing an existing
+    // save is running quietly changed value under it.
+    expect(at1['jumps']).toBe(2);
+    expect(at1['share']).toBe(0.5);
+  });
+
+  it('older metal cannot make an ability worse than the world that invented it', () => {
+    const deep = ABILITY_BY_ID.get('everywhen')!; // aleph, ordinal 7
+    expect(gradeStep(deep, 1)).toBe(0);
+    expect(abilityParams(deep, 1)).toEqual(deep.params);
+  });
+
+  it('a `shrink` param falls and never goes below one', () => {
+    const call = ABILITY_BY_ID.get('lodecall')!;
+    expect(abilityParams(call, 7)['every']).toBeLessThan(call.params['every']!);
+    expect(abilityParams(call, 7)['every']).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a better grade costs more to pour', () => {
+    const { s } = fresh();
+    const arcDef = ABILITY_BY_ID.get('arcvein')!;
+    expect(alloyCost(s, arcDef, 1, 4).conv).toBeGreaterThan(alloyCost(s, arcDef, 1, 1).conv);
   });
 });
 
@@ -165,7 +312,7 @@ describe('the price is a decision (A.54)', () => {
     fit(s, 'arcvein');
     const brick = s.currencies['brick']!.toNumber();
     expect(clearDrillAlloy(s, 0).ok).toBe(true);
-    expect(s.drills.units[0]!.alloy).toBeUndefined();
+    expect(s.drills.units[0]!.fits?.length ?? 0).toBe(0);
     expect(s.currencies['brick']!.toNumber()).toBe(brick);
   });
 
@@ -254,7 +401,7 @@ describe('discovery — hinted, confirmed on the make, never listed', () => {
     expect((r.data as { alloy: string | null }).alloy).toBeNull();
     expect((r.data as { reason: string }).reason).toMatch(/springy|light/);
     expect(s.drills.alloys).toEqual([]);
-    expect(s.drills.units[0]!.alloy).toBeUndefined();
+    expect(s.drills.units[0]!.fits?.length ?? 0).toBe(0);
   });
 
   it('refuses what you do not hold, and refuses a pour with nowhere to go', () => {
@@ -281,7 +428,7 @@ describe('discovery — hinted, confirmed on the make, never listed', () => {
 // ---------------------------------------------------------------------------
 
 describe('THE ARC — the strike jumps', () => {
-  const arc = () => ABILITY_BY_ID.get('arcvein')!;
+  const arc = () => carried('arcvein');
 
   it('does nothing at all for a drill with no alloy', () => {
     const { s } = fresh();
@@ -336,7 +483,7 @@ describe('THE ARC — the strike jumps', () => {
 // ---------------------------------------------------------------------------
 
 describe('THE CALL — worked cells draw the richer seam', () => {
-  const call = () => ABILITY_BY_ID.get('lodecall')!;
+  const call = () => carried('lodecall');
 
   it('gathers on the cell that is worked, and pays out on a threshold', () => {
     const { s } = fresh();
@@ -366,7 +513,7 @@ describe('THE CALL — worked cells draw the richer seam', () => {
     for (let i = 0; i < 20; i++) markRichness(s, 3, null);
     expect(attractDepthBonus(s, 3)).toBe(0);
     fit(s, 'arcvein');
-    for (let i = 0; i < 20; i++) markRichness(s, 3, drillAbility(s.drills.units[0]!));
+    for (let i = 0; i < 20; i++) markRichness(s, 3, drillCarries(s.drills.units[0]!, 'attract'));
     expect(attractDepthBonus(s, 3)).toBe(0);
   });
 
@@ -383,7 +530,7 @@ describe('THE CALL — worked cells draw the richer seam', () => {
 // ---------------------------------------------------------------------------
 
 describe('THE SET — worked rock stays soft', () => {
-  const set = () => ABILITY_BY_ID.get('emberset')!;
+  const set = () => carried('emberset');
 
   it('a marked cell gives a bigger BITE, and cools back to normal', () => {
     const { s } = fresh();
@@ -393,7 +540,7 @@ describe('THE SET — worked rock stays soft', () => {
     markResidue(s, 5, set());
     expect(residueBite(s, 5)).toBeGreaterThan(1);
     expect(residueLevel(s, 5)).toBe(1);
-    tickAlloys(s, 100);
+    tickAlloys(s, mods(), ctx, 100);
     expect(residueBite(s, 5)).toBe(1);
     expect(residueLevel(s, 5)).toBe(0);
   });
@@ -422,7 +569,7 @@ describe('THE SET — worked rock stays soft', () => {
     const { s } = fresh();
     bay(s);
     fit(s, 'arcvein');
-    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    markResidue(s, 5, drillCarries(s.drills.units[0]!, 'residue'));
     expect(residueBite(s, 5)).toBe(1);
   });
 
@@ -479,7 +626,7 @@ describe('the bay is a MIX, not a setting (A.54)', () => {
     bay(s, 2);
     fit(s, 'emberset', 0);
     expect(drillAbility(s.drills.units[1]!)).toBeNull();
-    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    markResidue(s, 5, drillCarries(s.drills.units[0]!, 'residue'));
     // The reader does not ask who is biting — the rock is soft, full stop.
     expect(residueBite(s, 5)).toBeGreaterThan(1);
   });
@@ -488,7 +635,7 @@ describe('the bay is a MIX, not a setting (A.54)', () => {
     const { s } = fresh();
     bay(s);
     fit(s, 'emberset');
-    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    markResidue(s, 5, drillCarries(s.drills.units[0]!, 'residue'));
     expect(residueBite(s, 5)).toBeGreaterThan(1);
     clearDrillAlloy(s, 0);
     expect(residueBite(s, 5)).toBe(1);
@@ -499,9 +646,9 @@ describe('the bay is a MIX, not a setting (A.54)', () => {
     const { s } = fresh();
     bay(s);
     fit(s, 'emberset');
-    markResidue(s, 5, drillAbility(s.drills.units[0]!));
+    markResidue(s, 5, drillCarries(s.drills.units[0]!, 'residue'));
     clearDrillAlloy(s, 0);
-    tickAlloys(s, 100);
+    tickAlloys(s, mods(), ctx, 100);
     expect(s.drills.residue?.[5]).toBe(0);
   });
 });
@@ -535,7 +682,9 @@ describe('the pillars', () => {
     s.shell.current = 'ferrite';
     s.currencies['brick'] = D(0);
     s.currencies['flux'] = D(5_000);
-    const price = alloyCost(s, ABILITY_BY_ID.get('arcvein')!, 1);
+    // A.56: Ferrite stone pours at GRADE II, and a grade is priced. Quoting
+    // grade I here would be quoting a pour that is not the one being made.
+    const price = alloyCost(s, ABILITY_BY_ID.get('arcvein')!, 1, 2);
     addMaterial(s, 'lodestone', 60, price.materials);
     addMaterial(s, 'polarite', 60, price.materials);
     const r = forgeDrillAlloy(s, ctx, ['lodestone', 'polarite'], [0]);

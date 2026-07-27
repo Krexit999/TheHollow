@@ -165,6 +165,34 @@ function veinFrom(state: GameState, seed: number, size: number, rng: () => numbe
 }
 
 /**
+ * SEEDSET (A.56 drill alloy): a pocket forms at ONE named cell, the one the
+ * drill has just been working. Everything the ordinary trickle respects is
+ * respected here too — the ORE_CAP_SHARE ceiling, plain unvined rock only, one
+ * rolled type — which is what keeps it a redistribution of where ore appears
+ * rather than a new faucet. Returns true if something took.
+ *
+ * The pocket starts holding whatever the cell was already holding, exactly as a
+ * trickled one does, so a drill cannot manufacture charge by planting on rock
+ * it just emptied. (A.55: an ore raises a cell's CAP and nothing else, and
+ * `dpsMax = W·H·regen·Y` has no cap term.)
+ */
+export function plantOre(
+  state: GameState, mods: ModifierCache, ctx: EngineCtx, cell: number,
+): boolean {
+  const ore = oreArray(state);
+  if (cell < 0 || cell >= ore.length) return false;
+  if (ore[cell]) return false;
+  if ((state.growth.stage[cell] ?? 0) > 0) return false;
+  if (oreCount(state) >= Math.floor(ore.length * ORE_CAP_SHARE)) return false;
+  const lean = mods.get(state, 'oreRarity').toNumber();
+  const def = rollOreType(currentShell(state).id, state.depth, lean);
+  if (!def) return false;
+  ore[cell] = def.id;
+  ctx.emit({ type: 'oreAppeared', cells: [cell], oreId: def.id });
+  return true;
+}
+
+/**
  * Put one pocket in the rock — a lone cell, or a vein. Returns the cells taken.
  * Respects the cap, so this can return fewer cells than asked for (or none).
  */

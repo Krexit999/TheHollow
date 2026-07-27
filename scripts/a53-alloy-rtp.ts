@@ -45,7 +45,7 @@ import { ModifierCache } from '../src/engine/modifiers';
 import { descendCost } from '../src/engine/prestigeMath';
 import { applyFieldSize, cellCap, cellRegen } from '../src/engine/systems/face';
 import { newDrill } from '../src/engine/systems/drills';
-import { DRILL_ABILITIES } from '../src/engine/content/drillAlloys';
+import { ABILITY_BY_ID, DRILL_ABILITIES, shellOrdinal } from '../src/engine/content/drillAlloys';
 
 const HOURS = Number(process.argv[2] ?? 6);
 const CHECKPOINT_SEC = 900;
@@ -137,7 +137,15 @@ function build(cfg: ScenarioConfig, alloy: string | null, seed: number): Arm {
   const ids = DRILL_ABILITIES.map((a) => a.id);
   for (let i = 0; i < cfg.drills; i++) {
     const worn = alloy === 'mix' ? ids[i % ids.length]! : alloy;
-    s.drills.units.push({ ...newDrill(`D${i}`), level: cfg.level, ...(worn ? { alloy: worn } : {}) });
+    // A.56: the fitting is `fits: [{id, grade}]`, not `alloy`. Left as `alloy`
+    // this line would have quietly produced FIFTEEN BARE ARMS and reported them
+    // all at 1.00x — a harness that cannot fail honestly, which is the exact
+    // class PILLARS names. Grade = the ability's own shell, i.e. step 0, so
+    // this script keeps measuring what it always measured.
+    s.drills.units.push({
+      ...newDrill(`D${i}`), level: cfg.level,
+      ...(worn ? { fits: [{ id: worn, grade: shellOrdinal(ABILITY_BY_ID.get(worn)!.shell) }] } : {}),
+    });
   }
   if (alloy) s.drills.alloys = alloy === 'mix' ? ids : [alloy];
   const log: { sec: number; dust: number }[] = [];

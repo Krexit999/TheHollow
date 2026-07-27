@@ -218,9 +218,40 @@ export interface DrillState {
   lastCell: number;
   /** A name the player gave it. An individual, not "drill 3". */
   name?: string;
-  /** DRILL ALLOY (A.54) — the ability poured into THIS drill, or absent for a
-   *  bare one. Per drill on purpose: the bay's mix is the decision. */
-  alloy?: string;
+  /**
+   * DRILL ALLOYS (A.54 one per drill → A.56 a list).
+   *
+   * Each entry is an ability id and the GRADE it was poured at (1..7 — the
+   * deepest shell any material in the pour came from). Grade is stamped at the
+   * pour and never moves: making a better one means pouring a better one.
+   * Absent or empty = a bare machine, which mines perfectly well.
+   */
+  fits?: { id: string; grade: number }[];
+  /** How many alloys this chassis holds. Absent = 1. Only a PRIZE drill has
+   *  more, and that is most of what makes it a prize. */
+  slots?: number;
+  /** Where this drill came from, when it was not bought — the achievement, the
+   *  skill node, the deed. Present = a prize chassis: bigger bite, drawn
+   *  larger, more slots. */
+  prize?: string;
+
+  // ── ROUTING (A.56) ───────────────────────────────────────────────────────
+  /** Cell indices this drill is allowed to work. Absent/empty = the whole face,
+   *  which is what every drill did before routing existed. Remapped by
+   *  COORDINATE when the face widens (`applyFieldSize`) — an index-copy would
+   *  slide every painted cell one row over. */
+  zone?: number[];
+  /** What this machine would rather be doing. Absent = follow the bay-wide
+   *  hunt switch, i.e. exactly the old behaviour. */
+  priority?: 'both' | 'oresFirst' | 'ores' | 'rock';
+
+  // ── PER-ABILITY COUNTERS ─────────────────────────────────────────────────
+  /** LONGLENS: strokes banked toward the big one. */
+  hold?: number;
+  /** CREEPVINE: how long the current crawl has run, in consecutive steps. */
+  creepRun?: number;
+  /** SEEDSET: strokes since the last seed took. */
+  bloom?: number;
   /** AFFINITY: use-history per shell — a drill that worked a shell hits it
    *  harder. Invisible and automatic; nothing to manage. */
   use?: Record<string, number>;
@@ -866,9 +897,11 @@ export interface GameState {
     /** Per-cell marks, parallel to face.cells, written by whichever drill
      *  carries the ability and read by ANY drill that comes to that cell.
      *  Created lazily, decayed on their own beat, resized with the face.
-     *  THE SET writes `residue`; THE CALL writes `richness`. */
+     *  THE SET writes `residue`; THE CALL writes `richness`; CINDERHOLD writes
+     *  `burn` (A.56), the seconds a struck cell keeps giving for. */
     residue?: number[];
     richness?: number[];
+    burn?: number[];
   };
 
   depth: number;
@@ -1236,6 +1269,14 @@ export type GameEvent =
   | { type: 'drillAlloyFound'; id: string }
   /** THE ARC: a strike jumped from one cell to these. The face draws it. */
   | { type: 'drillArc'; from: number; to: number[] }
+  /** A.56 REACH family — halfmark / prismcut / slagburst / throughline /
+   *  everywhen. One event for all five: the renderer draws a different figure
+   *  per ability, but the engine only knows "this stroke also landed there". */
+  | { type: 'drillReach'; from: number; to: number[] }
+  /** LONGLENS is gathering. `at` is 0..1 toward the big bite. */
+  | { type: 'drillHold'; drill: number; at: number }
+  /** A drill arrived from somewhere that was not the shop. */
+  | { type: 'prizeDrill'; source: string; name: string; slots: number }
   /** ORES: a pocket formed, opened, or the drought floor seeded the face. */
   | { type: 'oreAppeared'; cells: number[]; oreId: string }
   | { type: 'oreOpened'; cell: number; oreId: string; charge: number; by: 'hand' | 'drill'; first: boolean }
@@ -1441,8 +1482,19 @@ export type GameAction =
   | { type: 'sweep'; cells: number[] }
   // --- THE FACE CLUSTER (v21) — Drill Bay -------------------------------
   | { type: 'renameDrill'; index: number; name: string }
-  | { type: 'forgeDrillAlloy'; materialIds: string[]; drills: number[] }
-  | { type: 'clearDrillAlloy'; index: number }
+  | {
+      type: 'forgeDrillAlloy'; materialIds: string[]; drills: number[];
+      /** A KNOWN ability to aim the pour at, when a rich mix would otherwise
+       *  resolve to a deeper one (A.56). Never an undiscovered id. */
+      prefer?: string | null;
+      /** Which slot to fill on a multi-slot prize chassis. */
+      slot?: number;
+    }
+  | { type: 'clearDrillAlloy'; index: number; slot?: number }
+  /** ROUTING (A.56). An empty/absent `cells` clears the zone back to the whole
+   *  face, which is the shape every drill ships with. */
+  | { type: 'setDrillZone'; index: number; cells: number[] }
+  | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
   /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
   | { type: 'workOre'; cell: number; seconds: number }
   | { type: 'setHuntOres'; on: boolean }

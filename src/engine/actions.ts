@@ -209,12 +209,41 @@ export function handleAction(
     // ability is always a pour, so swapping is a decision (A.54). Pulling one
     // out costs nothing, because stopping should never be a purchase.
     case 'forgeDrillAlloy':
-      return forgeDrillAlloy(state, ctx, action.materialIds, action.drills);
+      return forgeDrillAlloy(state, ctx, action.materialIds, action.drills, {
+        // Aiming is only honoured for something already discovered — the engine
+        // checks, so a hand-built dispatch cannot use it as a scanner.
+        prefer: action.prefer && state.drills.alloys.includes(action.prefer) ? action.prefer : null,
+        slot: action.slot,
+      });
 
     case 'clearDrillAlloy': {
-      const r = clearDrillAlloy(state, action.index);
+      const r = clearDrillAlloy(state, action.index, action.slot);
       if (r.ok) ctx.dirty();
       return r;
+    }
+
+    // ROUTING (A.56) — the player paints where a machine works and says what it
+    // would rather be working. Both default to the old behaviour when unset, so
+    // an idle player who never opens the menu is unaffected (pillar 1).
+    case 'setDrillZone': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      const size = state.face.cells.length;
+      const cells = [...new Set(action.cells)].filter((c) => c >= 0 && c < size);
+      // A zone covering everything is not a zone — store nothing, so the drill
+      // keeps working the whole face even after the grid widens.
+      if (cells.length === 0 || cells.length >= size) delete drill.zone;
+      else drill.zone = cells.sort((a, b) => a - b);
+      ctx.dirty();
+      return { ok: true, data: { cells: drill.zone?.length ?? 0 } };
+    }
+
+    case 'setDrillPriority': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      drill.priority = action.priority;
+      ctx.dirty();
+      return { ok: true };
     }
 
     // ORES. The hold gesture sends seconds of work; the engine decides when

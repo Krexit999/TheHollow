@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 33;
+export const SAVE_VERSION = 34;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -733,6 +733,37 @@ export const MIGRATIONS: Record<number, Migration> = {
     const drills = (state['drills'] ??= {}) as Record<string, unknown>;
     drills['huntOres'] ??= true;
     return { ...p, version: 33, state };
+  },
+
+  // v33 -> v34 — THE POOL GROWS AND DEEPENS, AND A DRILL IS A DECISION (A.56).
+  //
+  // Three shape changes, and the rule for all three is that a loaded save must
+  // land where it already was:
+  //
+  //  1  `alloy: string` becomes `fits: [{ id, grade }]`. Everything already
+  //     poured is stamped GRADE 1 — the ability's own shell ordinal is applied
+  //     by `gradeStep`, so a Loam alloy at grade 1 is step 0 and behaves
+  //     EXACTLY as it did before this migration existed. Nothing gets stronger
+  //     for free and nothing gets weaker.
+  //  2  Slots. Every existing chassis was bought, so every one gets one slot,
+  //     which is the default anyway. Prize drills are granted forward by the
+  //     one-second check, not backfilled here.
+  //  3  The drillCount row is re-priced 1.25 -> 1.75 and its cap 23 -> 15. A
+  //     save holding MORE than 16 bought drills KEEPS THEM. The level is left
+  //     alone rather than clamped: `maxLevel` only gates further purchases, the
+  //     units array is what the bay reads, and taking machines off somebody
+  //     because a price curve changed would be the worst kind of migration.
+  33: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const drills = (state['drills'] ??= {}) as Record<string, unknown>;
+    for (const u of (drills['units'] ?? []) as Array<Record<string, unknown>>) {
+      const had = u['alloy'];
+      if (typeof had === 'string' && had) u['fits'] = [{ id: had, grade: 1 }];
+      delete u['alloy'];
+      u['slots'] ??= 1;
+    }
+    drills['burn'] ??= [];
+    return { ...p, version: 34, state };
   },
 };
 

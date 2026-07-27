@@ -7,9 +7,12 @@ import { useEffect, useRef, useState } from 'react';
 import { convCurrencyId, currencyDef, fmtNum, getCurrency, maxToolTier } from '../../engine';
 import type { GameState, Stack } from '../../engine';
 import { GEMS, gemDef, materialDef, MATERIALS } from '../../engine/materials';
-import { ABILITY_BY_ID, alloyHint, matchDrillAlloy } from '../../engine/content/drillAlloys';
+import {
+  ABILITY_BY_ID, alloyHint, matchDrillAlloy, gradeStep, shellOrdinal,
+} from '../../engine/content/drillAlloys';
 import {
   POUR_SLOTS, alloyCost, drillsCarrying, knownAbilities, slagCost,
+  drillFits, drillSlots, mixGrade, reachedOrdinal, abilitiesReached, bestGradeOf,
 } from '../../engine/systems/drillAlloys';
 import {
   equippedTool,
@@ -428,19 +431,68 @@ function RecipeRow({ recipe }: { recipe: ToolRecipe }) {
  * pours at whatever it turns out to want — quoting it would be a free scanner
  * (read the price, learn whether it is slag, and never pay to find out).
  */
+/**
+ * SHELL TIER COLOURS — the one thing this bench needed most.
+ *
+ * The complaint that opened A.56: "mixing 100+ materials blind is confusing".
+ * It was. The pool listed every material the player owned in registry order,
+ * with traits and a count, and NOTHING that said which of them were new. A
+ * hundred rows of undifferentiated stone is not a puzzle, it is a wall.
+ *
+ * So every row now carries its shell as a roman numeral in that shell's own
+ * colour, the list is grouped newest-first under a shell header, and the
+ * deepest group the player owns is called out as NEWEST. This is a first pass
+ * and deliberately scoped to this bench — the Hold and the Compendium want the
+ * same treatment and that is a later phase.
+ *
+ * Pillar 5 is untouched: a shell ordinal is a PROPERTY of a material, in the
+ * same class as its traits (traits.ts rule 3). What a mix MAKES is still found.
+ */
+const RARITY_RANK = ['common', 'rich', 'pure', 'flawless', 'starred', 'aberrant'];
+
+const SHELL_TIER_COLOR: Record<string, string> = {
+  loam: '#b08968', ferrite: '#9aa6b2', verdance: '#8fd8a0', glassmere: '#9ad4e8',
+  cinder: '#e8956a', hollow: '#c0a8e0', aleph: '#e8d48f',
+};
+
+function TierChip({ shellId, newest }: { shellId: string; newest?: boolean }) {
+  const color = SHELL_TIER_COLOR[shellId] ?? '#8a8074';
+  return (
+    <span
+      className="tnum shrink-0 rounded-sm border px-1 text-[9px] font-semibold leading-tight"
+      style={{ borderColor: `${color}66`, color, background: `${color}14` }}
+      title={`${SHELL_NAMES[shellId] ?? shellId} — tier ${shellOrdinal(shellId)} of 7${newest ? ' · the newest metal you hold' : ''}`}
+    >
+      {ROMAN[shellOrdinal(shellId)]}{newest ? '▲' : ''}
+    </span>
+  );
+}
+
 function AlloyBench({ state }: { state: GameState }) {
   const [picks, setPicks] = useState<string[]>([]);
+  const [aim, setAim] = useState<string | null>(null);
   const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null);
   const targets = useGame((s) => s.alloyTargets);
   const setTargets = useGame((s) => s.setAlloyTargets);
   const box = useRef<HTMLDivElement>(null);
 
   const units = state.drills.units;
-  const owned = MATERIALS.filter((m) => materialCount(state, m.id) > 0);
   const conv = convCurrencyId(state);
   const convName = currencyDef(conv).name;
   const hint = alloyHint(picks);
   const known = knownAbilities(state);
+  const reached = reachedOrdinal(state);
+  const inWorld = abilitiesReached(state);
+
+  // NEWEST FIRST. The pool is sorted by shell descending, then rarity, so the
+  // metal that just started dropping is at the top of the list rather than
+  // buried under eighty rows of Loam commons.
+  const owned = MATERIALS
+    .filter((m) => materialCount(state, m.id) > 0)
+    .sort((a, b) => shellOrdinal(b.shellId) - shellOrdinal(a.shellId)
+      || RARITY_RANK.indexOf(b.rarity) - RARITY_RANK.indexOf(a.rarity)
+      || a.name.localeCompare(b.name));
+  const newestOwned = owned.length > 0 ? shellOrdinal(owned[0]!.shellId) : 1;
 
   const jumpSeq = useGame((s) => s.alloyJumpSeq);
   // Arriving from a drill's ALLOY button: bring the bench into view. It lives
@@ -455,9 +507,10 @@ function AlloyBench({ state }: { state: GameState }) {
   }, [jumpSeq]);
 
   // Only a KNOWN mix shows its price — see the note above.
-  const wouldMake = matchDrillAlloy(picks);
+  const grade = mixGrade(picks);
+  const wouldMake = matchDrillAlloy(picks, { reached, prefer: aim });
   const priced = wouldMake && state.drills.alloys.includes(wouldMake.id) ? wouldMake : null;
-  const price = priced ? alloyCost(state, priced, Math.max(1, targets.length)) : null;
+  const price = priced ? alloyCost(state, priced, Math.max(1, targets.length), grade) : null;
   const affordable = price
     ? getCurrency(state, conv).gte(price.conv) && picks.every((id) => materialCount(state, id) >= price.materials)
     : getCurrency(state, conv).gte(slagCost(state).conv);
@@ -477,17 +530,23 @@ function AlloyBench({ state }: { state: GameState }) {
   };
 
   const pour = () => {
-    const r = dispatch({ type: 'forgeDrillAlloy', materialIds: picks, drills: targets });
+    const r = dispatch({ type: 'forgeDrillAlloy', materialIds: picks, drills: targets, prefer: aim });
     if (!r.ok) { setLast({ ok: false, text: r.reason ?? 'The pour would not take' }); return; }
-    const data = r.data as { alloy: string | null; known?: boolean; drills?: number; reason?: string } | undefined;
+    const data = r.data as {
+      alloy: string | null; known?: boolean; drills?: number; reason?: string;
+      grade?: number; step?: number;
+    } | undefined;
     if (!data?.alloy) {
       setLast({ ok: false, text: data?.reason ?? 'Slag.' });
     } else {
       const def = ABILITY_BY_ID.get(data.alloy)!;
       const n = data.drills ?? 1;
+      const step = data.step ?? 0;
       setLast({
         ok: true,
-        text: `${data.known ? 'Poured again' : 'It took'} — ${def.name}, into ${n} drill${n === 1 ? '' : 's'}. ${def.effect}`,
+        text: `${data.known ? 'Poured again' : 'It took'} — ${def.name} · grade ${ROMAN[data.grade ?? 1]}`
+          + `, into ${n} drill${n === 1 ? '' : 's'}. ${def.effect}`
+          + (step > 0 ? ` The newer metal took: ${step} grade${step === 1 ? '' : 's'} above what this ability was made for, and it shows.` : ''),
       });
     }
     setPicks([]);
@@ -497,12 +556,14 @@ function AlloyBench({ state }: { state: GameState }) {
     <div ref={box} className="panel p-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#8fd8c0]">Drill alloys</span>
-        <span className="tnum text-[10px] text-cave-400">{known.length} known</span>
+        <span className="tnum text-[10px] text-cave-400" data-testid="alloys-known">
+          {known.length}/{inWorld.length} known
+        </span>
       </div>
       <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
         Pour two or three materials together and the drill you pour it into takes whatever
         behaviour the mix sets into. Nobody wrote down which mixes make what — the traits are
-        the clue.
+        the clue, and the deeper the metal, the stronger whatever comes out.
       </p>
 
       {units.length === 0 ? (
@@ -529,23 +590,69 @@ function AlloyBench({ state }: { state: GameState }) {
           <div className="mt-1 flex flex-wrap gap-1">
             {units.map((u, i) => {
               const on = targets.includes(i);
-              const fitted = u.alloy ? ABILITY_BY_ID.get(u.alloy) : null;
+              const fitted = drillFits(u);
+              const slots = drillSlots(u);
               return (
                 <button
                   key={i}
                   className={`min-w-0 rounded border px-1.5 py-1 text-left text-[10px] ${
-                    on ? 'border-[#8fd8c0]/60 bg-[#8fd8c0]/10 text-[#8fd8c0]' : 'border-cave-800 text-cave-300 hover:bg-cave-800'
+                    on ? 'border-[#8fd8c0]/60 bg-[#8fd8c0]/10 text-[#8fd8c0]'
+                      : u.prize ? 'border-[#e8d48f]/40 text-cave-300 hover:bg-cave-800'
+                      : 'border-cave-800 text-cave-300 hover:bg-cave-800'
                   }`}
-                  title={fitted ? `${u.name ?? `Drill ${i + 1}`} — running ${fitted.name}` : `${u.name ?? `Drill ${i + 1}`} — bare`}
+                  title={fitted.length > 0
+                    ? `${u.name ?? `Drill ${i + 1}`} — running ${fitted.map((f) => f.def.name).join(' + ')}`
+                    : `${u.name ?? `Drill ${i + 1}`} — bare${u.prize ? ` · a prize chassis, ${slots} slots` : ''}`}
                   onClick={() => toggleDrill(i)}
                 >
                   <span className="block truncate">{u.name ?? `Drill ${i + 1}`}</span>
-                  <span className={`block truncate text-[9px] ${fitted ? 'text-[#c7a35a]' : 'text-cave-600'}`}>
-                    {fitted ? fitted.name : 'bare'}
+                  <span className={`block truncate text-[9px] ${fitted.length > 0 ? 'text-[#c7a35a]' : 'text-cave-600'}`}>
+                    {fitted.length > 0
+                      ? fitted.map((f) => `${f.def.name} ${ROMAN[f.grade]}`).join(' + ')
+                      : 'bare'}
                   </span>
+                  {slots > 1 && (
+                    <span className="block text-[9px] text-[#e8d48f]">
+                      ◆ {fitted.length}/{slots} slots
+                    </span>
+                  )}
                 </button>
               );
             })}
+          </div>
+        </>
+      )}
+
+      {/* AIM (A.56). With fifteen signatures live, a generous mix in a deep
+          shell resolves to the deepest thing it satisfies — which would make an
+          old favourite progressively harder to re-pour. So you can aim at
+          something you have ALREADY made. Never at something you have not:
+          undiscovered abilities are not on this row at all. */}
+      {known.length > 1 && (
+        <>
+          <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">Aim the pour</div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <button
+              className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                aim === null ? 'border-lamp-500/50 bg-lamp-500/10 text-lamp-200' : 'border-cave-800 text-cave-400 hover:bg-cave-800'
+              }`}
+              onClick={() => setAim(null)}
+            >
+              whatever it makes
+            </button>
+            {known.map((a) => (
+              <button
+                key={a.id}
+                data-testid={`aim-${a.id}`}
+                className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                  aim === a.id ? 'border-lamp-500/50 bg-lamp-500/10 text-lamp-200' : 'border-cave-800 text-cave-400 hover:bg-cave-800'
+                }`}
+                title={`Make ${a.name} if the mix will carry it`}
+                onClick={() => setAim(aim === a.id ? null : a.id)}
+              >
+                {a.name}
+              </button>
+            ))}
           </div>
         </>
       )}
@@ -559,14 +666,34 @@ function AlloyBench({ state }: { state: GameState }) {
         {picks.map((id, n) => (
           <button
             key={`${id}-${n}`}
-            className="rounded border border-lamp-500/50 bg-lamp-500/10 px-1.5 py-0.5 text-[10px] text-lamp-200"
+            className="flex items-center gap-1 rounded border border-lamp-500/50 bg-lamp-500/10 px-1.5 py-0.5 text-[10px] text-lamp-200"
             title="Take it back out"
             onClick={() => toggle(id)}
           >
+            <TierChip shellId={materialDef(id).shellId} />
             {materialDef(id).name} ✕
           </button>
         ))}
       </div>
+
+      {/* THE GRADE. The deepest metal in the crucible sets it, and it is the
+          whole of "an old ability forged with newer materials is stronger". */}
+      {picks.length > 0 && (
+        <div
+          className="mt-1.5 flex items-baseline justify-between gap-2 rounded border border-[#e8d48f]/30 bg-[#e8d48f]/5 px-2 py-1 text-[10px]"
+          data-testid="pour-grade"
+        >
+          <span className="uppercase tracking-wider text-cave-500">This pours at</span>
+          <span className="tnum font-semibold text-[#e8d48f]">
+            GRADE {ROMAN[grade]}
+            {priced && gradeStep(priced, grade) > 0 && (
+              <span className="ml-1 text-[#8fd8c0]">
+                (+{gradeStep(priced, grade)} over {priced.name}&apos;s own metal)
+              </span>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* HINT — reads the MIX, never the answer. */}
       {hint && (
@@ -613,28 +740,52 @@ function AlloyBench({ state }: { state: GameState }) {
 
       {/* THE POOL you can draw from. Traits are shown because a trait is a
           property, not a solution (traits.ts rule 3) — this is the reasoning. */}
-      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">What you hold</div>
-      <div className="mt-1 max-h-44 space-y-1 overflow-y-auto scroll-thin">
+      <div className="mt-2 flex items-baseline justify-between gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">What you hold</span>
+        <span className="text-[9px] text-cave-600">newest metal first</span>
+      </div>
+      <div className="mt-1 max-h-52 space-y-1 overflow-y-auto scroll-thin">
         {owned.length === 0 && (
           <p className="text-[11px] italic text-cave-600">Nothing in the hold to pour. Dig something up.</p>
         )}
-        {owned.map((mm) => (
-          <button
-            key={mm.id}
-            className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left transition-colors ${
-              picks.includes(mm.id) ? 'border-lamp-500/50 bg-cave-800' : 'border-cave-800 hover:bg-cave-800'
-            }`}
-            disabled={!picks.includes(mm.id) && picks.length >= POUR_SLOTS}
-            onClick={() => toggle(mm.id)}
-          >
-            <MaterialIcon id={mm.id} size={16} />
-            <span className="min-w-0 flex-1 truncate text-[11px] text-cave-200">{mm.name}</span>
-            <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
-              {traitsOf(mm.id).join(' · ')}
-            </span>
-            <span className="tnum shrink-0 text-[10px] text-cave-500">×{materialCount(state, mm.id)}</span>
-          </button>
-        ))}
+        {owned.map((mm, idx) => {
+          const ord = shellOrdinal(mm.shellId);
+          const first = idx === 0 || shellOrdinal(owned[idx - 1]!.shellId) !== ord;
+          return (
+            <div key={mm.id}>
+              {first && (
+                <div
+                  className="mb-0.5 mt-1.5 flex items-baseline gap-1.5 border-t border-cave-800 pt-1 first:mt-0 first:border-t-0 first:pt-0"
+                  data-testid={`tier-head-${mm.shellId}`}
+                >
+                  <TierChip shellId={mm.shellId} newest={ord === newestOwned} />
+                  <span className="text-[9px] uppercase tracking-widest text-cave-500">
+                    {SHELL_NAMES[mm.shellId] ?? mm.shellId}
+                  </span>
+                  {ord === newestOwned && (
+                    <span className="text-[9px] uppercase tracking-widest text-[#8fd8c0]">newest</span>
+                  )}
+                </div>
+              )}
+              <button
+                data-testid={`pool-${mm.id}`}
+                className={`flex w-full items-center gap-2 rounded border px-2 py-1 text-left transition-colors ${
+                  picks.includes(mm.id) ? 'border-lamp-500/50 bg-cave-800' : 'border-cave-800 hover:bg-cave-800'
+                }`}
+                disabled={!picks.includes(mm.id) && picks.length >= POUR_SLOTS}
+                onClick={() => toggle(mm.id)}
+              >
+                <TierChip shellId={mm.shellId} newest={ord === newestOwned} />
+                <MaterialIcon id={mm.id} size={16} />
+                <span className="min-w-0 flex-1 truncate text-[11px] text-cave-200">{mm.name}</span>
+                <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+                  {traitsOf(mm.id).join(' · ')}
+                </span>
+                <span className="tnum shrink-0 text-[10px] text-cave-500">×{materialCount(state, mm.id)}</span>
+              </button>
+            </div>
+          );
+        })}
       </div>
 
       {/* WHAT YOU HAVE MADE. Nothing appears here until it has been poured
@@ -647,10 +798,21 @@ function AlloyBench({ state }: { state: GameState }) {
           {known.map((a) => {
             const carrying = drillsCarrying(state, a.id);
             const cost = alloyCost(state, a, 1);
+            const at = bestGradeOf(state, a.id);
             return (
-              <div key={a.id} className={`mt-1 rounded border px-2 py-1.5 ${carrying.length > 0 ? 'border-[#8fd8c0]/50 bg-[#8fd8c0]/5' : 'border-cave-800'}`}>
+              <div key={a.id} data-testid={`made-${a.id}`} className={`mt-1 rounded border px-2 py-1.5 ${carrying.length > 0 ? 'border-[#8fd8c0]/50 bg-[#8fd8c0]/5' : 'border-cave-800'}`}>
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className={`text-[12px] font-semibold ${carrying.length > 0 ? 'text-[#8fd8c0]' : 'text-cave-200'}`}>{a.name}</span>
+                  <span className={`text-[12px] font-semibold ${carrying.length > 0 ? 'text-[#8fd8c0]' : 'text-cave-200'}`}>
+                    {a.name}
+                    <span className="ml-1 text-[9px] uppercase tracking-wider text-cave-500">
+                      shell {ROMAN[shellOrdinal(a.shell)]}
+                    </span>
+                    {at > 0 && (
+                      <span className="ml-1 text-[9px] font-semibold text-[#e8d48f]">
+                        fitted at grade {ROMAN[at]}
+                      </span>
+                    )}
+                  </span>
                   <span className="tnum shrink-0 text-[10px] text-cave-500">
                     {fmtNum(cost.conv, 0)} {convName} + {cost.materials} each
                   </span>

@@ -7,7 +7,7 @@ import { D } from '../../decimal';
 import { registerModifier } from '../../modifiers';
 import { registerUpgrade, stat, upgradeLevel } from '../../upgrades';
 import type { GameState } from '../../types';
-import { newDrill, defaultDrillName } from '../../systems/drills';
+import { newDrill, defaultDrillName, MAX_DRILLS } from '../../systems/drills';
 import { UNCOVER_MOTIF_GRANT } from './latticeSystem';
 
 const hasKiln = (s: GameState) => s.kiln.built;
@@ -226,14 +226,33 @@ export function registerShell1Upgrades(): void {
     name: 'Drill Chassis',
     currency: 'CONV',
     baseCost: D(6),
-    ratio: 1.25,
-    maxLevel: 23, // bay build grants the 1st; 24 total (locked cap)
+    /**
+     * A.56 — STRUCTURAL, NOT STANDARD. This row shipped at r = 1.25 over 23
+     * levels, which is PILLARS' "Spam/Standard" class: forty-to-a-hundred
+     * levels, the price class for a thing you stop thinking about. The whole
+     * bay therefore cost about 5,000 CONV, which a Loam arc pays for several
+     * times over, so every player arrived at the alloy decision already owning
+     * every machine it could apply to.
+     *
+     * r = 1.75 over 15 levels is the STRUCTURAL class exactly as PILLARS
+     * defines it (6–15 levels), and it makes the bay ~93,000 — eighteen times
+     * the old total, with the last chassis alone costing more than the entire
+     * old row. A drill is now a decision.
+     *
+     * THE CAP CAME DOWN WITH THE PRICE, and that is the half that keeps this
+     * from being a straight nerf: sixteen rails are bought, the other eight are
+     * PRIZES from other systems (systems/prizeDrills.ts) and are strictly
+     * better than anything on this row. The bay still fills; it fills from two
+     * places now, and the second place is the interesting one.
+     */
+    ratio: 1.75,
+    maxLevel: 15, // bay build grants the 1st; 16 bought, 8 prize, 24 rails
     resetsOnCollapse: false,
     visible: hasBay,
-    description: () => 'Another chassis on the rails. It works the best cell without being told — and it is one more machine you could pour an alloy into.',
+    description: () => 'Another chassis on the rails. It works the best cell without being told — and it is one more machine you could pour an alloy into. They do not get cheaper.',
     onPurchase: (s, levels) => {
       for (let i = 0; i < levels; i++) {
-        if (s.drills.units.length < 24) s.drills.units.push(newDrill(defaultDrillName(s.drills.units.length)));
+        if (s.drills.units.length < MAX_DRILLS) s.drills.units.push(newDrill(defaultDrillName(s.drills.units.length)));
       }
     },
   });

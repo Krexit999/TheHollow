@@ -418,6 +418,17 @@ export function applyFieldSize(state: GameState, mods: ModifierCache): void {
   // outside the new grid (only possible if the face ever shrinks) it lets go,
   // which is the one case where there is genuinely nothing to stay on.
   for (const drill of state.drills.units) {
+    // A PAINTED ZONE MOVES WITH THE ROCK, for the identical reason the pockets
+    // do: a wider grid renumbers every row, so keeping the indices would slide
+    // a player's hand-painted region sideways one cell per row. Same remap,
+    // same coordinate basis. Cells that fell off a shrinking grid are dropped;
+    // if that empties the zone, the drill goes back to working everywhere
+    // rather than standing idle over nothing.
+    if (drill.zone && drill.zone.length > 0) {
+      const moved = drill.zone.map((c) => remap.get(c)).filter((c): c is number => c !== undefined);
+      if (moved.length === 0) delete drill.zone;
+      else drill.zone = moved.sort((a, b) => a - b);
+    }
     if (drill.oreCell === undefined) continue;
     const to = remap.get(drill.oreCell);
     if (to === undefined) {

@@ -31,6 +31,7 @@ import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
 import { tickDrills } from './systems/drills';
 import { tickAlloys } from './systems/drillAlloys';
+import { checkPrizeDrills } from './systems/prizeDrills';
 import { tickOres } from './systems/ores';
 import { tickAssay } from './systems/drops';
 import { tickCombat } from './combat/combat';
@@ -255,12 +256,15 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // case completes or a set forms — the beat has to notice. Two array
       // scans over ~20 cases and ~8 sets, once a second.
       noteMuseum(state, ctx);
-      // THE SET (drill alloy) cools on the same one-second beat.
-      tickAlloys(state, 1);
+      // THE SET cools and CINDERHOLD burns on the same one-second beat.
+      tickAlloys(state, mods, ctx, 1);
       // ORES form on the slow beat too — a trickle, a cap, and a floor that
       // will not let the grid sit dead for a whole minute (systems/ores.ts).
       tickOres(state, mods, ctx, 1);
       checkAchievements(state, ctx);
+      // A DRILL YOU DID NOT BUY. Checked right after the achievements, because
+      // that is where three of the four sources come from (systems/prizeDrills).
+      checkPrizeDrills(state, ctx);
     }
   }
 

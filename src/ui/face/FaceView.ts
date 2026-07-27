@@ -16,7 +16,8 @@ import {
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
-import { residueLevel, richnessLevel } from '../../engine/systems/drillAlloys';
+import { residueLevel, richnessLevel, burnLevel } from '../../engine/systems/drillAlloys';
+import { ABILITY_BY_ID, gradeStep } from '../../engine/content/drillAlloys';
 import { digProgress } from '../../engine/systems/ores';
 import { oreDef } from '../../engine/content/ores';
 import { ModifierCache } from '../../engine/modifiers';
@@ -152,6 +153,20 @@ const ALLOY_LOOK: Record<string, number> = {
   arcvein: 0x8fd8ff, // pale lightning
   lodecall: 0xd9b64a, // gold, pulling
   emberset: 0xe0703c, // ember left in the stone
+  // A.56 — twelve more, one colour family per shell so a mixed bay reads as a
+  // history of where the player has been as well as what it is running.
+  ganglock: 0x9aa6b2,    // ferrite grey, bolted
+  halfmark: 0xb9c4d0,    // the same grey, half there
+  creepvine: 0x8fd8a0,   // verdance green, crawling
+  seedset: 0x6fbf7f,     // deeper green, growing
+  prismcut: 0x9ad4e8,    // glassmere blue, split
+  longlens: 0xc8ecf7,    // pale, gathering
+  slagburst: 0xe8956a,   // cinder orange, going off
+  cinderhold: 0xff8a4c,  // hotter, still burning
+  throughline: 0xc0a8e0, // hollow violet, through
+  unmaking: 0x8f7ab8,    // darker violet, absent
+  recurrence: 0xe8d48f,  // aleph gold, again
+  everywhen: 0xfff0c0,   // near-white, everywhere
 };
 
 function lerpColor(a: number, b: number, t: number): number {
@@ -187,6 +202,7 @@ interface TileEntry {
    *  forcing a repaint every frame: THE SET's warmth and THE CALL's gather. */
   setBand: number;
   callBand: number;
+  burnBand: number;
   /** ORES: which pocket type sits in this cell (`''` for none), and the dig
    *  ring's step. Both join the redraw gate — see drawTile. */
   oreId: string;
@@ -360,7 +376,7 @@ export class FaceView {
     if (this.active === active || !this.app?.ticker) return;
     this.active = active;
     if (active) {
-      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.setBand = -1; t.callBand = -1; t.oreId = '?'; t.digBand = -1; }
+      for (const t of this.tiles) { t.band = -1; t.crackStage = -1; t.setBand = -1; t.callBand = -1; t.burnBand = -1; t.oreId = '?'; t.digBand = -1; }
       this.layout(); // the hero height differs between Shaft and Dig on phone
       // Start the ticker but do NOT render synchronously: this call runs inside
       // a React effect, in the same commit where the OTHER view is about to be
@@ -435,7 +451,7 @@ export class FaceView {
       this.tileLayer.addChild(g);
       // oreId starts as a string no def can ever have, so the first paint of a
       // plain cell still counts as a change and the gate does not swallow it.
-      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, setBand: -1, callBand: -1, oreId: '?', digBand: -1 };
+      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, setBand: -1, callBand: -1, burnBand: -1, oreId: '?', digBand: -1 };
     });
     this.layout();
   }
@@ -457,6 +473,8 @@ export class FaceView {
     // frame, which is exactly what the gate exists to prevent.
     const setBand = Math.round(residueLevel(gstate, i) * 4);
     const callBand = Math.round(richnessLevel(gstate, i) * 4);
+    // CINDERHOLD (A.56): the cell is still burning and still giving.
+    const burnBand = Math.round(burnLevel(gstate, i) * 4);
     // ORES. The one thing in this phase that CANNOT be a hidden number — a
     // pocket the player cannot see is not a place, it is a trap. The id joins
     // the gate so a pocket forming or opening repaints exactly once, and the
@@ -465,7 +483,7 @@ export class FaceView {
     const oreId = gstate.face.ore?.[i] ?? '';
     const digBand = oreId ? Math.round(digProgress(gstate, i) * 12) : 0;
     if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
-      && setBand === tile.setBand && callBand === tile.callBand
+      && setBand === tile.setBand && callBand === tile.callBand && burnBand === tile.burnBand
       && oreId === tile.oreId && digBand === tile.digBand && tile.flash <= 0) return;
     tile.band = band;
     tile.crackStage = crackStage;
@@ -473,6 +491,7 @@ export class FaceView {
     tile.fruitBand = fruitBand;
     tile.setBand = setBand;
     tile.callBand = callBand;
+    tile.burnBand = burnBand;
     tile.oreId = oreId;
     tile.digBand = digBand;
 
@@ -599,6 +618,21 @@ export class FaceView {
         .lineTo(m + w * 0.48, m + w * 0.44)
         .lineTo(m + w * 0.72, m + w * 0.6)
         .stroke({ width: 1.4 + heat * 1.2, color: 0xffcf9a, alpha: 0.55 + heat * 0.45 });
+    }
+    if (burnBand > 0) {
+      // CINDERHOLD: the rock caught, and it is still going. Deliberately not
+      // THE SET's wash — this one is a live fire drawn as tongues climbing the
+      // slab, because the Loam and Cinder marks sit on the same cells often
+      // enough that they have to be tellable apart at a glance.
+      const fire = burnBand / 4;
+      g.roundRect(m, m, w, w, r).fill({ color: 0xff6a2c, alpha: 0.10 + fire * 0.22 });
+      for (let f = 0; f < 3; f++) {
+        const fx = m + w * (0.26 + f * 0.24);
+        g.moveTo(fx, m + w * 0.86)
+          .lineTo(fx - w * 0.05, m + w * (0.55 - fire * 0.12))
+          .lineTo(fx + w * 0.06, m + w * (0.34 - fire * 0.14))
+          .stroke({ width: 1.1 + fire * 0.9, color: 0xffb066, alpha: 0.45 + fire * 0.5 });
+      }
     }
     if (callBand > 0) {
       // THE CALL: ore gathering under the cell. Rings drawing inward, and a
@@ -1152,13 +1186,27 @@ export class FaceView {
     return { root, body, beam, look, pulse: 0 };
   }
 
-  /** The chassis, and the mark of whatever alloy the bay is running. Equipping
-   *  an alloy re-liveries every drill, so the ability is visible on the
-   *  machines as well as in what they do to the rock. */
+  /**
+   * The chassis, and the mark of whatever alloys this machine is carrying.
+   *
+   * The `look` key is `<id>|<id>|…` plus a `+` and the grade sum, plus `*` for a
+   * prize chassis — one string that changes exactly when the picture should,
+   * which is what lets `syncDrills` decide whether to redraw by comparison.
+   *
+   * A PRIZE IS DRAWN BIGGER, and it is the same size difference a player can
+   * pick out at 380px without being told: 1.55× the radius, a double ring, and
+   * a gold pip per spare slot. GRADE shows as small ticks around the rim, so a
+   * grade-IV Arcvein and a grade-I Arcvein are different objects on the face.
+   */
   private drawDrillBody(g: Graphics, look: string): void {
     g.clear();
-    const color = ALLOY_LOOK[look] ?? ALLOY_LOOK['plain']!;
-    const r = Math.max(6, this.cellSize * 0.17);
+    const [idPart, rest] = look.split('+');
+    const ids = (idPart ?? 'plain').split('|').filter(Boolean);
+    const prize = (rest ?? '').includes('*');
+    const grade = Math.max(0, parseInt(rest ?? '0', 10) || 0);
+    const primary = ids[0] ?? 'plain';
+    const color = ALLOY_LOOK[primary] ?? ALLOY_LOOK['plain']!;
+    const r = Math.max(6, this.cellSize * 0.17) * (prize ? 1.55 : 1);
     // Hex chassis
     for (let i = 0; i <= 6; i++) {
       const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
@@ -1167,21 +1215,122 @@ export class FaceView {
       if (i === 0) g.moveTo(x, y);
       else g.lineTo(x, y);
     }
-    g.fill(0x1c1815).stroke({ width: 1.5, color, alpha: 0.9 });
-    const gr = r * 0.45;
-    if (look === 'arcvein') {
-      g.moveTo(-gr * 0.5, -gr).lineTo(gr * 0.2, -gr * 0.1).lineTo(-gr * 0.2, gr * 0.1).lineTo(gr * 0.5, gr)
-        .stroke({ width: 1.6, color });
-    } else if (look === 'lodecall') {
-      g.circle(0, 0, gr).stroke({ width: 1.2, color, alpha: 0.8 });
-      g.circle(0, 0, gr * 0.45).fill(color);
-    } else if (look === 'emberset') {
-      g.circle(0, 0, gr * 0.7).fill(color);
-      g.circle(0, 0, gr).stroke({ width: 1, color, alpha: 0.5 });
-    } else {
-      // Bare: the diamond that has always meant "the richest cell".
-      g.moveTo(0, -gr).lineTo(gr, 0).lineTo(0, gr).lineTo(-gr, 0).closePath().fill(color);
+    g.fill(0x1c1815).stroke({ width: prize ? 2.2 : 1.5, color, alpha: 0.9 });
+    if (prize) {
+      // The outer ring nobody else has.
+      g.circle(0, 0, r * 1.22).stroke({ width: 1.2, color: 0xe8d48f, alpha: 0.75 });
     }
+    const gr = r * 0.45;
+    this.drawAlloyGlyph(g, primary, gr, color);
+    // A SECOND ALLOY reads as a second, smaller glyph offset below-right — the
+    // only place in the game two abilities sit on one machine.
+    const second = ids[1];
+    if (second) {
+      g.setStrokeStyle({ width: 1 });
+      const c2 = ALLOY_LOOK[second] ?? ALLOY_LOOK['plain']!;
+      g.circle(r * 0.62, r * 0.62, gr * 0.55).fill(c2);
+    }
+    const third = ids[2];
+    if (third) {
+      const c3 = ALLOY_LOOK[third] ?? ALLOY_LOOK['plain']!;
+      g.circle(-r * 0.62, r * 0.62, gr * 0.55).fill(c3);
+    }
+    // GRADE TICKS — one per step above the ability's own shell, around the top.
+    for (let i = 0; i < Math.min(6, grade); i++) {
+      const a = -Math.PI / 2 + (i - (Math.min(6, grade) - 1) / 2) * 0.42;
+      g.circle(Math.cos(a) * r * 1.32, Math.sin(a) * r * 1.32, 1.4).fill(0xe8d48f);
+    }
+  }
+
+  /** One glyph per ability id — the shape half of the livery. */
+  private drawAlloyGlyph(g: Graphics, look: string, gr: number, color: number): void {
+    switch (look) {
+      case 'arcvein':
+        g.moveTo(-gr * 0.5, -gr).lineTo(gr * 0.2, -gr * 0.1).lineTo(-gr * 0.2, gr * 0.1).lineTo(gr * 0.5, gr)
+          .stroke({ width: 1.6, color });
+        return;
+      case 'lodecall':
+        g.circle(0, 0, gr).stroke({ width: 1.2, color, alpha: 0.8 });
+        g.circle(0, 0, gr * 0.45).fill(color);
+        return;
+      case 'emberset':
+        g.circle(0, 0, gr * 0.7).fill(color);
+        g.circle(0, 0, gr).stroke({ width: 1, color, alpha: 0.5 });
+        return;
+      case 'ganglock': // two bodies, one bar
+        g.circle(-gr * 0.6, 0, gr * 0.4).fill(color);
+        g.circle(gr * 0.6, 0, gr * 0.4).fill(color);
+        g.moveTo(-gr * 0.6, 0).lineTo(gr * 0.6, 0).stroke({ width: 1.4, color });
+        return;
+      case 'halfmark': // solid, and its half-there twin
+        g.circle(-gr * 0.35, 0, gr * 0.5).fill(color);
+        g.circle(gr * 0.5, 0, gr * 0.5).fill({ color, alpha: 0.35 });
+        return;
+      case 'creepvine': // a crawling line
+        g.moveTo(-gr, gr * 0.6).lineTo(-gr * 0.2, gr * 0.6).lineTo(-gr * 0.2, -gr * 0.2)
+          .lineTo(gr * 0.7, -gr * 0.2).stroke({ width: 1.5, color });
+        return;
+      case 'seedset': // a seed with a shoot
+        g.circle(0, gr * 0.4, gr * 0.45).fill(color);
+        g.moveTo(0, gr * 0.1).lineTo(0, -gr).stroke({ width: 1.2, color });
+        return;
+      case 'prismcut': // one in, three out
+        g.moveTo(-gr, 0).lineTo(0, 0).stroke({ width: 1.5, color });
+        g.moveTo(0, 0).lineTo(gr, -gr * 0.7).stroke({ width: 1, color });
+        g.moveTo(0, 0).lineTo(gr, 0).stroke({ width: 1, color });
+        g.moveTo(0, 0).lineTo(gr, gr * 0.7).stroke({ width: 1, color });
+        return;
+      case 'longlens': // a lens, edge on
+        g.ellipse(0, 0, gr * 0.45, gr).fill({ color, alpha: 0.5 });
+        g.ellipse(0, 0, gr * 0.45, gr).stroke({ width: 1.2, color });
+        return;
+      case 'slagburst': // a ring going out
+        g.circle(0, 0, gr * 0.3).fill(color);
+        g.circle(0, 0, gr).stroke({ width: 1.4, color, alpha: 0.8 });
+        g.circle(0, 0, gr * 1.4).stroke({ width: 0.8, color, alpha: 0.4 });
+        return;
+      case 'cinderhold': // an ember with heat above it
+        g.circle(0, gr * 0.3, gr * 0.55).fill(color);
+        g.moveTo(-gr * 0.4, -gr * 0.4).lineTo(0, -gr).lineTo(gr * 0.4, -gr * 0.4)
+          .stroke({ width: 1.1, color, alpha: 0.7 });
+        return;
+      case 'throughline': // straight through, out both sides
+        g.moveTo(-gr * 1.3, gr * 0.8).lineTo(gr * 1.3, -gr * 0.8).stroke({ width: 1.5, color });
+        g.circle(0, 0, gr * 0.35).fill(color);
+        return;
+      case 'unmaking': // a hole where the glyph should be
+        g.circle(0, 0, gr).stroke({ width: 1.4, color });
+        g.circle(0, 0, gr * 0.55).fill(0x0c0a09);
+        return;
+      case 'recurrence': // three, receding
+        g.circle(-gr * 0.55, 0, gr * 0.5).fill(color);
+        g.circle(gr * 0.1, 0, gr * 0.35).fill({ color, alpha: 0.7 });
+        g.circle(gr * 0.65, 0, gr * 0.22).fill({ color, alpha: 0.45 });
+        return;
+      case 'everywhen': // a scatter of everything
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          g.circle(Math.cos(a) * gr * 0.8, Math.sin(a) * gr * 0.8, gr * 0.2).fill({ color, alpha: 0.8 });
+        }
+        g.circle(0, 0, gr * 0.25).fill(color);
+        return;
+      default:
+        // Bare: the diamond that has always meant "the richest cell".
+        g.moveTo(0, -gr).lineTo(gr, 0).lineTo(0, gr).lineTo(-gr, 0).closePath().fill(color);
+    }
+  }
+
+  /** The key that decides whether a chassis needs redrawing. */
+  private drillLook(unit: { fits?: { id: string; grade: number }[]; prize?: string }): string {
+    const fits = unit.fits ?? [];
+    const ids = fits.length > 0 ? fits.map((f) => f.id).join('|') : 'plain';
+    // The grade STEP, not the raw grade: a Cinder ability poured from Cinder
+    // stone is step 0 and wears no ticks, which is the honest picture.
+    const step = fits.reduce((n, f) => {
+      const def = ABILITY_BY_ID.get(f.id);
+      return def ? Math.max(n, gradeStep(def, f.grade)) : n;
+    }, 0);
+    return `${ids}+${step}${unit.prize ? '*' : ''}`;
   }
 
   private syncDrills(): void {
@@ -1189,10 +1338,11 @@ export class FaceView {
     const units = st.drills.units;
     // ONE ALLOY PER DRILL (A.54): each machine wears its OWN livery, so a mixed
     // bay reads as a mixed bay from across the room — three colours on the rails
-    // is the picture of the decision the player made at the Forge.
+    // is the picture of the decision the player made at the Forge. A.56 adds the
+    // grade ticks and the prize chassis to the same string.
     while (this.drillSprites.length < units.length) {
       const unit = units[this.drillSprites.length]!;
-      const sprite = this.makeDrillSprite(unit.alloy ?? 'plain');
+      const sprite = this.makeDrillSprite(this.drillLook(unit));
       const at = this.cellCenter(unit.lastCell);
       sprite.root.position.set(at.x, at.y - this.cellSize * 0.18);
       this.drillSprites.push(sprite);
@@ -1203,7 +1353,7 @@ export class FaceView {
     }
     for (let i = 0; i < units.length; i++) {
       const sprite = this.drillSprites[i]!;
-      const look = units[i]!.alloy ?? 'plain';
+      const look = this.drillLook(units[i]!);
       if (sprite.look !== look) {
         sprite.look = look;
         this.drawDrillBody(sprite.body, look);
@@ -1336,6 +1486,31 @@ export class FaceView {
             this.chainArcs.push({ g: arc, life: 0 });
           }
         }
+      } else if (ev.type === 'drillReach') {
+        // THE REACH FAMILY (A.56) — halfmark / prismcut / slagburst /
+        // throughline / everywhen. A straight, clean line to every cell the
+        // stroke also landed on, deliberately NOT the arc's jagged fork: the
+        // arc jumps and these REACH, and two abilities that look identical on
+        // the face are two abilities the player cannot tell apart.
+        if (!this.reducedMotion) {
+          const from = this.cellCenter(ev.from);
+          for (const t of ev.to) {
+            const to = this.cellCenter(t);
+            const g = new Graphics();
+            g.moveTo(from.x, from.y).lineTo(to.x, to.y)
+              .stroke({ width: 2.4, color: 0xffe9b0, alpha: 0.22 });
+            g.moveTo(from.x, from.y).lineTo(to.x, to.y)
+              .stroke({ width: 1, color: 0xfff6dd, alpha: 0.8 });
+            g.circle(to.x, to.y, 2.6).fill({ color: 0xffe9b0, alpha: 0.85 });
+            this.fxLayer.addChild(g);
+            this.chainArcs.push({ g, life: 0 });
+          }
+        }
+      } else if (ev.type === 'drillHold') {
+        // LONGLENS gathering. One ring that closes as it fills, on the machine
+        // itself — so "nothing is happening" reads as "something is coming".
+        const sprite = this.drillSprites[ev.drill];
+        if (sprite && !this.reducedMotion) sprite.pulse = Math.max(sprite.pulse, ev.at * 0.9);
       } else if (ev.type === 'chainBroken') {
         const at = this.cellCenter(ev.at);
         this.spawnPop(at.x, at.y - this.cellSize * 0.3, 'snap', false);

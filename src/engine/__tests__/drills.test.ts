@@ -159,7 +159,14 @@ describe('the save chain, v21 through A.54', () => {
     const out = runMigrations(payload);
     const bay = (out.state as { drills: Record<string, unknown> }).drills;
     const units = bay['units'] as Array<Record<string, unknown>>;
-    for (const u of units) expect(u['alloy']).toBe('arcvein');
+    // A.56 (v34) turns the single `alloy` field into a `fits` list, and stamps
+    // everything already poured at GRADE 1 — step 0 for a Loam ability, i.e.
+    // exactly the numbers the save was already running.
+    for (const u of units) {
+      expect(u['alloy']).toBeUndefined();
+      expect(u['fits']).toEqual([{ id: 'arcvein', grade: 1 }]);
+      expect(u['slots']).toBe(1);
+    }
     expect(bay['alloys']).toEqual(['arcvein']);
     expect(bay['equipped']).toBeUndefined();
   });
