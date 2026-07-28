@@ -244,8 +244,12 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(35); // A.57 — the ability set replaced
+    expect(SAVE_VERSION).toBe(36); // the new Forge, step 2 — casting + station
     const st = out.state as Record<string, unknown>;
+    // The v36 slice arrives on a save that predates it by twenty-five
+    // versions, which is the whole point of the chain.
+    expect(st['casting']).toBeDefined();
+    expect((st['casting'] as { rack: unknown[] }).rack).toHaveLength(0);
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();
     expect(st['museum']).toBeDefined();

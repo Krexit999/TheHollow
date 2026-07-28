@@ -183,6 +183,46 @@ button:focus:not(:focus-visible) {
   animation: kiln-glow 1.8s ease-in-out infinite;
 }
 
+/**
+ * THE CRUCIBLE — the whole "you see it melt" visual, in CSS and nothing else.
+ *
+ * Two flat divs whose widths the engine drives (`crucibleFill`): a gold molten
+ * bar with a slow highlight sweeping across it, and a dull grey bar behind it
+ * for stock that has not run yet. A prior canvas UI on this codebase was
+ * reverted twice; the satisfaction here is watching the number become liquid,
+ * which a background-position animation does for free and a renderer does not
+ * do better.
+ */
+@keyframes melt-sheen {
+  from { background-position: -140% 0; }
+  to { background-position: 240% 0; }
+}
+.melt-molten {
+  background-image: linear-gradient(
+    100deg,
+    #b4560f 0%,
+    #e0902a 30%,
+    #fcd34d 48%,
+    #e0902a 66%,
+    #b4560f 100%
+  );
+  background-size: 220% 100%;
+  animation: melt-sheen 2.6s linear infinite;
+}
+/* Un-melted stock: cold, and visibly crumbling into the pour. */
+@keyframes melt-solid-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+.melt-solid {
+  background-image: repeating-linear-gradient(
+    -50deg,
+    #4a4239 0 4px,
+    #35302a 4px 8px
+  );
+  animation: melt-solid-pulse 1.1s ease-in-out infinite;
+}
+
 @keyframes ember-rise {
   from {
     transform: translateY(0) scale(1);

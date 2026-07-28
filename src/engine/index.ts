@@ -39,6 +39,7 @@ import { tickGuild } from './guild/guild';
 import { tickExpeditions, noteMuseum } from './systems/museum';
 import { noticeConfluences } from './systems/confluence';
 import { tickAutoRefine } from './systems/refinery';
+import { tickCasting } from './systems/casting';
 import { doCollapse } from './systems/collapseSys';
 import { automationRate } from './content/shell7/gridModules';
 import { tickParallelShells, checkChallengeGoal } from './systems/spiral';
@@ -161,6 +162,9 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     for (const cs of allCraftSystems()) {
       if (cs.unlocked(state)) cs.tick(state, mods, ctx, dt);
     }
+    // THE NEW FORGE, step 2: the crucible melting down. The only thing in that
+    // system that takes time, and the one number its CSS fill bar draws.
+    tickCasting(state, dt);
     tickAssay(state, mods, ctx);
     tickCombat(state, mods, ctx);
     tickGuild(state, mods, ctx, dt);

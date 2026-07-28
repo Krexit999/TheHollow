@@ -67,6 +67,10 @@ import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
 import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw, installSocket } from './content/shell5/emberArray';
 import { produceExport } from './content/exports';
 import { refine, transmute } from './systems/refinery';
+import {
+  benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
+} from './systems/casting';
+import { PART_TYPES, type PartType } from './content/forgeParts';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
 import { practiceRunes } from './content/shell4/runes';
@@ -620,6 +624,29 @@ export function handleAction(
 
     case 'transmute':
       return transmute(state, ctx, action.a, action.b);
+
+    // --- THE NEW FORGE (v36): casting and the tool station ----------------
+    // `partType` crosses the action boundary as a plain string, so it is
+    // validated against the registry here rather than cast — a bad id would
+    // otherwise reach `partMelt` and read undefined.
+    case 'chargeCrucible':
+      return chargeCrucible(state, ctx, action.materialId, action.units);
+    case 'drainCrucible':
+      return drainCrucible(state, ctx);
+    case 'castPart':
+      return PART_TYPES.includes(action.partType as PartType)
+        ? castPart(state, ctx, action.partType as PartType)
+        : { ok: false, reason: 'No such cast' };
+    case 'benchPlace':
+      return benchPlace(state, ctx, action.partId);
+    case 'benchClear':
+      return PART_TYPES.includes(action.partType as PartType)
+        ? benchClear(state, ctx, action.partType as PartType)
+        : { ok: false, reason: 'No such slot' };
+    case 'buildTool':
+      return buildTool(state, ctx);
+    case 'breakDownTool':
+      return breakDownTool(state, ctx);
 
     case 'salvageTool':
       return salvageTool(state, ctx, action.toolId, action.extract);

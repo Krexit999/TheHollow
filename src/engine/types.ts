@@ -965,6 +965,10 @@ export interface GameState {
   refinery: { found: string[]; attempts: number; refined: number };
   /** THE WORKBENCH (v16): crafting-as-a-process. */
   workbench: import("./systems/workbench").WorkbenchState;
+  /** THE NEW FORGE (v36), step 2: the crucible, the rack of cast parts, the
+   *  tool station, and the one tool you grow. Coexists with `forge` (the old
+   *  head/haft/binding bench) until that one is deliberately retired. */
+  casting: import("./systems/casting").CastingState;
   /** THE SHAFT (v17): the column as a place — go back up, rail that outlives
    *  Collapse, and a scar record of what happened where. */
   shaft: import("./systems/shaftSys").ShaftState;
@@ -1312,7 +1316,11 @@ export type GameEvent =
   | { type: 'carveBotched'; target: string }
   | { type: 'gemCut'; gemId: string; lean: string; quality: number }
   | { type: 'castFound'; id: string; name: string }
-  | { type: 'castMissed' };
+  | { type: 'castMissed' }
+  // --- THE NEW FORGE, step 2: casting and the tool station ---------------
+  | { type: 'crucibleCharged'; materialId: string; units: number; molten: number }
+  | { type: 'partCast'; partType: string; materialId: string; purity: number }
+  | { type: 'toolBuilt'; coherence: number; rockRate: number };
 
 export type GameEventType = GameEvent['type'];
 
@@ -1527,6 +1535,14 @@ export type GameAction =
   /** UNLOCK EVERYTHING — every shell reached, every room open, every structure
    *  raised. A dev-build shortcut past the whole progression, so any system can
    *  be looked at without playing to it. */
+  // --- THE NEW FORGE (v36): casting and the tool station ------------------
+  | { type: 'chargeCrucible'; materialId: string; units: number }
+  | { type: 'drainCrucible' }
+  | { type: 'castPart'; partType: string }
+  | { type: 'benchPlace'; partId: number }
+  | { type: 'benchClear'; partType: string }
+  | { type: 'buildTool' }
+  | { type: 'breakDownTool' }
   | { type: 'debug'; op: 'unlockAll' };
 
 export interface ActionResult {

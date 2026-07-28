@@ -23,7 +23,7 @@ export type TabId =
   | 'lattice' | 'crucible' | 'foundry' | 'greenhouse' | 'mycelium'
   | 'loom' | 'bench' | 'array' | 'chamber' | 'automation'
   // The Hold
-  | 'hold' | 'forge' | 'refinery' | 'runes' | 'brew' | 'relics' | 'museum'
+  | 'hold' | 'forge' | 'casting' | 'refinery' | 'runes' | 'brew' | 'relics' | 'museum'
   // The World
   | 'guild' | 'bestiary' | 'warrens' | 'observatory' | 'journal'
   | 'wells' | 'expeditions'

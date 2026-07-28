@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 35;
+export const SAVE_VERSION = 36;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -823,6 +823,27 @@ export const MIGRATIONS: Record<number, Migration> = {
     delete drills['richness'];
     drills['rot'] ??= [];
     return { ...p, version: 35, state };
+  },
+
+  /**
+   * v36 — THE NEW FORGE, step 2. A purely ADDITIVE slice: the crucible, the
+   * rack, the station and the tool. Nothing existing is touched, and the old
+   * `forge` (head/haft/binding) keeps every tool it holds — the two benches
+   * coexist until the old one is deliberately retired.
+   *
+   * `ensureStateShape` would seed this on its own at hydrate; it is written out
+   * anyway because a migration that says what it added is the record of WHEN
+   * the slice appeared, and the shape net is a safety floor rather than the
+   * place a new system is declared.
+   */
+  35: (p) => {
+    const state = p.state as Record<string, unknown>;
+    state['casting'] ??= {
+      rack: [], bench: {}, tool: [],
+      crucible: { materialId: '', solid: 0, molten: 0, purity: 0 },
+      nextId: 1, cast: 0, built: 0,
+    };
+    return { ...p, version: 36, state };
   },
 };
 

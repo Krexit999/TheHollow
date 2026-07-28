@@ -72,6 +72,9 @@ export const CLUSTERS: ClusterDef[] = [
     systems: [
       { id: 'hold', label: 'Materials', visible: (s) => s.materials.totalDrops > 0 },
       { id: 'forge', label: 'Forge', visible: (s) => s.forge.built },
+      // THE NEW FORGE (step 2). Same building as the Forge, so the same gate —
+      // this is the bench that will eventually replace the one above it.
+      { id: 'casting', label: 'Casting', visible: (s) => s.forge.built },
       { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
       { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
       { id: 'brew', label: 'Still', visible: (s) => rec(s, 'verdance', 60) },

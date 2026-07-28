@@ -39,6 +39,7 @@ import { defaultTechniquesState } from './techniques';
 import { defaultKeystonesState } from './systems/keystones';
 import { defaultRefineryState } from './systems/refinery';
 import { defaultWorkbenchState } from './systems/workbench';
+import { defaultCastingState } from './systems/casting';
 import { defaultShaftState } from './systems/shaftSys';
 import { defaultMuseumState, defaultExpeditionsState } from './systems/museum';
 
@@ -128,6 +129,7 @@ export function initialState(nowMs: number): GameState {
     figures: { found: [] },
     refinery: defaultRefineryState(),
     workbench: defaultWorkbenchState(),
+    casting: defaultCastingState(),
     shaft: defaultShaftState(),
     expeditions: defaultExpeditionsState(),
     qol: defaultQolState(),

@@ -9,6 +9,7 @@ import { DigPanel, KilnPanel, DrillsPanel } from './components/panels';
 import { LatticePanel } from './components/LatticePanel';
 import { HoldPanel } from './components/HoldPanel';
 import { ForgePanel } from './components/ForgePanel';
+import { CastingPanel } from './components/CastingPanel';
 import { RefineryPanel } from './components/refinery';
 import { CollapsePanel, DelverPanel } from './components/prestige';
 import { GridPanel, VaultPanel } from './components/meta';
@@ -76,6 +77,7 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('chamber') && <ChamberPanel />}
       {only('hold') && <HoldPanel />}
       {only('forge') && <ForgePanel />}
+      {only('casting') && <CastingPanel />}
       {only('refinery') && <RefineryPanel />}
       {only('runes') && <RunesPanel />}
       {only('brew') && <BrewPanel />}

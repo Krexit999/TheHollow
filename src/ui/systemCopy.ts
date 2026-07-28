@@ -239,6 +239,25 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       return wall ? 'A hardness wall is near — forge the next tool tier before the rock refuses you.' : null;
     },
   },
+  casting: {
+    title: 'The Casting Floor',
+    purpose:
+      'Melt a stone until it runs, pour it into a shape, and it cools into a part. Seven parts make a tool that is yours — and the seven have to get along. A head from one world and a handle from another will fit, but they will never sit right together.',
+    next: (s) => {
+      const c = s.casting.crucible;
+      if (s.casting.tool.length > 0) return null;
+      if (c.solid > 0) return 'It is melting. The tub tells you when it has run.';
+      if (c.molten > 0) return 'There is melt in the tub. Pick a cast and pour it.';
+      if (s.casting.rack.length === 0) return 'Charge the crucible with something from the Hold.';
+      return 'Parts on the rack. Drop seven into the station and combine them.';
+    },
+    status: (s) => {
+      const c = s.casting.crucible;
+      if (c.solid + c.molten > 0) return `${Math.floor(c.molten)} melt`;
+      if (s.casting.tool.length > 0) return 'tool built';
+      return s.casting.rack.length > 0 ? `${s.casting.rack.length} parts` : null;
+    },
+  },
   refinery: {
     title: 'The Refinery',
     purpose:

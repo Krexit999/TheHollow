@@ -137,8 +137,15 @@ describe('the nav fold', () => {
     expect(codex).toEqual(['bestiary', 'journal', 'parallel']);
   });
 
-  it('the counted-system number is 33 (was 32 before Museum unfolded)', () => {
-    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(33);
+  /**
+   * 34 AS OF THE NEW FORGE (step 2): the Casting Floor is a room. It is not a
+   * fold candidate — it has its own loop (melt, pour, build) and shares only a
+   * gate with the Forge — but it IS a system that will eventually REPLACE the
+   * Forge, and when that happens this number goes back to 33. Recorded here so
+   * the retirement is a deliberate act rather than a drift.
+   */
+  it('the counted-system number is 34 (Casting joined; Forge retires into it later)', () => {
+    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(34);
     expect(CLUSTERS.length).toBe(5); // the five rooms stand
   });
 });
