@@ -7,14 +7,18 @@
  * its rolled purity, its traits. Add a material to the registry tomorrow and it
  * has seven working parts the same afternoon.
  *
- *     magnitude = SHELL_STEP^(ordinal-1)  ×  rarity  ×  purity
- *     character = Π over traits ( 1 + delta[stat] × intensity )
- *     stat      = STAT_BASE[stat] × weight(part, stat) × magnitude × character
+ *     magnitude  = SHELL_STEP^(ordinal-1) × rarity × purity × grade
+ *     shape      = Π over traits (1 + delta[stat] × intensity), geo-normalised
+ *     stat       = STAT_BASE × weight(part, stat) × magnitude^exp(stat) × shape
+ *     tool       = Σ parts, × COHERENCE
  *
- * MAGNITUDE is how big. CHARACTER is what shape. They are deliberately
- * separate: depth makes a part BIGGER, traits make it DIFFERENT, and neither
- * can do the other's job. That is what stops a deep material from also being
- * a boring one, and what stops a trait from being a stealth power creep.
+ * MAGNITUDE is how big. SHAPE is what shape. They are deliberately separate:
+ * depth makes a part BIGGER, traits make it DIFFERENT, and neither can do the
+ * other's job. That is what stops a deep material from also being a boring one,
+ * and what stops a trait from being a stealth power creep.
+ *
+ * COHERENCE is what stops the answer from being "slap the highest number in
+ * every slot". See `coherenceOf`.
  *
  * NOTHING IS WIRED. This module is pure — it reads the material registry and
  * returns numbers. `systems/toolParts.ts` (the old head/haft/binding) is
@@ -29,9 +33,10 @@
  * reverted twice and this layer should never make a heavy one necessary.
  */
 import {
-  PART_DEFS, PART_TYPES, SHELL_TRAIT, STAT_BASE, TOOL_STATS, TRAIT_INTENSITY,
-  FORGE_TRAITS, GRADE_BONUS, SHELL_STEP, RARITY_STEP, PURITY_FLOOR,
-  PURITY_PER_POINT, W_PRIMARY, W_SECONDARY, W_SPILL,
+  PART_DEFS, PART_TYPES, SHELL_TRAIT, STAT_BASE, STAT_MAGNITUDE_EXP, TOOL_STATS,
+  TRAIT_INTENSITY, FORGE_TRAITS, GRADE_BONUS, SHELL_STEP, RARITY_STEP,
+  PURITY_FLOOR, PURITY_PER_POINT, W_PRIMARY, W_SECONDARY, W_SPILL,
+  MISMATCH_K, VARIETY_WEIGHT, RELIEF_PIVOT, RELIEF_SLOPE, MAX_RELIEF,
   type ForgeTraitId, type PartType, type ToolStat,
 } from '../content/forgeParts';
 import { RARITIES, bandOf, materialDef, type MaterialDef } from '../materials';
@@ -60,19 +65,55 @@ export interface PartStats {
   material: MaterialDef;
   /** Every trait the part carries — authored, plus its shell's. */
   traits: ForgeTraitId[];
-  /** How big: shell × rarity × purity. */
+  /** How big: shell × rarity × purity × grade. */
   magnitude: number;
   /** How hard the traits are pulling, 0.70 (poor) .. 1.30 (exalted). */
   intensity: number;
-  /** The eight numbers. */
+  /** The ten numbers. */
   stats: Record<ToolStat, number>;
+}
+
+/** Why a tool's parts do or do not get along. Everything the UI needs to say so. */
+export interface Coherence {
+  /** Mean absolute deviation of shell ordinals from the set's median. */
+  shellSpread: number;
+  /** 0 when every part is the same material, 1 when all seven differ. */
+  variety: number;
+  /** shellSpread + VARIETY_WEIGHT × variety, before stability forgives any. */
+  discord: number;
+  /** The tool's stability relative to a shape-neutral tool of the same parts. */
+  stabilityIndex: number;
+  /** How much of the discord stability forgives, 0 .. MAX_RELIEF. */
+  relief: number;
+  /** The multiplier applied to every stat. 1 = a set that belongs together. */
+  factor: number;
 }
 
 export interface ToolStats {
   parts: Part[];
+  /** What the parts add up to before coherence. */
+  rawStats: Record<ToolStat, number>;
+  /** What the tool actually is. */
   stats: Record<ToolStat, number>;
-  /** Bite × Cadence — what the tool actually mines. The headline. */
-  throughput: number;
+  coherence: Coherence;
+  /** Bite × Cadence — what it takes off a rock face. */
+  rockRate: number;
+  /**
+   * ORESPEED, ALONE — what it takes out of a pocket, and NOT multiplied by
+   * cadence. That is the difference between the two rates being two axes and
+   * being one axis with a rename, and it was caught by measuring: with
+   * `oreSpeed × cadence`, a tool with its best material in the HEAD out-mined
+   * an ore build at ORE, because cadence is a head stat and lifted both rates
+   * together. The ore build lost on its own axis, which is the ruling this
+   * stat exists to satisfy failing outright.
+   *
+   * The model that fixes it is also the more honest one. BITE is charge per
+   * chip, so it needs cadence to become a rate at all. ORESPEED is a speed
+   * already — the doc calls it "ore mining speed" — so it IS the rate. Two
+   * genuinely independent numbers, and a tool built for ore beats a tool built
+   * for rock at ore by as much as it loses at rock.
+   */
+  oreRate: number;
   /** Every distinct trait across all seven parts. */
   traits: ForgeTraitId[];
   /** Sum of the shell ordinals, for a rough "how deep is this tool" read. */
@@ -173,8 +214,7 @@ function rawCharacter(traits: ForgeTraitId[], stat: ToolStat, intensity: number)
  * THIS IS THE LOAD-BEARING LINE OF THE WHOLE STEP, and the first cut got it
  * wrong. Raw trait multipliers leak value: a material whose traits all push
  * upward is simply better, three good traits out-earn a shell step, and ruling
- * 1 broke at five of six shell boundaries (measured — Ferrite's worst head read
- * 10.6 bite against Loam's best at 16.9).
+ * 1 broke at five of six shell boundaries.
  *
  * Dividing through by the geometric mean makes the traits a pure
  * REDISTRIBUTION: a part's total value is its magnitude and nothing else, while
@@ -208,14 +248,14 @@ export function intensityOf(purity: number): number {
 // The derivation
 // ---------------------------------------------------------------------------
 
-function weightFor(type: PartType, stat: ToolStat): number {
+export function weightFor(type: PartType, stat: ToolStat): number {
   const def = PART_DEFS[type];
-  if (def.primary === stat) return W_PRIMARY;
-  if (def.secondary === stat) return W_SECONDARY;
+  if (def.primary.includes(stat)) return W_PRIMARY;
+  if (def.secondary.includes(stat)) return W_SECONDARY;
   return W_SPILL;
 }
 
-/** THE FUNCTION. One material, one shape, eight numbers. */
+/** THE FUNCTION. One material, one shape, ten numbers. */
 export function derivePart(part: Part): PartStats {
   const material = materialDef(part.materialId);
   const traits = partTraits(material);
@@ -226,7 +266,7 @@ export function derivePart(part: Part): PartStats {
   for (const stat of TOOL_STATS) {
     stats[stat] = STAT_BASE[stat]
       * weightFor(part.type, stat)
-      * magnitude
+      * Math.pow(magnitude, STAT_MAGNITUDE_EXP[stat])
       * shapeOf(traits, stat, intensity);
   }
   return { part, material, traits, magnitude, intensity, stats };
@@ -237,35 +277,122 @@ export function makePart(type: PartType, materialId: string, purity: number): Pa
 }
 
 // ---------------------------------------------------------------------------
+// Coherence — the mismatch penalty
+// ---------------------------------------------------------------------------
+
+function median(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 === 1 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+/**
+ * THE STABILITY THE PARTS WOULD HAVE IF THEIR TRAITS SAID NOTHING — the
+ * denominator that makes `stabilityIndex` free of magnitude.
+ *
+ * Without this, a deep tool would look unstable and a shallow one stable, for
+ * no reason but scale, and the mismatch penalty would be unfixable early and
+ * free late — exactly backwards, since mixing shells is a THING PLAYERS DO
+ * EARLY because it is all they have. Measuring stability against what these
+ * same parts would produce with neutral traits leaves only the signal that
+ * matters: how far this build LEANS toward holding itself together.
+ */
+function expectedStability(parts: Part[]): number {
+  let n = 0;
+  for (const p of parts) {
+    const m = magnitudeOf(materialDef(p.materialId), p.purity);
+    n += STAT_BASE.stability
+      * weightFor(p.type, 'stability')
+      * Math.pow(m, STAT_MAGNITUDE_EXP.stability);
+  }
+  return n;
+}
+
+/**
+ * DO THESE SEVEN PARTS BELONG TOGETHER?
+ *
+ * The doc's Binding row is "modifier slots + how well mismatched parts
+ * cooperate" and its `trueseated` is "less penalty from mismatched parts". Both
+ * describe a mechanic; this is it.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO is make a deeper part not worth slotting.
+ * A shell step is 6x (ruling 1), so no honest cooperation penalty outweighs
+ * one, and "should I use this Aleph head" stays an easy yes. What it prices is
+ * SCATTER: among parts of comparable depth, a set that belongs together beats
+ * a set that does not. One Aleph head in a Cinder tool costs a few percent;
+ * one part from each of the seven shells costs most of the tool.
+ */
+export function coherenceOf(parts: Part[], rawStats: Record<ToolStat, number>): Coherence {
+  if (parts.length < 2) {
+    return {
+      shellSpread: 0, variety: 0, discord: 0,
+      stabilityIndex: 1, relief: 0, factor: 1,
+    };
+  }
+  const ords = parts.map((p) => shellOrdinal(materialDef(p.materialId).shellId));
+  const mid = median(ords);
+  const shellSpread = ords.reduce((n, o) => n + Math.abs(o - mid), 0) / ords.length;
+
+  const distinct = new Set(parts.map((p) => p.materialId)).size;
+  const variety = (distinct - 1) / (parts.length - 1);
+
+  const discord = shellSpread + VARIETY_WEIGHT * variety;
+
+  const expect = expectedStability(parts);
+  const stabilityIndex = expect > 0 ? rawStats.stability / expect : 1;
+  const relief = Math.max(0, Math.min(MAX_RELIEF,
+    (stabilityIndex - RELIEF_PIVOT) * RELIEF_SLOPE));
+
+  const effective = discord * (1 - relief);
+  const factor = 1 / (1 + MISMATCH_K * effective * effective);
+
+  return { shellSpread, variety, discord, stabilityIndex, relief, factor };
+}
+
+// ---------------------------------------------------------------------------
 // Assembly
 // ---------------------------------------------------------------------------
 
 /**
- * SEVEN PARTS, ONE TOOL. Stats SUM, which is the only honest way to combine
- * them: each part contributes what it is worth, so an outstanding head cannot
- * be cancelled by a poor grip, and a full set of Aleph parts is seven times a
- * single Aleph part rather than some averaged mush.
+ * SEVEN PARTS, ONE TOOL. The stats SUM and the sum is then scaled by COHERENCE,
+ * so an outstanding part is never cancelled outright — but seven parts with
+ * nothing to do with each other really do make a worse tool than a set that
+ * belongs together.
+ *
+ * THE FIRST CUT HAD THIS AS A PURE SUM, with a test asserting no part could
+ * ever be dragged down by another. That test asserted the absence of the thing
+ * that makes part choice a choice, and it is gone.
  *
  * A tool may be assembled INCOMPLETE — `assembleTool` does not require all
- * seven. Step 3's tool station will decide whether a partial tool is usable;
- * this layer just adds up what is there, so the UI can show a build in progress.
+ * seven, and a single part is trivially coherent with itself. Step 3's tool
+ * station will decide whether a partial tool is usable; this layer just adds up
+ * what is there, so the UI can show a build in progress.
  */
 export function assembleTool(parts: Part[]): ToolStats {
-  const stats = {} as Record<ToolStat, number>;
-  for (const s of TOOL_STATS) stats[s] = 0;
+  const rawStats = {} as Record<ToolStat, number>;
+  for (const s of TOOL_STATS) rawStats[s] = 0;
 
   const traits = new Set<ForgeTraitId>();
   let depth = 0;
   for (const p of parts) {
     const d = derivePart(p);
-    for (const s of TOOL_STATS) stats[s] += d.stats[s];
+    for (const s of TOOL_STATS) rawStats[s] += d.stats[s];
     for (const t of d.traits) traits.add(t);
     depth += shellOrdinal(d.material.shellId);
   }
+
+  const coherence = coherenceOf(parts, rawStats);
+  const stats = {} as Record<ToolStat, number>;
+  for (const s of TOOL_STATS) stats[s] = rawStats[s] * coherence.factor;
+
   return {
     parts,
+    rawStats,
     stats,
-    throughput: stats.bite * stats.cadence,
+    coherence,
+    rockRate: stats.bite * stats.cadence,
+    oreRate: stats.oreSpeed,
     traits: [...traits],
     depth,
   };
