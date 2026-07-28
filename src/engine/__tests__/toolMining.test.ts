@@ -26,7 +26,8 @@ import {
   BARE_HANDS, BROKEN_SHARE, MAX_EXTRA_CELLS, REPAIR_UNITS, effectOf, isBroken,
   poolOf, repairShare, toolEffect, toughnessIndex, usesLeft, usesOf, wearPerUse,
   wornPart,
-  castingToolTier, effectiveToolTier,
+  castingToolTier, effectiveToolTier, grantsFor, levelOf, levelProgress, modSlotsOf,
+  toolLevel, xpForLevel, SLOT_EVERY,
 } from '../systems/toolMining';
 
 let engine: Engine;
@@ -542,3 +543,132 @@ function requiredWallDepth(s: GameState): number {
 function equippedTierOf(s: GameState): number {
   return s.forge.tools.find((t) => t.id === s.forge.equipped)?.tier ?? 1;
 }
+
+// ---------------------------------------------------------------------------
+// A TOOL IMPROVES WITH USE
+// ---------------------------------------------------------------------------
+
+describe('a tool you have mined with is better than the same tool fresh', () => {
+  it('starts at level 1 with nothing earned, and a bare-handed player earns nothing', () => {
+    hold(null);
+    expect(toolLevel(st())).toBe(1);
+    fillFace();
+    for (let i = 0; i < 20; i++) engine.dispatch({ type: 'chip', cell: i % 36 });
+    expect(st().casting.xp).toBe(0);
+  });
+
+  /** XP IS CELLS THAT GAVE SOMETHING UP — not swings, and not empty rock. */
+  it('records the cells a swing actually worked, reach included', () => {
+    hold('firstiron');
+    fillFace();
+    const cells = effectOf(toolOf('firstiron'), false, 1).cells;
+    engine.dispatch({ type: 'chip', cell: 14 }); // interior: every reached cell exists
+    expect(st().casting.xp).toBe(cells);
+  });
+
+  it('a swing at empty rock teaches it nothing', () => {
+    hold('firstiron');
+    st().face.cells = st().face.cells.map(() => 0);
+    for (let i = 0; i < 30; i++) engine.dispatch({ type: 'chip', cell: i % 36 });
+    expect(st().casting.xp).toBe(0);
+  });
+
+  it('a sweep counts the cells it swept', () => {
+    hold('marl');
+    fillFace();
+    st().face.stamina = 100;
+    engine.dispatch({ type: 'sweep', cells: [0, 1, 2, 3, 4] });
+    expect(st().casting.xp).toBe(5);
+  });
+
+  it('levels arrive on a rising curve, and the readout matches it', () => {
+    hold('marl');
+    expect(levelOf(0)).toBe(1);
+    expect(levelOf(xpForLevel(2))).toBe(2);
+    expect(levelOf(xpForLevel(2) - 1)).toBe(1);
+    // Rising: each level costs more than the one before it.
+    for (let n = 2; n < 12; n++) {
+      const a = xpForLevel(n + 1) - xpForLevel(n);
+      const b = xpForLevel(n) - xpForLevel(n - 1);
+      expect(a, `level ${n + 1} should cost more than ${n}`).toBeGreaterThan(b);
+    }
+    st().casting.xp = xpForLevel(4) + 10;
+    const p = levelProgress(st());
+    expect(p.level).toBe(4);
+    expect(p.into).toBe(10);
+    expect(p.frac).toBeGreaterThan(0);
+    expect(p.frac).toBeLessThan(1);
+  });
+
+  /**
+   * THE PILLAR-2 CONSTRAINT, and the only one that matters here. A level buys
+   * durability, pocket speed, reach and slots. It must NEVER touch what a cell
+   * pays per point of charge, or `dpsMax` moves and the ceiling stops being one.
+   */
+  it('levels buy reach, swings, pocket speed and slots — never yield', () => {
+    const tool = toolOf('marl');
+    const lo = effectOf(tool, false, 1);
+    const hi = effectOf(tool, false, 30);
+    expect(hi.cells).toBeGreaterThan(lo.cells);
+    expect(hi.oreRate).toBeGreaterThan(lo.oreRate);
+    expect(usesOf(tool, 30)).toBeGreaterThan(usesOf(tool, 1));
+    expect(grantsFor(30).slots).toBeGreaterThan(0);
+    // SPLASH is how much of each extra cell is taken, and it is NOT levelled —
+    // that is the closest thing here to a yield term.
+    expect(hi.splash).toBe(lo.splash);
+    // Nor is the drop lean, which is already capped.
+    expect(hi.dropWeight).toBe(lo.dropWeight);
+  });
+
+  it('and reach stays inside the 3x3 however high the level goes', () => {
+    for (const id of ['marl', 'firstiron']) {
+      expect(effectOf(toolOf(id), false, 999).cells).toBeLessThanOrEqual(1 + MAX_EXTRA_CELLS);
+    }
+  });
+
+  it('a levelled tool really does mine more of the face per swing', () => {
+    const swing = (level: number): number => {
+      engine = createEngine({ nowMs: 0 });
+      hold('marl');
+      st().casting.xp = xpForLevel(level);
+      fillFace();
+      const before = [...st().face.cells];
+      engine.dispatch({ type: 'chip', cell: 14 });
+      return st().face.cells.filter((c, i) => Math.abs(c - before[i]!) > 1e-9).length;
+    };
+    expect(swing(20)).toBeGreaterThan(swing(1));
+  });
+
+  it('extra modifier slots arrive on a schedule, on top of what the parts give', () => {
+    hold('marl');
+    const tool = toolOf('marl');
+    expect(modSlotsOf(st(), tool).fromUse).toBe(0);
+    st().casting.xp = xpForLevel(1 + SLOT_EVERY);
+    expect(modSlotsOf(st(), tool).fromUse).toBe(1);
+    expect(modSlotsOf(st(), tool).total).toBe(modSlotsOf(st(), tool).fromParts + 1);
+  });
+
+  /**
+   * THE PROMISE. Levels are the record of YOUR hours. Re-seating a worn part or
+   * upgrading to better stock is maintaining the same tool, and it must not
+   * cost you that record — "you never throw it away" would be a lie otherwise.
+   */
+  it('rebuilding the tool keeps every level', () => {
+    hold('marl');
+    st().casting.xp = xpForLevel(7);
+    const s = st();
+    s.casting.rack = [...s.casting.tool];
+    for (const p of s.casting.tool) s.casting.bench[p.type] = p.id;
+    expect(engine.dispatch({ type: 'buildTool' }).ok).toBe(true);
+    expect(toolLevel(st())).toBe(7);
+    expect(engine.dispatch({ type: 'repairTool', partType: 'core' }).ok).toBe(false); // no material — fine
+    expect(toolLevel(st())).toBe(7);
+  });
+
+  it('and taking it apart does not burn the record either', () => {
+    hold('marl');
+    st().casting.xp = xpForLevel(5);
+    engine.dispatch({ type: 'breakDownTool' });
+    expect(st().casting.xp).toBe(xpForLevel(5));
+  });
+});

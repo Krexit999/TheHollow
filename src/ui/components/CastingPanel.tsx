@@ -33,13 +33,14 @@ import {
 } from '../../engine/content/forgeParts';
 import { partMelt, type ToolStats } from '../../engine/systems/forgeParts';
 import {
-  MELT_BACK_SHARE, MELT_PER_UNIT, TUB_CAPACITY, FULL_SET_MELT, benchComplete,
-  benchPreview, canCast, crucibleFill, currentTool, meltBackValue, rackPart,
-  unitsThatFit, type RackPart,
+  MELT_BACK_SHARE, MELT_PER_UNIT, QUEUE_MAX, TUB_CAPACITY, FULL_SET_MELT,
+  benchComplete, benchPreview, canCast, crucibleFill, currentTool, frontCharge,
+  meltBackValue, queued, rackPart, tubHeld, unitsThatFit, type RackPart,
 } from '../../engine/systems/casting';
 import {
-  MAX_EXTRA_CELLS, ORE_RATE_CAP, REPAIR_UNITS, castingToolTier, effectOf,
-  isBroken, repairShare, usesLeft, usesOf, wear01, wornPart,
+  MAX_EXTRA_CELLS, ORE_RATE_CAP, REACH_EVERY, REPAIR_UNITS, SLOT_EVERY,
+  castingToolTier, effectOf, grantsFor, isBroken, levelProgress, modSlotsOf,
+  repairShare, toolLevel, usesLeft, usesOf, wear01, wornPart,
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
 import { shellOrdinal } from '../../engine/content/drillAlloys';
@@ -153,13 +154,15 @@ function moltenStyle(materialId: string): React.CSSProperties {
 function Crucible({ state }: { state: GameState }) {
   const held = heldMaterials(state);
   const c = state.casting.crucible;
+  const front = frontCharge(c);
+  const q = queued(c);
   const [pick, setPick] = useState<string>('');
   const [note, setNote] = useState<string | null>(null);
   const fill = crucibleFill(c);
   const fits = unitsThatFit(c);
-  const inTub = c.solid + c.molten;
-  const locked = inTub > 0 ? c.materialId : null;
-  const target = locked ?? (pick || held[0]?.id) ?? '';
+  // NO LOCK ANY MORE. The tub used to hold one stone and the picker was pinned
+  // to it; the queue is exactly the removal of that restriction.
+  const target = (pick || held[0]?.id) ?? '';
   const haveTarget = target ? held.find((m) => m.id === target)?.count ?? 0 : 0;
 
   const charge = (units: number): void => {
@@ -172,16 +175,18 @@ function Crucible({ state }: { state: GameState }) {
       <div className="flex items-baseline justify-between">
         <span className="text-xs font-semibold uppercase tracking-wider text-[#e0902a]">The crucible</span>
         <span className="tnum text-[10px] text-cave-400" data-testid="melt-readout">
-          {fmt(Math.floor(c.molten))} / {TUB_CAPACITY} melt
+          {fmt(Math.floor(front?.molten ?? 0))} / {TUB_CAPACITY} melt
+          {q.length > 1 && <span className="text-cave-600"> · {fmt(Math.floor(tubHeld(c)))} in the tub</span>}
         </span>
       </div>
 
-      {/* THE TUB. Two flat divs; the molten one wears the stone's own colours. */}
+      {/* THE TUB. Two flat divs; the molten one wears the FRONT stone's own
+          colours, because the front stone is what the next pour comes out as. */}
       <div className="mt-2 h-7 w-full overflow-hidden rounded-md border border-cave-700 bg-cave-950">
         <div className="flex h-full w-full">
           <div
             className="melt-sheen h-full transition-[width] duration-200 ease-linear"
-            style={{ width: `${fill.molten01 * 100}%`, ...moltenStyle(c.materialId) }}
+            style={{ width: `${fill.molten01 * 100}%`, ...moltenStyle(front?.materialId ?? '') }}
             data-testid="tub-molten"
           />
           <div
@@ -193,31 +198,69 @@ function Crucible({ state }: { state: GameState }) {
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          {c.materialId ? (
+          {front ? (
             <>
-              <MaterialIcon id={c.materialId} size={16} />
-              <span className="truncate text-[11px] text-cave-300">{materialDef(c.materialId).name}</span>
+              <MaterialIcon id={front.materialId} size={16} />
+              <span className="truncate text-[11px] text-cave-300">{materialDef(front.materialId).name}</span>
               <span className="tnum shrink-0 text-[10px] text-cave-500">
-                {BAND_LABELS[bandOf(c.purity)]} · {Math.round(c.purity)}
+                {BAND_LABELS[bandOf(front.purity)]} · {Math.round(front.purity)}
               </span>
             </>
           ) : (
             <span className="text-[11px] italic text-cave-500">Cold and empty.</span>
           )}
         </div>
-        {c.solid > 0 ? (
+        {front && front.solid > 0 ? (
           <span className="shrink-0 text-[10px] uppercase tracking-wider text-cave-400" data-testid="melting">
-            melting · {fmt(Math.ceil(c.solid))}
+            melting · {fmt(Math.ceil(front.solid))}
           </span>
-        ) : inTub > 0 ? (
+        ) : front ? (
           <button
             className="btn shrink-0 px-1.5 py-0.5 text-[10px]"
-            onClick={() => dispatch({ type: 'drainCrucible' })}
+            onClick={() => dispatch({ type: 'drainCrucible', index: 0 })}
           >
-            Drain it off
+            Tip it out
           </button>
         ) : null}
       </div>
+
+      {/* ── THE QUEUE ──────────────────────────────────────────────────────
+          Several stones sit in the tub at once. The FIRST is what pours; tap
+          any other and it comes forward, which is the whole verb. Chips rather
+          than a list, because the question here is "which is next" — a glance,
+          not a read — and the tub's colour answers it too. */}
+      {q.length > 0 && (
+        <div className="mt-2 border-t border-cave-800 pt-2" data-testid="queue">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[9px] uppercase tracking-widest text-cave-500">
+              In the tub · {q.length}/{QUEUE_MAX}
+            </span>
+            {q.length > 1 && <span className="text-[9px] italic text-cave-600">tap one to pour it next</span>}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {q.map((ch, i) => (
+              <button
+                key={ch.materialId}
+                className={`flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] ${
+                  i === 0
+                    ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100'
+                    : 'border-cave-800 text-cave-400 hover:border-cave-600'
+                }`}
+                data-testid={`queue-${i}`}
+                title={`${materialDef(ch.materialId).name} · ${Math.floor(ch.molten)} melt ready`
+                  + (i === 0 ? ' · pouring next' : ' · tap to bring it forward')}
+                onClick={() => dispatch({ type: 'bringToFront', index: i })}
+              >
+                <MaterialIcon id={ch.materialId} size={14} />
+                <span className="max-w-[64px] truncate">{materialDef(ch.materialId).name}</span>
+                <span className="tnum text-cave-500">{Math.floor(ch.molten)}</span>
+                {i === 0 && <span className="text-[8px] uppercase tracking-wider text-[#e0902a]">next</span>}
+                {ch.solid > 0 && <span className="text-[8px] text-cave-600">…</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-2 border-t border-cave-800 pt-2">
         <Select
@@ -227,12 +270,10 @@ function Crucible({ state }: { state: GameState }) {
           onChange={(v) => setPick(v)}
           options={held.length === 0
             ? [{ value: '', label: '— the Hold is empty —' }]
-            : held
-              .filter((m) => locked === null || m.id === locked)
-              .map((m) => ({
-                value: m.id,
-                label: `${materialDef(m.id).name} ×${fmt(m.count)} · ${BAND_LABELS[m.band]}`,
-              }))}
+            : held.map((m) => ({
+              value: m.id,
+              label: `${materialDef(m.id).name} ×${fmt(m.count)} · ${BAND_LABELS[m.band]}`,
+            }))}
         />
         <div className="mt-1.5 grid grid-cols-3 gap-1">
           {([['×1', 1], ['×5', 5], ['Fill it', fits]] as Array<[string, number]>).map(([label, units]) => (
@@ -284,9 +325,12 @@ function Casts({ state }: { state: GameState }) {
               title={PART_DEFS[t].governs}
               data-testid={`cast-${t}`}
               onClick={() => {
+                // Read the stone BEFORE the pour: a charge that empties leaves
+                // the queue, so afterwards the front is already the next one.
+                const was = frontCharge(c)?.materialId;
                 const r = dispatch({ type: 'castPart', partType: t });
-                setLast(r.ok
-                  ? `${PART_DEFS[t].name} cast in ${materialDef(c.materialId).name}.`
+                setLast(r.ok && was
+                  ? `${PART_DEFS[t].name} cast in ${materialDef(was).name}.`
                   : r.reason ?? null);
               }}
             >
@@ -654,16 +698,73 @@ function WhatItWouldDo({ tool, testid }: { tool: ToolStats; testid: string }) {
       <Gauge
         label="Lasts — swings before re-seating"
         value={fmt(usesOf(tool))}
-        frac={Math.min(1, usesOf(tool) / 6000)}
+        frac={Math.min(1, usesOf(tool) / 8000)}
         testid={`${testid}-lasts`}
       />
     </div>
   );
 }
 
+/**
+ * WHAT USE HAS EARNED — the readout for the one thing that makes a tool yours.
+ *
+ * Three things, in the order a player asks them: what level am I, how far to
+ * the next, and what have the levels actually given me. The last is the part
+ * that is usually missing from a levelling system and the part that makes it
+ * feel earned: "+30% swings, +20% pocket work, 1 modifier slot" is a record of
+ * your own hours, where "Level 6" on its own is a number.
+ */
+function LevelCard({ state, tool }: { state: GameState; tool: ToolStats }) {
+  const p = levelProgress(state);
+  const g = grantsFor(p.level);
+  const slots = modSlotsOf(state, tool);
+  const toNextSlot = SLOT_EVERY - ((p.level - 1) % SLOT_EVERY);
+  const toNextReach = REACH_EVERY - ((p.level - 1) % REACH_EVERY);
+
+  return (
+    <div className="mt-2 rounded-md border border-[#e0b054]/30 bg-cave-900/60 p-2" data-testid="tool-level">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Level</span>
+        <span className="tnum text-sm font-semibold text-[#e0b054]" data-testid="tool-level-n">
+          {p.level}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-cave-950">
+        <div
+          className="h-full bg-[#e0b054] transition-[width] duration-300"
+          style={{ width: `${p.frac * 100}%` }}
+          data-testid="tool-level-bar"
+        />
+      </div>
+      <div className="mt-0.5 tnum text-[10px] text-cave-500" data-testid="tool-level-progress">
+        {fmt(p.into)} / {fmt(p.need)} cells to level {p.level + 1} · {fmt(p.xp)} mined with it
+      </div>
+
+      {p.level > 1 ? (
+        <div className="mt-1 text-[10px] leading-snug text-cave-300" data-testid="tool-level-grants">
+          <span className="text-[#e0b054]">Earned: </span>
+          +{Math.round((g.durability - 1) * 100)}% swings
+          {g.oreRate > 1 && <> · +{Math.round((g.oreRate - 1) * 100)}% pocket work</>}
+          {g.cells > 0 && <> · +{g.cells} cell{g.cells === 1 ? '' : 's'} of reach</>}
+          {g.slots > 0 && <> · {g.slots} modifier slot{g.slots === 1 ? '' : 's'}</>}
+        </div>
+      ) : (
+        <div className="mt-1 text-[10px] italic leading-snug text-cave-500">
+          Mine with it. A tool you have worked is better than the same tool fresh off the station.
+        </div>
+      )}
+      <div className="mt-0.5 tnum text-[10px] text-cave-600">
+        {slots.total} modifier slot{slots.total === 1 ? '' : 's'}
+        <span className="text-cave-700"> ({slots.fromParts} from its parts{slots.fromUse > 0 ? `, ${slots.fromUse} earned` : ''})</span>
+        {' · '}next slot at level {p.level + toNextSlot} · next cell at {p.level + toNextReach}
+      </div>
+    </div>
+  );
+}
+
 function AtTheFace({ state, tool }: { state: GameState; tool: ToolStats }) {
   const broken = isBroken(state, tool);
-  const e = effectOf(tool, broken);
+  const e = effectOf(tool, broken, toolLevel(state));
   const tier = castingToolTier(state);
   return (
     <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="at-the-face">
@@ -729,7 +830,7 @@ function Durability({ state, tool }: { state: GameState; tool: ToolStats }) {
         />
       </div>
       <div className="mt-1 tnum text-[10px] text-cave-500">
-        {fmt(usesOf(tool))} swings when whole
+        {fmt(usesOf(tool, toolLevel(state)))} swings when whole
         {worn && <> · the <span className="text-cave-300">{PART_DEFS[worn].name}</span> is what is giving</>}
       </div>
       {broken && (
@@ -778,6 +879,7 @@ function YourTool({ state }: { state: GameState }) {
           </span>
         ))}
       </div>
+      <LevelCard state={state} tool={tool} />
       <AtTheFace state={state} tool={tool} />
       <Durability state={state} tool={tool} />
       <CoherenceReadout tool={tool} testid="tool-coherence" />

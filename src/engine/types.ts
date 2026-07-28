@@ -1311,7 +1311,8 @@ export type GameEvent =
   | { type: 'partCast'; partType: string; materialId: string; purity: number }
   | { type: 'toolBuilt'; coherence: number; rockRate: number }
   | { type: 'toolRepaired'; partType: string; materialId: string }
-  | { type: 'partMelted'; partType: string; materialId: string; molten: number };
+  | { type: 'partMelted'; partType: string; materialId: string; molten: number }
+  | { type: 'toolLevelled'; level: number; slots: number };
 
 export type GameEventType = GameEvent['type'];
 
@@ -1529,7 +1530,9 @@ export type GameAction =
    *  be looked at without playing to it. */
   // --- THE NEW FORGE (v36): casting and the tool station ------------------
   | { type: 'chargeCrucible'; materialId: string; units: number }
-  | { type: 'drainCrucible' }
+  | { type: 'drainCrucible'; index?: number }
+  /** Move a queued stone to the front, so the next pour is in that material. */
+  | { type: 'bringToFront'; index: number }
   | { type: 'castPart'; partType: string }
   | { type: 'benchPlace'; partId: number }
   | { type: 'benchClear'; partType: string }

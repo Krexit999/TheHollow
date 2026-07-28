@@ -19,7 +19,7 @@ import { rollForDrop } from './drops';
 import { recordChipForFigures } from './figures';
 import { logImplementUse } from './affinity';
 import { equippedTool } from './forge';
-import { spendToolUse, toolEffect } from './toolMining';
+import { gainToolXp, spendToolUse, toolEffect } from './toolMining';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
@@ -376,7 +376,15 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     }
     if (reached.length > 0) ctx.emit({ type: 'fracture', cells: reached });
   }
-  if (tool.hasTool) spendToolUse(state, 1);
+  if (tool.hasTool) {
+    spendToolUse(state, 1);
+    // THE TOOL LEARNS FROM WHAT IT ACTUALLY DID: the cell it broke, plus every
+    // one it reached that gave something up. A swing at empty rock teaches it
+    // nothing, which is what stops levelling from being a tapping exercise —
+    // and what there is to learn from is regen-bound, so the ladder is paced
+    // by the same ceiling as everything else.
+    gainToolXp(state, 1 + reached.length, ctx);
+  }
 
   state.stats.manualChips += 1;
   // XP scales with charge harvested and depth — see chipXP in DESIGN appendix.
@@ -432,6 +440,7 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     // tool's reach on top, because a swathe that also splashed would be reach
     // twice over.
     spendToolUse(state, swept.length);
+    gainToolXp(state, swept.length, ctx);
     state.stats.manualChips += swept.length;
     grantXP(state, mods, ctx, D(0.5 * swept.length * (1 + 0.08 * state.depth)));
     rollForDrop(state, mods, ctx, swept.length * 2, 1);

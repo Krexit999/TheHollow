@@ -69,7 +69,7 @@ import { produceExport } from './content/exports';
 import { refine, transmute } from './systems/refinery';
 import {
   benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
-  meltBack,
+  meltBack, bringToFront,
 } from './systems/casting';
 import { PART_TYPES, type PartType } from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
@@ -631,7 +631,9 @@ export function handleAction(
     case 'chargeCrucible':
       return chargeCrucible(state, ctx, action.materialId, action.units);
     case 'drainCrucible':
-      return drainCrucible(state, ctx);
+      return drainCrucible(state, ctx, action.index ?? 0);
+    case 'bringToFront':
+      return bringToFront(state, ctx, action.index);
     case 'castPart':
       return PART_TYPES.includes(action.partType as PartType)
         ? castPart(state, ctx, action.partType as PartType)

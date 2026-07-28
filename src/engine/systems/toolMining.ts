@@ -119,15 +119,26 @@ export const BARE_HANDS: ToolEffect = {
   cells: 1, splash: 0, oreRate: 1, dropWeight: 1, broken: false, hasTool: false,
 };
 
-/** What the carried tool does to a swing. Pure — no state is written. */
-export function effectOf(tool: ToolStats | null, broken: boolean): ToolEffect {
+/**
+ * What the carried tool does to a swing. Pure — no state is written.
+ *
+ * `level` is what USE has earned (see the levelling block above). It buys reach
+ * and pocket speed and nothing that touches yield-per-charge, and the reach it
+ * buys is still clamped to the same 3x3: a levelled tool clears the face
+ * faster, it cannot make the face hold more.
+ */
+export function effectOf(tool: ToolStats | null, broken: boolean, level = 1): ToolEffect {
   if (!tool) return BARE_HANDS;
+  const grant = grantsFor(level);
   const extra = Math.min(
     MAX_EXTRA_CELLS,
-    Math.max(1, Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1),
+    Math.max(1, Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells),
   );
   const splash = Math.min(1, SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite));
-  const oreRate = Math.min(ORE_RATE_CAP, 1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed));
+  const oreRate = Math.min(
+    ORE_RATE_CAP,
+    1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed) * grant.oreRate,
+  );
   const dropWeight = Math.min(DROP_CAP, 1 + DROP_PER_TIER * tierOf(tool.stats.control, REF.control));
 
   // Broken keeps a quarter of everything the tool adds OVER bare hands, so the
@@ -147,7 +158,7 @@ export function effectOf(tool: ToolStats | null, broken: boolean): ToolEffect {
 export function toolEffect(state: GameState): ToolEffect {
   const tool = currentTool(state);
   if (!tool) return BARE_HANDS;
-  return effectOf(tool, isBroken(state, tool));
+  return effectOf(tool, isBroken(state, tool), toolLevel(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -196,10 +207,13 @@ export function toughnessIndex(tool: ToolStats): number {
 }
 
 /** Swings this tool has before it is at the floor. */
-export function usesOf(tool: ToolStats): number {
+export function usesOf(tool: ToolStats, level = 1): number {
   const idx = toughnessIndex(tool);
   const scale = Math.max(USES_MIN, Math.min(USES_MAX, Math.pow(idx, 1.5)));
-  return Math.max(1, Math.round(BASE_USES * scale));
+  // THE LEVEL LANDS HERE AND NOT ON THE POOL. `wearPerUse` is pool / uses, so
+  // a bigger pool would cancel itself out exactly and the grant would do
+  // nothing. Swings are the thing a player feels; swings are what it buys.
+  return Math.max(1, Math.round(BASE_USES * scale * grantsFor(level).durability));
 }
 
 /** The size of the pool, in the units `state.casting.wear` counts. */
@@ -207,8 +221,8 @@ export function poolOf(tool: ToolStats): number {
   return tool.stats.durability;
 }
 
-export function wearPerUse(tool: ToolStats): number {
-  return poolOf(tool) / usesOf(tool);
+export function wearPerUse(tool: ToolStats, level = 1): number {
+  return poolOf(tool) / usesOf(tool, level);
 }
 
 export function isBroken(state: GameState, tool: ToolStats): boolean {
@@ -222,7 +236,7 @@ export function wear01(state: GameState, tool: ToolStats): number {
 }
 
 export function usesLeft(state: GameState, tool: ToolStats): number {
-  const per = wearPerUse(tool);
+  const per = wearPerUse(tool, toolLevel(state));
   return per <= 0 ? 0 : Math.max(0, Math.floor((poolOf(tool) - state.casting.wear) / per));
 }
 
@@ -270,6 +284,116 @@ export function repairShare(tool: ToolStats, type: PartType): number {
   const total = tool.rawStats.durability;
   if (total <= 0) return 0;
   return Math.max(0, Math.min(1, derivePart(part).stats.durability / total));
+}
+
+// ---------------------------------------------------------------------------
+// A TOOL IMPROVES WITH USE
+// ---------------------------------------------------------------------------
+
+/**
+ * THE THING THAT MAKES A TOOL YOURS.
+ *
+ * Two identical tools, cast from the same seven stones on the same afternoon,
+ * should not stay identical — the one you have actually mined with for hours
+ * should be better, and better in a way you can point at. That is the whole
+ * Tinkers feeling, and none of the mapping in steps 1-3 delivers it: parts
+ * decide what a tool IS, and until now nothing recorded what it had DONE.
+ *
+ * XP IS CELLS, not seconds and not clicks. A swing that reaches eight cells is
+ * worth eight, because that is the work the tool did; a swing at empty rock is
+ * worth nothing, because it did none. It cannot be farmed by tapping — the
+ * cells have to actually give something up, and what they give is regen-bound
+ * (pillar 2), so levelling is paced by the same ceiling everything else is.
+ *
+ * WHAT LEVELS GIVE, and the constraint that shapes the whole list: NEVER
+ * yield-per-charge. Exactly the rule step 3 was built to, for the same reason —
+ * a stat that multiplies dust per charge raises `dpsMax` and pillar 2 stops
+ * being true. So a level buys:
+ *
+ *   DURABILITY  more swings before re-seating. Maintenance, not income.
+ *   ORE SPEED   seconds off a pocket. Already capped.
+ *   REACH       one more cell every few levels, and still capped at the 3x3 —
+ *               it clears the face faster, it cannot make the face hold more.
+ *   MOD SLOTS   room to grow, which is the point of a tool you keep.
+ *
+ * THE LEVEL BELONGS TO THE TOOL AND IS NEVER LOST. Not to the parts, not to
+ * the build: re-seating a worn Core or swapping to better stock keeps every
+ * level, because it is the SAME TOOL — the doc's "you never throw it away"
+ * would be a lie if improving your tool cost you its history.
+ */
+export const LEVEL_BASE = 250;
+export const LEVEL_EXP = 1.5;
+/** Levels between extra modifier slots. */
+export const SLOT_EVERY = 5;
+/** Levels between extra cells of reach. */
+export const REACH_EVERY = 8;
+export const DURA_PER_LEVEL = 0.06;
+export const ORE_PER_LEVEL = 0.04;
+
+/** Cumulative cells that must be mined to REACH `level`. Level 1 is free. */
+export function xpForLevel(level: number): number {
+  if (level <= 1) return 0;
+  return Math.round(LEVEL_BASE * Math.pow(level - 1, LEVEL_EXP));
+}
+
+export function levelOf(xp: number): number {
+  let n = 1;
+  while (n < 999 && xp >= xpForLevel(n + 1)) n++;
+  return n;
+}
+
+export function toolLevel(state: GameState): number {
+  return levelOf(state.casting.xp ?? 0);
+}
+
+/** Everything the level readout needs, so the panel computes nothing. */
+export function levelProgress(state: GameState): {
+  level: number; into: number; need: number; frac: number; xp: number;
+} {
+  const xp = state.casting.xp ?? 0;
+  const level = levelOf(xp);
+  const from = xpForLevel(level);
+  const to = xpForLevel(level + 1);
+  const need = Math.max(1, to - from);
+  return { level, xp, into: xp - from, need, frac: Math.max(0, Math.min(1, (xp - from) / need)) };
+}
+
+export interface LevelGrants {
+  /** Multiplier on how many swings the tool has in it. */
+  durability: number;
+  /** Multiplier on the ore-work bonus (the part above 1x). */
+  oreRate: number;
+  /** Extra cells of reach, before the 3x3 cap. */
+  cells: number;
+  /** Extra modifier slots earned. */
+  slots: number;
+}
+
+export function grantsFor(level: number): LevelGrants {
+  const l = Math.max(1, level) - 1;
+  return {
+    durability: 1 + DURA_PER_LEVEL * l,
+    oreRate: 1 + ORE_PER_LEVEL * l,
+    cells: Math.floor(l / REACH_EVERY),
+    slots: Math.floor(l / SLOT_EVERY),
+  };
+}
+
+/**
+ * RECORD WHAT THE TOOL JUST DID. Called from the manual verbs with the number
+ * of cells that actually gave something up — never with swings, and never when
+ * the rock had nothing in it.
+ */
+export function gainToolXp(state: GameState, cells: number, ctx?: EngineCtx): void {
+  if (cells <= 0) return;
+  if (state.casting.tool.length === 0) return;
+  const before = toolLevel(state);
+  state.casting.xp = (state.casting.xp ?? 0) + cells;
+  const after = toolLevel(state);
+  if (after > before && ctx) {
+    ctx.emit({ type: 'toolLevelled', level: after, slots: grantsFor(after).slots });
+    ctx.dirty();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +445,13 @@ export function castingToolTier(state: GameState): number {
  */
 export function effectiveToolTier(state: GameState): number {
   return Math.max(equippedTool(state).tier, castingToolTier(state));
+}
+
+/** Modifier slots this tool holds: what its parts give, plus what use earned. */
+export function modSlotsOf(state: GameState, tool: ToolStats): { fromParts: number; fromUse: number; total: number } {
+  const fromParts = Math.floor(tool.stats.modSlots);
+  const fromUse = grantsFor(toolLevel(state)).slots;
+  return { fromParts, fromUse, total: fromParts + fromUse };
 }
 
 /** Units of the part's own material a repair costs. Maintenance is a sink. */
@@ -377,5 +508,5 @@ export function spendToolUse(state: GameState, count = 1): void {
   if (!tool) return;
   const pool = poolOf(tool);
   if (state.casting.wear >= pool) return; // already at the floor; it cannot get worse
-  state.casting.wear = Math.min(pool, state.casting.wear + wearPerUse(tool) * count);
+  state.casting.wear = Math.min(pool, state.casting.wear + wearPerUse(tool, toolLevel(state)) * count);
 }

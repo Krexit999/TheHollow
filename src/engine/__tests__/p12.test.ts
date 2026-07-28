@@ -244,17 +244,22 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(37); // the new Forge, step 3 — mining + durability
+    expect(SAVE_VERSION).toBe(38); // the crucible queue + a tool that levels
     const st = out.state as Record<string, unknown>;
-    // The casting slices arrive on a save that predates them by twenty-six
+    // The casting slices arrive on a save that predates them by twenty-seven
     // versions, which is the whole point of the chain. A returning player's
     // tool arrives FRESH — they are not billed for swings taken before the
-    // pool existed.
-    const casting = st['casting'] as { rack: unknown[]; wear: number; repairs: number };
+    // pool existed, nor credited for cells mined before levels did.
+    const casting = st['casting'] as {
+      rack: unknown[]; wear: number; repairs: number; xp: number;
+      crucible: { queue: unknown[] };
+    };
     expect(casting).toBeDefined();
     expect(casting.rack).toHaveLength(0);
     expect(casting.wear).toBe(0);
     expect(casting.repairs).toBe(0);
+    expect(casting.xp).toBe(0);
+    expect(casting.crucible.queue).toEqual([]);
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();
     expect(st['museum']).toBeDefined();

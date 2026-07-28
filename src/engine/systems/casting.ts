@@ -72,17 +72,40 @@ export interface RackPart extends Part {
   id: number;
 }
 
-export interface Crucible {
-  /** What is in it. '' when cold and empty. */
+/** One stone's worth of stock in the tub. */
+export interface Charge {
   materialId: string;
   /** Charged but not yet liquid. Melts into `molten` at MELT_RATE. */
   solid: number;
   /** Liquid, pourable now. */
   molten: number;
-  /** The weighted purity of everything charged — a melt is homogeneous, so
-   *  this is one running average rather than a per-unit ledger. */
+  /** The weighted purity of this stone's stock — one running average, because
+   *  a melt of one material is homogeneous however many times you top it up. */
   purity: number;
 }
+
+/**
+ * THE TUB HOLDS SEVERAL STONES AT ONCE, in an order you set.
+ *
+ * It used to hold exactly one, and refuse a second until you drained the first.
+ * That made "cast a Head in Marl and an Edge in Lodestone" four trips: melt,
+ * pour, drain, melt again. Nothing about that was a decision — it was
+ * bookkeeping between you and the parts you had already chosen.
+ *
+ * So charges QUEUE. Every one of them melts (they are all sitting in the same
+ * heat), and the FRONT of the queue is what a pour draws from. Click any queued
+ * stone to bring it to the front and the next cast comes out in that material.
+ * The tub's colour is the front charge's, so "what am I about to cast in" is
+ * answered by looking at it rather than by reading a list.
+ */
+export interface Crucible {
+  /** Front first. `queue[0]` is what pours. */
+  queue: Charge[];
+}
+
+/** How many distinct stones the tub will hold. Past this you are not queueing,
+ *  you are hoarding, and the panel stops being readable. */
+export const QUEUE_MAX = 6;
 
 export interface CastingState {
   /** Cast parts you hold but have not built into anything. */
@@ -100,6 +123,9 @@ export interface CastingState {
    *  shared pool (the doc's lean), and the WORN PART is what you re-seat. */
   wear: number;
   repairs: number;
+  /** CELLS this tool has mined, ever. The record of what it has DONE, as
+   *  against what its parts say it IS. Never reset — see `gainToolXp`. */
+  xp: number;
 }
 
 export function defaultCastingState(): CastingState {
@@ -107,12 +133,13 @@ export function defaultCastingState(): CastingState {
     rack: [],
     bench: {},
     tool: [],
-    crucible: { materialId: '', solid: 0, molten: 0, purity: 0 },
+    crucible: { queue: [] },
     nextId: 1,
     cast: 0,
     built: 0,
     wear: 0,
     repairs: 0,
+    xp: 0,
   };
 }
 
@@ -134,17 +161,37 @@ export function castingUnlocked(state: GameState): boolean {
 // Selectors — everything the panel needs, so the UI computes nothing
 // ---------------------------------------------------------------------------
 
-/** The two fractions a plain CSS fill bar draws. Nothing else. */
+/** What pours next. Null when the tub is cold. */
+export function frontCharge(c: Crucible): Charge | null {
+  return c.queue[0] ?? null;
+}
+
+/** Everything in the tub, front first. */
+export function queued(c: Crucible): Charge[] {
+  return c.queue;
+}
+
+/** The two fractions the fill bar draws — the FRONT charge's, because that is
+ *  the one you are about to pour. */
 export function crucibleFill(c: Crucible): { molten01: number; solid01: number } {
+  const f = frontCharge(c);
+  if (!f) return { molten01: 0, solid01: 0 };
   return {
-    molten01: Math.max(0, Math.min(1, c.molten / TUB_CAPACITY)),
-    solid01: Math.max(0, Math.min(1, c.solid / TUB_CAPACITY)),
+    molten01: Math.max(0, Math.min(1, f.molten / TUB_CAPACITY)),
+    solid01: Math.max(0, Math.min(1, f.solid / TUB_CAPACITY)),
   };
+}
+
+/** Everything the tub holds, across every charge. Capacity is shared. */
+export function tubHeld(c: Crucible): number {
+  let n = 0;
+  for (const q of c.queue) n += q.solid + q.molten;
+  return n;
 }
 
 /** Room left, in molten units. */
 export function tubRoom(c: Crucible): number {
-  return Math.max(0, TUB_CAPACITY - c.solid - c.molten);
+  return Math.max(0, TUB_CAPACITY - tubHeld(c));
 }
 
 /** How many units of material would fit right now. */
@@ -152,9 +199,10 @@ export function unitsThatFit(c: Crucible): number {
   return Math.floor(tubRoom(c) / MELT_PER_UNIT);
 }
 
-/** Can this shape be poured this instant? */
+/** Can this shape be poured this instant, out of the FRONT charge? */
 export function canCast(c: Crucible, type: PartType): boolean {
-  return c.materialId !== '' && c.molten >= partMelt(type);
+  const f = frontCharge(c);
+  return !!f && f.molten >= partMelt(type);
 }
 
 export function rackPart(state: GameState, id: number): RackPart | undefined {
@@ -198,14 +246,19 @@ export function benchComplete(state: GameState): boolean {
 // ---------------------------------------------------------------------------
 
 export function tickCasting(state: GameState, dt: number): void {
-  const c = state.casting.crucible;
-  if (c.solid <= 0) return;
-  const moved = Math.min(c.solid, MELT_RATE * dt);
-  c.solid -= moved;
-  c.molten += moved;
-  // Float dust would leave 1e-14 of solid sitting there forever, and the UI
-  // would render a hairline of un-melted stock in a tub the player emptied.
-  if (c.solid < 1e-6) c.solid = 0;
+  // EVERY CHARGE MELTS, not just the front one — they are all sitting in the
+  // same heat, and the whole point of queueing is that the second stone is
+  // ready when you want it. A queue that only melted at the front would make
+  // batching cost exactly as much waiting as not batching.
+  for (const q of state.casting.crucible.queue) {
+    if (q.solid <= 0) continue;
+    const moved = Math.min(q.solid, MELT_RATE * dt);
+    q.solid -= moved;
+    q.molten += moved;
+    // Float dust would leave 1e-14 of solid sitting there forever, and the UI
+    // would render a hairline of un-melted stock in a tub the player emptied.
+    if (q.solid < 1e-6) q.solid = 0;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -229,40 +282,61 @@ export function chargeCrucible(
 ): ActionResult {
   if (!castingUnlocked(state)) return { ok: false, reason: 'The casting floor is cold' };
   const c = state.casting.crucible;
-  const held = c.solid + c.molten;
-  if (held > 0 && c.materialId !== materialId) {
-    return {
-      ok: false,
-      reason: `${materialDef(c.materialId).name} is already in the tub — pour it off or drain it first`,
-    };
-  }
   const fits = unitsThatFit(c);
   if (fits <= 0) return { ok: false, reason: 'The tub is full' };
   const have = materialCount(state, materialId);
   if (have <= 0) return { ok: false, reason: `No ${materialDef(materialId).name} in the Hold` };
+
+  const existing = c.queue.find((q) => q.materialId === materialId);
+  if (!existing && c.queue.length >= QUEUE_MAX) {
+    return { ok: false, reason: `The tub is holding ${QUEUE_MAX} stones already` };
+  }
 
   const take = Math.max(1, Math.min(Math.floor(units), fits, have));
   const purity = consumeMaterial(state, materialId, take);
   if (purity === null) return { ok: false, reason: 'Short of material' };
 
   const added = take * MELT_PER_UNIT;
-  c.purity = held > 0 ? (c.purity * held + purity * added) / (held + added) : purity;
-  c.materialId = materialId;
-  c.solid += added;
+  if (existing) {
+    // TOPPING UP THE SAME STONE, so it stays ONE charge rather than becoming a
+    // second queue entry that looks like a different material at a glance.
+    const held = existing.solid + existing.molten;
+    existing.purity = held > 0 ? (existing.purity * held + purity * added) / (held + added) : purity;
+    existing.solid += added;
+  } else {
+    c.queue.push({ materialId, solid: added, molten: 0, purity });
+  }
 
   ctx.emit({ type: 'crucibleCharged', materialId, units: take, molten: added });
   ctx.dirty();
-  return { ok: true, data: { units: take, molten: added } };
+  return { ok: true, data: { units: take, molten: added, queued: c.queue.length } };
+}
+
+/**
+ * BRING A QUEUED STONE TO THE FRONT — the whole reason the queue exists. The
+ * next pour comes out in this material, and the tub changes colour to say so.
+ * Moving a charge is free and instant: it is a change of mind, not a craft, and
+ * charging it a cost would just push players back to draining and re-melting.
+ */
+export function bringToFront(state: GameState, ctx: EngineCtx, index: number): ActionResult {
+  const c = state.casting.crucible;
+  if (index < 0 || index >= c.queue.length) return { ok: false, reason: 'Nothing there' };
+  if (index === 0) return { ok: false, reason: 'Already next' };
+  const [moved] = c.queue.splice(index, 1);
+  c.queue.unshift(moved!);
+  ctx.dirty();
+  return { ok: true, data: { materialId: moved!.materialId } };
 }
 
 /** Empty the tub. It is a loss, and the button says so — the alternative is
  *  stranding a player who charged the wrong stone with no way back. */
-export function drainCrucible(state: GameState, ctx: EngineCtx): ActionResult {
+export function drainCrucible(state: GameState, ctx: EngineCtx, index = 0): ActionResult {
   const c = state.casting.crucible;
-  if (c.solid + c.molten <= 0) return { ok: false, reason: 'Nothing in it' };
-  state.casting.crucible = { materialId: '', solid: 0, molten: 0, purity: 0 };
+  if (c.queue.length === 0) return { ok: false, reason: 'Nothing in it' };
+  const at = Math.max(0, Math.min(index, c.queue.length - 1));
+  const [gone] = c.queue.splice(at, 1);
   ctx.dirty();
-  return { ok: true };
+  return { ok: true, data: { materialId: gone!.materialId } };
 }
 
 // ---------------------------------------------------------------------------
@@ -278,28 +352,29 @@ export function castPart(state: GameState, ctx: EngineCtx, type: PartType): Acti
   if (!castingUnlocked(state)) return { ok: false, reason: 'The casting floor is cold' };
   if (!PART_TYPES.includes(type)) return { ok: false, reason: 'No such cast' };
   const c = state.casting.crucible;
-  if (c.materialId === '') return { ok: false, reason: 'The tub is empty' };
+  const front = frontCharge(c);
+  if (!front) return { ok: false, reason: 'The tub is empty' };
   const want = partMelt(type);
-  if (c.molten < want) {
-    const waiting = c.solid > 0;
+  if (front.molten < want) {
+    const waiting = front.solid > 0;
     return {
       ok: false,
-      reason: waiting ? 'Still melting' : `Needs ${want} melt, ${Math.floor(c.molten)} in the tub`,
+      reason: waiting ? 'Still melting' : `Needs ${want} melt, ${Math.floor(front.molten)} in the tub`,
     };
   }
 
-  c.molten -= want;
+  front.molten -= want;
   const part: RackPart = {
     id: state.casting.nextId++,
     type,
-    materialId: c.materialId,
-    purity: Math.max(1, Math.min(100, Math.round(c.purity))),
+    materialId: front.materialId,
+    purity: Math.max(1, Math.min(100, Math.round(front.purity))),
   };
   state.casting.rack.push(part);
   state.casting.cast += 1;
-  // The tub keeps its material while anything is left in it, so a run of casts
-  // off one melt does not need re-selecting between pours.
-  if (c.solid + c.molten <= 0) c.materialId = '';
+  // A SPENT CHARGE LEAVES THE QUEUE, so the next stone comes forward on its own
+  // and a run of casts never stalls on an empty entry nobody thought to clear.
+  if (front.solid + front.molten <= 1e-9) c.queue.shift();
 
   ctx.emit({ type: 'partCast', partType: type, materialId: part.materialId, purity: part.purity });
   ctx.dirty();
@@ -330,19 +405,22 @@ export function meltBack(state: GameState, ctx: EngineCtx, partId: number): Acti
     return { ok: false, reason: 'It is on the station — take it off first' };
   }
   const c = state.casting.crucible;
-  const held = c.solid + c.molten;
-  if (held > 0 && c.materialId !== part.materialId) {
-    return {
-      ok: false,
-      reason: `${materialDef(c.materialId).name} is in the tub — pour it off first`,
-    };
-  }
   const back = Math.round(partMelt(part.type) * MELT_BACK_SHARE * 10) / 10;
   if (tubRoom(c) < back) return { ok: false, reason: 'No room in the tub' };
 
-  c.purity = held > 0 ? (c.purity * held + part.purity * back) / (held + back) : part.purity;
-  c.materialId = part.materialId;
-  c.molten += back;
+  // It goes back to its OWN stone's charge, or opens one. The queue is what
+  // makes this simple — it no longer has to argue with whatever is in the tub.
+  const own = c.queue.find((q) => q.materialId === part.materialId);
+  if (own) {
+    const held = own.solid + own.molten;
+    own.purity = held > 0 ? (own.purity * held + part.purity * back) / (held + back) : part.purity;
+    own.molten += back;
+  } else {
+    if (c.queue.length >= QUEUE_MAX) {
+      return { ok: false, reason: `The tub is holding ${QUEUE_MAX} stones already` };
+    }
+    c.queue.push({ materialId: part.materialId, solid: 0, molten: back, purity: part.purity });
+  }
   state.casting.rack = state.casting.rack.filter((p) => p.id !== partId);
 
   ctx.emit({ type: 'partMelted', partType: part.type, materialId: part.materialId, molten: back });

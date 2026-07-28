@@ -394,10 +394,45 @@ export class FaceView {
   // Layout + tiles
   // -------------------------------------------------------------------------
 
+  /**
+   * A HOST THIS SMALL IS NOT A LAYOUT, IT IS A MEASUREMENT IN PROGRESS.
+   *
+   * Below this the ResizeObserver is reporting a transient — a sibling's height
+   * changing, a panel mounting, a phone's URL bar sliding — and there is
+   * nothing meaningful to fit a grid into. See `layout`.
+   */
+  private static readonly MIN_HOST_PX = 48;
+
+  /**
+   * THE GRID FLASHING EMPTY, and it was this.
+   *
+   * `cellSize` is floored at 20 so a tile never vanishes — but `gridX/gridY`
+   * were then computed by CENTRING that floored grid in whatever the host
+   * measured. When the host is briefly tiny the two disagree violently:
+   * measured at a 2px-tall host, cellSize held at 20 while gridY came out at
+   *
+   *     (2 - 20 x 6) / 2 + 4  =  -55
+   *
+   * so every tile was positioned above the top edge and the face went blank.
+   * The next resize laid it out correctly again — which is exactly why it read
+   * as a FLASH rather than a broken screen, and why it repeated: anything that
+   * makes a sibling's height wobble (a status line wrapping to two lines, a
+   * hint appearing, a toast) fires the observer twice.
+   *
+   * Two guards, because the two failures are different:
+   *   1. A DEGENERATE host is ignored outright and the last good layout stands.
+   *      Fitting a grid to 2 pixels has no right answer; keeping the previous
+   *      one does.
+   *   2. The grid origin is CLAMPED to the canvas. A host that is small but
+   *      real (a short phone hero) now shows the top-left of the grid instead
+   *      of centring it out of view — cramped, which is honest, rather than
+   *      absent, which looks broken.
+   */
   private layout(): void {
     if (!this.app?.renderer) return;
     this.app.resize(); // re-measure the host before fitting the grid
     const { width, height } = this.app.screen;
+    if (width < FaceView.MIN_HOST_PX || height < FaceView.MIN_HOST_PX) return;
     const pad = 18;
     const size = Math.min(
       (width - pad * 2) / this.faceW,
@@ -405,8 +440,8 @@ export class FaceView {
       72,
     );
     this.cellSize = Math.max(20, size);
-    this.gridX = (width - this.cellSize * this.faceW) / 2;
-    this.gridY = (height - this.cellSize * this.faceH) / 2 + 4;
+    this.gridX = Math.max(0, (width - this.cellSize * this.faceW) / 2);
+    this.gridY = Math.max(0, (height - this.cellSize * this.faceH) / 2 + 4);
     this.tiles.forEach((tile, i) => {
       const x = i % this.faceW;
       const y = Math.floor(i / this.faceW);

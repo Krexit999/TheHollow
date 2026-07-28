@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 37;
+export const SAVE_VERSION = 38;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -858,6 +858,36 @@ export const MIGRATIONS: Record<number, Migration> = {
     casting['wear'] ??= 0;
     casting['repairs'] ??= 0;
     return { ...p, version: 37, state };
+  },
+
+  /**
+   * v38 — the crucible became a QUEUE, and the tool started keeping a record.
+   *
+   * The tub used to be one charge: { materialId, solid, molten, purity }. It is
+   * now { queue: [charge, ...] }. A save mid-melt must not lose the stone that
+   * was in it, so the old shape is lifted into the queue's front rather than
+   * dropped — somebody was three seconds from a pour when they closed the tab.
+   */
+  37: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    casting['xp'] ??= 0;
+    const old = casting['crucible'] as Record<string, unknown> | undefined;
+    if (old && !Array.isArray(old['queue'])) {
+      const held = Number(old['solid'] ?? 0) + Number(old['molten'] ?? 0);
+      casting['crucible'] = {
+        queue: old['materialId'] && held > 0
+          ? [{
+            materialId: old['materialId'],
+            solid: Number(old['solid'] ?? 0),
+            molten: Number(old['molten'] ?? 0),
+            purity: Number(old['purity'] ?? 50),
+          }]
+          : [],
+      };
+    }
+    casting['crucible'] ??= { queue: [] };
+    return { ...p, version: 38, state };
   },
 };
 
