@@ -35,7 +35,7 @@
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { PART_TYPES, type PartType } from '../content/forgeParts';
 import {
-  assembleTool, partMelt, type Part, type ToolStats,
+  assembleTool, derivePart, partMelt, type Part, type ToolStats,
 } from './forgeParts';
 import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
@@ -96,6 +96,10 @@ export interface CastingState {
   /** Lifetime counters — flavour, and the panel's "you have done this" line. */
   cast: number;
   built: number;
+  /** STEP 3: how much the tool has been used, against `poolOf(tool)`. One
+   *  shared pool (the doc's lean), and the WORN PART is what you re-seat. */
+  wear: number;
+  repairs: number;
 }
 
 export function defaultCastingState(): CastingState {
@@ -107,6 +111,8 @@ export function defaultCastingState(): CastingState {
     nextId: 1,
     cast: 0,
     built: 0,
+    wear: 0,
+    repairs: 0,
   };
 }
 
@@ -339,6 +345,26 @@ export function buildTool(state: GameState, ctx: EngineCtx): ActionResult {
   const returned = state.casting.tool;
   state.casting.rack = state.casting.rack.filter((p) => !taken.has(p.id));
   for (const p of returned) state.casting.rack.push(p);
+
+  /**
+   * WEAR CARRIES OVER IN PROPORTION TO WHAT DID NOT CHANGE — and this is a
+   * closed loophole, not a flourish. Rebuilding does not consume anything (the
+   * old parts come straight back to the rack), so "building resets wear" would
+   * have made Combine a free, infinite repair: take the tool apart, put the
+   * same seven pieces back, mine forever.
+   *
+   * Carrying by DURABILITY SHARE makes the honest version fall out for free.
+   * Re-seat the same seven and nothing is forgiven. Swap the Core — most of
+   * the pool — and most of the wear goes with it, which is exactly the doc's
+   * "repair by re-casting the worn part". Swap the Grip and you have repaired
+   * almost nothing, because a grip was never holding much up.
+   */
+  const kept = new Set(returned.map((p) => p.id));
+  const before = assembleTool(parts).rawStats.durability;
+  let keptDur = 0;
+  for (const p of parts) if (kept.has(p.id)) keptDur += derivePart(p).stats.durability;
+  const carry = before > 0 ? keptDur / before : 0;
+  state.casting.wear = Math.max(0, state.casting.wear * carry);
 
   state.casting.tool = parts;
   state.casting.bench = {};

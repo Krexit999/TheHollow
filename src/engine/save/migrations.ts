@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 36;
+export const SAVE_VERSION = 37;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -841,9 +841,23 @@ export const MIGRATIONS: Record<number, Migration> = {
     state['casting'] ??= {
       rack: [], bench: {}, tool: [],
       crucible: { materialId: '', solid: 0, molten: 0, purity: 0 },
-      nextId: 1, cast: 0, built: 0,
+      nextId: 1, cast: 0, built: 0, wear: 0, repairs: 0,
     };
     return { ...p, version: 36, state };
+  },
+
+  /**
+   * v37 — THE NEW FORGE, step 3. The tool meets the rock and starts wearing.
+   * A save from v36 has a tool but no pool behind it; it arrives FRESH rather
+   * than at some notional accumulated wear, because charging a player for
+   * swings they took before the mechanic existed is a bill for nothing.
+   */
+  36: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    casting['wear'] ??= 0;
+    casting['repairs'] ??= 0;
+    return { ...p, version: 37, state };
   },
 };
 

@@ -71,6 +71,7 @@ import {
   benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
 } from './systems/casting';
 import { PART_TYPES, type PartType } from './content/forgeParts';
+import { repairTool } from './systems/toolMining';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
 import { practiceRunes } from './content/shell4/runes';
@@ -647,6 +648,10 @@ export function handleAction(
       return buildTool(state, ctx);
     case 'breakDownTool':
       return breakDownTool(state, ctx);
+    case 'repairTool':
+      return PART_TYPES.includes(action.partType as PartType)
+        ? repairTool(state, ctx, action.partType as PartType)
+        : { ok: false, reason: 'No such part' };
 
     case 'salvageTool':
       return salvageTool(state, ctx, action.toolId, action.extract);

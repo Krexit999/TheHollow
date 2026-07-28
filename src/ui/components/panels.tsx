@@ -24,6 +24,9 @@ import { ROMAN as ROMAN_G } from '../../engine/content/drillAlloys';
 import { oreCount } from '../../engine/systems/ores';
 import { oreDef, oreOddsHint } from '../../engine/content/ores';
 import { materialCount } from '../../engine/systems/forge';
+import { currentTool } from '../../engine/systems/casting';
+import { effectOf, isBroken, wear01, wornPart } from '../../engine/systems/toolMining';
+import { PART_DEFS } from '../../engine/content/forgeParts';
 import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
@@ -130,6 +133,55 @@ function useFreshMods() {
 // Dig — face upgrades + production stats
 // ---------------------------------------------------------------------------
 
+/**
+ * WHAT IS IN YOUR HAND, WHERE YOU ARE USING IT.
+ *
+ * Durability is only a decision if you meet it at the face rather than in the
+ * room where tools are made. One line: what it reaches, how much life is in it,
+ * and — when it has gone — that it is broken and still working. It is absent
+ * entirely for a player who has not built one, because bare hands are a
+ * complete way to play (pillar 1) and a permanently empty slot reads as a
+ * missing requirement rather than an option not taken.
+ */
+function InHandStrip({ state }: { state: GameState }) {
+  const tool = currentTool(state);
+  if (!tool) return null;
+  const broken = isBroken(state, tool);
+  const e = effectOf(tool, broken);
+  const w = wear01(state, tool);
+  const worn = wornPart(tool);
+  return (
+    <button
+      className="panel flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:border-cave-600"
+      data-testid="in-hand"
+      onClick={() => useGame.getState().setTab('casting')}
+    >
+      <span className="shrink-0 text-[10px] uppercase tracking-widest text-cave-500">In hand</span>
+      <span className="min-w-0 flex-1">
+        <span className="tnum text-[11px] text-cave-200">
+          {e.cells} cell{e.cells === 1 ? '' : 's'} · {Math.round(e.splash * 100)}% · {e.oreRate.toFixed(1)}× ore
+        </span>
+        <span className="mt-0.5 block h-1 w-full overflow-hidden rounded-full bg-cave-950">
+          <span
+            className="block h-full"
+            style={{
+              width: `${(1 - w) * 100}%`,
+              background: broken ? '#7a4a4a' : w > 0.7 ? '#e0b054' : '#9ab87a',
+            }}
+          />
+        </span>
+      </span>
+      <span
+        className="shrink-0 text-[10px] uppercase tracking-wider"
+        style={{ color: broken ? '#d8a0a0' : w > 0.7 ? '#e0b054' : '#8a7f70' }}
+        data-testid="in-hand-state"
+      >
+        {broken ? 'broken' : worn ? `${PART_DEFS[worn].name} giving` : 'sound'}
+      </span>
+    </button>
+  );
+}
+
 export function DigPanel() {
   const state = useGame((s) => s.state);
   const m = useFreshMods();
@@ -150,6 +202,7 @@ export function DigPanel() {
   return (
     <div className="space-y-2">
       <FieldStats state={state as GameState} m={m} />
+      <InHandStrip state={state as GameState} />
       {spammable && (
         <div className="flex justify-end">
           <BulkControl />

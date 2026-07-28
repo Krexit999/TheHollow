@@ -22,6 +22,7 @@ import type { EngineCtx, GameState, ActionResult } from '../types';
 import type { ModifierCache } from '../modifiers';
 import { D } from '../decimal';
 import { cellCap, harvestCell } from './face';
+import { spendToolUse, toolEffect } from './toolMining';
 import { rollForOre } from './drops';
 import { runChipMult } from '../signatures';
 import { currentShell } from '../shells';
@@ -371,8 +372,21 @@ export function workOre(
   if (!def) return { ok: false, reason: 'No pocket there' };
   const dug = digArray(state);
   const before = dug[cell] ?? 0;
-  const after = Math.min(def.digSec, before + Math.max(0, seconds));
+  /**
+   * ORESPEED, WHERE IT BELONGS (step 3). The doc calls the Edge "the ore
+   * specialist (player's ask: ore speed)", and this hold-gesture is the only
+   * place in the game where working a pocket by hand costs TIME. So the stat
+   * buys seconds, not charge: a good Edge opens the same pocket for the same
+   * yield in a fraction of the attention.
+   *
+   * Pillar 2 is untouched by construction — `digComplete` still gates on the
+   * same `digSec`, and the pocket still pays out through the same `openOre`.
+   * Bare hands run at exactly 1x, as they always did.
+   */
+  const rate = toolEffect(state).oreRate;
+  const after = Math.min(def.digSec, before + Math.max(0, seconds) * rate);
   dug[cell] = after;
+  if (after > before) spendToolUse(state, 1);
   if (after < def.digSec) {
     return { ok: true, data: { done: false, progress: after / def.digSec } };
   }

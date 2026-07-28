@@ -244,12 +244,17 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(36); // the new Forge, step 2 — casting + station
+    expect(SAVE_VERSION).toBe(37); // the new Forge, step 3 — mining + durability
     const st = out.state as Record<string, unknown>;
-    // The v36 slice arrives on a save that predates it by twenty-five
-    // versions, which is the whole point of the chain.
-    expect(st['casting']).toBeDefined();
-    expect((st['casting'] as { rack: unknown[] }).rack).toHaveLength(0);
+    // The casting slices arrive on a save that predates them by twenty-six
+    // versions, which is the whole point of the chain. A returning player's
+    // tool arrives FRESH — they are not billed for swings taken before the
+    // pool existed.
+    const casting = st['casting'] as { rack: unknown[]; wear: number; repairs: number };
+    expect(casting).toBeDefined();
+    expect(casting.rack).toHaveLength(0);
+    expect(casting.wear).toBe(0);
+    expect(casting.repairs).toBe(0);
     expect(st['spiral']).toBeDefined();
     expect(st['relics']).toBeDefined();
     expect(st['museum']).toBeDefined();

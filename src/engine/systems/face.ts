@@ -19,6 +19,7 @@ import { rollForDrop } from './drops';
 import { recordChipForFigures } from './figures';
 import { logImplementUse } from './affinity';
 import { equippedTool } from './forge';
+import { spendToolUse, toolEffect } from './toolMining';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
@@ -275,8 +276,35 @@ export function neighbors(state: GameState, cell: number): number[] {
 }
 
 /**
+ * THE CELLS A SWING REACHES, nearest first — orthogonal before diagonal, so a
+ * small tool spreads in a cross and a big one fills the 3x3 around the strike.
+ * Deterministic: the same swing on the same cell touches the same rock, because
+ * a reach that wandered would make the tool impossible to aim.
+ */
+export function reachFrom(state: GameState, cell: number, want: number): number[] {
+  if (want <= 0) return [];
+  const { w, h } = state.face;
+  const x = cell % w;
+  const y = Math.floor(cell / w);
+  const out: number[] = [];
+  const RINGS: Array<[number, number]> = [
+    [0, -1], [-1, 0], [1, 0], [0, 1],      // orthogonal
+    [-1, -1], [1, -1], [-1, 1], [1, 1],    // diagonal
+  ];
+  for (const [dx, dy] of RINGS) {
+    if (out.length >= want) break;
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+    out.push(ny * w + nx);
+  }
+  return out;
+}
+
+/**
  * A manual chip: takes the cell's full charge, may crit (Heavy Hands skill),
- * may fracture into neighbors (Fault Lines core node). Grants XP.
+ * may fracture into neighbors (Fault Lines core node), and REACHES past it if
+ * the player is carrying a tool. Grants XP.
  */
 export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx, cell: number): ChipResult {
   if (cell < 0 || cell >= state.face.cells.length) {
@@ -317,10 +345,45 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     if (fractured.length > 0) ctx.emit({ type: 'fracture', cells: fractured });
   }
 
+  /**
+   * THE TOOL (step 3). A swing reaches past the cell it landed on: CADENCE
+   * decides how many more it touches, BITE how much of each it takes.
+   *
+   * IT IS REACH, NOT YIELD, and that is the whole pillar-2 argument. Every
+   * extra cell goes through `harvestCell` — the same funnel the drills and the
+   * abilities use — so each take is `min(share, what the cell holds)` and no
+   * tool can pull charge the field has not grown. A better tool clears the face
+   * faster; the face still holds exactly W x H x regen.
+   *
+   * Bare hands take this branch with `cells: 1` and do nothing at all, so a
+   * player with no tool mines exactly as they did before this existed
+   * (pillar 1).
+   */
+  const tool = toolEffect(state);
+  let splashCharge = 0;
+  const reached: number[] = [];
+  if (tool.cells > 1 && tool.splash > 0) {
+    for (const n of reachFrom(state, cell, tool.cells - 1)) {
+      // A pocket is immune to a swing, the same as it is to the first strike.
+      if (state.face.ore?.[n]) continue;
+      const r = harvestCell(state, mods, n, tool.splash, D(1));
+      if (r.charge > 0) {
+        totalDust = totalDust.add(r.dust);
+        splashCharge += r.charge;
+        fractured.push(n);
+        reached.push(n);
+      }
+    }
+    if (reached.length > 0) ctx.emit({ type: 'fracture', cells: reached });
+  }
+  if (tool.hasTool) spendToolUse(state, 1);
+
   state.stats.manualChips += 1;
   // XP scales with charge harvested and depth — see chipXP in DESIGN appendix.
-  grantXP(state, mods, ctx, D(0.7 * (1 + 0.08 * state.depth) * (charge / BASE_CAP)));
-  rollForDrop(state, mods, ctx, charge, 1);
+  grantXP(state, mods, ctx, D(0.7 * (1 + 0.08 * state.depth) * ((charge + splashCharge) / BASE_CAP)));
+  // CONTROL leans the drop roll and nothing else. Drops are outside the charge
+  // economy, which is exactly why it is the only stat allowed a multiplier.
+  rollForDrop(state, mods, ctx, charge + splashCharge, tool.dropWeight);
   rollForEncounter(state, ctx, charge, 1);
   // FIGURES (v20): a chip that completes a traced shape pays a ceiling-free bonus
   // (XP + a drop roll + stamina) and records the figure in the Codex. Never Dust.
@@ -364,6 +427,11 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
   }
   if (swept.length > 0) {
     state.face.stamina = Math.max(0, state.face.stamina - swept.length * SWEEP_COST_PER_CELL);
+    // A sweep is nine swings in one gesture, so it is nine swings of wear. The
+    // sweep is ergonomics, not a way to mine for free — and it does NOT get the
+    // tool's reach on top, because a swathe that also splashed would be reach
+    // twice over.
+    spendToolUse(state, swept.length);
     state.stats.manualChips += swept.length;
     grantXP(state, mods, ctx, D(0.5 * swept.length * (1 + 0.08 * state.depth)));
     rollForDrop(state, mods, ctx, swept.length * 2, 1);

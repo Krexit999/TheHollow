@@ -1320,7 +1320,8 @@ export type GameEvent =
   // --- THE NEW FORGE, step 2: casting and the tool station ---------------
   | { type: 'crucibleCharged'; materialId: string; units: number; molten: number }
   | { type: 'partCast'; partType: string; materialId: string; purity: number }
-  | { type: 'toolBuilt'; coherence: number; rockRate: number };
+  | { type: 'toolBuilt'; coherence: number; rockRate: number }
+  | { type: 'toolRepaired'; partType: string; materialId: string };
 
 export type GameEventType = GameEvent['type'];
 
@@ -1543,6 +1544,7 @@ export type GameAction =
   | { type: 'benchClear'; partType: string }
   | { type: 'buildTool' }
   | { type: 'breakDownTool' }
+  | { type: 'repairTool'; partType: string }
   | { type: 'debug'; op: 'unlockAll' };
 
 export interface ActionResult {

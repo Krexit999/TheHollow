@@ -27,6 +27,11 @@ import {
   MELT_PER_UNIT, TUB_CAPACITY, FULL_SET_MELT, benchComplete, benchPreview, canCast,
   crucibleFill, currentTool, rackPart, unitsThatFit,
 } from '../../engine/systems/casting';
+import {
+  BROKEN_SHARE, REPAIR_UNITS, effectOf, isBroken, repairShare, usesLeft, usesOf,
+  wear01, wornPart,
+} from '../../engine/systems/toolMining';
+import { materialCount } from '../../engine/systems/forge';
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
 import { Select } from './Select';
@@ -457,6 +462,115 @@ function Station({ state }: { state: GameState }) {
  * decision you can take back, which is what "you never throw it away" has to
  * mean mechanically.
  */
+/**
+ * DURABILITY, AND THE PART THAT IS GIVING.
+ *
+ * The doc's promise is that a tool is never lost, so the failure state has to
+ * read as MAINTENANCE rather than as loss: the bar goes red, the tool keeps
+ * working at a quarter strength, and the fix is named with its price attached.
+ * A player should never have to work out what to do about it.
+ *
+ * WHICH PART is the whole point of the readout — "a brittle edge needs
+ * re-casting often" is only a tradeoff if the game tells you which edge.
+ */
+function Durability({ state, tool }: { state: GameState; tool: ToolStats }) {
+  const broken = isBroken(state, tool);
+  const w = wear01(state, tool);
+  const worn = wornPart(tool);
+  const left = usesLeft(state, tool);
+  const part = worn ? tool.parts.find((p) => p.type === worn) : undefined;
+  const have = part ? materialCount(state, part.materialId) : 0;
+  const canRepair = !!part && have >= REPAIR_UNITS && state.casting.wear > 0;
+  const back = worn ? Math.round(repairShare(tool, worn) * 100) : 0;
+
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 bg-cave-900/60 p-2" data-testid="durability">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Condition</span>
+        <span
+          className="tnum text-[11px] font-semibold"
+          style={{ color: broken ? '#d8a0a0' : w > 0.7 ? '#e0b054' : '#9ab87a' }}
+          data-testid="durability-state"
+        >
+          {broken ? 'BROKEN' : `${left} swings left`}
+        </span>
+      </div>
+      <div className="mt-1 h-2 w-full overflow-hidden rounded-full border border-cave-700 bg-cave-950">
+        <div
+          className="h-full transition-[width] duration-300"
+          style={{
+            width: `${(1 - w) * 100}%`,
+            background: broken ? '#7a4a4a' : w > 0.7 ? '#e0b054' : '#9ab87a',
+          }}
+          data-testid="durability-bar"
+        />
+      </div>
+      <div className="mt-1 tnum text-[10px] text-cave-500">
+        {usesOf(tool)} swings when whole
+        {worn && <> · the <span className="text-cave-300">{PART_DEFS[worn].name}</span> is what is giving</>}
+      </div>
+      {broken && (
+        <p className="mt-1 text-[10px] italic leading-snug text-[#d8a0a0]" data-testid="broken-note">
+          It still works — it keeps about {Math.round(BROKEN_SHARE * 100)}% of what it does, and it
+          will never be worse than your hands. It is not lost. It wants seeing to.
+        </p>
+      )}
+      {part && (
+        <button
+          className="btn mt-1.5 w-full py-1 text-[11px]"
+          disabled={!canRepair}
+          data-testid="repair"
+          onClick={() => dispatch({ type: 'repairTool', partType: part.type })}
+        >
+          {state.casting.wear <= 0
+            ? 'Nothing to put right'
+            : have < REPAIR_UNITS
+              ? `Needs ${REPAIR_UNITS} ${materialDef(part.materialId).name} — you have ${have}`
+              : `Re-seat the ${PART_DEFS[part.type].name} · ${REPAIR_UNITS} ${materialDef(part.materialId).name} · gives back ${back}%`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * WHAT IT DOES WHEN YOU SWING IT. The stat block above says what the tool IS;
+ * this says what it DOES, in the units the player experiences — cells touched,
+ * how much of each, how fast a pocket comes open. Bare-hands values are printed
+ * alongside so "meaningfully better than bare clicking" is a comparison rather
+ * than a claim.
+ */
+function AtTheFace({ state, tool }: { state: GameState; tool: ToolStats }) {
+  const e = effectOf(tool, isBroken(state, tool));
+  const rows: Array<[string, string, string]> = [
+    ['Cells a swing touches', `${e.cells}`, '1'],
+    ['Taken from each extra', `${Math.round(e.splash * 100)}%`, '—'],
+    ['Pocket work', `${e.oreRate.toFixed(1)}×`, '1.0×'],
+    ['What else it turns up', `${e.dropWeight.toFixed(2)}×`, '1.00×'],
+  ];
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="at-the-face">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">At the face</span>
+        <span className="text-[9px] uppercase tracking-wider text-cave-600">vs bare hands</span>
+      </div>
+      {rows.map(([label, mine, bare]) => (
+        <div key={label} className="flex items-baseline justify-between gap-2 border-b border-cave-850 py-0.5">
+          <span className="truncate text-[10px] text-cave-400">{label}</span>
+          <span className="tnum shrink-0 text-[10px]">
+            <span className="text-cave-200">{mine}</span>
+            <span className="text-cave-600"> / {bare}</span>
+          </span>
+        </div>
+      ))}
+      <p className="mt-1 text-[10px] italic leading-snug text-cave-500">
+        It clears the face faster. It cannot make the face hold more — the rock grows what it
+        grows, and a swing only ever takes what is there.
+      </p>
+    </div>
+  );
+}
+
 function YourTool({ state }: { state: GameState }) {
   const tool = currentTool(state);
   if (!tool) {
@@ -480,15 +594,13 @@ function YourTool({ state }: { state: GameState }) {
         ))}
       </div>
       <CoherenceReadout tool={tool} testid="tool-coherence" />
+      <Durability state={state} tool={tool} />
+      <AtTheFace state={state} tool={tool} />
       <StatGrid stats={tool.stats} testid="tool-stats" />
       <div className="mt-1.5 flex items-baseline justify-between tnum text-[10px]">
         <span className="text-cave-500">Rock rate <span className="text-cave-200">{n0(tool.rockRate)}</span></span>
         <span className="text-cave-500">Ore rate <span className="text-cave-200">{n0(tool.oreRate)}</span></span>
       </div>
-      <p className="mt-1.5 text-[10px] italic leading-snug text-cave-500">
-        It does not swing at anything yet — the tool meets the rock in a later step. What it is
-        made of is settled here.
-      </p>
       <button
         className="btn mt-1.5 w-full py-1 text-[11px]"
         data-testid="breakdown"
