@@ -73,7 +73,7 @@ export const SIM_STEP = 0.1; // 100ms fixed timestep (locked)
 const UNDO_WINDOW_MS = 12_000;
 const UNDOABLE = new Set<string>([
   'buyUpgrade', 'upgradeDrill', 'buyLatticeRing', 'placeMotif', 'upgradeMotif',
-  'craftTool', 'craftFromParts', 'replacePart', 'beginCraft', 'delegateCraft', 'craftGear',
+  'craftTool', 'craftFromParts', 'beginCraft', 'delegateCraft', 'craftGear',
   'crackGeode', 'buyResonantMemory', 'confluenceBuySlot', 'confluenceBuyRank',
   'buyMagnet', 'pourAlloy', 'castBinding', 'socketAlloy', 'socketGem',
   'buyFoundrySlot', 'installModule', 'buyStock', 'hire', 'plantSeed', 'inoculate',

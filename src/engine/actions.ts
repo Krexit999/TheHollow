@@ -30,7 +30,7 @@ import {
 } from './content/shell1/latticeSystem';
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
-import { craftTool, discardTool, socketAlloy, socketGem, craftFromParts, replacePart, consumeMaterial, materialCount, addMaterial } from './systems/forge';
+import { craftTool, craftFromParts, discardTool, socketAlloy, socketGem, consumeMaterial, materialCount, addMaterial } from './systems/forge';
 import { forgeDrillAlloy, clearDrillAlloy, fireNow } from './systems/drillAlloys';
 import { digComplete, openOre, workOre } from './systems/ores';
 import { lightOverstoke } from './systems/kiln';
@@ -69,6 +69,7 @@ import { produceExport } from './content/exports';
 import { refine, transmute } from './systems/refinery';
 import {
   benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
+  meltBack,
 } from './systems/casting';
 import { PART_TYPES, type PartType } from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
@@ -342,15 +343,6 @@ export function handleAction(
       return { ok: true };
     }
 
-    case 'craftTool':
-      return craftTool(state, mods, ctx, action.recipeId, action.refined ?? false);
-
-    case 'craftFromParts':
-      return craftFromParts(state, mods, ctx, action.tier, action.head, action.haft, action.binding);
-
-    case 'replacePart':
-      return replacePart(state, ctx, action.toolId, action.slot, action.materialId);
-
     case 'beginCraft':
       return beginCraft(state, ctx, action.act, action.context);
 
@@ -375,6 +367,12 @@ export function handleAction(
 
     case 'socketGem':
       return socketGem(state, ctx, action.toolId, action.slot, action.gemId);
+
+    case 'craftTool':
+      return craftTool(state, mods, ctx, action.recipeId, action.refined ?? false);
+
+    case 'craftFromParts':
+      return craftFromParts(state, mods, ctx, action.tier, action.head, action.haft, action.binding);
 
     case 'discardTool':
       return discardTool(state, ctx, action.toolId);
@@ -648,6 +646,8 @@ export function handleAction(
       return buildTool(state, ctx);
     case 'breakDownTool':
       return breakDownTool(state, ctx);
+    case 'meltBack':
+      return meltBack(state, ctx, action.partId);
     case 'repairTool':
       return PART_TYPES.includes(action.partType as PartType)
         ? repairTool(state, ctx, action.partType as PartType)
@@ -1102,24 +1102,6 @@ export function handleAction(
 
     case 'setConfirmSpendFrac': {
       state.qol.confirmSpendFrac = Math.max(0, Math.min(1, action.frac));
-      return { ok: true };
-    }
-
-    case 'saveBlueprint': {
-      const id = nextQolId(state.qol.blueprints, 'bp');
-      state.qol.blueprints.push({
-        id,
-        name: action.name.trim() || `Design ${state.qol.blueprints.length + 1}`,
-        tier: action.tier,
-        head: action.head,
-        haft: action.haft,
-        binding: action.binding,
-      });
-      return { ok: true, data: { id } };
-    }
-
-    case 'deleteBlueprint': {
-      state.qol.blueprints = state.qol.blueprints.filter((b) => b.id !== action.id);
       return { ok: true };
     }
 

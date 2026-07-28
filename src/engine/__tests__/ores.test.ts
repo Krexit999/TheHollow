@@ -540,3 +540,126 @@ describe('the pillars and the reach rule', () => {
     expect(s.face.oreSeen).toEqual(['fatseam']);
   });
 });
+
+// ---------------------------------------------------------------------------
+// A DRILL THAT STARTS A POCKET FINISHES IT
+// ---------------------------------------------------------------------------
+
+/**
+ * REINFORCEMENT, NOT A NEW RULE. `tickDrills` has always released a pocket for
+ * exactly one reason — it is not there any more — but "the machine wandered off
+ * my half-dug ore" is the kind of claim that is easy to believe and expensive
+ * to be wrong about, because the time was already spent and bought nothing.
+ *
+ * So it is pinned here against the things that WOULD plausibly distract a
+ * machine: a fatter pocket appearing next door, a wall of bare rock going to
+ * cap, a zone change, a priority change, and the whole bay competing.
+ */
+describe('a drill locks onto a pocket and stays until it is finished', () => {
+  const richFace = (s: GameState) => {
+    s.face.cells = s.face.cells.map(() => 8);
+    s.face.ore = new Array(s.face.cells.length).fill('');
+    s.face.oreDug = new Array(s.face.cells.length).fill(0);
+  };
+
+  it('holds the same cell every tick from claim to open', () => {
+    const { s } = fresh();
+    s.drills.bayBuilt = true;
+    richFace(s);
+    put(s, 5);
+    const d = newDrill('D0');
+    d.priority = 'oresFirst';
+    s.drills.units.push(d);
+
+    const m = mods();
+    tickDrills(s, m, ctx, 1);
+    const claimed = d.oreCell;
+    expect(claimed, 'the drill should have taken the pocket').toBe(5);
+
+    // Everything that might tempt it away, all at once.
+    put(s, 20);
+    s.face.cells = s.face.cells.map((c, i) => (i === 20 ? 900 : c));
+    let held = 0;
+    for (let t = 0; t < 400; t++) {
+      tickDrills(s, m, ctx, 0.1);
+      if (d.oreCell === undefined) break;
+      expect(d.oreCell, `it left cell ${claimed} for ${d.oreCell} mid-dig`).toBe(claimed);
+      held++;
+    }
+    expect(held, 'it should have spent real ticks on the job').toBeGreaterThan(5);
+    // It left because it FINISHED, not because it changed its mind.
+    expect(isOre(s, 5)).toBe(false);
+  });
+
+  it('a zone change mid-dig does not abandon the hole', () => {
+    const { s } = fresh();
+    s.drills.bayBuilt = true;
+    richFace(s);
+    put(s, 5);
+    const d = newDrill('D0');
+    d.priority = 'oresFirst';
+    s.drills.units.push(d);
+    const m = mods();
+    tickDrills(s, m, ctx, 1);
+    expect(d.oreCell).toBe(5);
+    // Re-zone the drill to the far side of the face. The claim stands.
+    d.zone = [30, 31, 32];
+    for (let t = 0; t < 50; t++) tickDrills(s, m, ctx, 0.1);
+    expect(d.oreCell).toBe(5);
+    // A machine keeps its OWN progress (`oreProgress`); `face.oreDug` is the
+    // hand's hold-gesture and stays at zero here.
+    expect(d.oreProgress ?? 0, 'it held the cell but stopped working it').toBeGreaterThan(0);
+  });
+
+  it('switching it to rock-only does not abandon the hole either', () => {
+    const { s } = fresh();
+    s.drills.bayBuilt = true;
+    richFace(s);
+    put(s, 7);
+    const d = newDrill('D0');
+    d.priority = 'oresFirst';
+    s.drills.units.push(d);
+    const m = mods();
+    tickDrills(s, m, ctx, 1);
+    expect(d.oreCell).toBe(7);
+    d.priority = 'rock';
+    for (let t = 0; t < 50; t++) tickDrills(s, m, ctx, 0.1);
+    expect(d.oreCell, 'a priority change stranded a half-dug pocket').toBe(7);
+  });
+
+  it('and having finished, it moves on to the next one', () => {
+    const { s } = fresh();
+    s.drills.bayBuilt = true;
+    richFace(s);
+    put(s, 5);
+    put(s, 25);
+    const d = newDrill('D0');
+    d.priority = 'ores';
+    s.drills.units.push(d);
+    const m = mods();
+    const worked = new Set<number>();
+    for (let t = 0; t < 2000; t++) {
+      tickDrills(s, m, ctx, 0.1);
+      if (d.oreCell !== undefined) worked.add(d.oreCell);
+      if (worked.size >= 2) break;
+    }
+    expect([...worked].sort((a, b) => a - b)).toEqual([5, 25]);
+  });
+
+  /** The one legitimate release: somebody else got there first. */
+  it('it only lets go when the pocket is gone', () => {
+    const { s } = fresh();
+    s.drills.bayBuilt = true;
+    richFace(s);
+    put(s, 5);
+    const d = newDrill('D0');
+    d.priority = 'oresFirst';
+    s.drills.units.push(d);
+    const m = mods();
+    tickDrills(s, m, ctx, 1);
+    expect(d.oreCell).toBe(5);
+    openOre(s, m, ctx, 5, 'hand', 1, 'you'); // the player opened it by hand
+    tickDrills(s, m, ctx, 0.1);
+    expect(d.oreCell).toBeUndefined();
+  });
+});

@@ -197,15 +197,12 @@ button:focus:not(:focus-visible) {
   from { background-position: -140% 0; }
   to { background-position: 240% 0; }
 }
-.melt-molten {
-  background-image: linear-gradient(
-    100deg,
-    #b4560f 0%,
-    #e0902a 30%,
-    #fcd34d 48%,
-    #e0902a 66%,
-    #b4560f 100%
-  );
+/**
+ * The gradient itself is set INLINE from the material's own three-shade palette
+ * — the same colours its ore chunk is drawn from — so the melt visibly IS the
+ * stone. Only the sweep lives here, because a keyframe cannot read a palette.
+ */
+.melt-sheen {
   background-size: 220% 100%;
   animation: melt-sheen 2.6s linear infinite;
 }

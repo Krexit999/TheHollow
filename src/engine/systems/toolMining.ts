@@ -47,7 +47,8 @@ import {
 import { derivePart, shapeOf, intensityOf, partTraits, type ToolStats } from './forgeParts';
 import { materialDef } from '../materials';
 import { currentTool } from './casting';
-import { consumeMaterial, materialCount } from './forge';
+import { consumeMaterial, equippedTool, materialCount } from './forge';
+import { maxToolTier } from '../shells';
 import type { PartType } from '../content/forgeParts';
 
 // ---------------------------------------------------------------------------
@@ -169,9 +170,19 @@ export function toolEffect(state: GameState): ToolEffect {
  * second shell.
  *
  * MEASURED SPREAD across real materials: 0.71 (a brittle/light Glassmere set)
- * to 1.49 (a dense/tough Loam one) — so about 180 swings against about 550.
+ * to 1.49 (a dense/tough Loam one) — so about a 3x range around the base.
+ *
+ * THE BASE WAS TEN TIMES TOO LOW. At 300 a brittle tool was through in about
+ * 200 swings, which at any real click rate is minutes — maintenance you are
+ * doing INSTEAD of playing rather than occasionally between stretches of it.
+ * 3000 puts a brittle tool at roughly 2,000 swings and a tough one at 5,500,
+ * so re-seating is something you notice a few times a session.
+ *
+ * ONLY THE MAGNITUDE MOVED. The shape index, the 1.5 exponent and the clamps
+ * are untouched, so the brittle-against-tough ratio is exactly what it was —
+ * the tradeoff is the same tradeoff, spread over a sensible stretch of play.
  */
-export const BASE_USES = 300;
+export const BASE_USES = 3000;
 export const USES_MIN = 0.35;
 export const USES_MAX = 3;
 
@@ -259,6 +270,57 @@ export function repairShare(tool: ToolStats, type: PartType): number {
   const total = tool.rawStats.durability;
   if (total <= 0) return 0;
   return Math.max(0, Math.min(1, derivePart(part).stats.durability / total));
+}
+
+// ---------------------------------------------------------------------------
+// THE HARDNESS WALL — what a cast tool is worth on the old tier ladder
+// ---------------------------------------------------------------------------
+
+/**
+ * A CAST TOOL ANSWERS THE HARDNESS WALLS, and it has to, because the old Forge
+ * no longer makes tools.
+ *
+ * `depthSys` gates every descent on `equippedTool(state).tier`. Removing the
+ * old bench's crafting without this would have bricked a new save at the first
+ * wall — Loam's is depth 45 — with no way to make a tier-II tool at all. That
+ * is not a UI change, so it does not get to be one.
+ *
+ * THE MAPPING IS THE OLD LADDER'S OWN: three tiers per shell (`maxToolTier`),
+ * and one shell step of rock rate is 36x because rate is bite x cadence and
+ * each carries a 6x shell step. So a tool three-tenths of a shell above the
+ * Loam reference is worth about a tier.
+ *
+ * IT IS CAPPED AT `maxToolTier` DELIBERATELY. That is the same ceiling the old
+ * bench already enforced on what you could craft at your depth, so a cast tool
+ * can REPLACE the ladder but never outrun it — this is a substitution, not a
+ * pacing change, and capping it is what keeps that true without a sim sweep.
+ */
+export const TIERS_PER_SHELL = 3;
+export const RATE_REF = 100;
+/** One shell step of ROCK RATE: bite and cadence each step by SHELL_STEP. */
+export const RATE_STEP = SHELL_STEP * SHELL_STEP;
+
+export function castingToolTier(state: GameState): number {
+  const tool = currentTool(state);
+  if (!tool) return 0;
+  // A broken tool is a broken tool. It still mines; it does not pass a wall it
+  // could not pass whole, and it does not lose one it already passed — descent
+  // is gated at the moment you press it, and this only ever refuses.
+  const rate = tool.rockRate * (isBroken(state, tool) ? BROKEN_SHARE : 1);
+  if (!(rate > 0)) return 0;
+  const steps = Math.log(Math.max(1, rate / RATE_REF)) / Math.log(RATE_STEP);
+  return Math.max(0, Math.min(maxToolTier(state), 1 + Math.floor(TIERS_PER_SHELL * steps)));
+}
+
+/**
+ * THE TIER THE ROCK IS ACTUALLY ASKED ABOUT — the better of the two benches.
+ *
+ * MAX, not replacement: a long-running save holds old tools that were paid for,
+ * and a player who has not touched the Casting Floor must not wake up unable to
+ * descend. Nothing anyone already had gets worse.
+ */
+export function effectiveToolTier(state: GameState): number {
+  return Math.max(equippedTool(state).tier, castingToolTier(state));
 }
 
 /** Units of the part's own material a repair costs. Maintenance is a sink. */

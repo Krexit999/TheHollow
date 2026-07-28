@@ -43,6 +43,29 @@ const ENGINE_INTERNAL = new Set([
   'hardReset', 'debug',
 ]);
 
+/**
+ * RETIRED FROM THE UI, NOT FROM THE GAME.
+ *
+ * Tool crafting moved to the Casting Floor, so the old Forge room's bench, its
+ * fixed recipes and its part-swap are gone and nothing in `src/` dispatches
+ * these two any more. They are NOT dead:
+ *
+ *   - `scripts/sim.ts` (outside this corpus) drives them — it is the balance
+ *     instrument's model of a player buying up the tool ladder, and it feeds
+ *     every warden fight through `strikePower`.
+ *   - the Workbench's FORGE act still calls `craftFromParts` engine-side.
+ *
+ * The old tool SYSTEM is not retired either: it owns strike power, sockets,
+ * heirloom marks, opinions and tempering. Deleting it is a separate job with a
+ * much larger blast radius than moving a bench, and it is not this one.
+ *
+ * `replacePart` WAS deleted outright in the same pass — it had no consumer at
+ * all once the swap UI went, which is exactly the difference this list is for.
+ * An entry here is a claim that something outside `src/` uses it; if that stops
+ * being true, delete the action.
+ */
+const RETIRED_FROM_UI = new Set(['craftTool', 'craftFromParts']);
+
 describe('every dispatchable action is reachable', () => {
   const typesText = read(join(SRC, 'engine', 'types.ts'));
   const unionStart = typesText.indexOf('export type GameAction');
@@ -53,7 +76,21 @@ describe('every dispatchable action is reachable', () => {
     expect(actionIds.length).toBeGreaterThan(40);
   });
 
-  it.each(actionIds.filter((id) => !ENGINE_INTERNAL.has(id)))(
+  /** An exemption for an action that no longer exists is a lie left lying around. */
+  it('every UI-retired exemption is still a real action', () => {
+    for (const id of RETIRED_FROM_UI) expect(actionIds, id).toContain(id);
+  });
+
+  /** ...and it really is out of the UI. This is the claim item 9 was about. */
+  it('nothing in the UI dispatches a retired tool-crafting action', () => {
+    for (const id of RETIRED_FROM_UI) {
+      const inUi = CORPUS.filter(({ file, text }) =>
+        file.includes(join('src', 'ui')) && new RegExp(`type:\\s*'${id}'`).test(text));
+      expect(inUi.map((x) => x.file), `${id} is still dispatched from the UI`).toEqual([]);
+    }
+  });
+
+  it.each(actionIds.filter((id) => !ENGINE_INTERNAL.has(id) && !RETIRED_FROM_UI.has(id)))(
     "'%s' has a live dispatch site outside types.ts and actions.ts",
     (id) => {
       const pattern = new RegExp(`type:\\s*'${id}'`);

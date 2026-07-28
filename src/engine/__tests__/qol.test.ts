@@ -147,17 +147,16 @@ describe('run summary — the closing ledger', () => {
 });
 
 describe('qol action handlers', () => {
-  it('blueprints: save assigns a fresh id, delete removes it', () => {
-    const { engine, s } = fresh();
-    const r1 = engine.dispatch({ type: 'saveBlueprint', name: 'A', tier: 1, head: 'marl', haft: null, binding: null });
-    const r2 = engine.dispatch({ type: 'saveBlueprint', name: '', tier: 1, head: 'ochre', haft: null, binding: null });
-    expect(r1.ok && r2.ok).toBe(true);
-    expect(s().qol.blueprints).toHaveLength(2);
-    const ids = s().qol.blueprints.map((b) => b.id);
-    expect(new Set(ids).size).toBe(2); // unique
-    expect(s().qol.blueprints[1]!.name).toMatch(/Design/); // blank name gets a default
-    engine.dispatch({ type: 'deleteBlueprint', id: ids[0]! });
-    expect(s().qol.blueprints.map((b) => b.id)).toEqual([ids[1]]);
+  /**
+   * BLUEPRINTS ARE GONE, and this is the note rather than a silent deletion.
+   * They saved a head/haft/binding composition for the old Forge's bench. That
+   * bench moved to the Casting Floor, which builds from SEVEN parts off a rack
+   * that already holds them — so there was nothing left for a blueprint to
+   * name. The action, the type and the qol field went with the bench.
+   */
+  it('blueprints are retired with the bench they belonged to', () => {
+    const { s } = fresh();
+    expect('blueprints' in s().qol).toBe(false);
   });
 
   it('pins toggle on and off', () => {

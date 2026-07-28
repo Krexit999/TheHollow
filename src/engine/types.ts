@@ -1091,15 +1091,6 @@ export interface RunSummary {
 }
 
 /** A saved tool composition — recall it and re-forge with different stone. */
-export interface Blueprint {
-  id: string;
-  name: string;
-  tier: number;
-  head: string | null;
-  haft: string | null;
-  binding: string | null;
-}
-
 /** A saved Lattice board arrangement — recall it, pay to restore it. */
 export interface LatticeLayout {
   id: string;
@@ -1119,8 +1110,6 @@ export interface QolState {
   bookmarks: string[];
   notes: Record<string, string>;
   readAt: Record<string, number>;
-  /** Forge: saved compositions. */
-  blueprints: Blueprint[];
   /** Lattice: saved boards, and chords locked against a misclick. */
   latticeLayouts: LatticeLayout[];
   lockedChords: string[];
@@ -1139,7 +1128,7 @@ export interface QolState {
 
 export function defaultQolState(): QolState {
   return {
-    bookmarks: [], notes: {}, readAt: {}, blueprints: [], latticeLayouts: [],
+    bookmarks: [], notes: {}, readAt: {}, latticeLayouts: [],
     lockedChords: [], pins: [], refinePresets: [], autoCollapseDepth: null,
     carryUpgradeId: null, confirmSpendFrac: 0.5,
   };
@@ -1321,7 +1310,8 @@ export type GameEvent =
   | { type: 'crucibleCharged'; materialId: string; units: number; molten: number }
   | { type: 'partCast'; partType: string; materialId: string; purity: number }
   | { type: 'toolBuilt'; coherence: number; rockRate: number }
-  | { type: 'toolRepaired'; partType: string; materialId: string };
+  | { type: 'toolRepaired'; partType: string; materialId: string }
+  | { type: 'partMelted'; partType: string; materialId: string; molten: number };
 
 export type GameEventType = GameEvent['type'];
 
@@ -1356,15 +1346,18 @@ export type GameAction =
   | { type: 'upgradeMotif'; q: number; r: number }
   | { type: 'buyLatticeRing' }
   | { type: 'setLatticePress'; on: boolean }
-  | { type: 'craftTool'; recipeId: string; refined?: boolean }
-  | { type: 'craftFromParts'; tier: number; head: string; haft: string; binding: string }
-  | { type: 'replacePart'; toolId: number; slot: 'head' | 'haft' | 'binding'; materialId: string }
   | { type: 'beginCraft'; act: 'forge' | 'carve' | 'cut' | 'cast'; context: Record<string, unknown> }
   | { type: 'craftStage'; execution: number; data?: Record<string, unknown> }
   | { type: 'delegateCraft' }
   | { type: 'abandonCraft' }
   | { type: 'equipTool'; toolId: number }
   | { type: 'socketGem'; toolId: number; slot: number; gemId: string }
+  /** RETIRED FROM THE UI (the Casting Floor makes tools now), still driven by
+   *  the headless balance sim and by the Workbench's FORGE act. The old tool
+   *  system is not retired — it owns strike power, sockets, heirlooms,
+   *  opinions and tempering — only its bench is. */
+  | { type: 'craftTool'; recipeId: string; refined?: boolean }
+  | { type: 'craftFromParts'; tier: number; head: string; haft: string; binding: string }
   | { type: 'discardTool'; toolId: number }
   | { type: 'crackGeode' }
   | { type: 'startAssay' }
@@ -1486,8 +1479,6 @@ export type GameAction =
   | { type: 'hardReset' }
   | { type: 'undo' }
   | { type: 'setConfirmSpendFrac'; frac: number }
-  | { type: 'saveBlueprint'; name: string; tier: number; head: string | null; haft: string | null; binding: string | null }
-  | { type: 'deleteBlueprint'; id: string }
   | { type: 'saveLatticeLayout'; name: string }
   | { type: 'restoreLatticeLayout'; id: string }
   | { type: 'deleteLatticeLayout'; id: string }
@@ -1545,6 +1536,7 @@ export type GameAction =
   | { type: 'buildTool' }
   | { type: 'breakDownTool' }
   | { type: 'repairTool'; partType: string }
+  | { type: 'meltBack'; partId: number }
   | { type: 'debug'; op: 'unlockAll' };
 
 export interface ActionResult {

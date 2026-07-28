@@ -23,7 +23,7 @@ import { PART_TYPES, type PartType } from '../content/forgeParts';
 import { partMelt } from '../systems/forgeParts';
 import {
   FULL_SET_MELT, MELT_PER_UNIT, MELT_RATE, TUB_CAPACITY,
-  benchComplete, benchPreview, canCast, castingUnlocked, crucibleFill,
+  MELT_BACK_SHARE, benchComplete, benchPreview, canCast, castingUnlocked, crucibleFill,
   currentTool, tubRoom, unitsThatFit,
 } from '../systems/casting';
 import { addMaterial, materialCount } from '../systems/forge';
@@ -400,5 +400,87 @@ describe('the standing reach rule — it works in every shell', () => {
     expect(engine.dispatch({ type: 'castPart', partType: 'nonsense' }).ok).toBe(false);
     expect(engine.dispatch({ type: 'benchClear', partType: 'nonsense' }).ok).toBe(false);
     expect(st().casting.rack).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6 — MELTING A PART BACK DOWN
+// ---------------------------------------------------------------------------
+
+describe('a part can go back in the tub', () => {
+  it('returns 60% of what the mould cost, into an empty tub', () => {
+    meltFully('marl', 4);
+    engine.dispatch({ type: 'castPart', partType: 'head' });
+    engine.dispatch({ type: 'drainCrucible' });
+    const part = st().casting.rack[0]!;
+
+    const r = engine.dispatch({ type: 'meltBack', partId: part.id });
+    expect(r.ok).toBe(true);
+    expect((r.data as { molten: number }).molten).toBeCloseTo(partMelt('head') * MELT_BACK_SHARE, 6);
+    expect(st().casting.crucible.molten).toBeCloseTo(partMelt('head') * 0.6, 6);
+    expect(st().casting.crucible.materialId).toBe('marl');
+    expect(st().casting.rack).toHaveLength(0);
+  });
+
+  /** A RECLAIM, NOT AN UNDO. Changing your mind costs something, every time. */
+  it('is a real loss — melting and re-casting never breaks even', () => {
+    meltFully('marl', 10);
+    engine.dispatch({ type: 'castPart', partType: 'head' });
+    const had = st().casting.crucible.molten;
+    const id = st().casting.rack[0]!.id;
+    engine.dispatch({ type: 'meltBack', partId: id });
+    expect(st().casting.crucible.molten).toBeLessThan(had + partMelt('head'));
+    expect(MELT_BACK_SHARE).toBeLessThan(1);
+  });
+
+  it('it goes back as the stone it was, and refuses a tub holding another', () => {
+    open([['marl', 20, 60], ['ochre', 20, 60]]);
+    meltFully('marl', 4);
+    engine.dispatch({ type: 'castPart', partType: 'grip' });
+    engine.dispatch({ type: 'drainCrucible' });
+    meltFully('ochre', 4);
+    const marlPart = st().casting.rack[0]!;
+    const r = engine.dispatch({ type: 'meltBack', partId: marlPart.id });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/Ochre/);
+    // Drain the ochre and it goes in fine.
+    engine.dispatch({ type: 'drainCrucible' });
+    expect(engine.dispatch({ type: 'meltBack', partId: marlPart.id }).ok).toBe(true);
+    expect(st().casting.crucible.materialId).toBe('marl');
+  });
+
+  /** THE GUARD. Melting the head out of the tool in your hand is not a thing
+   *  anyone means to do, so the station and the tool are both out of reach. */
+  it('will not melt a part that is on the station or in the tool', () => {
+    meltFully('marl', 6);
+    engine.dispatch({ type: 'castPart', partType: 'core' });
+    engine.dispatch({ type: 'drainCrucible' });
+    const id = st().casting.rack[0]!.id;
+    engine.dispatch({ type: 'benchPlace', partId: id });
+    const r = engine.dispatch({ type: 'meltBack', partId: id });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/station/);
+    // Off the station, it melts.
+    engine.dispatch({ type: 'benchClear', partType: 'core' });
+    expect(engine.dispatch({ type: 'meltBack', partId: id }).ok).toBe(true);
+  });
+
+  it('the rack really does empty — this is the way out of an endless rack', () => {
+    open([['marl', 200, 60]]);
+    for (let i = 0; i < 6; i++) {
+      meltFully('marl', 4);
+      engine.dispatch({ type: 'castPart', partType: 'grip' });
+      engine.dispatch({ type: 'drainCrucible' });
+    }
+    expect(st().casting.rack).toHaveLength(6);
+    for (const p of [...st().casting.rack]) {
+      engine.dispatch({ type: 'meltBack', partId: p.id });
+      engine.dispatch({ type: 'drainCrucible' });
+    }
+    expect(st().casting.rack).toHaveLength(0);
+  });
+
+  it('a bad id is refused, not read as undefined', () => {
+    expect(engine.dispatch({ type: 'meltBack', partId: 9999 }).ok).toBe(false);
   });
 });

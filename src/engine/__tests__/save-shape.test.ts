@@ -50,7 +50,7 @@ describe('hydrate fills every missing slice from the default shape', () => {
     // Every deleted slice is back, at the correct empty shape.
     expect(Array.isArray(s.face.recentChips)).toBe(true);
     expect(Array.isArray(s.qol.pins)).toBe(true);
-    expect(Array.isArray(s.qol.blueprints)).toBe(true);
+    expect(Array.isArray(s.qol.latticeLayouts)).toBe(true);
     expect(Array.isArray(s.guild.sable.found)).toBe(true);
     expect(Array.isArray(s.combat.seen)).toBe(true);
     expect(Array.isArray(s.runes.pairsSeen)).toBe(true);

@@ -306,6 +306,55 @@ export function castPart(state: GameState, ctx: EngineCtx, type: PartType): Acti
   return { ok: true, data: { partId: part.id } };
 }
 
+/**
+ * MELT A PART BACK DOWN. The rack was a one-way street: every pour you thought
+ * better of sat there forever, and by the third shell it was a wall of parts
+ * nobody would ever fit. This is the way out.
+ *
+ * SIXTY PER CENT, so it is a RECLAIM and not an undo. You lose something every
+ * time you change your mind, which keeps the first pour a decision — but you
+ * are never stuck holding a mistake, which is the same anti-treadmill rule the
+ * Refinery's loss ratio follows: always progress, never free.
+ *
+ * A part on the STATION or IN THE TOOL is not on the rack and cannot be melted;
+ * take it off first. That is a guard rather than a courtesy — melting the head
+ * out of the tool you are holding is not a thing anyone means to do.
+ */
+export const MELT_BACK_SHARE = 0.6;
+
+export function meltBack(state: GameState, ctx: EngineCtx, partId: number): ActionResult {
+  if (!castingUnlocked(state)) return { ok: false, reason: 'The casting floor is cold' };
+  const part = rackPart(state, partId);
+  if (!part) return { ok: false, reason: 'Not on the rack' };
+  if (Object.values(state.casting.bench).includes(partId)) {
+    return { ok: false, reason: 'It is on the station — take it off first' };
+  }
+  const c = state.casting.crucible;
+  const held = c.solid + c.molten;
+  if (held > 0 && c.materialId !== part.materialId) {
+    return {
+      ok: false,
+      reason: `${materialDef(c.materialId).name} is in the tub — pour it off first`,
+    };
+  }
+  const back = Math.round(partMelt(part.type) * MELT_BACK_SHARE * 10) / 10;
+  if (tubRoom(c) < back) return { ok: false, reason: 'No room in the tub' };
+
+  c.purity = held > 0 ? (c.purity * held + part.purity * back) / (held + back) : part.purity;
+  c.materialId = part.materialId;
+  c.molten += back;
+  state.casting.rack = state.casting.rack.filter((p) => p.id !== partId);
+
+  ctx.emit({ type: 'partMelted', partType: part.type, materialId: part.materialId, molten: back });
+  ctx.dirty();
+  return { ok: true, data: { molten: back, of: partMelt(part.type) } };
+}
+
+/** What melting this shape back would return. The button prints it. */
+export function meltBackValue(type: PartType): number {
+  return Math.round(partMelt(type) * MELT_BACK_SHARE * 10) / 10;
+}
+
 // ---------------------------------------------------------------------------
 // THE TOOL STATION
 // ---------------------------------------------------------------------------

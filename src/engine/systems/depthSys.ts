@@ -10,7 +10,8 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import { descendCost } from '../prestigeMath';
 import { grantXP } from './xp';
 import { D } from '../decimal';
-import { equippedTool, requiredTier } from './forge';
+import { requiredTier } from './forge';
+import { effectiveToolTier } from './toolMining';
 import { currentShell } from '../shells';
 import { lawFlag, lawNum, challengeNum } from '../laws';
 import { descendMultiplier, noteReached, clearDigStop } from './shaftSys';
@@ -57,8 +58,13 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
   // descend past what your tool can chip. THE UNWRITTEN WALL (law) softens
   // this to one tier under at triple fare — a slow push, not an open door.
   const needed = requiredTier(state, state.depth + 1);
-  const soft = lawNum(state, 'wallSoftness') > 0 && equippedTool(state).tier === needed - 1;
-  if (equippedTool(state).tier < needed && !soft) {
+  // THE BETTER OF THE TWO BENCHES. Tool crafting moved to the Casting Floor,
+  // so a cast tool has to be able to answer a wall — otherwise a new save is
+  // stuck at depth 45 forever. Old tools still count; nothing anyone already
+  // paid for gets worse.
+  const have = effectiveToolTier(state);
+  const soft = lawNum(state, 'wallSoftness') > 0 && have === needed - 1;
+  if (have < needed && !soft) {
     return {
       ok: false,
       reason: `The rock below is too hard — a Tier ${ROMAN[needed] ?? needed} tool is needed`,

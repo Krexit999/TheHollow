@@ -19,12 +19,14 @@ import { createEngine } from '../index';
 import type { Engine, GameState } from '../types';
 import { PART_TYPES, type PartType } from '../content/forgeParts';
 import { assembleTool, makePart } from '../systems/forgeParts';
-import { addMaterial, materialCount } from '../systems/forge';
+import { addMaterial, materialCount, requiredTier } from '../systems/forge';
+import { maxToolTier } from '../shells';
 import { BASE_CAP, reachFrom } from '../systems/face';
 import {
   BARE_HANDS, BROKEN_SHARE, MAX_EXTRA_CELLS, REPAIR_UNITS, effectOf, isBroken,
   poolOf, repairShare, toolEffect, toughnessIndex, usesLeft, usesOf, wearPerUse,
   wornPart,
+  castingToolTier, effectiveToolTier,
 } from '../systems/toolMining';
 
 let engine: Engine;
@@ -441,3 +443,102 @@ describe('the standing reach rule', () => {
     expect(engine.dispatch({ type: 'repairTool', partType: 'nonsense' }).ok).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MAINTENANCE IS OCCASIONAL, NOT CONSTANT
+// ---------------------------------------------------------------------------
+
+describe('a tool goes a long stretch before it wants seeing to', () => {
+  /**
+   * THE BASE WAS TEN TIMES TOO LOW. At 300, a brittle tool was through in about
+   * 200 swings — minutes of play, so maintenance was the thing you were doing
+   * INSTEAD of mining. The floor here is what "occasional" has to mean.
+   */
+  it('even the most brittle build has well over a thousand swings in it', () => {
+    let worst = Infinity;
+    let worstAt = '';
+    for (const id of ['umberjade', 'rootglass', 'bonechalk', 'frostsand', 'dimglass', 'voidglass']) {
+      const n = usesOf(toolOf(id));
+      if (n < worst) { worst = n; worstAt = id; }
+    }
+    expect(worst, `the shortest-lived build is ${worstAt} at ${worst} swings`).toBeGreaterThan(1200);
+  });
+
+  it('and a tough one goes several thousand', () => {
+    expect(usesOf(toolOf('graveclay'))).toBeGreaterThan(4000);
+  });
+
+  /** ONLY THE MAGNITUDE MOVED. The tradeoff is the same tradeoff. */
+  it('the brittle-against-tough ratio is untouched by the change', () => {
+    const ratio = usesOf(toolOf('graveclay')) / usesOf(toolOf('umberjade'));
+    expect(ratio).toBeGreaterThan(1.8);
+    expect(ratio).toBeLessThan(3.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A CAST TOOL ANSWERS THE HARDNESS WALLS
+// ---------------------------------------------------------------------------
+
+describe('the Casting Floor answers the walls the old Forge used to', () => {
+  /**
+   * THE ONE THAT WOULD HAVE BRICKED A NEW SAVE. Tool crafting moved rooms;
+   * `descend` gates on a tool TIER. Without this a fresh player hits Loam's
+   * wall at depth 45 with no way to make a tier-II tool at all.
+   */
+  it('a cast tool has a tier, and a better one has a better tier', () => {
+    hold(null);
+    expect(castingToolTier(st())).toBe(0);
+    hold('marl');
+    const loam = castingToolTier(st());
+    expect(loam).toBeGreaterThan(0);
+    // Reaching deeper raises the cap, so the ladder can actually climb.
+    st().shell.current = 'ferrite';
+    hold('ironbloom');
+    expect(castingToolTier(st())).toBeGreaterThan(loam);
+  });
+
+  it('it is capped at the same ceiling the old bench enforced', () => {
+    st().shell.current = 'loam';
+    hold('firstiron'); // an absurd tool for the shell you are standing in
+    expect(castingToolTier(st())).toBe(maxToolTier(st()));
+  });
+
+  /** MAX, NOT REPLACEMENT — a long save's paid-for tools must not stop working. */
+  it('the wall reads the BETTER of the two benches', () => {
+    hold(null);
+    const s = st();
+    s.forge.tools[0]!.tier = 4;
+    s.forge.equipped = s.forge.tools[0]!.id;
+    s.shell.current = 'ferrite';
+    expect(effectiveToolTier(s)).toBe(4);
+    hold('ironbloom');
+    expect(effectiveToolTier(st())).toBeGreaterThanOrEqual(4);
+  });
+
+  it('and a player who cast a tool can actually descend past a wall', () => {
+    engine = createEngine({ nowMs: 0 });
+    const s = st();
+    s.forge.built = true;
+    s.currencies['dust'] = s.currencies['dust']!.add(1e12);
+    s.depth = requiredWallDepth(s) - 1;
+    // Bare-handed, the wall refuses.
+    hold(null);
+    const blocked = engine.dispatch({ type: 'descend' });
+    expect(blocked.ok, 'the wall should refuse a starter tool').toBe(false);
+    expect(blocked.reason).toMatch(/too hard/);
+    // With a cast tool of the right grade, it does not.
+    hold('starmarl', 95);
+    expect(engine.dispatch({ type: 'descend' }).ok).toBe(true);
+  });
+});
+
+/** The first depth in this shell whose wall the starter tool cannot pass. */
+function requiredWallDepth(s: GameState): number {
+  const start = equippedTierOf(s);
+  for (let d = 1; d < 400; d++) if (requiredTier(s, d) > start) return d;
+  throw new Error('no wall in this shell');
+}
+function equippedTierOf(s: GameState): number {
+  return s.forge.tools.find((t) => t.id === s.forge.equipped)?.tier ?? 1;
+}
