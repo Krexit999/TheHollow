@@ -121,7 +121,7 @@ async function main(): Promise<void> {
     if (m.type() !== 'error') return;
     const t = m.text();
     if (t.includes('render recovered')) { recovered.push(t.slice(0, 120)); return; }
-    problems.push();
+    problems.push(`[console] ${t.slice(0, 200)}`);
   });
   await page.goto(`http://localhost:${PORT}`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);
