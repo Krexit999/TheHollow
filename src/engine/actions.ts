@@ -71,9 +71,10 @@ import {
   benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
   meltBack, bringToFront,
 } from './systems/casting';
-import { PART_TYPES, type PartType } from './content/forgeParts';
+import { PART_TYPES, type PartShape, type PartType } from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
 import { noteSynergies, setToolAbility, syncToolAbilities } from './systems/toolAbilities';
+import { noteToolClass } from './systems/toolClass';
 import { applyToolMod, stripToolMod } from './systems/toolMods';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
@@ -638,7 +639,7 @@ export function handleAction(
       return bringToFront(state, ctx, action.index);
     case 'castPart':
       return PART_TYPES.includes(action.partType as PartType)
-        ? castPart(state, ctx, action.partType as PartType)
+        ? castPart(state, ctx, action.partType as PartType, action.shape as PartShape | undefined)
         : { ok: false, reason: 'No such cast' };
     case 'benchPlace':
       return benchPlace(state, ctx, action.partId);
@@ -653,7 +654,14 @@ export function handleAction(
     // build no longer grants has to go with it.
     case 'buildTool': {
       const r = buildTool(state, ctx);
-      if (r.ok) syncToolAbilities(state, ctx);
+      if (r.ok) {
+        syncToolAbilities(state, ctx);
+        // AND WHAT IT TURNED OUT TO BE. A class is read off the finished parts,
+        // so building is the only moment it can change — and the first time a
+        // build lands in one is the discovery worth marking.
+        noteToolClass(state, ctx);
+        noteSynergies(state, ctx);
+      }
       return r;
     }
     case 'breakDownTool': {

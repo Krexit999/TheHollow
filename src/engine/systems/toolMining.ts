@@ -42,9 +42,9 @@
  */
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
-  LINEAR_STATS, SHELL_STEP, STAT_BASE, type ToolStat,
+  LINEAR_STATS, SHELL_STEP, STAT_BASE, type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
-import { derivePart, shapeOf, intensityOf, partTraits, type ToolStats } from './forgeParts';
+import { derivePart, shapeOf, intensityOf, partTraits, shapeFold, type ToolStats } from './forgeParts';
 import { materialDef } from '../materials';
 import { currentTool } from './casting';
 /**
@@ -129,10 +129,14 @@ export interface ToolEffect {
   broken: boolean;
   /** False when the player has no tool at all — bare hands. */
   hasTool: boolean;
+  /** The geometry a swing cuts, off the HEAD's cast shape. Bare hands and every
+   *  plain-shaped tool are `spread`, which is what this always did. */
+  pattern: ReachPattern;
 }
 
 export const BARE_HANDS: ToolEffect = {
   cells: 1, splash: 0, oreRate: 1, dropWeight: 1, broken: false, hasTool: false,
+  pattern: 'spread',
 };
 
 /**
@@ -157,31 +161,52 @@ export function effectOf(
    * ore rate still stops at `ORE_RATE_CAP`. An OP tool clears the face in one
    * swing instead of nine; the face still holds exactly W x H x regen.
    */
+  /**
+   * THE CAST SHAPES FOLD IN HERE, inside the same clamps as everything else.
+   *
+   * A shape is a multiplier on terms the tool already had — so a Needle head
+   * (`cells: 0`) really does reduce the swing to one cell, and a Crescent
+   * (`cells: 1.5`) really does widen it, but neither can push past
+   * `MAX_EXTRA_CELLS` or take more than a whole cell. Where the reached cells
+   * SIT is `pattern`, and that is geometry rather than quantity: it moves the
+   * same number of harvests to different rock.
+   */
+  const shape = shapeFold(tool.parts);
   const extra = Math.min(
     MAX_EXTRA_CELLS,
-    Math.max(1, Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells + mod.cells),
+    Math.max(0, Math.round(
+      (Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells + mod.cells)
+      * shape.cells,
+    )),
   );
   const splash = Math.min(
-    1, SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite) + mod.splash,
+    1, (SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite) + mod.splash) * shape.splash,
   );
   const oreRate = Math.min(
     ORE_RATE_CAP,
-    (1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed) * grant.oreRate) * mod.oreRate,
+    (1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed) * grant.oreRate)
+      * mod.oreRate * shape.oreRate,
   );
   const dropWeight = Math.min(
-    DROP_CAP, (1 + DROP_PER_TIER * tierOf(tool.stats.control, REF.control)) * mod.dropWeight,
+    DROP_CAP,
+    (1 + DROP_PER_TIER * tierOf(tool.stats.control, REF.control)) * mod.dropWeight * shape.dropWeight,
   );
 
   // Broken keeps a quarter of everything the tool adds OVER bare hands, so the
   // floor is the hands and never below them.
   const k = broken ? BROKEN_SHARE : 1;
+  // A NEEDLE IS ALLOWED TO REACH NOTHING. Every other shape keeps the old floor
+  // of at least one extra cell when whole — but `cells: 0` is the Needle's
+  // entire identity, and clamping it up to one would quietly delete the shape.
+  const floor = shape.cells === 0 ? 0 : broken ? 0 : 1;
   return {
-    cells: 1 + Math.max(broken ? 0 : 1, Math.round(extra * k)),
+    cells: 1 + Math.max(floor, Math.round(extra * k)),
     splash: splash * k,
     oreRate: 1 + (oreRate - 1) * k,
     dropWeight: 1 + (dropWeight - 1) * k,
     broken,
     hasTool: true,
+    pattern: shape.pattern,
   };
 }
 
@@ -254,7 +279,9 @@ export function poolOf(tool: ToolStats): number {
 }
 
 export function wearPerUse(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): number {
-  return poolOf(tool) / usesOf(tool, level, mod);
+  // The shape's wear term lands here rather than on `usesOf`, because a shape
+  // changes what a SWING costs, not how big the pool is.
+  return (poolOf(tool) / usesOf(tool, level, mod)) * shapeFold(tool.parts).wear;
 }
 
 export function isBroken(state: GameState, tool: ToolStats): boolean {

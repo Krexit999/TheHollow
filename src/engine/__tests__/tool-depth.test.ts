@@ -578,7 +578,7 @@ describe('the pillars survive all of it', () => {
 
 describe('the save', () => {
   it('is at v41, and an existing stack starts at level I with nothing found', () => {
-    expect(SAVE_VERSION).toBe(41);
+    expect(SAVE_VERSION).toBeGreaterThanOrEqual(41);
     const out = runMigrations({
       version: 40,
       state: {

@@ -38,6 +38,7 @@ import { effectOf, MAX_EXTRA_CELLS, usesOf, toolEffect, SLOT_EVERY, xpForLevel }
 import { handCarrier, toolAbilitySlots } from '../systems/toolAbilities';
 import { addMaterial } from '../systems/forge';
 import { materialsOfShell } from '../materials';
+import { TOOL_CLASSES } from '../content/toolClasses';
 import { allShells } from '../shells';
 import { SAVE_VERSION, runMigrations } from '../save/migrations';
 
@@ -666,8 +667,16 @@ describe('the OP arc is earned', () => {
 });
 
 describe('the standing reach rule', () => {
+  /**
+   * A CLASS-LOCKED MODIFIER IS ONLY REACHABLE TO ITS CLASS, so the sweep has to
+   * ask as that class — otherwise the five class modifiers read as unmakeable
+   * and the rule would look broken when it is working exactly as designed.
+   * They still have to be makeable FROM LOCAL ROCK once the class is in hand,
+   * which is the guarantee that actually matters.
+   */
   it('every modifier is makeable from some shell own rock', () => {
     const made = new Set<string>();
+    const classIds = [null, ...TOOL_CLASSES.map((c) => c.id)];
     for (const shell of allShells()) {
       const mats = materialsOfShell(shell.id);
       const reached = ORD[shell.id] ?? 7;
@@ -677,14 +686,52 @@ describe('the standing reach rule', () => {
             [mats[i]!.id, mats[i]!.id, mats[j]!.id],
             [mats[i]!.id, mats[j]!.id, mats[j]!.id],
           ]) {
-            const m = matchToolMod(mix, { reached });
-            if (m) made.add(m.id);
+            for (const classId of classIds) {
+              const m = matchToolMod(mix, { reached, classId });
+              if (m) made.add(m.id);
+            }
           }
         }
       }
     }
     const never = TOOL_MODS.filter((m) => !made.has(m.id)).map((m) => m.id);
     expect(never, `unmakeable: ${never.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * THE TRAP THAT HAS NOW CAUGHT TWO MODIFIERS. `matchToolMod` ranks by demand
+   * then by shell depth, so two entries with the same signature at the same
+   * depth are decided by array order — and the loser is unreachable by any mix,
+   * forever, while passing every test about what it DOES.
+   *
+   * The reach test finds it, but only says "unmakeable" and leaves you to work
+   * out why. This says which two collided.
+   */
+  it('no two modifiers share a signature at the same depth', () => {
+    const seen = new Map<string, string>();
+    for (const def of TOOL_MODS) {
+      const sig = `${MOD_SHELL_ORDINAL[def.shell]}|${Object.entries(def.needs)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([t, n]) => `${t}${n}`)
+        .join(',')}`;
+      const other = seen.get(sig);
+      expect(other, `${def.id} and ${other} have the same signature — one of them can never be made`)
+        .toBeUndefined();
+      seen.set(sig, def.id);
+    }
+  });
+
+  it('and a class-locked one is NOT reachable without its class', () => {
+    for (const def of TOOL_MODS.filter((m) => m.classOnly)) {
+      let seenWithout = false;
+      for (const shell of allShells()) {
+        for (const m of materialsOfShell(shell.id)) {
+          const got = matchToolMod([m.id, m.id, m.id], { reached: 7, classId: null });
+          if (got?.id === def.id) seenWithout = true;
+        }
+      }
+      expect(seenWithout, `${def.id} leaked to a classless tool`).toBe(false);
+    }
   });
 
   it('and every shell can make at least five from local rock alone', () => {

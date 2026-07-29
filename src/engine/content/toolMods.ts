@@ -218,6 +218,16 @@ export interface ToolModDef {
   fx: ModEffectDef;
   requires?: ModRequires;
   color: number;
+  /**
+   * A CLASS'S OWN. Only a tool that has EMERGED into this class can work it in
+   * — and because a class is read off the parts rather than picked, that makes
+   * these the payoff for having built a coherent set that leans somewhere.
+   *
+   * It is a gate on the VERB, not on the effect: nothing here can touch yield
+   * regardless, because `ModEffectDef` has no field for it. A class is a key,
+   * and every door it opens was already checked.
+   */
+  classOnly?: string;
 }
 
 const LOAM = 0xf0b429;
@@ -469,6 +479,55 @@ export const TOOL_MODS: ToolModDef[] = [
     fx: { stabilize: 55 }, color: ALEPH,
   },
 
+  // ═══ CLASS-LOCKED — one each, and you cannot buy your way in ═══════════
+  // These are the reason a class is worth building toward. Each is stronger
+  // than anything unlocked at its cost, and no amount of material will work one
+  // into a tool that has not BECOME the thing.
+  {
+    id: 'siegeweight', name: 'Siege Weight', shell: 'ferrite', category: 'stat',
+    classOnly: 'siege',
+    effect: 'Everything the swing touches gives up nearly all of it, and the tool barely notices the work.',
+    line: 'It is not a technique. There is simply more of it than there is of the wall.',
+    cost: 3, maxStacks: 3, units: 6, needs: { dense: 2, tough: 2 },
+    fx: { splash: 0.16, uses: 1.6, stabilize: 12 }, color: 0xd08a4a,
+  },
+  {
+    id: 'surgeon', name: "Surgeon's Rule", shell: 'glassmere', category: 'stat',
+    classOnly: 'precision',
+    effect: 'What it opens, it opens cleanly — pockets and the rock give up far more besides charge.',
+    line: 'One cut. You have been practising the one cut for a very long time.',
+    cost: 3, maxStacks: 3, units: 6, needs: { keen: 2, trueseated: 1 },
+    fx: { dropWeight: 1.3, oreRate: 1.5, stabilize: 16 }, color: 0xb9d8e8,
+  },
+  {
+    id: 'prospector', name: "Prospector's Eye", shell: 'verdance', category: 'utility',
+    classOnly: 'excavation',
+    effect: 'Every pocket the swing reaches is worked at once, and worked fast.',
+    line: 'You have stopped looking for them. It has not.',
+    cost: 3, maxStacks: 2, units: 6, needs: { keen: 1, dense: 1, tough: 1 },
+    fx: { oreRate: 2, oreReach: true, dropWeight: 1.15 }, color: 0x9ac07a,
+  },
+  {
+    id: 'stormfed', name: 'Storm-Fed', shell: 'cinder', category: 'ability',
+    classOnly: 'tempest',
+    effect: 'What it carries comes round almost every swing, and reaches further when it does.',
+    line: 'It has stopped waiting to be told.',
+    cost: 4, maxStacks: 2, units: 8, needs: { charged: 2, springy: 1 },
+    fx: { chargePerSwing: 2.5, paramAdd: { r: 1 }, stabilize: -10 }, color: 0xa8c8f0,
+  },
+  {
+    id: 'secondhand', name: 'Second Hand', shell: 'hollow', category: 'ability',
+    classOnly: 'revenant',
+    effect: 'Half of what it does happens a second time, somewhere it is not.',
+    line: 'You did that once. The wall disagrees.',
+    // Demand FOUR. `{hollow: 2, brittle: 1}` was byte-identical to Void Bite in
+    // the same shell, so this shipped unreachable — the second time that trap
+    // has caught a new modifier. `no two modifiers share a signature` now names
+    // it directly instead of leaving the reach test to infer it.
+    cost: 4, maxStacks: 2, units: 9, needs: { hollow: 3, brittle: 1 },
+    fx: { refire: 0.45, paramMult: { share: 1.15 } }, color: 0x9a90a8,
+  },
+
   // ═══ COMBO — worth nothing alone, which is the point ══════════════════
   {
     id: 'resonance', name: 'Resonance', shell: 'ferrite', category: 'combo',
@@ -653,12 +712,19 @@ function satisfies(pool: Partial<Record<TraitId, number>>, def: ToolModDef): boo
  * which is not a pillar-5 hole (you cannot aim at what you have never made).
  */
 export function matchToolMod(
-  materialIds: string[], opts: { reached?: number; prefer?: string | null } = {},
+  materialIds: string[],
+  opts: { reached?: number; prefer?: string | null; classId?: string | null } = {},
 ): ToolModDef | null {
   if (materialIds.length === 0) return null;
   const pool = traitPool(materialIds);
   const reached = opts.reached ?? 7;
-  const live = TOOL_MODS.filter((m) => MOD_SHELL_ORDINAL[m.shell]! <= reached);
+  // A CLASS-LOCKED MODIFIER IS NOT IN THE POOL AT ALL for a tool that is not
+  // that class — not refused after matching, but absent, so it can never
+  // shadow an ordinary modifier a player could actually have made. Being told
+  // "you nearly made a Siege Weight" would be both a tease and a recipe.
+  const live = TOOL_MODS.filter((m) =>
+    MOD_SHELL_ORDINAL[m.shell]! <= reached
+    && (!m.classOnly || m.classOnly === opts.classId));
 
   if (opts.prefer) {
     const aim = live.find((m) => m.id === opts.prefer);

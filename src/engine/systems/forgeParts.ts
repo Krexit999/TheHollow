@@ -37,7 +37,8 @@ import {
   TRAIT_INTENSITY, FORGE_TRAITS, GRADE_BONUS, SHELL_STEP, RARITY_STEP,
   PURITY_FLOOR, PURITY_PER_POINT, W_PRIMARY, W_SECONDARY, W_SPILL,
   MISMATCH_K, VARIETY_WEIGHT, RELIEF_PIVOT, RELIEF_SLOPE, MAX_RELIEF,
-  type ForgeTraitId, type PartType, type ToolStat,
+  shapeDef,
+  type ForgeTraitId, type PartType, type PartShape, type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
 import { RARITIES, bandOf, materialDef, type MaterialDef } from '../materials';
 import { traitsOf } from '../traits';
@@ -58,6 +59,62 @@ export interface Part {
   materialId: string;
   /** The purity of the stock that went in. Carried, because a part is a THING. */
   purity: number;
+  /**
+   * WHICH MOULD IT WAS POURED INTO. Absent = the part type's plain shape, which
+   * is what every part cast before shapes existed is holding — and the plain
+   * shapes are all no-ops, so an old tool behaves exactly as it did.
+   *
+   * The shape is orthogonal to the material: it changes WHERE a swing lands and
+   * what it costs, never how big the stats are. See `content/forgeParts.ts`.
+   */
+  shape?: PartShape;
+}
+
+/**
+ * WHAT THE SEVEN SHAPES ADD UP TO. Pure — reads parts, writes nothing.
+ *
+ * Multiplicative axes multiply, additive ones add, and the HEAD alone decides
+ * the pattern. A tool with every part in its plain shape folds to the identity,
+ * which is what makes this safe to apply unconditionally: a save from before
+ * this existed measures byte-identical.
+ */
+export interface ShapeFold {
+  cells: number;
+  splash: number;
+  oreRate: number;
+  dropWeight: number;
+  wear: number;
+  charge: number;
+  stabilize: number;
+  pattern: ReachPattern;
+  /** The head's shape, for the readout. */
+  head: PartShape;
+}
+
+export const NO_SHAPES: ShapeFold = {
+  cells: 1, splash: 1, oreRate: 1, dropWeight: 1, wear: 1, charge: 0,
+  stabilize: 0, pattern: 'spread', head: 'point',
+};
+
+export function shapeFold(parts: Part[]): ShapeFold {
+  if (parts.length === 0) return NO_SHAPES;
+  const out: ShapeFold = { ...NO_SHAPES };
+  for (const p of parts) {
+    const def = shapeDef(p.shape, p.type);
+    const fx = def.fx;
+    if (fx.cells !== undefined) out.cells *= fx.cells;
+    if (fx.splash !== undefined) out.splash *= fx.splash;
+    if (fx.oreRate !== undefined) out.oreRate *= fx.oreRate;
+    if (fx.dropWeight !== undefined) out.dropWeight *= fx.dropWeight;
+    if (fx.wear !== undefined) out.wear *= fx.wear;
+    if (fx.charge !== undefined) out.charge += fx.charge;
+    if (fx.stabilize !== undefined) out.stabilize += fx.stabilize;
+    if (p.type === 'head') {
+      out.pattern = def.pattern ?? 'spread';
+      out.head = def.id;
+    }
+  }
+  return out;
 }
 
 export interface PartStats {
@@ -272,8 +329,10 @@ export function derivePart(part: Part): PartStats {
   return { part, material, traits, magnitude, intensity, stats };
 }
 
-export function makePart(type: PartType, materialId: string, purity: number): Part {
-  return { type, materialId, purity: clampPurity(purity) };
+export function makePart(
+  type: PartType, materialId: string, purity: number, shape?: PartShape,
+): Part {
+  return { type, materialId, purity: clampPurity(purity), shape: shapeDef(shape, type).id };
 }
 
 // ---------------------------------------------------------------------------

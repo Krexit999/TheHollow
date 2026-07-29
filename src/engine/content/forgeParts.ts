@@ -181,6 +181,264 @@ export const PART_TYPES: PartType[] = [
   'head', 'core', 'edge', 'binding', 'handle', 'grip', 'sockets',
 ];
 
+// ---------------------------------------------------------------------------
+// CAST SHAPES — the second build axis
+// ---------------------------------------------------------------------------
+
+/**
+ * THE SAME STONE, POURED INTO A DIFFERENT SHAPE.
+ *
+ * Until now a cast asked one question: which material. A shape asks a second
+ * one that is orthogonal to it — the material decides how BIG the numbers are,
+ * the shape decides WHERE THE SWING LANDS. A needle head and a wide head cut
+ * from the same marl have identical stats and play nothing alike.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * PILLAR 2. A shape moves cells around; it cannot make a cell hold more.
+ *
+ * The only axes here are the ones the tool already had — how many cells a swing
+ * reaches, what fraction of each it takes, how fast a pocket comes open, how
+ * much of the pool a swing spends, how quickly an ability comes round, and how
+ * steady the thing is. Every one of those ends at `harvestCell` or at a clamp
+ * that was already proved. There is no field for dust-per-charge here for the
+ * same reason `ModEffectDef` has none, and the same test walks the data.
+ *
+ * THE PATTERN IS THE HEAD'S. Every part's shape contributes its `fx`, but only
+ * the HEAD decides the geometry — otherwise seven shapes would each want to be
+ * the pattern and the answer would be an averaging of them, which is no shape
+ * at all. That also makes the Head the identity choice it should be: it is the
+ * part the doc gives "mining SPEED + POWER" to, and now it is the part that
+ * decides what a swing looks like.
+ */
+export type PartShape =
+  // Head — these six set the swing's geometry
+  | 'point' | 'needle' | 'wide' | 'twin' | 'crescent' | 'spike'
+  // Edge
+  | 'keened' | 'toothed' | 'hooked' | 'chisel'
+  // Core
+  | 'solid' | 'cored' | 'banded'
+  // Handle
+  | 'straight' | 'longhaft' | 'stub'
+  // Binding
+  | 'lashed' | 'pinned'
+  // Grip
+  | 'plain' | 'knurled'
+  // Sockets
+  | 'open' | 'deepset';
+
+/** How a swing arranges the cells it reaches. Set by the HEAD's shape. */
+export type ReachPattern = 'spread' | 'single' | 'block' | 'twin' | 'arc' | 'line';
+
+/**
+ * WHAT A SHAPE DOES. Every field is a reach, a rate, a cost or a steadiness —
+ * `shape-axes` in `tool-shapes.test.ts` asserts nothing else ever appears.
+ */
+export interface ShapeEffect {
+  /** Multiplier on how many cells a swing reaches. */
+  cells?: number;
+  /** Multiplier on the fraction taken from each EXTRA cell. */
+  splash?: number;
+  /** Multiplier on hold-gesture pocket work. */
+  oreRate?: number;
+  /** Multiplier on drop-roll weight — outside the charge economy. */
+  dropWeight?: number;
+  /** Multiplier on wear per swing. BELOW one is better. */
+  wear?: number;
+  /** Additive ability meter per swing. */
+  charge?: number;
+  /** Instability taken off. Reliability, never power. */
+  stabilize?: number;
+}
+
+export const SHAPE_AXES = [
+  'cells', 'splash', 'oreRate', 'dropWeight', 'wear', 'charge', 'stabilize',
+] as const;
+
+export interface PartShapeDef {
+  id: PartShape;
+  name: string;
+  part: PartType;
+  /** What it is, in the game's voice — shown at the cast, before you pour. */
+  blurb: string;
+  /** How the swing behaves. Shown once you have poured one. */
+  effect: string;
+  /** Multiplier on the melt a cast of this shape costs. An awkward shape is
+   *  more stock in the mould, not a different stone. */
+  melt: number;
+  fx: ShapeEffect;
+  /** HEAD ONLY: the geometry it cuts. */
+  pattern?: ReachPattern;
+}
+
+export const PART_SHAPES: PartShapeDef[] = [
+  // ═══ HEAD — the six that decide what a swing looks like ═════════════════
+  {
+    id: 'point', name: 'Point', part: 'head', melt: 1,
+    blurb: 'The shape a head is if nobody asks for anything else.',
+    effect: 'Takes the cell you hit and spreads into whatever is nearest.',
+    fx: {}, pattern: 'spread',
+  },
+  {
+    id: 'needle', name: 'Needle', part: 'head', melt: 0.9,
+    blurb: 'Narrow to the point of unreasonable. Nothing wasted sideways.',
+    effect: 'ONE cell, and nothing else — but pockets come open fast, it barely wears, and what it carries comes round quickly.',
+    fx: { cells: 0, oreRate: 1.7, wear: 0.55, charge: 0.6 }, pattern: 'single',
+  },
+  {
+    id: 'wide', name: 'Wide', part: 'head', melt: 1.4,
+    blurb: 'Broad and flat. It does not so much strike the wall as lean on it.',
+    effect: 'A two-by-two square, and it takes more out of every cell in it.',
+    fx: { splash: 1.3, wear: 1.25, oreRate: 0.85 }, pattern: 'block',
+  },
+  {
+    id: 'twin', name: 'Twin', part: 'head', melt: 1.3,
+    blurb: 'Two points, set apart. It was never going to hit one thing.',
+    effect: 'Two cells at once, and they are not next to each other.',
+    fx: { splash: 0.9, dropWeight: 1.2, charge: 0.3 }, pattern: 'twin',
+  },
+  {
+    id: 'crescent', name: 'Crescent', part: 'head', melt: 1.25,
+    blurb: 'Curved, so it keeps cutting after it has landed.',
+    effect: 'An arc through the rock beside the strike — more cells, less out of each.',
+    fx: { cells: 1.5, splash: 0.75 }, pattern: 'arc',
+  },
+  {
+    id: 'spike', name: 'Spike', part: 'head', melt: 1.2,
+    blurb: 'Long and cruel. It goes in further than it looks.',
+    effect: 'Punches a line straight through the wall from where it lands.',
+    fx: { cells: 1.2, wear: 1.2, charge: 0.5 }, pattern: 'line',
+  },
+
+  // ═══ EDGE ═══════════════════════════════════════════════════════════════
+  {
+    id: 'keened', name: 'Keened', part: 'edge', melt: 1,
+    blurb: 'Ground to an edge and left alone.',
+    effect: 'Nothing unusual. It cuts.',
+    fx: {},
+  },
+  {
+    id: 'toothed', name: 'Toothed', part: 'edge', melt: 1.3,
+    blurb: 'A row of them. It catches on the way out as well as in.',
+    effect: 'One more cell to a swing, at the cost of some patience with pockets.',
+    fx: { cells: 1.25, oreRate: 0.85 },
+  },
+  {
+    id: 'hooked', name: 'Hooked', part: 'edge', melt: 1.25,
+    blurb: 'It goes in straight and comes out with something.',
+    effect: 'Pockets open much faster, and the rock gives up more besides charge.',
+    fx: { oreRate: 1.5, dropWeight: 1.15, wear: 1.1 },
+  },
+  {
+    id: 'chisel', name: 'Chisel', part: 'edge', melt: 1.15,
+    blurb: 'Flat, square, and entirely without subtlety.',
+    effect: 'Takes far more out of everything the swing reaches.',
+    fx: { splash: 1.25, oreRate: 0.85 },
+  },
+
+  // ═══ CORE ═══════════════════════════════════════════════════════════════
+  {
+    id: 'solid', name: 'Solid', part: 'core', melt: 1,
+    blurb: 'All the way through.',
+    effect: 'Nothing unusual. It holds.',
+    fx: {},
+  },
+  {
+    id: 'cored', name: 'Cored', part: 'core', melt: 0.85,
+    blurb: 'Hollowed down the middle. Lighter than it has any right to be.',
+    effect: 'Wears far more slowly, and reaches a little less far.',
+    fx: { wear: 0.65, cells: 0.85 },
+  },
+  {
+    id: 'banded', name: 'Banded', part: 'core', melt: 1.2,
+    blurb: 'Rings of it, one inside the next.',
+    effect: 'Steadier under load, and what it carries comes round sooner.',
+    fx: { wear: 0.85, charge: 0.3, stabilize: 10 },
+  },
+
+  // ═══ HANDLE ═════════════════════════════════════════════════════════════
+  {
+    id: 'straight', name: 'Straight', part: 'handle', melt: 1,
+    blurb: 'A handle.',
+    effect: 'Nothing unusual.',
+    fx: {},
+  },
+  {
+    id: 'longhaft', name: 'Long Haft', part: 'handle', melt: 1.25,
+    blurb: 'More of it than you need, which turns out to be the point.',
+    effect: 'The swing carries further, and costs a little more of the tool.',
+    fx: { cells: 1.2, wear: 1.15 },
+  },
+  {
+    id: 'stub', name: 'Stub', part: 'handle', melt: 0.8,
+    blurb: 'Barely there. You work close to the rock.',
+    effect: 'Lasts longer and works a pocket faster, with no reach in it at all.',
+    fx: { wear: 0.75, oreRate: 1.25, cells: 0.9 },
+  },
+
+  // ═══ BINDING ════════════════════════════════════════════════════════════
+  {
+    id: 'lashed', name: 'Lashed', part: 'binding', melt: 1,
+    blurb: 'Wound tight and knotted off.',
+    effect: 'Nothing unusual.',
+    fx: {},
+  },
+  {
+    id: 'pinned', name: 'Pinned', part: 'binding', melt: 1.3,
+    blurb: 'Driven through and peened over. It is not coming apart.',
+    effect: 'Considerably steadier — what it carries goes off where you aimed it.',
+    fx: { stabilize: 26 },
+  },
+
+  // ═══ GRIP ═══════════════════════════════════════════════════════════════
+  {
+    id: 'plain', name: 'Plain', part: 'grip', melt: 1,
+    blurb: 'Smooth.',
+    effect: 'Nothing unusual.',
+    fx: {},
+  },
+  {
+    id: 'knurled', name: 'Knurled', part: 'grip', melt: 1.2,
+    blurb: 'Cross-cut so it does not move in the hand, ever.',
+    effect: 'The rock gives up more besides charge.',
+    fx: { dropWeight: 1.2, stabilize: 6 },
+  },
+
+  // ═══ SOCKETS ════════════════════════════════════════════════════════════
+  {
+    id: 'open', name: 'Open', part: 'sockets', melt: 1,
+    blurb: 'Cups, waiting.',
+    effect: 'Nothing unusual.',
+    fx: {},
+  },
+  {
+    id: 'deepset', name: 'Deep-Set', part: 'sockets', melt: 1.25,
+    blurb: 'Sunk in past the shoulder. Whatever goes in there stays.',
+    effect: 'Much steadier, and what it carries comes round sooner.',
+    fx: { stabilize: 18, charge: 0.25 },
+  },
+];
+
+export const SHAPE_BY_ID = new Map(PART_SHAPES.map((s) => [s.id, s]));
+
+/** Every shape this part type can be cast in. First is the default. */
+export function shapesFor(part: PartType): PartShapeDef[] {
+  return PART_SHAPES.filter((s) => s.part === part);
+}
+
+/** What a part is if nobody chose — the plain shape, and the one every save
+ *  before shapes existed is implicitly holding. */
+export function defaultShape(part: PartType): PartShape {
+  return shapesFor(part)[0]!.id;
+}
+
+export function shapeDef(id: PartShape | undefined, part: PartType): PartShapeDef {
+  const found = id ? SHAPE_BY_ID.get(id) : undefined;
+  // A shape on the wrong part is not a shape. Guarded rather than trusted,
+  // because a save could carry one after a registry change.
+  if (found && found.part === part) return found;
+  return SHAPE_BY_ID.get(defaultShape(part))!;
+}
+
 export interface PartTypeDef {
   id: PartType;
   name: string;

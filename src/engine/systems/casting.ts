@@ -33,7 +33,7 @@
  * step against the doc's build order.
  */
 import type { ActionResult, DrillState, EngineCtx, GameState } from '../types';
-import { PART_TYPES, type PartType } from '../content/forgeParts';
+import { PART_TYPES, shapeDef, type PartShape, type PartType } from '../content/forgeParts';
 import {
   assembleTool, derivePart, partMelt, type Part, type ToolStats,
 } from './forgeParts';
@@ -148,6 +148,9 @@ export interface CastingState {
    *  kept apart from `knownMods` because a synergy is never applied — you
    *  arranged it, and the Codex remembers that you did. */
   knownSynergies?: string[];
+  /** CLASSES this tool has ever emerged into. Knowledge, like a synergy — it
+   *  survives rebuilding the tool into something else. */
+  knownClasses?: string[];
 }
 
 export function defaultCastingState(): CastingState {
@@ -166,6 +169,7 @@ export function defaultCastingState(): CastingState {
     mods: [],
     knownMods: [],
     knownSynergies: [],
+    knownClasses: [],
   };
 }
 
@@ -226,9 +230,14 @@ export function unitsThatFit(c: Crucible): number {
 }
 
 /** Can this shape be poured this instant, out of the FRONT charge? */
-export function canCast(c: Crucible, type: PartType): boolean {
+/** What a pour of this part in this shape wants from the tub. */
+export function castMelt(type: PartType, shape?: PartShape): number {
+  return Math.max(1, Math.round(partMelt(type) * shapeDef(shape, type).melt));
+}
+
+export function canCast(c: Crucible, type: PartType, shape?: PartShape): boolean {
   const f = frontCharge(c);
-  return !!f && f.molten >= partMelt(type);
+  return !!f && f.molten >= castMelt(type, shape);
 }
 
 export function rackPart(state: GameState, id: number): RackPart | undefined {
@@ -258,8 +267,41 @@ export function benchPreview(state: GameState): ToolStats | null {
 }
 
 /** The tool you carry, or null before you have built one. */
+/**
+ * WHAT THE PLAYER IS HOLDING — memoised, because it is now on the hot path.
+ *
+ * `assembleTool` derives seven parts, folds ten stats, computes coherence and
+ * a shape fold. That was fine when it was read once a swing. It is not fine
+ * now: `modCache` reads it (for the slot budget) and `toolClass` reads it
+ * again (for the class gate), `modCache` is called several times per firing,
+ * and a firing can happen every swing — so a test that fired thirty-five
+ * abilities thirty times each went from fast to a five-second timeout the
+ * moment classes landed. That is the profile of a real save under a heavy
+ * build, not a test artifact.
+ *
+ * The cache key is the parts themselves — type, material, purity and shape —
+ * which is exactly what `assembleTool` reads and nothing else. Anything that
+ * changes the tool changes the key; anything that does not, does not. One
+ * entry, because there is one tool.
+ */
+let toolCacheKey = '';
+let toolCacheVal: ToolStats | null = null;
+
+function toolKey(parts: Part[]): string {
+  let k = '';
+  for (const p of parts) k += `${p.type}:${p.materialId}:${p.purity}:${p.shape ?? ''}|`;
+  return k;
+}
+
 export function currentTool(state: GameState): ToolStats | null {
-  return state.casting.tool.length === 0 ? null : assembleTool(state.casting.tool);
+  const parts = state.casting.tool;
+  if (parts.length === 0) return null;
+  const key = toolKey(parts);
+  if (key !== toolCacheKey || toolCacheVal === null) {
+    toolCacheKey = key;
+    toolCacheVal = assembleTool(parts);
+  }
+  return toolCacheVal;
 }
 
 export function benchComplete(state: GameState): boolean {
@@ -374,13 +416,26 @@ export function drainCrucible(state: GameState, ctx: EngineCtx, index = 0): Acti
  * part comes out of the material that was in the tub, at the purity of that
  * melt, and goes on the rack.
  */
-export function castPart(state: GameState, ctx: EngineCtx, type: PartType): ActionResult {
+export function castPart(
+  state: GameState, ctx: EngineCtx, type: PartType, shape?: PartShape,
+): ActionResult {
   if (!castingUnlocked(state)) return { ok: false, reason: 'The casting floor is cold' };
   if (!PART_TYPES.includes(type)) return { ok: false, reason: 'No such cast' };
   const c = state.casting.crucible;
   const front = frontCharge(c);
   if (!front) return { ok: false, reason: 'The tub is empty' };
-  const want = partMelt(type);
+  /**
+   * THE MOULD IS PART OF THE PRICE. An awkward shape wants more stock in it —
+   * a Wide head is 40% more melt than a Point, a Needle slightly less. That is
+   * the only cost a shape carries, and it is deliberately small: the shape is
+   * meant to be a CHOICE about how the tool plays, not a tax on making one.
+   *
+   * A shape that does not belong to this part is not an error, it is the plain
+   * shape — `shapeDef` resolves it — so a stale id from an old save or a
+   * hand-built dispatch can never produce a part that is nothing.
+   */
+  const cast = shapeDef(shape, type);
+  const want = castMelt(type, cast.id);
   if (front.molten < want) {
     const waiting = front.solid > 0;
     return {
@@ -395,6 +450,7 @@ export function castPart(state: GameState, ctx: EngineCtx, type: PartType): Acti
     type,
     materialId: front.materialId,
     purity: Math.max(1, Math.min(100, Math.round(front.purity))),
+    shape: cast.id,
   };
   state.casting.rack.push(part);
   state.casting.cast += 1;

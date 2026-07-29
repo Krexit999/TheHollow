@@ -29,18 +29,21 @@ import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
 import { BANDS, bandOf, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import {
-  PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, type PartType,
+  PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape, shapeDef, shapesFor,
+  type PartShape, type PartType,
 } from '../../engine/content/forgeParts';
-import { partMelt, type ToolStats } from '../../engine/systems/forgeParts';
+import { shapeFold, type ToolStats } from '../../engine/systems/forgeParts';
 import {
   MELT_BACK_SHARE, MELT_PER_UNIT, QUEUE_MAX, TUB_CAPACITY, FULL_SET_MELT,
   benchComplete, benchPreview, canCast, crucibleFill, currentTool, frontCharge,
-  meltBackValue, queued, rackPart, tubHeld, unitsThatFit, type RackPart,
+  castMelt, meltBackValue, queued, rackPart, tubHeld, unitsThatFit, type RackPart,
 } from '../../engine/systems/casting';
+import { TOOL_CLASSES } from '../../engine/content/toolClasses';
+import { toolClass } from '../../engine/systems/toolClass';
 import {
   MAX_EXTRA_CELLS, ORE_RATE_CAP, REACH_EVERY, REPAIR_UNITS, SLOT_EVERY,
   castingToolTier, effectOf, grantsFor, isBroken, levelProgress, modSlotsOf,
-  repairShare, toolLevel, usesLeft, usesOf, wear01, wornPart,
+  repairShare, toolEffect, toolLevel, usesLeft, usesOf, wear01, wornPart,
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
 import { ROMAN, shellOrdinal } from '../../engine/content/drillAlloys';
@@ -312,9 +315,30 @@ function Crucible({ state }: { state: GameState }) {
 // 2 — THE MOULDS
 // ---------------------------------------------------------------------------
 
+/**
+ * THE MOULDS — now two questions instead of one.
+ *
+ * It used to be seven buttons: pick a part, pour. A shape is a second axis and
+ * it needs room to be read, so the pour is a two-step now — choose the PART,
+ * then choose the MOULD, with the shape's blurb under it. That is more clicks
+ * for a plain pour, and it buys the thing the phase exists for: you can see
+ * what a Needle is before you commit stock to one.
+ *
+ * The blurb says what the shape IS; the effect line says what it does. Both are
+ * shown up front — a cast shape is not a pillar-5 discovery, it is a decision,
+ * and a decision you cannot read is a coin toss.
+ */
 function Casts({ state }: { state: GameState }) {
   const c = state.casting.crucible;
   const [last, setLast] = useState<string | null>(null);
+  const [part, setPart] = useState<PartType>('head');
+  const [shapes, setShapes] = useState<Partial<Record<PartType, PartShape>>>({});
+
+  const chosen = shapes[part] ?? defaultShape(part);
+  const options = shapesFor(part);
+  const cast = shapeDef(chosen, part);
+  const want = castMelt(part, chosen);
+  const ok = canCast(c, part, chosen);
 
   return (
     <div className="panel p-3" data-testid="casts">
@@ -323,34 +347,77 @@ function Casts({ state }: { state: GameState }) {
         <span className="tnum text-[10px] text-cave-400">{fmt(state.casting.cast)} poured</span>
       </div>
       <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-        Pick a shape and pour. Nothing here can be botched — you already know what you want.
+        Pick a part, pick the mould it goes in, and pour. Nothing here can be botched.
       </p>
+
       <div className="mt-2 grid grid-cols-2 gap-1">
         {PART_TYPES.map((t) => {
-          const ok = canCast(c, t);
+          const sel = t === part;
+          const s = shapes[t] ?? defaultShape(t);
           return (
             <button
               key={t}
-              className={`btn flex items-baseline justify-between gap-1 px-2 py-1 text-[11px] ${ok ? '' : 'opacity-45'}`}
-              disabled={!ok}
+              className={`flex items-baseline justify-between gap-1 rounded border px-2 py-1 text-[11px] ${
+                sel ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100' : 'border-cave-800 text-cave-400'
+              }`}
               title={PART_DEFS[t].governs}
-              data-testid={`cast-${t}`}
-              onClick={() => {
-                // Read the stone BEFORE the pour: a charge that empties leaves
-                // the queue, so afterwards the front is already the next one.
-                const was = frontCharge(c)?.materialId;
-                const r = dispatch({ type: 'castPart', partType: t });
-                setLast(r.ok && was
-                  ? `${PART_DEFS[t].name} cast in ${materialDef(was).name}.`
-                  : r.reason ?? null);
-              }}
+              data-testid={`cast-part-${t}`}
+              onClick={() => setPart(t)}
             >
               <span>{PART_DEFS[t].name}</span>
-              <span className="tnum shrink-0 text-[10px] text-cave-500">{partMelt(t)}</span>
+              <span className="tnum shrink-0 text-[9px] text-cave-500">
+                {shapesFor(t).length > 1 ? shapeDef(s, t).name : castMelt(t, s)}
+              </span>
             </button>
           );
         })}
       </div>
+
+      <div className="mt-2 border-t border-cave-800 pt-1.5">
+        <div className="text-[9px] uppercase tracking-wider text-cave-600">
+          {PART_DEFS[part].name} — the mould
+        </div>
+        <div className="mt-1 flex flex-wrap gap-1" data-testid="shape-picker">
+          {options.map((s) => (
+            <button
+              key={s.id}
+              className={`rounded border px-1.5 py-0.5 text-[9px] ${
+                s.id === chosen
+                  ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100'
+                  : 'border-cave-800 text-cave-400'
+              }`}
+              data-testid={`shape-${s.id}`}
+              onClick={() => setShapes((m) => ({ ...m, [part]: s.id }))}
+            >
+              {s.name}
+              <span className="tnum ml-1 text-cave-600">{castMelt(part, s.id)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-1 text-[10px] italic leading-snug text-cave-400" data-testid="shape-blurb">
+          {cast.blurb}
+        </div>
+        <div className="mt-0.5 text-[10px] leading-snug text-cave-300" data-testid="shape-effect">
+          {cast.effect}
+        </div>
+      </div>
+
+      <button
+        className="btn btn-warm mt-2 w-full py-1.5 text-xs"
+        disabled={!ok}
+        data-testid="cast-pour"
+        onClick={() => {
+          // Read the stone BEFORE the pour: a charge that empties leaves the
+          // queue, so afterwards the front is already the next one.
+          const was = frontCharge(c)?.materialId;
+          const r = dispatch({ type: 'castPart', partType: part, shape: chosen });
+          setLast(r.ok && was
+            ? `${cast.name} ${PART_DEFS[part].name} cast in ${materialDef(was).name}.`
+            : r.reason ?? null);
+        }}
+      >
+        {ok ? `Pour — ${cast.name} ${PART_DEFS[part].name} · ${want}` : `Needs ${want} melt`}
+      </button>
       {last && <div className="mt-1.5 text-center text-[11px] text-cave-300" data-testid="cast-note">{last}</div>}
     </div>
   );
@@ -1413,6 +1480,117 @@ function StackTotal({ cache, state }: { cache: ModCache; state: GameState }) {
   );
 }
 
+/**
+ * WHAT IT TURNED OUT TO BE.
+ *
+ * Three states, and all three say something useful:
+ *
+ *  IN A CLASS      the name, what tipped it, and what it unlocked. The tipped
+ *                  line is the pillar-5 half — it names TRAITS, which every
+ *                  material row already prints, so a player who wants to build
+ *                  toward this can reason their way there without a recipe.
+ *  SCATTERED       says the parts do not belong together, which is the same
+ *                  coherence number the stat penalty already shows, now with a
+ *                  second consequence attached.
+ *  LEANING NOWHERE a coherent tool that is just a tool. Not a failure, and the
+ *                  copy says so — plus the nearest thing it ALMOST is, which is
+ *                  a direction without being an instruction.
+ */
+function ClassCard({ state }: { state: GameState }) {
+  const read = toolClass(state);
+  const known = state.casting.knownClasses ?? [];
+
+  if (!read.def) {
+    return (
+      <div className="mt-2 rounded-md border border-dashed border-cave-800 p-2" data-testid="tool-class">
+        <div className="text-[10px] uppercase tracking-widest text-cave-500">What it is</div>
+        <div className="mt-0.5 text-[11px] leading-snug text-cave-500" data-testid="tool-class-none">
+          {read.why ?? 'Not enough of it to say.'}
+        </div>
+        {read.nextBest && read.score > 0 && (
+          <div className="mt-0.5 text-[9px] leading-snug text-cave-600" data-testid="tool-class-near">
+            Closest to something at {Math.round(read.score * 100)}% of the way there.
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const hex = `#${read.def.color.toString(16).padStart(6, '0')}`;
+  const unlocked = read.def.unlocks.map((id) => MOD_BY_ID.get(id)).filter(Boolean);
+  return (
+    <div className="mt-2 rounded-md border border-cave-700 bg-cave-850/40 p-2" data-testid="tool-class">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">What it is</span>
+        <span className="tnum text-[9px] text-cave-600">
+          {known.length}/{TOOL_CLASSES.length} ever found
+        </span>
+      </div>
+      <div
+        className="mt-0.5 text-xs font-semibold uppercase tracking-wider"
+        style={{ color: hex }}
+        data-testid="tool-class-name"
+      >
+        {read.def.name}
+      </div>
+      <div className="mt-0.5 text-[10px] leading-snug text-cave-300">{read.def.blurb}</div>
+      <div className="mt-1 text-[9px] leading-snug text-cave-500" data-testid="tool-class-tipped">
+        Tipped by {read.tipped.slice(0, 3).map((t) => `${t.trait} ×${t.have}`).join(', ')}
+        {/* No article — "nearly a Excavation" was on screen in the first run,
+            and picking a/an per class name is more machinery than the line is
+            worth. */}
+        {read.nextBest ? ` · next closest, ${read.nextBest.def.name}` : ''}
+      </div>
+      {unlocked.length > 0 && (
+        <div className="mt-1 border-t border-cave-800 pt-1" data-testid="tool-class-unlocks">
+          <div className="text-[9px] uppercase tracking-wider text-cave-600">Only this one can carry</div>
+          {unlocked.map((m) => (
+            <div key={m!.id} className="mt-0.5">
+              <span
+                className="text-[9px] font-semibold uppercase tracking-wider"
+                style={{ color: `#${m!.color.toString(16).padStart(6, '0')}` }}
+              >
+                {m!.name}
+              </span>
+              <span className="ml-1 text-[9px] text-cave-500">{m!.effect}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** WHAT THE SWING LOOKS LIKE — the head's mould, on the tool it was built into. */
+function ShapeCard({ state, tool }: { state: GameState; tool: ToolStats }) {
+  const fold = shapeFold(tool.parts);
+  const head = shapeDef(fold.head, 'head');
+  const e = toolEffect(state);
+  const odd = tool.parts.filter((p) => p.shape && p.shape !== defaultShape(p.type));
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-shape">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">How it swings</span>
+        <span className="tnum text-[9px] text-cave-600" data-testid="tool-shape-pattern">
+          {head.name} · {e.cells} cell{e.cells === 1 ? '' : 's'}
+        </span>
+      </div>
+      <div className="mt-0.5 text-[10px] leading-snug text-cave-300" data-testid="tool-shape-effect">
+        {head.effect}
+      </div>
+      {odd.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1" data-testid="tool-shape-parts">
+          {odd.map((p) => (
+            <span key={p.type} className="rounded border border-cave-800 px-1 py-0.5 text-[9px] text-cave-500">
+              {shapeDef(p.shape, p.type).name} {PART_DEFS[p.type as PartType].name}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function YourTool({ state }: { state: GameState }) {
   const tool = currentTool(state);
   if (!tool) {
@@ -1435,6 +1613,8 @@ function YourTool({ state }: { state: GameState }) {
           </span>
         ))}
       </div>
+      <ClassCard state={state} />
+      <ShapeCard state={state} tool={tool} />
       <AbilitiesCard state={state} />
       <ModBench state={state} />
       <LevelCard state={state} tool={tool} />

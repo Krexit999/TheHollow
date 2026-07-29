@@ -42,6 +42,8 @@ import { reachedOrdinal } from './drillAlloys';
 import { currentTool } from './casting';
 import { modSlotsOf } from './toolMining';
 import { LINEAR_STATS, STAT_BASE } from '../content/forgeParts';
+import { CLASS_BY_ID } from '../content/toolClasses';
+import { toolClass } from './toolClass';
 import type { ToolStats } from './forgeParts';
 import { consumeMaterial, materialCount } from './forge';
 
@@ -205,6 +207,12 @@ export function modLive(state: GameState, def: ToolModDef, abilities: number): b
 /** Plain English for why a seated modifier is asleep. Never a locked list —
  *  it names things the player already has or already knows about. */
 export function whyDormant(state: GameState, def: ToolModDef, abilities: number): string | null {
+  // OUT OF CLASS beats everything — it is not short of room or of partners,
+  // the tool has stopped being the thing this belongs to.
+  if (def.classOnly && toolClass(state).def?.id !== def.classOnly) {
+    const owner = CLASS_BY_ID.get(def.classOnly);
+    return `Asleep — this one is a ${owner?.name ?? def.classOnly} tool's, and yours is not one right now.`;
+  }
   // OVER BUDGET beats every other reason — a modifier with nowhere to sit is
   // not waiting for a partner, it is waiting for room.
   if (modCache(state, abilities).dormant.includes(def.id) && modLive(state, def, abilities)) {
@@ -341,9 +349,20 @@ export function modCache(state: GameState, abilities = 0): ModCache {
   const room = modSlotsTotal(state);
   const overflow = new Set<string>();
   let spent = 0;
+  /**
+   * A CLASS-LOCKED MODIFIER SLEEPS IF THE TOOL STOPS BEING THAT CLASS.
+   *
+   * Same treatment overflow gets, for the same reason: rebuild the Head in
+   * different stone, tip out of Siege, and the Siege Weight you worked in is
+   * still yours — it is simply not doing anything until the tool is a Siege
+   * again. Deleting it would throw away materials the player spent on a
+   * consequence of a decision they are allowed to reverse.
+   */
+  const classId = toolClass(state).def?.id ?? null;
   for (const s of stacks) {
     const def = MOD_BY_ID.get(s.id);
     if (!def || s.n <= 0) continue;
+    if (def.classOnly && def.classOnly !== classId) { overflow.add(s.id); continue; }
     const cost = def.cost * s.n;
     if (spent + cost > room) overflow.add(s.id);
     else spent += cost;
@@ -472,6 +491,7 @@ export function applyToolMod(
   const match = matchToolMod(picked, {
     reached: reachedOrdinal(state),
     prefer: prefer && (state.casting.knownMods ?? []).includes(prefer) ? prefer : null,
+    classId: toolClass(state).def?.id ?? null,
   });
 
   // ROOM, CHECKED FIRST — but only for something already KNOWN. Refusing an

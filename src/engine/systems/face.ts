@@ -29,6 +29,7 @@ import { registerTechnique } from '../techniques';
 import { masteryLevel } from './mastery';
 import { lawNum, sealed, challengeNum } from '../laws';
 import { oreDef, oreRichness } from '../content/ores';
+import type { ReachPattern } from '../content/forgeParts';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -304,6 +305,96 @@ export function reachFrom(state: GameState, cell: number, want: number): number[
 }
 
 /**
+ * WHERE A SHAPED HEAD PUTS ITS SWING.
+ *
+ * `reachFrom` above is the `spread` pattern and stays exactly what it was — a
+ * plain-shaped tool, and every tool cast before shapes existed, goes through
+ * the same code it always did. The other five arrange the SAME NUMBER of
+ * harvests differently, which is the whole claim: a shape moves cells, it does
+ * not manufacture them.
+ *
+ * ALL SIX ARE DETERMINISTIC, for the reason the original was: the same swing on
+ * the same cell must touch the same rock, or the tool is impossible to aim and
+ * the shape stops being a thing you can build around.
+ *
+ * Every one is bounded by `want`, which is `tool.cells - 1` and is itself
+ * clamped to `MAX_EXTRA_CELLS`. A pattern that runs out of board returns fewer
+ * cells rather than wrapping — walking off the edge and reappearing would make
+ * a Spike at the wall behave like a Spike in open rock, which it should not.
+ */
+export function reachPattern(
+  state: GameState, cell: number, want: number, pattern: ReachPattern,
+): number[] {
+  if (want <= 0 || pattern === 'single') return [];
+  const { w, h } = state.face;
+  const x = cell % w;
+  const y = Math.floor(cell / w);
+  const at = (nx: number, ny: number): number =>
+    (nx < 0 || nx >= w || ny < 0 || ny >= h ? -1 : ny * w + nx);
+  const take = (list: number[]): number[] => {
+    const out: number[] = [];
+    for (const c of list) {
+      if (out.length >= want) break;
+      if (c >= 0 && c !== cell && !out.includes(c)) out.push(c);
+    }
+    return out;
+  };
+
+  switch (pattern) {
+    /** A TWO-BY-TWO with the strike in a corner, leaning to whichever corner
+     *  has board under it — so a Wide head at the wall still cuts a square. */
+    case 'block': {
+      const dx = x + 1 < w ? 1 : -1;
+      const dy = y + 1 < h ? 1 : -1;
+      return take([at(x + dx, y), at(x, y + dy), at(x + dx, y + dy)]);
+    }
+    /**
+     * TWO CELLS, NOT NEXT TO EACH OTHER.
+     *
+     * The far one is the strike reflected through the middle of the face —
+     * deterministic and, for most of the board, genuinely elsewhere. NOT for
+     * all of it: a cell NEAR THE CENTRE reflects onto its own diagonal
+     * neighbour, so a Twin head swung at the middle of a 6x6 was cutting
+     * exactly what a Point head cuts. Found by asserting that no two head
+     * shapes sweep the same rock, which failed on `twin` vs `point` at cell 14.
+     *
+     * So the mirror has to EARN being the twin. If it lands within a step or
+     * two of the strike it is not a second place at all, and the farthest
+     * corner is used instead — still deterministic, still one specific cell.
+     */
+    case 'twin': {
+      let far = at(w - 1 - x, h - 1 - y);
+      const near = (c: number): boolean =>
+        c < 0 || Math.max(Math.abs((c % w) - x), Math.abs(Math.floor(c / w) - y)) <= 2;
+      if (near(far)) {
+        far = at(x < w / 2 ? w - 1 : 0, y < h / 2 ? h - 1 : 0);
+      }
+      return take([far, ...reachFrom(state, cell, want)]);
+    }
+    /** AN ARC beside the strike: the column over, curving away. More cells than
+     *  a spread reaches, which is why the Crescent trades splash for them. */
+    case 'arc': {
+      const dx = x + 1 < w ? 1 : -1;
+      return take([
+        at(x + dx, y - 1), at(x + dx, y), at(x + dx, y + 1),
+        at(x + dx * 2, y - 1), at(x + dx * 2, y + 1),
+        at(x, y - 2), at(x, y + 2),
+        at(x + dx * 2, y),
+      ]);
+    }
+    /** A RUN straight through, in whichever direction has more wall left. */
+    case 'line': {
+      const dir = x <= (w - 1) / 2 ? 1 : -1;
+      const out: number[] = [];
+      for (let i = 1; i <= want + 2; i++) out.push(at(x + dir * i, y));
+      return take(out);
+    }
+    default:
+      return reachFrom(state, cell, want);
+  }
+}
+
+/**
  * A manual chip: takes the cell's full charge, may crit (Heavy Hands skill),
  * may fracture into neighbors (Fault Lines core node), and REACHES past it if
  * the player is carrying a tool. Grants XP.
@@ -370,7 +461,7 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   const reached: number[] = [];
   const reachMods = modCache(state);
   if (tool.cells > 1 && tool.splash > 0) {
-    for (const n of reachFrom(state, cell, tool.cells - 1)) {
+    for (const n of reachPattern(state, cell, tool.cells - 1, tool.pattern)) {
       // A pocket is immune to a swing, the same as it is to the first strike —
       // UNLESS the tool carries a Lodestone Head, which works every pocket it
       // reaches instead of only the one under the hand. It still WORKS them

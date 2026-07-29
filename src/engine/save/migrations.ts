@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 41;
+export const SAVE_VERSION = 42;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -958,6 +958,44 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     if (!Array.isArray(casting['knownSynergies'])) casting['knownSynergies'] = [];
     return { ...p, version: 41, state };
+  },
+
+  /**
+   * v42 — CAST SHAPES and EMERGENT CLASSES.
+   *
+   * Every existing part is stamped with its part type's PLAIN shape, which is
+   * what it has effectively been all along: the plain shapes are no-ops to the
+   * last decimal and 'spread' is the geometry the reach has always cut. A
+   * loaded tool therefore mines byte-identically to before, which is the bar a
+   * migration that touches the mining path has to clear.
+   *
+   * The table is FROZEN here rather than read from the registry, for the
+   * standing reason migrations do not import live content: a plain shape could
+   * be renamed next phase, and this must keep describing the world as it was.
+   *
+   * knownClasses starts empty. A class is read off the parts, so an existing
+   * coherent tool is ALREADY in one — it simply has not been told yet, and it
+   * will be the next time it is built or the panel is opened. Seeding the
+   * record here would mark a discovery the player has not had.
+   */
+  41: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    const PLAIN: Record<string, string> = {
+      head: 'point', core: 'solid', edge: 'keened', binding: 'lashed',
+      handle: 'straight', grip: 'plain', sockets: 'open',
+    };
+    for (const key of ['rack', 'tool']) {
+      const list = casting[key];
+      if (!Array.isArray(list)) continue;
+      for (const part of list) {
+        if (!part || typeof part !== 'object') continue;
+        const rec = part as Record<string, unknown>;
+        rec['shape'] ??= PLAIN[String(rec['type'])] ?? 'point';
+      }
+    }
+    if (!Array.isArray(casting['knownClasses'])) casting['knownClasses'] = [];
+    return { ...p, version: 42, state };
   },
 };
 
