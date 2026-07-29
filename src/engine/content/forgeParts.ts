@@ -541,6 +541,168 @@ export const BALANCE_CHARGE = 0.6;
 
 export type BalanceLabel = 'light' | 'nimble' | 'even' | 'weighty' | 'heavy';
 
+// ---------------------------------------------------------------------------
+// LIVING MATERIALS — a part that is still growing
+// ---------------------------------------------------------------------------
+
+/**
+ * VERDANCE STOCK IS ALIVE, and a part cast from it does not stop being alive.
+ *
+ * Over a long stretch of USE — the same cells-mined currency the tool levels on,
+ * which is regen-bound and cannot be tapped for — a living part MATURES, and
+ * maturing is a CHOICE rather than a number going up. The part offers three
+ * things it could become and you take one. A pickaxe with forty hours in it is
+ * a different tool from a fresh copy of itself, and the difference is a
+ * decision you made three times rather than a counter you watched.
+ *
+ * ONLY VERDANCE. That is the reason to build with living stock, and the reason
+ * the other six shells are not quietly worse: they are bigger, and this is the
+ * one thing they cannot do.
+ *
+ * PILLAR 2. The three boons are reach, self-mending and steadiness — reach is
+ * clamped to the 3x3 by `effectOf` like everything else, and the other two are
+ * durability and reliability, which are not in the charge economy at all. There
+ * is no boon that touches yield-per-charge, and the shape of that guarantee is
+ * the same one `ModEffectDef` carries: the vocabulary has no word for it.
+ */
+export const LIVING_SHELL = 'verdance';
+
+/** Cells a living part must work through for its first maturing. */
+export const GROWTH_BASE = 2200;
+export const GROWTH_EXP = 1.45;
+/** It matures three times and then it is grown. Lean on purpose. */
+export const GROWTH_MAX = 3;
+
+export function growthForStage(stage: number): number {
+  if (stage <= 0) return 0;
+  return Math.round(GROWTH_BASE * Math.pow(stage, GROWTH_EXP));
+}
+
+export type GrowthBoonId = 'reach' | 'mending' | 'supple';
+
+export interface GrowthBoonDef {
+  id: GrowthBoonId;
+  name: string;
+  /** What it does, in the game's voice. */
+  effect: string;
+  line: string;
+}
+
+/**
+ * THE THREE THINGS A LIVING PART CAN BECOME. Offered together, one taken — and
+ * the same part can take the same one twice if that is the build you want.
+ */
+export const GROWTH_BOONS: GrowthBoonDef[] = [
+  {
+    id: 'reach', name: 'Runner',
+    effect: 'It puts out a little further. One more cell to the swing, when there is room for one.',
+    line: 'You did not shape this. It went where it wanted and you kept hold of it.',
+  },
+  {
+    id: 'mending', name: 'Knitting',
+    effect: 'It closes its own wear over, slowly, while you are doing something else.',
+    line: 'The crack you noticed last week is a seam now. Next week it will be nothing.',
+  },
+  {
+    id: 'supple', name: 'Supple',
+    effect: 'It gives instead of arguing — steadier under load, and it spends less of itself working.',
+    line: 'It bends about a degree further every month. It has never bent back.',
+  },
+];
+
+export const BOON_BY_ID = new Map(GROWTH_BOONS.map((b) => [b.id, b]));
+
+/** What one taken boon is worth. Small, and stacking is capped by GROWTH_MAX. */
+export const BOON_REACH = 1;
+export const BOON_MEND = 0.003;
+export const BOON_STEADY = 14;
+export const BOON_WEAR = 0.88;
+
+// ---------------------------------------------------------------------------
+// MASTERWORK — how well this particular pour came out
+// ---------------------------------------------------------------------------
+
+/**
+ * A CRAFTSMANSHIP TIER, ROLLED AT THE POUR — and it never makes a part worse.
+ *
+ * THIS IS THE ONE PLACE THE CASTING FLOOR'S "NO RNG" RULE IS NARROWED, so it is
+ * worth being exact about what survives. The rule (systems/casting.ts, rule 1)
+ * is NO PUZZLE, NO FAIL: nothing you pour can be botched, there is no window to
+ * hit and no quality roll that takes something away. That still holds. A POOR
+ * pour is a normal part with no bonus — identical stats, identical shape,
+ * identical everything. The roll only ever ADDS, and most of the time it adds
+ * nothing.
+ *
+ * What it emphatically does not do is raise stats. A Masterwork Head has exactly
+ * the numbers a Poor one has. What it has instead is one small UTILITY thing —
+ * a slot, a repair discount, steadiness, or an exemption from wear — which is
+ * why the whole feature is pillar-2-inert: none of the four can be spent on
+ * charge.
+ */
+export type CraftTier = 'poor' | 'good' | 'excellent' | 'masterwork';
+
+export const CRAFT_TIERS: CraftTier[] = ['poor', 'good', 'excellent', 'masterwork'];
+
+export const CRAFT_LABEL: Record<CraftTier, string> = {
+  poor: 'Poor', good: 'Good', excellent: 'Excellent', masterwork: 'Masterwork',
+};
+
+export const CRAFT_LINE: Record<CraftTier, string> = {
+  poor: 'It came out. That is the most that can be said for it.',
+  good: 'A clean pour. Nothing to remark on, which is what most days are.',
+  excellent: 'That one went right. You are not entirely sure why.',
+  masterwork: 'You will not do that again. Whatever it was, it happened once.',
+};
+
+/** Cumulative odds, worst first. Masterwork is deliberately rare. */
+export const CRAFT_ODDS: Array<[CraftTier, number]> = [
+  ['poor', 0.20],
+  ['good', 0.78],
+  ['excellent', 0.96],
+  ['masterwork', 1.00],
+];
+
+export const CRAFT_COLOR: Record<CraftTier, number> = {
+  poor: 0x7a746a, good: 0xa8a094, excellent: 0x8fc0d8, masterwork: 0xf0d68a,
+};
+
+/** The four things a Masterwork can turn out to be. One is rolled with it. */
+export type MasterworkId = 'flawless' | 'roomy' | 'thrifty' | 'trueborn';
+
+export interface MasterworkDef {
+  id: MasterworkId;
+  name: string;
+  effect: string;
+}
+
+export const MASTERWORKS: MasterworkDef[] = [
+  {
+    id: 'flawless', name: 'Flawless',
+    effect: 'This part never needs seeing to. The wear goes somewhere else.',
+  },
+  {
+    id: 'roomy', name: 'Deep-Cut',
+    effect: 'There is room in it for one more modifier than there should be.',
+  },
+  {
+    id: 'thrifty', name: 'Thrifty',
+    effect: 'Putting it right costs a fraction of what it should.',
+  },
+  {
+    id: 'trueborn', name: 'Trueborn',
+    effect: 'What the tool carries goes off where you aimed it, far more reliably.',
+  },
+];
+
+export const MASTERWORK_BY_ID = new Map(MASTERWORKS.map((m) => [m.id, m]));
+
+/** An EXCELLENT pour gets a fraction of a Masterwork's steadiness and nothing
+ *  else — enough to be worth seeing on the card, nowhere near a Masterwork. */
+export const EXCELLENT_STEADY = 5;
+export const MASTERWORK_STEADY = 24;
+/** What a Thrifty part charges for a repair, as a fraction. */
+export const THRIFTY_REPAIR = 0.4;
+
 export interface PartTypeDef {
   id: PartType;
   name: string;

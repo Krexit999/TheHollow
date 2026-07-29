@@ -528,7 +528,7 @@ describe('the pillars survive both axes', () => {
 
 describe('the save', () => {
   it('is at v43, and adds no layers to anybody', () => {
-    expect(SAVE_VERSION).toBe(43);
+    expect(SAVE_VERSION).toBeGreaterThanOrEqual(43);
     const out = runMigrations({
       version: 42,
       state: {

@@ -22,6 +22,8 @@ import { equippedTool } from './forge';
 import { gainToolXp, spendToolUse, toolEffect } from './toolMining';
 import { advanceToolCharges, wireHandHarvest } from './toolAbilities';
 import { gainModXp, modCache } from './toolMods';
+import { growLivingParts } from './casting';
+import { noteBioWork } from './toolBio';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
@@ -513,6 +515,10 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     // level — cells that actually gave something up — so nothing on the tool
     // can climb faster than the rock allows.
     gainModXp(state, ctx, 1 + reached.length);
+    // AND THE LIVING PARTS GROW, and the biography records it. Same currency:
+    // cells that actually gave something up.
+    growLivingParts(state, ctx, 1 + reached.length);
+    noteBioWork(state, 1 + reached.length, 1);
     // AND A SWING FILLS THE ABILITY METER. `wasFull` is the same 70%-of-cap
     // rule the bay uses, so "mining a charged cell releases lightning" means
     // the same thing in the hand as it does on the rails. This can fire an
@@ -631,6 +637,8 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     spendToolUse(state, swept.length);
     gainToolXp(state, swept.length, ctx);
     gainModXp(state, ctx, swept.length);
+    growLivingParts(state, ctx, swept.length);
+    noteBioWork(state, swept.length, swept.length);
     // ONE GESTURE, ONE TICK OF THE METER. A sweep is nine swings of WEAR because
     // the rock does not care how the arm moved, but it is one motion of the arm
     // — charging nine would make the sweep the way you farm abilities instead of

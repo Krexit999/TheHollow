@@ -41,6 +41,7 @@ import { noticeConfluences } from './systems/confluence';
 import { tickAutoRefine } from './systems/refinery';
 import { tickCasting } from './systems/casting';
 import { tickToolMods } from './systems/toolMods';
+import { tickBio } from './systems/toolBio';
 import { doCollapse } from './systems/collapseSys';
 import { automationRate } from './content/shell7/gridModules';
 import { tickParallelShells, checkChallengeGoal } from './systems/spiral';
@@ -170,6 +171,8 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     // holding the tool — and it is the tool's own wear, never income, so the
     // idle layer gains nothing from it (pillar 1).
     tickToolMods(state, dt);
+    // THE BIOGRAPHY'S CLOCK — hours held, and where it has been.
+    tickBio(state, dt);
     tickAssay(state, mods, ctx);
     tickCombat(state, mods, ctx);
     tickGuild(state, mods, ctx, dt);

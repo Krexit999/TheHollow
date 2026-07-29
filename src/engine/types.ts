@@ -1317,6 +1317,9 @@ export type GameEvent =
   | { type: 'toolModApplied'; id: string; name: string; stacks: number }
   /** The build turned out to BE something. Emergent, never chosen. */
   | { type: 'toolClassFound'; id: string; name: string }
+  /** A living part has done enough work to become something. Offers a choice. */
+  | { type: 'partReadyToGrow'; partType: string }
+  | { type: 'partMatured'; partType: string; boon: string; name: string; stage: number }
   | { type: 'toolModLevelled'; id: string; name: string; level: number }
   /** A pair on the tool turned out to be a third thing. Found, never listed. */
   | { type: 'synergyAwoke'; id: string; name: string }
@@ -1554,6 +1557,8 @@ export type GameAction =
    *  hinted and never listed — the same grammar as an alloy pour. */
   | { type: 'applyToolMod'; materialIds: string[]; prefer?: string | null }
   | { type: 'stripToolMod'; id: string }
+  /** Take one of the three things a matured living part offers. */
+  | { type: 'matureLivingPart'; partType: string; boon: string }
   | { type: 'repairTool'; partType: string }
   | { type: 'meltBack'; partId: number }
   | { type: 'debug'; op: 'unlockAll' };

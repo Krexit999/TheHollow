@@ -29,13 +29,17 @@ import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
 import { BANDS, bandOf, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import {
-  LAYER_NAMES, PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape,
+  BOON_BY_ID, CRAFT_COLOR, CRAFT_LABEL, GROWTH_BOONS, GROWTH_MAX, LAYER_NAMES,
+  MASTERWORK_BY_ID, PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape,
   shapeDef, shapesFor,
   type PartShape, type PartType,
 } from '../../engine/content/forgeParts';
 import {
-  balanceOf, partMaterials, shapeFold, type ToolStats,
+  balanceOf, craftFold, growthFold, growthProgress, isLiving, partMaterials,
+  shapeFold, type ToolStats,
 } from '../../engine/systems/forgeParts';
+import { readBio } from '../../engine/systems/toolBio';
+import { allShells } from '../../engine/shells';
 import {
   MELT_BACK_SHARE, MELT_PER_UNIT, QUEUE_MAX, TUB_CAPACITY, FULL_SET_MELT,
   benchComplete, benchPreview, canCast, crucibleFill, currentTool, frontCharge,
@@ -1691,6 +1695,209 @@ function BalanceCard({ state, tool }: { state: GameState; tool: ToolStats }) {
   );
 }
 
+/**
+ * WHAT IS STILL GROWING, and the choice it offers when it has done the work.
+ *
+ * Absent entirely for a tool with no Verdance stock in it — which is most tools,
+ * and is the point: this is the reason to build with living material, and a
+ * permanently empty card would read as a missing requirement rather than a road
+ * not taken.
+ *
+ * The CHOICE is the feature. Three things it could become, one taken, and the
+ * card says what each does before you commit — a maturation you cannot read is
+ * a coin toss, and this is meant to be the moment you decide what your pickaxe
+ * has been turning into for the last few hours.
+ */
+function LivingCard({ tool }: { tool: ToolStats }) {
+  const [note, setNote] = useState<string | null>(null);
+  const living = tool.parts.filter((p) => isLiving(p));
+  if (living.length === 0) return null;
+  const fold = growthFold(tool.parts);
+
+  return (
+    <div className="mt-2 rounded-md border border-[#4c6a3a]/50 p-2" data-testid="tool-living">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Still growing</span>
+        <span className="tnum text-[9px] text-cave-500" data-testid="tool-living-count">
+          {living.length} living part{living.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {living.map((p) => {
+        const prog = growthProgress(p);
+        const taken = p.grown ?? [];
+        return (
+          <div key={p.type} className="mt-1.5" data-testid={`living-${p.type}`}>
+            <div className="flex items-baseline gap-1.5">
+              <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wider text-[#9ac07a]">
+                {PART_DEFS[p.type as PartType].name}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[9px] text-cave-600">
+                {taken.length > 0
+                  ? taken.map((b) => BOON_BY_ID.get(b)?.name ?? b).join(' · ')
+                  : 'nothing yet'}
+              </span>
+              <span className="tnum shrink-0 text-[9px] text-cave-500">
+                {prog.grown ? 'grown' : `${prog.stage}/${GROWTH_MAX}`}
+              </span>
+            </div>
+            {!prog.grown && (
+              <>
+                <div className="mt-0.5 h-1 w-full overflow-hidden rounded-sm bg-cave-900">
+                  <div
+                    className="h-full transition-[width] duration-150"
+                    data-testid={`living-bar-${p.type}`}
+                    style={{ width: `${prog.frac * 100}%`, background: prog.ready ? '#c8e0a0' : '#4c6a3a' }}
+                  />
+                </div>
+                <div className="mt-0.5 text-[8px] text-cave-600" data-testid={`living-progress-${p.type}`}>
+                  {prog.ready
+                    ? 'It has done the work. It is waiting to be told what to become.'
+                    : `${fmt(prog.into)} / ${fmt(prog.need)} cells`}
+                </div>
+              </>
+            )}
+            {prog.ready && (
+              <div className="mt-1 space-y-1" data-testid={`living-choice-${p.type}`}>
+                {GROWTH_BOONS.map((b) => (
+                  <button
+                    key={b.id}
+                    className="w-full rounded border border-cave-700 px-1.5 py-1 text-left hover:border-[#9ac07a]/70"
+                    data-testid={`living-take-${p.type}-${b.id}`}
+                    onClick={() => {
+                      const r = dispatch({
+                        type: 'matureLivingPart', partType: p.type, boon: b.id,
+                      });
+                      setNote(r.ok
+                        ? `The ${PART_DEFS[p.type as PartType].name} became ${b.name}.`
+                        : r.reason ?? null);
+                    }}
+                  >
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-[#9ac07a]">
+                      {b.name}
+                    </span>
+                    <span className="mt-0.5 block text-[9px] leading-snug text-cave-400">{b.effect}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {(fold.cells > 0 || fold.repairPerSec > 0 || fold.stabilize > 0) && (
+        <div className="mt-1.5 border-t border-cave-800 pt-1 text-[9px] leading-snug text-cave-300"
+          data-testid="tool-living-total">
+          All told: {[
+            fold.cells > 0 ? `+${fold.cells} reach` : null,
+            fold.repairPerSec > 0 ? 'closes its own wear' : null,
+            fold.stabilize > 0 ? `steadier by ${Math.round(fold.stabilize)}` : null,
+            fold.wear < 1 ? `${Math.round((1 - fold.wear) * 100)}% less wear a swing` : null,
+          ].filter(Boolean).join(' · ')}
+        </div>
+      )}
+      {note && <div className="mt-1 text-center text-[10px] text-cave-300" data-testid="living-note">{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * HOW WELL THE POURS CAME OUT. Only rendered when there is something to say —
+ * a tool of Good parts has no craftsmanship story, which is most tools.
+ */
+function CraftCard({ tool }: { tool: ToolStats }) {
+  const fold = craftFold(tool.parts);
+  const notable = tool.parts.filter((p) => p.craft === 'masterwork' || p.craft === 'excellent');
+  if (notable.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-craft">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">The pours</span>
+        <span
+          className="tnum text-[9px] uppercase tracking-wider"
+          style={{ color: `#${CRAFT_COLOR[fold.best].toString(16).padStart(6, '0')}` }}
+          data-testid="tool-craft-best"
+        >
+          {CRAFT_LABEL[fold.best]}
+          {fold.masterworks > 0 ? ` ×${fold.masterworks}` : ''}
+        </span>
+      </div>
+      {notable.map((p) => {
+        const tier = p.craft ?? 'good';
+        const work = p.work ? MASTERWORK_BY_ID.get(p.work) : undefined;
+        return (
+          <div key={p.type} className="mt-1" data-testid={`craft-${p.type}`}>
+            <div className="flex items-baseline gap-1.5">
+              <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+                {PART_DEFS[p.type as PartType].name}
+              </span>
+              <span
+                className="shrink-0 text-[9px] font-semibold uppercase tracking-wider"
+                style={{ color: `#${CRAFT_COLOR[tier].toString(16).padStart(6, '0')}` }}
+              >
+                {work ? work.name : CRAFT_LABEL[tier]}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[9px] leading-snug text-cave-400">
+              {work ? work.effect : 'A touch steadier under load. Nothing more than that.'}
+            </div>
+          </div>
+        );
+      })}
+      <div className="mt-1 text-[8px] leading-snug text-cave-600">
+        None of this is stats. A Masterwork Head has the numbers a Poor one has.
+      </div>
+    </div>
+  );
+}
+
+/**
+ * THE BIOGRAPHY. Information, and it says so — the last line is load-bearing
+ * copy, because a history panel in a game with stat screens will be read as a
+ * stat screen unless it tells you otherwise.
+ */
+function BiographyCard({ state }: { state: GameState }) {
+  const bio = readBio(state);
+  if (!bio) return null;
+  const shell = (id: string): string => {
+    const s = allShells().find((x) => x.id === id);
+    return s ? s.name : id;
+  };
+  const rows: Array<[string, string]> = [
+    ['Cells broken', fmt(bio.cells)],
+    ['Swings', fmt(bio.swings)],
+    ['Hours in hand', bio.hours < 1 ? `${Math.round(bio.hours * 60)} min` : bio.hours.toFixed(1)],
+    ['Deepest', `${shell(bio.deepestShell)} · ${fmt(bio.deepestDepth)}m`],
+    ['Abilities set off', fmt(bio.fired)],
+    ['Collapses survived', fmt(bio.collapses)],
+    ['Relics turned up', fmt(bio.relics)],
+  ];
+  if (bio.breaches > 0) rows.push(['Worlds left behind', fmt(bio.breaches)]);
+  if (bio.rebuilds > 0) rows.push(['Rebuilt', `${fmt(bio.rebuilds)}×`]);
+
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-bio">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Its history</span>
+        <span className="tnum text-[9px] text-cave-600" data-testid="tool-bio-age">
+          {bio.shells.length} shell{bio.shells.length === 1 ? '' : 's'} worked
+        </span>
+      </div>
+      <div className="mt-1 space-y-0.5" data-testid="tool-bio-rows">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex items-baseline gap-1 text-[9px]">
+            <span className="min-w-0 flex-1 truncate text-cave-600">{k}</span>
+            <span className="tnum shrink-0 text-cave-300">{v}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 text-[8px] leading-snug text-cave-600">
+        None of this makes it stronger. It is what the tool has done.
+      </div>
+    </div>
+  );
+}
+
 /** WHAT THE SWING LOOKS LIKE — the head's mould, on the tool it was built into. */
 function ShapeCard({ state, tool }: { state: GameState; tool: ToolStats }) {
   const fold = shapeFold(tool.parts);
@@ -1760,6 +1967,8 @@ function YourTool({ state }: { state: GameState }) {
       <ClassCard state={state} />
       <ShapeCard state={state} tool={tool} />
       <BalanceCard state={state} tool={tool} />
+      <LivingCard tool={tool} />
+      <CraftCard tool={tool} />
       <AbilitiesCard state={state} />
       <ModBench state={state} />
       <LevelCard state={state} tool={tool} />
@@ -1767,6 +1976,7 @@ function YourTool({ state }: { state: GameState }) {
       <Durability state={state} tool={tool} />
       <CoherenceReadout tool={tool} testid="tool-coherence" />
       <RawStats tool={tool} testid="tool-stats" />
+      <BiographyCard state={state} />
       <button
         className="btn mt-1.5 w-full py-1 text-[11px]"
         data-testid="breakdown"

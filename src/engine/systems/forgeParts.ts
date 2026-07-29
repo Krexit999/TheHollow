@@ -38,10 +38,12 @@ import {
   PURITY_FLOOR, PURITY_PER_POINT, W_PRIMARY, W_SECONDARY, W_SPILL,
   MISMATCH_K, VARIETY_WEIGHT, RELIEF_PIVOT, RELIEF_SLOPE, MAX_RELIEF,
   LAYER_MAX, layerWeights, HEFT, BALANCE_DEADZONE,
+  LIVING_SHELL, GROWTH_MAX, growthForStage, BOON_REACH, BOON_MEND, BOON_STEADY,
+  BOON_WEAR, CRAFT_TIERS, EXCELLENT_STEADY, MASTERWORK_STEADY,
   WINDUP_MAX, BALANCE_REACH, BALANCE_SPLASH, BALANCE_WEAR, BALANCE_CHARGE,
   shapeDef,
-  type BalanceLabel, type ForgeTraitId, type PartType, type PartShape,
-  type ReachPattern, type ToolStat,
+  type BalanceLabel, type CraftTier, type ForgeTraitId, type GrowthBoonId,
+  type MasterworkId, type PartType, type PartShape, type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
 import { RARITIES, bandOf, materialDef, type MaterialDef } from '../materials';
 import { traitsOf } from '../traits';
@@ -83,6 +85,143 @@ export interface Part {
    * is the identity, so nothing that existed before this behaves differently.
    */
   layers?: Array<{ materialId: string; purity: number }>;
+  /**
+   * LIVING STOCK KEEPS GROWING. `grown` is the boons this part has taken, in
+   * order; `growth` is the cells it has worked through since the last one.
+   *
+   * Both absent on a part that is not alive, and on every part cast before this
+   * existed — and `growthFold` of an empty list is the identity, so nothing that
+   * already existed behaves differently.
+   */
+  grown?: GrowthBoonId[];
+  growth?: number;
+  /**
+   * HOW WELL THIS PARTICULAR POUR CAME OUT. Rolled once, at the cast, and never
+   * again. Absent = `good`, which is the tier that does nothing — so an old part
+   * reads as the unremarkable middle rather than as a hole.
+   */
+  craft?: CraftTier;
+  /** Which Masterwork it turned out to be. Only ever set with `craft:
+   *  'masterwork'`. */
+  work?: MasterworkId;
+}
+
+/** Is this part alive — i.e. is any of its stock Verdance? */
+export function isLiving(part: Part): boolean {
+  return partMaterials(part).some((id) => materialDef(id).shellId === LIVING_SHELL);
+}
+
+/** Cells this part still owes before it matures again. Null when it is grown,
+ *  or was never alive. */
+export function growthNeed(part: Part): number | null {
+  if (!isLiving(part)) return null;
+  const stage = (part.grown ?? []).length;
+  if (stage >= GROWTH_MAX) return null;
+  return growthForStage(stage + 1);
+}
+
+/** Everything the growth readout needs, so the panel computes nothing. */
+export function growthProgress(part: Part): {
+  living: boolean; stage: number; into: number; need: number; frac: number; ready: boolean; grown: boolean;
+} {
+  const living = isLiving(part);
+  const stage = (part.grown ?? []).length;
+  const need = growthNeed(part);
+  if (!living || need === null) {
+    return { living, stage, into: 0, need: 0, frac: living ? 1 : 0, ready: false, grown: living };
+  }
+  const into = part.growth ?? 0;
+  return {
+    living, stage, into, need,
+    frac: Math.max(0, Math.min(1, into / need)),
+    ready: into >= need,
+    grown: false,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// THE GROWTH AND CRAFT FOLDS
+// ---------------------------------------------------------------------------
+
+export interface GrowthFold {
+  cells: number;
+  repairPerSec: number;
+  stabilize: number;
+  wear: number;
+  /** Parts with a boon ready to take. The panel surfaces the choice. */
+  ready: PartType[];
+}
+
+export const NO_GROWTH: GrowthFold = {
+  cells: 0, repairPerSec: 0, stabilize: 0, wear: 1, ready: [],
+};
+
+/**
+ * WHAT THE LIVING PARTS HAVE BECOME. Additive across parts and boons, and the
+ * fold of a tool with no living stock is the identity.
+ */
+export function growthFold(parts: Part[]): GrowthFold {
+  const out: GrowthFold = { ...NO_GROWTH, ready: [] };
+  let touched = false;
+  for (const p of parts) {
+    const prog = growthProgress(p);
+    if (prog.ready) out.ready.push(p.type);
+    for (const id of p.grown ?? []) {
+      touched = true;
+      if (id === 'reach') out.cells += BOON_REACH;
+      else if (id === 'mending') out.repairPerSec += BOON_MEND;
+      else if (id === 'supple') { out.stabilize += BOON_STEADY; out.wear *= BOON_WEAR; }
+    }
+  }
+  return touched || out.ready.length > 0 ? out : { ...NO_GROWTH, ready: out.ready };
+}
+
+export interface CraftFold {
+  /** Extra modifier slots from Deep-Cut parts. */
+  modSlots: number;
+  /** Instability taken off by Excellent and Trueborn parts. */
+  stabilize: number;
+  /** Part types that never wear — Flawless. */
+  flawless: PartType[];
+  /** Part types whose repair is discounted — Thrifty. */
+  thrifty: PartType[];
+  /** For the readout: the best tier on the tool, and how many Masterworks. */
+  best: CraftTier;
+  masterworks: number;
+}
+
+export const NO_CRAFT: CraftFold = {
+  modSlots: 0, stabilize: 0, flawless: [], thrifty: [], best: 'good', masterworks: 0,
+};
+
+/**
+ * WHAT THE POURS ADDED UP TO. Note there is NO stat term in here at all — a
+ * Masterwork Head has the numbers a Poor one has, and the whole fold is slots,
+ * steadiness, wear exemptions and repair prices.
+ */
+export function craftFold(parts: Part[]): CraftFold {
+  const out: CraftFold = { ...NO_CRAFT, flawless: [], thrifty: [] };
+  // NO FLOOR AT 'GOOD'. Flooring here made an all-Poor tool report as Good,
+  // because Math.max(indexOf('good'), indexOf('poor')) is 'good' — the absent
+  // case is already handled by `p.craft ?? 'good'` below, and doing it twice
+  // meant an explicitly Poor pour could never be shown as one.
+  let bestIdx = -1;
+  for (const p of parts) {
+    const tier = p.craft ?? 'good';
+    bestIdx = Math.max(bestIdx, CRAFT_TIERS.indexOf(tier));
+    if (tier === 'excellent') out.stabilize += EXCELLENT_STEADY;
+    if (tier !== 'masterwork') continue;
+    out.masterworks += 1;
+    switch (p.work) {
+      case 'roomy': out.modSlots += 1; break;
+      case 'trueborn': out.stabilize += MASTERWORK_STEADY; break;
+      case 'flawless': out.flawless.push(p.type); break;
+      case 'thrifty': out.thrifty.push(p.type); break;
+      default: break;
+    }
+  }
+  out.best = bestIdx < 0 ? 'good' : CRAFT_TIERS[bestIdx]!;
+  return out;
 }
 
 // ---------------------------------------------------------------------------

@@ -35,11 +35,13 @@
 import type { ActionResult, DrillState, EngineCtx, GameState } from '../types';
 import {
   LAYER_MAX, LAYER_MELT_EXTRA, PART_TYPES, layerWeights, shapeDef,
-  type PartShape, type PartType,
+  BOON_BY_ID, CRAFT_ODDS, MASTERWORKS,
+  type CraftTier, type GrowthBoonId, type MasterworkId, type PartShape, type PartType,
 } from '../content/forgeParts';
 import {
-  assembleTool, derivePart, partMelt, type Part, type ToolStats,
+  assembleTool, derivePart, partMelt, growthProgress, type Part, type ToolStats,
 } from './forgeParts';
+import type { ToolBio } from './toolBio';
 import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
 
@@ -161,6 +163,75 @@ export interface CastingState {
    * state rather than derivation.
    */
   windup?: number;
+  /** THE TOOL'S HISTORY. Information only — see `systems/toolBio.ts`. */
+  bio?: ToolBio;
+}
+
+/**
+ * HOW WELL A POUR CAME OUT. The one roll on the Casting Floor, and it narrows
+ * rule 1 rather than breaking it: nothing can be BOTCHED — a Poor part has the
+ * same stats, shape and layers a Masterwork one has — the roll only ever adds a
+ * small utility bonus, and most of the time it adds nothing at all.
+ */
+export function rollCraft(): { craft: CraftTier; work?: MasterworkId } {
+  const r = Math.random();
+  let craft: CraftTier = 'good';
+  for (const [tier, upTo] of CRAFT_ODDS) {
+    if (r < upTo) { craft = tier; break; }
+  }
+  if (craft !== 'masterwork') return { craft };
+  const work = MASTERWORKS[Math.floor(Math.random() * MASTERWORKS.length)]!.id;
+  return { craft, work };
+}
+
+/**
+ * TAKE A LIVING PART'S BOON. The part has done the work; this is the choice it
+ * offers, and it is a choice — three on the table, one taken, and the same one
+ * may be taken again if that is the tool you want.
+ */
+export function matureLivingPart(
+  state: GameState, ctx: EngineCtx, type: PartType, boon: GrowthBoonId,
+): ActionResult {
+  const part = state.casting.tool.find((p) => p.type === type);
+  if (!part) return { ok: false, reason: 'No such part on it' };
+  if (!BOON_BY_ID.has(boon)) return { ok: false, reason: 'No such thing to become' };
+  const prog = growthProgress(part);
+  if (!prog.living) return { ok: false, reason: 'That part is not alive' };
+  if (prog.grown) return { ok: false, reason: 'That part is finished growing' };
+  if (!prog.ready) {
+    return { ok: false, reason: `It has more to do first — ${Math.floor(prog.into)}/${prog.need}` };
+  }
+
+  (part.grown ??= []).push(boon);
+  // The work spent goes with it; the next stage starts from nothing.
+  part.growth = Math.max(0, (part.growth ?? 0) - prog.need);
+  ctx.emit({
+    type: 'partMatured',
+    partType: type,
+    boon,
+    name: BOON_BY_ID.get(boon)!.name,
+    stage: part.grown.length,
+  });
+  ctx.dirty();
+  return { ok: true, data: { boon, stage: part.grown.length } };
+}
+
+/**
+ * A LIVING PART GROWS FROM THE WORK THE TOOL DOES. Called from the manual verbs
+ * with cells that actually gave something up — the same currency the tool and
+ * its modifiers level on, which is regen-bound and cannot be tapped for.
+ */
+export function growLivingParts(state: GameState, ctx: EngineCtx | undefined, cells: number): void {
+  if (cells <= 0 || !state.casting) return;
+  for (const p of state.casting.tool) {
+    const before = growthProgress(p);
+    if (!before.living || before.grown || before.ready) continue;
+    p.growth = (p.growth ?? 0) + cells;
+    if (growthProgress(p).ready && ctx) {
+      ctx.emit({ type: 'partReadyToGrow', partType: p.type });
+      ctx.dirty();
+    }
+  }
 }
 
 export function defaultCastingState(): CastingState {
@@ -327,9 +398,34 @@ export function benchPreview(state: GameState): ToolStats | null {
 let toolCacheKey = '';
 let toolCacheVal: ToolStats | null = null;
 
+/**
+ * THE KEY MUST NAME EVERYTHING A READER OF THE MEMO CAN SEE — and the first
+ * version did not, which was a real bug caught by the living-materials tests.
+ *
+ * It hashed type/material/purity/shape only. Two problems, one latent and one
+ * live:
+ *
+ *  - LAYERS WERE MISSING. A solid marl Head and a marl-over-firstiron Head hash
+ *    identically, so whichever was assembled first would be handed back for the
+ *    other. That has been true since layering landed and nothing caught it
+ *    because every test that compared blends called `assembleTool` directly.
+ *  - `grown` AND `craft` WERE MISSING, and they are read off `tool.parts` by
+ *    `growthFold` and `craftFold`. The memo returns a tool whose `parts` is
+ *    whatever array it was built from, so after a rebuild — or a new state with
+ *    the same descriptors — mutating the LIVE array changed nothing the readers
+ *    could see. Three tests failed on it at once: a Supple part did not steady,
+ *    a Trueborn did not steady, and a Thrifty repair charged full price.
+ *
+ * So the key is now every field `Part` carries. The rule to keep: adding a field
+ * to `Part` means adding it here, or the memo silently serves a stale answer.
+ */
 function toolKey(parts: Part[]): string {
   let k = '';
-  for (const p of parts) k += `${p.type}:${p.materialId}:${p.purity}:${p.shape ?? ''}|`;
+  for (const p of parts) {
+    k += `${p.type}:${p.materialId}:${p.purity}:${p.shape ?? ''}`;
+    for (const l of p.layers ?? []) k += `/${l.materialId}:${l.purity}`;
+    k += `:${(p.grown ?? []).join('+')}:${p.growth ?? 0}:${p.craft ?? ''}:${p.work ?? ''}|`;
+  }
   return k;
 }
 
@@ -519,6 +615,7 @@ export function castPart(
     // Only stored when there IS one, so a plain part's shape on disk is exactly
     // what it was before layering existed.
     ...(want > 1 ? { layers: stack.slice(1) } : {}),
+    ...rollCraft(),
   };
   state.casting.rack.push(part);
   state.casting.cast += 1;

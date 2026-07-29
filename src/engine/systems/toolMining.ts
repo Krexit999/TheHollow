@@ -42,10 +42,12 @@
  */
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
-  LINEAR_STATS, SHELL_STEP, STAT_BASE, type ReachPattern, type ToolStat,
+  LINEAR_STATS, SHELL_STEP, STAT_BASE, THRIFTY_REPAIR,
+  type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
 import {
   derivePart, shapeOf, intensityOf, partTraits, shapeFold, balanceOf, EVEN_BALANCE,
+  growthFold, craftFold,
   type Balance, type ToolStats,
 } from './forgeParts';
 import { materialDef } from '../materials';
@@ -190,11 +192,14 @@ export function effectOf(
    * byte-identical to before this existed.
    */
   const balance = balanceOf(tool.parts);
+  // LIVING GROWTH lands on reach, in the same clamp as everything else. Three
+  // boons on one part is at most three cells, and the 3x3 still bounds it.
+  const grown = growthFold(tool.parts);
   const extra = Math.min(
     MAX_EXTRA_CELLS,
     Math.max(0, Math.round(
       (Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells + mod.cells)
-      * shape.cells * balance.cells,
+      * shape.cells * balance.cells + grown.cells,
     )),
   );
   const splash = Math.min(
@@ -304,8 +309,14 @@ export function wearPerUse(tool: ToolStats, level = 1, mod: ModCache = NO_MODS):
   // changes what a SWING costs, not how big the pool is.
   // A heavy swing costs more of the pool and a light one less — which is where
   // light's "more swings" is literally delivered.
+  // A SUPPLE living part spends less of the tool, and a FLAWLESS part is exempt
+  // from wear altogether — its share of the pool goes to the parts that are not.
+  // Both are durability, which is not in the charge economy.
+  const craft = craftFold(tool.parts);
+  const exempt = craft.flawless.length / Math.max(1, tool.parts.length);
   return (poolOf(tool) / usesOf(tool, level, mod))
-    * shapeFold(tool.parts).wear * balanceOf(tool.parts).wear;
+    * shapeFold(tool.parts).wear * balanceOf(tool.parts).wear
+    * growthFold(tool.parts).wear * (1 - Math.min(0.6, exempt));
 }
 
 export function isBroken(state: GameState, tool: ToolStats): boolean {
@@ -535,7 +546,10 @@ export function effectiveToolTier(state: GameState): number {
 
 /** Modifier slots this tool holds: what its parts give, plus what use earned. */
 export function modSlotsOf(state: GameState, tool: ToolStats): { fromParts: number; fromUse: number; total: number } {
-  const fromParts = Math.floor(tool.stats.modSlots);
+  // A DEEP-CUT masterwork part has room in it for one more than it should. It is
+  // counted with the parts because that is what it is — a property of the pour,
+  // not of what the tool has done.
+  const fromParts = Math.floor(tool.stats.modSlots) + craftFold(tool.parts).modSlots;
   const fromUse = grantsFor(toolLevel(state)).slots;
   return { fromParts, fromUse, total: fromParts + fromUse };
 }
@@ -566,10 +580,15 @@ export function repairTool(
   if (state.casting.wear <= 0) return { ok: false, reason: 'Nothing to put right' };
 
   const name = materialDef(part.materialId).name;
-  if (materialCount(state, part.materialId) < REPAIR_UNITS) {
-    return { ok: false, reason: `Needs ${REPAIR_UNITS} ${name}` };
+  // A THRIFTY masterwork part costs a fraction of what it should to put right.
+  // Floored at one, because a free repair would stop maintenance being a sink
+  // and stop the wear pool meaning anything.
+  const thrifty = craftFold(tool.parts).thrifty.includes(type);
+  const units = thrifty ? Math.max(1, Math.round(REPAIR_UNITS * THRIFTY_REPAIR)) : REPAIR_UNITS;
+  if (materialCount(state, part.materialId) < units) {
+    return { ok: false, reason: `Needs ${units} ${name}` };
   }
-  consumeMaterial(state, part.materialId, REPAIR_UNITS);
+  consumeMaterial(state, part.materialId, units);
 
   const back = poolOf(tool) * repairShare(tool, type);
   const before = state.casting.wear;

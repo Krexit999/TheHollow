@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 43;
+export const SAVE_VERSION = 44;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -1021,6 +1021,33 @@ export const MIGRATIONS: Record<number, Migration> = {
     const casting = (state['casting'] ??= {}) as Record<string, unknown>;
     casting['windup'] = 0;
     return { ...p, version: 43, state };
+  },
+
+  /**
+   * v44 — LIVING MATERIALS, THE BIOGRAPHY, MASTERWORK.
+   *
+   * ALL THREE ARE ABSENT-MEANS-NOTHING by design, so this migration is almost
+   * empty and that is the point:
+   *
+   *  - a part with no `grown`/`growth` has taken no boons, and `growthFold` of
+   *    an empty list is the identity. Living parts an existing tool already has
+   *    start growing from the next swing, which is the honest start: the work is
+   *    what earns a boon and this save has not done it yet.
+   *  - a part with no `craft` reads as GOOD, the tier that does nothing. No
+   *    existing part is retroactively rolled — a Masterwork you did not pour is
+   *    not yours, and rolling for old parts would hand out the rarest thing in
+   *    the feature for free.
+   *  - the biography starts on the next BUILD rather than here, seeded with the
+   *    counters as they are then. Back-dating it to the tool's real age is not
+   *    possible (nothing recorded when it was made) and inventing a number would
+   *    make the first render a lie.
+   */
+  43: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    // Nothing to add. Recorded explicitly so the chain has no silent gap.
+    void casting;
+    return { ...p, version: 44, state };
   },
 };
 

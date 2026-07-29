@@ -69,12 +69,15 @@ import { produceExport } from './content/exports';
 import { refine, transmute } from './systems/refinery';
 import {
   benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
-  meltBack, bringToFront,
+  meltBack, bringToFront, matureLivingPart,
 } from './systems/casting';
-import { PART_TYPES, type PartShape, type PartType } from './content/forgeParts';
+import {
+  PART_TYPES, type GrowthBoonId, type PartShape, type PartType,
+} from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
 import { noteSynergies, setToolAbility, syncToolAbilities } from './systems/toolAbilities';
 import { noteToolClass } from './systems/toolClass';
+import { startBio } from './systems/toolBio';
 import { applyToolMod, stripToolMod } from './systems/toolMods';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
@@ -655,6 +658,8 @@ export function handleAction(
     case 'buildTool': {
       const r = buildTool(state, ctx);
       if (r.ok) {
+        // THE BIOGRAPHY STARTS, or counts a rebuild. Either way it survives.
+        startBio(state);
         syncToolAbilities(state, ctx);
         // AND WHAT IT TURNED OUT TO BE. A class is read off the finished parts,
         // so building is the only moment it can change — and the first time a
@@ -685,6 +690,11 @@ export function handleAction(
       if (r.ok) noteSynergies(state, ctx);
       return r;
     }
+
+    case 'matureLivingPart':
+      return matureLivingPart(
+        state, ctx, action.partType as PartType, action.boon as GrowthBoonId,
+      );
     case 'meltBack':
       return meltBack(state, ctx, action.partId);
     case 'repairTool':

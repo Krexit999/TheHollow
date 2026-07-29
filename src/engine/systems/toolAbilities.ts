@@ -79,6 +79,7 @@ import { modSlotsOf } from './toolMining';
 import {
   gainModXp, modCache, noteSynergies, toolInstability, tuneParams, wireSeatedAbilities,
 } from './toolMods';
+import { noteBioFired } from './toolBio';
 
 export { noteSynergies };
 import type { ToolStats } from './forgeParts';
@@ -247,6 +248,7 @@ wireAfterFire((state, mods, ctx, index, slot, cell, depth) => {
     }
   }
   gainModXp(state, ctx, 0, 1);
+  noteBioFired(state);
   noteSynergies(state, ctx);
 
   if (cache.repairOnFire > 0 && state.casting.wear > 0) {

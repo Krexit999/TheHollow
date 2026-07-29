@@ -44,7 +44,7 @@ import { modSlotsOf } from './toolMining';
 import { LINEAR_STATS, STAT_BASE } from '../content/forgeParts';
 import { CLASS_BY_ID } from '../content/toolClasses';
 import { toolClass } from './toolClass';
-import type { ToolStats } from './forgeParts';
+import { growthFold, craftFold, type ToolStats } from './forgeParts';
 import { consumeMaterial, materialCount } from './forge';
 
 /** One modifier on the tool, and how many times it has been applied. */
@@ -670,7 +670,13 @@ export function instability(state: GameState, abilities: Array<{ power: number; 
   // removing it, which is what makes those two a real decision.
   let steady = cache.stabilize;
   const tool = currentTool(state);
-  if (tool) steady += steadyOf(tool) ;
+  if (tool) {
+    steady += steadyOf(tool);
+    // SUPPLE living parts and EXCELLENT/TRUEBORN pours steady it too. Both are
+    // reliability and neither is in the charge economy — the same reason the
+    // stabilise axis was allowed to exist at all.
+    steady += growthFold(tool.parts).stabilize + craftFold(tool.parts).stabilize;
+  }
 
   const net = Math.max(0, raw - steady);
   const misfire = Math.max(0, Math.min(MISFIRE_CAP, (net - INST_FLOOR) * INST_PER_POINT));
@@ -721,12 +727,15 @@ export function toolInstability(state: GameState): InstabilityRead {
 export function tickToolMods(state: GameState, dt: number): void {
   if (!state.casting) return;
   const cache = modCache(state, 0);
-  if (cache.repairPerSec <= 0) return;
   if (state.casting.wear <= 0) return;
   const tool = currentTool(state);
   if (!tool) return;
+  // A KNITTING living part closes its own wear over, exactly as Self-Mending
+  // does — one term, two sources.
+  const rate = cache.repairPerSec + growthFold(tool.parts).repairPerSec;
+  if (rate <= 0) return;
   const pool = tool.stats.durability;
-  state.casting.wear = Math.max(0, state.casting.wear - pool * cache.repairPerSec * dt);
+  state.casting.wear = Math.max(0, state.casting.wear - pool * rate * dt);
 }
 
 /** Every modifier the player could be building toward at this depth — used for
