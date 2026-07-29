@@ -286,12 +286,28 @@ describe('durability is decided by the build, not the depth', () => {
     expect(st().casting.wear / per).toBeGreaterThan(4.5);
   });
 
-  it('the swing count on the panel matches the pool it draws', () => {
+  /**
+   * THE INVARIANT IS THE HALVING, NOT THE ABSOLUTE.
+   *
+   * `usesOf` is the scale-free pool count; `usesLeft` is what the panel prints,
+   * and since the balance axis landed it also carries the BALANCE wear term — a
+   * light tool spends less of the pool per swing and therefore genuinely has
+   * more swings in it than `usesOf` alone says. Marl is a light stone, so these
+   * two legitimately differ now.
+   *
+   * What must still hold, and is the thing this test was actually protecting:
+   * the panel's count is proportional to the pool remaining. Half the pool
+   * spent, half the swings left.
+   */
+  it('the swing count on the panel tracks the pool it draws', () => {
     hold('marl');
     const tool = toolOf('marl');
-    expect(usesLeft(st(), tool)).toBe(usesOf(tool));
+    const full = usesLeft(st(), tool);
+    expect(full).toBeGreaterThan(0);
     st().casting.wear = poolOf(tool) / 2;
-    expect(usesLeft(st(), tool)).toBeCloseTo(usesOf(tool) / 2, 0);
+    expect(usesLeft(st(), tool)).toBeCloseTo(full / 2, 0);
+    // And it is still the same shape-free pool underneath.
+    expect(usesOf(tool)).toBeGreaterThan(0);
   });
 });
 

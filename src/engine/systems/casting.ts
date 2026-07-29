@@ -33,7 +33,10 @@
  * step against the doc's build order.
  */
 import type { ActionResult, DrillState, EngineCtx, GameState } from '../types';
-import { PART_TYPES, shapeDef, type PartShape, type PartType } from '../content/forgeParts';
+import {
+  LAYER_MAX, LAYER_MELT_EXTRA, PART_TYPES, layerWeights, shapeDef,
+  type PartShape, type PartType,
+} from '../content/forgeParts';
 import {
   assembleTool, derivePart, partMelt, type Part, type ToolStats,
 } from './forgeParts';
@@ -151,6 +154,13 @@ export interface CastingState {
   /** CLASSES this tool has ever emerged into. Knowledge, like a synergy — it
    *  survives rebuilding the tool into something else. */
   knownClasses?: string[];
+  /**
+   * SECONDS UNTIL A HEAVY TOOL WILL SWING AGAIN. Absent or zero for bare hands,
+   * for an even tool and for every light one — see `balanceOf`. Stored because
+   * it has to survive the tick, and it is the one piece of balance that is
+   * state rather than derivation.
+   */
+  windup?: number;
 }
 
 export function defaultCastingState(): CastingState {
@@ -170,6 +180,7 @@ export function defaultCastingState(): CastingState {
     knownMods: [],
     knownSynergies: [],
     knownClasses: [],
+    windup: 0,
   };
 }
 
@@ -230,14 +241,43 @@ export function unitsThatFit(c: Crucible): number {
 }
 
 /** Can this shape be poured this instant, out of the FRONT charge? */
-/** What a pour of this part in this shape wants from the tub. */
-export function castMelt(type: PartType, shape?: PartShape): number {
-  return Math.max(1, Math.round(partMelt(type) * shapeDef(shape, type).melt));
+/**
+ * WHAT A POUR WANTS FROM THE TUB, in total.
+ *
+ * Layers cost more — each one past the first adds `LAYER_MELT_EXTRA` of the
+ * base — and the total is SPLIT across the layers by their weights, each drawn
+ * from its own stone. So a three-layer head is not just dearer, it is dearer in
+ * three different materials, which is what makes Damascus a commitment rather
+ * than a strictly-better default.
+ */
+export function castMelt(type: PartType, shape?: PartShape, layers = 1): number {
+  const n = Math.max(1, Math.min(LAYER_MAX, layers));
+  const base = partMelt(type) * shapeDef(shape, type).melt;
+  return Math.max(1, Math.round(base * (1 + LAYER_MELT_EXTRA * (n - 1))));
 }
 
-export function canCast(c: Crucible, type: PartType, shape?: PartShape): boolean {
-  const f = frontCharge(c);
-  return !!f && f.molten >= castMelt(type, shape);
+/** What each layer of that pour draws from its own stone, outer first. */
+export function layerDraw(type: PartType, shape?: PartShape, layers = 1): number[] {
+  const n = Math.max(1, Math.min(LAYER_MAX, layers));
+  const total = castMelt(type, shape, n);
+  return layerWeights(n).map((w) => Math.max(1, Math.round(total * w)));
+}
+
+/**
+ * CAN THIS BE POURED? For a single layer, the front stone needs the melt. For a
+ * layered pour, the first N stones each need THEIR share — which is the gate
+ * that makes layering depend on the queue rather than on a new resource.
+ */
+export function canCast(
+  c: Crucible, type: PartType, shape?: PartShape, layers = 1,
+): boolean {
+  const n = Math.max(1, Math.min(LAYER_MAX, layers));
+  if (c.queue.length < n) return false;
+  const draws = layerDraw(type, shape, n);
+  for (let i = 0; i < n; i++) {
+    if ((c.queue[i]?.molten ?? 0) < draws[i]!) return false;
+  }
+  return true;
 }
 
 export function rackPart(state: GameState, id: number): RackPart | undefined {
@@ -326,6 +366,10 @@ export function tickCasting(state: GameState, dt: number): void {
     // Float dust would leave 1e-14 of solid sitting there forever, and the UI
     // would render a hairline of un-melted stock in a tub the player emptied.
     if (q.solid < 1e-6) q.solid = 0;
+  }
+  // THE WIND-UP COMES BACK ROUND. A heavy tool is only heavy between swings.
+  if ((state.casting.windup ?? 0) > 0) {
+    state.casting.windup = Math.max(0, state.casting.windup! - dt);
   }
 }
 
@@ -417,7 +461,7 @@ export function drainCrucible(state: GameState, ctx: EngineCtx, index = 0): Acti
  * melt, and goes on the rack.
  */
 export function castPart(
-  state: GameState, ctx: EngineCtx, type: PartType, shape?: PartShape,
+  state: GameState, ctx: EngineCtx, type: PartType, shape?: PartShape, layers = 1,
 ): ActionResult {
   if (!castingUnlocked(state)) return { ok: false, reason: 'The casting floor is cold' };
   if (!PART_TYPES.includes(type)) return { ok: false, reason: 'No such cast' };
@@ -435,32 +479,62 @@ export function castPart(
    * hand-built dispatch can never produce a part that is nothing.
    */
   const cast = shapeDef(shape, type);
-  const want = castMelt(type, cast.id);
-  if (front.molten < want) {
-    const waiting = front.solid > 0;
-    return {
-      ok: false,
-      reason: waiting ? 'Still melting' : `Needs ${want} melt, ${Math.floor(front.molten)} in the tub`,
-    };
+  /**
+   * LAYERS DRAW FROM THE FIRST N STONES IN THE QUEUE, outer first.
+   *
+   * That is the whole gate on Damascus, and it reuses the mechanism the queue
+   * was built for: you cannot pour three layers without three stones in the
+   * heat at once, in the order you want them. `bringToFront` is how you choose
+   * which is the outer.
+   */
+  const want = Math.max(1, Math.min(LAYER_MAX, Math.round(layers)));
+  if (c.queue.length < want) {
+    return { ok: false, reason: `${want} layers wants ${want} stones in the tub` };
+  }
+  const draws = layerDraw(type, cast.id, want);
+  for (let i = 0; i < want; i++) {
+    const q = c.queue[i]!;
+    if (q.molten < draws[i]!) {
+      const waiting = q.solid > 0;
+      return {
+        ok: false,
+        reason: waiting
+          ? 'Still melting'
+          : `${materialDef(q.materialId).name} needs ${draws[i]}, has ${Math.floor(q.molten)}`,
+      };
+    }
   }
 
-  front.molten -= want;
+  const stack = c.queue.slice(0, want).map((q, i) => {
+    q.molten -= draws[i]!;
+    return { materialId: q.materialId, purity: Math.max(1, Math.min(100, Math.round(q.purity))) };
+  });
+
   const part: RackPart = {
     id: state.casting.nextId++,
     type,
-    materialId: front.materialId,
-    purity: Math.max(1, Math.min(100, Math.round(front.purity))),
+    materialId: stack[0]!.materialId,
+    purity: stack[0]!.purity,
     shape: cast.id,
+    // Only stored when there IS one, so a plain part's shape on disk is exactly
+    // what it was before layering existed.
+    ...(want > 1 ? { layers: stack.slice(1) } : {}),
   };
   state.casting.rack.push(part);
   state.casting.cast += 1;
   // A SPENT CHARGE LEAVES THE QUEUE, so the next stone comes forward on its own
   // and a run of casts never stalls on an empty entry nobody thought to clear.
-  if (front.solid + front.molten <= 1e-9) c.queue.shift();
+  // Swept back-to-front so removing one does not shift the index of the next.
+  for (let i = want - 1; i >= 0; i--) {
+    const q = c.queue[i]!;
+    if (q.solid + q.molten <= 1e-9) c.queue.splice(i, 1);
+  }
 
-  ctx.emit({ type: 'partCast', partType: type, materialId: part.materialId, purity: part.purity });
+  ctx.emit({
+    type: 'partCast', partType: type, materialId: part.materialId, purity: part.purity,
+  });
   ctx.dirty();
-  return { ok: true, data: { partId: part.id } };
+  return { ok: true, data: { partId: part.id, layers: want } };
 }
 
 /**

@@ -412,6 +412,26 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     return { dust: D(0), charge: 0, crit: false, fractured: [] };
   }
 
+  /**
+   * THE WIND-UP — the rate half of the balance trade.
+   *
+   * A heavy tool reaches further and takes more of every cell it reaches, and
+   * pays for it here: it will not swing again until it has come back round.
+   * That is what makes "fewer, bigger" literally true rather than a description
+   * of a strictly better tool, and it is the term the convergence claim rests
+   * on — heavy clears more per swing and swings less often, light the reverse,
+   * and both arrive at W x H x regen.
+   *
+   * IT EXISTS ONLY ON THE HEAVY SIDE, and only outside the deadzone. Bare hands
+   * have no wind-up, an even tool has no wind-up, and a light tool has no
+   * wind-up — because neutral is unlimited clicking and "faster than unlimited"
+   * cannot be sold. Nobody who is not deliberately building heavy ever meets
+   * this, which is the whole reason it is allowed to exist.
+   */
+  if ((state.casting?.windup ?? 0) > 0) {
+    return { dust: D(0), charge: 0, crit: false, fractured: [] };
+  }
+
   // Heavy Hands: +10% crit chance per rank, crits chip for 3x.
   const critChance = 0.1 * skillRank(state, 'heavyHands');
   const crit = Math.random() < critChance;
@@ -497,7 +517,10 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     // rule the bay uses, so "mining a charged cell releases lightning" means
     // the same thing in the hand as it does on the rails. This can fire an
     // ability, which harvests through `harvestCell` like everything above it.
-    advanceToolCharges(state, mods, ctx, cell, wasFull);
+    // LIGHT'S OTHER HALF: a light tool builds its meter faster, which is the
+    // "more swings means more firings" side of the trade made real.
+    advanceToolCharges(state, mods, ctx, cell, wasFull, 1 + tool.balance.charge);
+    if (tool.balance.windup > 0) state.casting.windup = tool.balance.windup;
   }
 
   state.stats.manualChips += 1;

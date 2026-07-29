@@ -1542,7 +1542,7 @@ export type GameAction =
   | { type: 'drainCrucible'; index?: number }
   /** Move a queued stone to the front, so the next pour is in that material. */
   | { type: 'bringToFront'; index: number }
-  | { type: 'castPart'; partType: string; shape?: string }
+  | { type: 'castPart'; partType: string; shape?: string; layers?: number }
   | { type: 'benchPlace'; partId: number }
   | { type: 'benchClear'; partType: string }
   | { type: 'buildTool' }

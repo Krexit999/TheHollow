@@ -639,7 +639,7 @@ export function handleAction(
       return bringToFront(state, ctx, action.index);
     case 'castPart':
       return PART_TYPES.includes(action.partType as PartType)
-        ? castPart(state, ctx, action.partType as PartType, action.shape as PartShape | undefined)
+        ? castPart(state, ctx, action.partType as PartType, action.shape as PartShape | undefined, action.layers)
         : { ok: false, reason: 'No such cast' };
     case 'benchPlace':
       return benchPlace(state, ctx, action.partId);

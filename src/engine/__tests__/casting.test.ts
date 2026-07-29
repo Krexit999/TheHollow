@@ -122,11 +122,13 @@ describe('the loop: melt, pour, build', () => {
     // grip takes 2, so 6 is left against a head's 8.
     open();
     meltFully('marl', 2);
+    // The short-melt message now NAMES the stone, because a layered pour can be
+    // short on any one of three and "you are short" would not say which.
     expect(engine.dispatch({ type: 'castPart', partType: 'grip' }).ok).toBe(true);
     expect(front().molten).toBe(6);
     const r = engine.dispatch({ type: 'castPart', partType: 'head' });
     expect(r.ok).toBe(false);
-    expect(r.reason).toBe('Needs 8 melt, 6 in the tub');
+    expect(r.reason).toBe('Marl needs 8, has 6');
   });
 
   /** BATCH — the doc asks for it by name: melt a stack, cast several. */

@@ -439,6 +439,108 @@ export function shapeDef(id: PartShape | undefined, part: PartType): PartShapeDe
   return SHAPE_BY_ID.get(defaultShape(part))!;
 }
 
+// ---------------------------------------------------------------------------
+// LAYERING — Damascus, the fourth build axis
+// ---------------------------------------------------------------------------
+
+/**
+ * A PART CAST FROM MORE THAN ONE STONE.
+ *
+ * Outer, middle, core. The layers BLEND — traits pull at their layer's weight
+ * and magnitude is the weighted mean — so a tough outer over a keen core makes
+ * a part no single material makes. That is the whole of it: a deeper casting
+ * decision, entirely optional, and a single-material part is unchanged.
+ *
+ * THE WEIGHTS. Outer dominates because it is the surface that meets the rock,
+ * but not so much that the core is decoration: at three layers the core still
+ * pulls a fifth, which is enough for a trait no other layer carries to be worth
+ * putting there. Normalised, so a two-layer part is not weaker than a three.
+ *
+ * PILLAR 2 needs no new argument here. A blend produces the same
+ * `(traits, magnitude, intensity)` triple a single material does, and every
+ * stat downstream of it is the same reach/durability/ore-speed vocabulary that
+ * has been clamped since step 3. Blending cannot invent an axis.
+ *
+ * WHAT IT COSTS. Each extra layer adds melt, and each layer draws from ITS OWN
+ * stone in the crucible queue — so layering is gated on having queued several,
+ * which is the mechanism the queue was built for one phase before this.
+ */
+export const LAYER_MAX = 3;
+
+export const LAYER_WEIGHTS: number[][] = [
+  [],
+  [1],
+  [0.62, 0.38],
+  [0.50, 0.30, 0.20],
+];
+
+export const LAYER_NAMES = ['outer', 'middle', 'core'] as const;
+
+/** Extra melt per layer past the first, as a fraction of the base cast. */
+export const LAYER_MELT_EXTRA = 0.45;
+
+export function layerWeights(n: number): number[] {
+  return LAYER_WEIGHTS[Math.max(1, Math.min(LAYER_MAX, n))]!;
+}
+
+// ---------------------------------------------------------------------------
+// BALANCE — heavy against light, the fifth axis
+// ---------------------------------------------------------------------------
+
+/**
+ * HOW MUCH A TRAIT WEIGHS, and it is exactly the reading a player would guess.
+ *
+ * Dense and tough stone makes a heavy tool; light, springy and hollow stone
+ * makes a fast one. Nothing hidden, no centre of gravity, no slider — the
+ * balance is a SUM OF THE STONE YOU CHOSE, printed on the tool.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THE TRADE, and why it is a trade rather than a ladder.
+ *
+ *  HEAVY  more cells and more out of each — and a WIND-UP, so there are fewer
+ *         swings in a minute. Fewer, bigger.
+ *  LIGHT  less out of each swing — and less wear and a faster ability meter, so
+ *         there are more swings in a tool and more firings in a stretch of
+ *         them. More, smaller.
+ *
+ * Both ends arrive at `W × H × regen`, by different routes: the heavy tool
+ * clears more rock per swing and swings less often, the light one the reverse.
+ * `scripts/sim-tool-balance.ts` measures it rather than arguing it.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * THE DEADZONE IS LOAD-BEARING, and it is what keeps this from being a silent
+ * nerf. Inside ±`BALANCE_DEADZONE` the tool is NEUTRAL and every term is the
+ * identity — so an existing tool, and any tool whose stone does not lean hard
+ * one way, behaves exactly as it did before this existed. You have to build
+ * for a balance to get one.
+ *
+ * A WIND-UP ONLY EVER EXISTS ON THE HEAVY SIDE. Neutral is today's unlimited
+ * clicking; light cannot be "faster than unlimited", so light is paid in wear
+ * and meter instead. That asymmetry is deliberate and it is the honest way to
+ * add a rate cost without taking one away from anybody.
+ */
+export const HEFT: Partial<Record<ForgeTraitId, number>> = {
+  dense: 1, tough: 0.6, warm: 0.25, trueseated: 0.15,
+  light: -1, springy: -0.55, hollow: -0.6, brittle: -0.2,
+};
+
+/** Below this, the tool is neutral and nothing here applies at all. */
+export const BALANCE_DEADZONE = 0.15;
+
+/** The longest a maximally heavy tool waits between swings, in seconds. */
+export const WINDUP_MAX = 0.30;
+
+/** How far a full heavy build moves reach and per-cell take, and a full light
+ *  build moves them the other way. */
+export const BALANCE_REACH = 0.30;
+export const BALANCE_SPLASH = 0.25;
+/** How far balance moves wear per swing — heavy costs more, light less. */
+export const BALANCE_WEAR = 0.4;
+/** Ability meter a full light build adds per swing. */
+export const BALANCE_CHARGE = 0.6;
+
+export type BalanceLabel = 'light' | 'nimble' | 'even' | 'weighty' | 'heavy';
+
 export interface PartTypeDef {
   id: PartType;
   name: string;

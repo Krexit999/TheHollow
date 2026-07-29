@@ -29,14 +29,18 @@ import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
 import { BANDS, bandOf, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import {
-  PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape, shapeDef, shapesFor,
+  LAYER_NAMES, PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape,
+  shapeDef, shapesFor,
   type PartShape, type PartType,
 } from '../../engine/content/forgeParts';
-import { shapeFold, type ToolStats } from '../../engine/systems/forgeParts';
+import {
+  balanceOf, partMaterials, shapeFold, type ToolStats,
+} from '../../engine/systems/forgeParts';
 import {
   MELT_BACK_SHARE, MELT_PER_UNIT, QUEUE_MAX, TUB_CAPACITY, FULL_SET_MELT,
   benchComplete, benchPreview, canCast, crucibleFill, currentTool, frontCharge,
-  castMelt, meltBackValue, queued, rackPart, tubHeld, unitsThatFit, type RackPart,
+  castMelt, layerDraw, meltBackValue, queued, rackPart, tubHeld, unitsThatFit,
+  type RackPart,
 } from '../../engine/systems/casting';
 import { TOOL_CLASSES } from '../../engine/content/toolClasses';
 import { toolClass } from '../../engine/systems/toolClass';
@@ -333,12 +337,13 @@ function Casts({ state }: { state: GameState }) {
   const [last, setLast] = useState<string | null>(null);
   const [part, setPart] = useState<PartType>('head');
   const [shapes, setShapes] = useState<Partial<Record<PartType, PartShape>>>({});
+  const [layers, setLayers] = useState(1);
 
   const chosen = shapes[part] ?? defaultShape(part);
   const options = shapesFor(part);
   const cast = shapeDef(chosen, part);
-  const want = castMelt(part, chosen);
-  const ok = canCast(c, part, chosen);
+  const want = castMelt(part, chosen, layers);
+  const ok = canCast(c, part, chosen, layers);
 
   return (
     <div className="panel p-3" data-testid="casts">
@@ -372,6 +377,61 @@ function Casts({ state }: { state: GameState }) {
           );
         })}
       </div>
+
+      {/* ── DAMASCUS. Only offered once there is more than one stone in the
+          heat, because that is literally the requirement — each layer draws
+          from its own charge, outer first. */}
+      {queued(c).length > 1 && (
+        <div className="mt-2 border-t border-cave-800 pt-1.5">
+          <div className="text-[9px] uppercase tracking-wider text-cave-600">
+            Layers — outer first, from the tub in order
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1" data-testid="layer-picker">
+            {[1, 2, 3].map((n) => (
+              <button
+                key={n}
+                disabled={queued(c).length < n}
+                className={`rounded border px-1.5 py-0.5 text-[9px] ${
+                  n === layers
+                    ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100'
+                    : queued(c).length < n ? 'border-cave-900 text-cave-700' : 'border-cave-800 text-cave-400'
+                }`}
+                data-testid={`layers-${n}`}
+                onClick={() => setLayers(n)}
+              >
+                {n === 1 ? 'Solid' : `${n} layers`}
+              </button>
+            ))}
+          </div>
+          {layers > 1 && (
+            <div className="mt-1 space-y-0.5" data-testid="layer-plan">
+              {queued(c).slice(0, layers).map((ch, i) => (
+                <div key={ch.materialId} className="flex items-center gap-1 text-[9px]">
+                  <span className="w-12 shrink-0 uppercase tracking-wider text-cave-600">
+                    {/* THE LAST LAYER IS ALWAYS THE CORE, however many there
+                        are. Indexing LAYER_NAMES straight through called the
+                        second of two "middle", which is not a thing a
+                        two-layer part has. */}
+                    {i === layers - 1 ? 'core' : LAYER_NAMES[i]}
+                  </span>
+                  <MaterialIcon id={ch.materialId} size={12} />
+                  <span className="min-w-0 flex-1 truncate text-cave-300">
+                    {materialDef(ch.materialId).name}
+                  </span>
+                  <span className="tnum shrink-0 text-cave-500">
+                    {layerDraw(part, chosen, layers)[i]}
+                  </span>
+                </div>
+              ))}
+              <div className="text-[9px] leading-snug text-cave-600">
+                {layers === 2 ? 'It will be both at once' : 'It will be all three at once'} — a
+                tough outside over a keen core makes a part no single stone makes. Where a
+                stone sits decides how hard it pulls.
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mt-2 border-t border-cave-800 pt-1.5">
         <div className="text-[9px] uppercase tracking-wider text-cave-600">
@@ -410,13 +470,15 @@ function Casts({ state }: { state: GameState }) {
           // Read the stone BEFORE the pour: a charge that empties leaves the
           // queue, so afterwards the front is already the next one.
           const was = frontCharge(c)?.materialId;
-          const r = dispatch({ type: 'castPart', partType: part, shape: chosen });
+          const r = dispatch({ type: 'castPart', partType: part, shape: chosen, layers });
           setLast(r.ok && was
             ? `${cast.name} ${PART_DEFS[part].name} cast in ${materialDef(was).name}.`
             : r.reason ?? null);
         }}
       >
-        {ok ? `Pour — ${cast.name} ${PART_DEFS[part].name} · ${want}` : `Needs ${want} melt`}
+        {ok
+          ? `Pour — ${layers > 1 ? `${layers}-layer ` : ''}${cast.name} ${PART_DEFS[part].name} · ${want}`
+          : layers > 1 ? `${layers} stones, ${want} melt between them` : `Needs ${want} melt`}
       </button>
       {last && <div className="mt-1.5 text-center text-[11px] text-cave-300" data-testid="cast-note">{last}</div>}
     </div>
@@ -1561,6 +1623,74 @@ function ClassCard({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * HOW HEAVY THE STONE MADE IT — a dial, not a slider.
+ *
+ * The player never set this. It is the sum of what the parts are made of, and
+ * the card says so out loud: the label, where it sits on the line, WHICH TRAITS
+ * put it there, and both halves of the trade in the units they land in. An even
+ * tool renders nothing at all, because there is nothing to say.
+ */
+function BalanceCard({ state, tool }: { state: GameState; tool: ToolStats }) {
+  const b = balanceOf(tool.parts);
+  const e = toolEffect(state);
+  if (b.value === 0) {
+    return (
+      <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-balance">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[10px] uppercase tracking-widest text-cave-500">Balance</span>
+          <span className="tnum text-[9px] text-cave-500" data-testid="tool-balance-label">even</span>
+        </div>
+        <div className="mt-0.5 text-[9px] leading-snug text-cave-600">
+          Nothing in this leans heavy or light. It swings as fast as you do.
+        </div>
+      </div>
+    );
+  }
+  const heavy = b.value > 0;
+  const hex = heavy ? '#d08a4a' : '#9ac0d8';
+  // −1 .. +1 mapped onto the bar, with the marker at the value.
+  const at = (b.value + 1) / 2;
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-balance">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Balance</span>
+        <span
+          className="tnum text-[9px] font-semibold uppercase tracking-wider"
+          style={{ color: hex }}
+          data-testid="tool-balance-label"
+        >
+          {b.label}
+        </span>
+      </div>
+      <div className="relative mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-cave-900">
+        <span className="absolute inset-y-0 left-1/2 w-px bg-cave-700" />
+        <span
+          className="absolute inset-y-0 w-1.5 rounded-sm"
+          style={{ left: `calc(${at * 100}% - 3px)`, background: hex }}
+          data-testid="tool-balance-marker"
+        />
+      </div>
+      <div className="mt-1 flex justify-between text-[8px] uppercase tracking-wider text-cave-700">
+        <span>light</span><span>heavy</span>
+      </div>
+      <div className="mt-0.5 text-[9px] leading-snug text-cave-300" data-testid="tool-balance-trade">
+        {heavy
+          ? `${e.cells} cells a swing and ${Math.round(e.splash * 100)}% off each — and it will not `
+            + `come round again for ${b.windup.toFixed(2)}s.`
+          : `${e.cells} cells a swing and ${Math.round(e.splash * 100)}% off each — but it swings as `
+            + `fast as you do, spends ${Math.round((1 - b.wear) * 100)}% less of itself doing it, and `
+            + `builds what it carries ${(1 + b.charge).toFixed(1)}× as quickly.`}
+      </div>
+      <div className="mt-0.5 text-[9px] leading-snug text-cave-600" data-testid="tool-balance-from">
+        {b.from.length > 0
+          ? `Mostly ${b.from.slice(0, 3).map((f) => f.trait).join(', ')} in the stone.`
+          : ''}
+      </div>
+    </div>
+  );
+}
+
 /** WHAT THE SWING LOOKS LIKE — the head's mould, on the tool it was built into. */
 function ShapeCard({ state, tool }: { state: GameState; tool: ToolStats }) {
   const fold = shapeFold(tool.parts);
@@ -1607,14 +1737,29 @@ function YourTool({ state }: { state: GameState }) {
         <span className="tnum text-[10px] text-cave-400">built {fmt(state.casting.built)}×</span>
       </div>
       <div className="mt-1 flex flex-wrap gap-1">
-        {tool.parts.map((p) => (
-          <span key={p.type} className="rounded border border-cave-800 px-1 py-0.5 text-[9px] text-cave-400">
-            {PART_DEFS[p.type as PartType].name.slice(0, 4)} · {materialDef(p.materialId).name}
-          </span>
-        ))}
+        {tool.parts.map((p) => {
+          // A LAYERED PART SAYS SO, outer first — otherwise the chip would name
+          // only the surface and a Damascus tool would look solid.
+          const mats = partMaterials(p);
+          return (
+            <span
+              key={p.type}
+              className={`rounded border px-1 py-0.5 text-[9px] ${
+                mats.length > 1 ? 'border-cave-600 text-cave-300' : 'border-cave-800 text-cave-400'
+              }`}
+              title={mats.length > 1
+                ? mats.map((m, i) => `${LAYER_NAMES[i]}: ${materialDef(m).name}`).join(' · ')
+                : undefined}
+            >
+              {PART_DEFS[p.type as PartType].name.slice(0, 4)} ·{' '}
+              {mats.map((m) => materialDef(m).name).join('/')}
+            </span>
+          );
+        })}
       </div>
       <ClassCard state={state} />
       <ShapeCard state={state} tool={tool} />
+      <BalanceCard state={state} tool={tool} />
       <AbilitiesCard state={state} />
       <ModBench state={state} />
       <LevelCard state={state} tool={tool} />

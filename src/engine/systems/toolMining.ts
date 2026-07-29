@@ -44,7 +44,10 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
   LINEAR_STATS, SHELL_STEP, STAT_BASE, type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
-import { derivePart, shapeOf, intensityOf, partTraits, shapeFold, type ToolStats } from './forgeParts';
+import {
+  derivePart, shapeOf, intensityOf, partTraits, shapeFold, balanceOf, EVEN_BALANCE,
+  type Balance, type ToolStats,
+} from './forgeParts';
 import { materialDef } from '../materials';
 import { currentTool } from './casting';
 /**
@@ -132,11 +135,13 @@ export interface ToolEffect {
   /** The geometry a swing cuts, off the HEAD's cast shape. Bare hands and every
    *  plain-shaped tool are `spread`, which is what this always did. */
   pattern: ReachPattern;
+  /** How heavy the stone made it, and what that costs. Even = the identity. */
+  balance: Balance;
 }
 
 export const BARE_HANDS: ToolEffect = {
   cells: 1, splash: 0, oreRate: 1, dropWeight: 1, broken: false, hasTool: false,
-  pattern: 'spread',
+  pattern: 'spread', balance: EVEN_BALANCE,
 };
 
 /**
@@ -172,15 +177,30 @@ export function effectOf(
    * same number of harvests to different rock.
    */
   const shape = shapeFold(tool.parts);
+  /**
+   * BALANCE FOLDS IN BESIDE THE SHAPE, and inside the same clamps.
+   *
+   * A heavy tool reaches further and takes more of each cell it reaches; a
+   * light one less of both. Neither can pass `MAX_EXTRA_CELLS` or take more
+   * than a whole cell, so the trade is entirely about the RATE it happens at —
+   * which is `balance.windup`, enforced at the swing in `manualChip`.
+   *
+   * An EVEN tool multiplies by exactly 1 on both, which is the no-nerf
+   * guarantee: a third of single-material tools land in the deadzone and are
+   * byte-identical to before this existed.
+   */
+  const balance = balanceOf(tool.parts);
   const extra = Math.min(
     MAX_EXTRA_CELLS,
     Math.max(0, Math.round(
       (Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells + mod.cells)
-      * shape.cells,
+      * shape.cells * balance.cells,
     )),
   );
   const splash = Math.min(
-    1, (SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite) + mod.splash) * shape.splash,
+    1,
+    (SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite) + mod.splash)
+      * shape.splash * balance.splash,
   );
   const oreRate = Math.min(
     ORE_RATE_CAP,
@@ -207,6 +227,7 @@ export function effectOf(
     broken,
     hasTool: true,
     pattern: shape.pattern,
+    balance,
   };
 }
 
@@ -281,7 +302,10 @@ export function poolOf(tool: ToolStats): number {
 export function wearPerUse(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): number {
   // The shape's wear term lands here rather than on `usesOf`, because a shape
   // changes what a SWING costs, not how big the pool is.
-  return (poolOf(tool) / usesOf(tool, level, mod)) * shapeFold(tool.parts).wear;
+  // A heavy swing costs more of the pool and a light one less — which is where
+  // light's "more swings" is literally delivered.
+  return (poolOf(tool) / usesOf(tool, level, mod))
+    * shapeFold(tool.parts).wear * balanceOf(tool.parts).wear;
 }
 
 export function isBroken(state: GameState, tool: ToolStats): boolean {

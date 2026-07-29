@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 42;
+export const SAVE_VERSION = 43;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -996,6 +996,31 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     if (!Array.isArray(casting['knownClasses'])) casting['knownClasses'] = [];
     return { ...p, version: 42, state };
+  },
+
+  /**
+   * v43 — MATERIAL LAYERING and TOOL BALANCE.
+   *
+   * NOTHING IS ADDED TO A PART. An existing part has no layers, and the blend of
+   * one layer is the identity — same traits at full pull, same magnitude, same
+   * intensity — so every stat it derives is bit-for-bit what it derived before.
+   * There is deliberately no attempt to guess layers for anybody.
+   *
+   * BALANCE IS DERIVED, not stored, so there is nothing to migrate for it either
+   * — except the wind-up, which is a live countdown and starts at zero. A save
+   * loaded mid-swing does not owe the player a wait.
+   *
+   * The one thing worth stating plainly: an existing tool WILL now read a
+   * balance, because balance is read off the stone it was already made of. A
+   * third of single-material tools land in the deadzone and are untouched; the
+   * rest gain a trade they did not ask for. That is the point of an emergent
+   * axis, and the deadzone is why it is a trade rather than a nerf.
+   */
+  42: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    casting['windup'] = 0;
+    return { ...p, version: 43, state };
   },
 };
 

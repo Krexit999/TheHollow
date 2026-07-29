@@ -37,8 +37,11 @@ import {
   TRAIT_INTENSITY, FORGE_TRAITS, GRADE_BONUS, SHELL_STEP, RARITY_STEP,
   PURITY_FLOOR, PURITY_PER_POINT, W_PRIMARY, W_SECONDARY, W_SPILL,
   MISMATCH_K, VARIETY_WEIGHT, RELIEF_PIVOT, RELIEF_SLOPE, MAX_RELIEF,
+  LAYER_MAX, layerWeights, HEFT, BALANCE_DEADZONE,
+  WINDUP_MAX, BALANCE_REACH, BALANCE_SPLASH, BALANCE_WEAR, BALANCE_CHARGE,
   shapeDef,
-  type ForgeTraitId, type PartType, type PartShape, type ReachPattern, type ToolStat,
+  type BalanceLabel, type ForgeTraitId, type PartType, type PartShape,
+  type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
 import { RARITIES, bandOf, materialDef, type MaterialDef } from '../materials';
 import { traitsOf } from '../traits';
@@ -68,6 +71,103 @@ export interface Part {
    * what it costs, never how big the stats are. See `content/forgeParts.ts`.
    */
   shape?: PartShape;
+  /**
+   * DAMASCUS. Extra layers UNDER the outer one, in order: middle then core.
+   *
+   * `materialId` and `purity` above remain the OUTER layer, which is what makes
+   * this additive rather than a rewrite — every reader of `p.materialId` in the
+   * engine keeps working and sees the surface of the part, which is the honest
+   * answer to "what is this made of" for anything that only wants one.
+   *
+   * Absent or empty = a plain single-material part, and the blend of one layer
+   * is the identity, so nothing that existed before this behaves differently.
+   */
+  layers?: Array<{ materialId: string; purity: number }>;
+}
+
+// ---------------------------------------------------------------------------
+// THE BLEND — what a layered part actually is
+// ---------------------------------------------------------------------------
+
+/** A trait and how hard it pulls, 0..1. A single-material part pulls at 1. */
+export interface TraitPull { trait: ForgeTraitId; weight: number }
+
+export interface PartBlend {
+  layers: Array<{ material: MaterialDef; purity: number; weight: number }>;
+  /** Every trait in the part, with the total layer weight carrying it. */
+  pull: TraitPull[];
+  /** The union, for anything that wants a plain list (classes, abilities). */
+  traits: ForgeTraitId[];
+  magnitude: number;
+  intensity: number;
+  /** Weighted mean shell ordinal — what coherence reads for this part. */
+  shell: number;
+  /** How much the layers disagree with each other about depth. A part can be
+   *  internally incoherent, and coherence should see it. */
+  spread: number;
+  layered: boolean;
+}
+
+/**
+ * FOLD A PART'S LAYERS INTO ONE (traits, magnitude, intensity) TRIPLE.
+ *
+ * That triple is the entire input to the derivation, which is why layering
+ * needed no new pillar-2 argument: a blend arrives at the same place a single
+ * material arrives, and everything downstream — the stat weights, the clamps,
+ * the reach and splash caps — is untouched.
+ *
+ * A TRAIT PULLS AT ITS LAYER'S WEIGHT. `keen` in the core of a three-layer part
+ * pulls a fifth as hard as `keen` in a solid one, so putting a trait where it
+ * is cheap has a real cost. With one layer every weight is 1 and this is
+ * exactly the old behaviour.
+ */
+export function blendOf(part: Part): PartBlend {
+  const stack = [
+    { materialId: part.materialId, purity: part.purity },
+    ...(part.layers ?? []),
+  ].slice(0, LAYER_MAX);
+  const w = layerWeights(stack.length);
+
+  const layers = stack.map((l, i) => ({
+    material: materialDef(l.materialId),
+    purity: clampPurity(l.purity),
+    weight: w[i]!,
+  }));
+
+  const pullMap = new Map<ForgeTraitId, number>();
+  let magnitude = 0;
+  let intensity = 0;
+  let shell = 0;
+  for (const l of layers) {
+    magnitude += l.weight * magnitudeOf(l.material, l.purity);
+    intensity += l.weight * intensityOf(l.purity);
+    shell += l.weight * shellOrdinal(l.material.shellId);
+    for (const t of partTraits(l.material)) {
+      pullMap.set(t, Math.min(1, (pullMap.get(t) ?? 0) + l.weight));
+    }
+  }
+  let spread = 0;
+  for (const l of layers) {
+    spread += l.weight * Math.abs(shellOrdinal(l.material.shellId) - shell);
+  }
+
+  return {
+    layers,
+    pull: [...pullMap].map(([trait, weight]) => ({ trait, weight })),
+    traits: [...pullMap.keys()],
+    magnitude,
+    intensity,
+    shell,
+    spread,
+    layered: layers.length > 1,
+  };
+}
+
+/** Every material in a part, outer first. For the hold, the readouts and the
+ *  trait pools that want to know what actually went in. */
+export function partMaterials(part: Part): string[] {
+  return [part.materialId, ...(part.layers ?? []).map((l) => l.materialId)]
+    .slice(0, LAYER_MAX);
 }
 
 /**
@@ -95,6 +195,98 @@ export const NO_SHAPES: ShapeFold = {
   cells: 1, splash: 1, oreRate: 1, dropWeight: 1, wear: 1, charge: 0,
   stabilize: 0, pattern: 'spread', head: 'point',
 };
+
+// ---------------------------------------------------------------------------
+// BALANCE — heavy against light
+// ---------------------------------------------------------------------------
+
+export interface Balance {
+  /** −1 (as light as it gets) .. +1 (as heavy), AFTER the deadzone. */
+  value: number;
+  /** Before the deadzone, for the readout's honesty. */
+  raw: number;
+  label: BalanceLabel;
+  /** Seconds between swings. Zero at neutral and on the whole light side. */
+  windup: number;
+  /** Multipliers on what one swing does. */
+  cells: number;
+  splash: number;
+  /** Multiplier on wear per swing. Below one on the light side. */
+  wear: number;
+  /** Additive ability meter per swing. Light only. */
+  charge: number;
+  /** What is making it heavy or light, biggest first. */
+  from: Array<{ trait: ForgeTraitId; n: number }>;
+}
+
+export const EVEN_BALANCE: Balance = {
+  value: 0, raw: 0, label: 'even', windup: 0,
+  cells: 1, splash: 1, wear: 1, charge: 0, from: [],
+};
+
+/** Divides the summed heft into the −1..+1 range. Measured, not chosen — see
+ *  `scripts/balance-preview.ts`, which prints the real spread across materials. */
+export const HEFT_SCALE = 1.7;
+
+/**
+ * WHAT THE STONE WEIGHS, summed over every part and every layer.
+ *
+ * A layer contributes at its own weight, exactly as its traits do, so putting
+ * the dense stone in the core makes a lighter tool than putting it on the
+ * outside — which is the interaction between the two axes this phase adds, and
+ * it falls out rather than being authored.
+ */
+export function balanceOf(parts: Part[]): Balance {
+  if (parts.length === 0) return EVEN_BALANCE;
+  const tally = new Map<ForgeTraitId, number>();
+  let sum = 0;
+  for (const p of parts) {
+    const blend = blendOf(p);
+    for (const l of blend.layers) {
+      for (const t of partTraits(l.material)) {
+        const h = HEFT[t];
+        if (h === undefined) continue;
+        const n = h * l.weight;
+        sum += n;
+        tally.set(t, (tally.get(t) ?? 0) + n);
+      }
+    }
+  }
+  const raw = Math.max(-1, Math.min(1, sum / (parts.length * HEFT_SCALE)));
+
+  // THE DEADZONE. Inside it the tool is EVEN and every term below is the
+  // identity — which is what makes this additive rather than a nerf to every
+  // tool that already existed. You have to build for a balance to get one.
+  const value = Math.abs(raw) < BALANCE_DEADZONE
+    ? 0
+    : raw > 0
+      ? (raw - BALANCE_DEADZONE) / (1 - BALANCE_DEADZONE)
+      : (raw + BALANCE_DEADZONE) / (1 - BALANCE_DEADZONE);
+
+  const from = [...tally]
+    .map(([trait, n]) => ({ trait, n }))
+    .sort((a, b) => Math.abs(b.n) - Math.abs(a.n))
+    .slice(0, 4);
+
+  if (value === 0) return { ...EVEN_BALANCE, raw, from };
+
+  const heavy = Math.max(0, value);
+  return {
+    value,
+    raw,
+    label: value >= 0.55 ? 'heavy' : value > 0 ? 'weighty'
+      : value <= -0.55 ? 'light' : 'nimble',
+    // A WIND-UP ONLY ON THE HEAVY SIDE. Neutral is unlimited clicking, so
+    // "faster than neutral" is not a thing that can be sold; light is paid in
+    // wear and meter instead. Asymmetric on purpose — see content/forgeParts.
+    windup: WINDUP_MAX * heavy,
+    cells: 1 + BALANCE_REACH * value,
+    splash: 1 + BALANCE_SPLASH * value,
+    wear: 1 + BALANCE_WEAR * value,
+    charge: BALANCE_CHARGE * Math.max(0, -value),
+    from,
+  };
+}
 
 export function shapeFold(parts: Part[]): ShapeFold {
   if (parts.length === 0) return NO_SHAPES;
@@ -256,13 +448,20 @@ export function partTraits(m: MaterialDef): ForgeTraitId[] {
  * order-independent, so "keen + brittle" reads the same whichever way the
  * registry lists them.
  */
-function rawCharacter(traits: ForgeTraitId[], stat: ToolStat, intensity: number): number {
+function rawCharacterPull(pull: TraitPull[], stat: ToolStat, intensity: number): number {
   let mult = 1;
-  for (const t of traits) {
-    const d = FORGE_TRAITS[t]?.mods[stat];
-    if (d) mult *= 1 + d * intensity;
+  for (const { trait, weight } of pull) {
+    const d = FORGE_TRAITS[trait]?.mods[stat];
+    // THE LAYER'S WEIGHT SCALES THE PULL, not the trait's presence. At weight 1
+    // this is byte-identical to the single-material form it replaced, which is
+    // why there is one implementation and not two (the A.44 twin lesson).
+    if (d) mult *= 1 + d * intensity * weight;
   }
   return Math.max(0.05, mult);
+}
+
+function rawCharacter(traits: ForgeTraitId[], stat: ToolStat, intensity: number): number {
+  return rawCharacterPull(traits.map((trait) => ({ trait, weight: 1 })), stat, intensity);
 }
 
 /**
@@ -285,12 +484,16 @@ function rawCharacter(traits: ForgeTraitId[], stat: ToolStat, intensity: number)
  * the part's TOTAL value, which is what "a better part" can honestly mean once
  * ruling 2 exists at all.
  */
-export function shapeOf(traits: ForgeTraitId[], stat: ToolStat, intensity: number): number {
-  const mine = rawCharacter(traits, stat, intensity);
+export function shapeOfPull(pull: TraitPull[], stat: ToolStat, intensity: number): number {
+  const mine = rawCharacterPull(pull, stat, intensity);
   let logSum = 0;
-  for (const s of TOOL_STATS) logSum += Math.log(rawCharacter(traits, s, intensity));
+  for (const s of TOOL_STATS) logSum += Math.log(rawCharacterPull(pull, s, intensity));
   const geoMean = Math.exp(logSum / TOOL_STATS.length);
   return Math.max(0.05, mine / geoMean);
+}
+
+export function shapeOf(traits: ForgeTraitId[], stat: ToolStat, intensity: number): number {
+  return shapeOfPull(traits.map((trait) => ({ trait, weight: 1 })), stat, intensity);
 }
 
 /** Back-compat name for the raw multiplier — tests read it directly. */
@@ -314,19 +517,24 @@ export function weightFor(type: PartType, stat: ToolStat): number {
 
 /** THE FUNCTION. One material, one shape, ten numbers. */
 export function derivePart(part: Part): PartStats {
-  const material = materialDef(part.materialId);
-  const traits = partTraits(material);
-  const magnitude = magnitudeOf(material, part.purity);
-  const intensity = intensityOf(part.purity);
+  // EVERYTHING COMES OUT OF THE BLEND. For a single-material part the blend is
+  // one layer at weight 1 and this is the derivation it always was; for a
+  // layered one it is the weighted fold, and nothing below here can tell the
+  // difference — which is precisely why layering could not introduce an axis.
+  const blend = blendOf(part);
+  const material = blend.layers[0]!.material;
 
   const stats = {} as Record<ToolStat, number>;
   for (const stat of TOOL_STATS) {
     stats[stat] = STAT_BASE[stat]
       * weightFor(part.type, stat)
-      * Math.pow(magnitude, STAT_MAGNITUDE_EXP[stat])
-      * shapeOf(traits, stat, intensity);
+      * Math.pow(blend.magnitude, STAT_MAGNITUDE_EXP[stat])
+      * shapeOfPull(blend.pull, stat, blend.intensity);
   }
-  return { part, material, traits, magnitude, intensity, stats };
+  return {
+    part, material, traits: blend.traits,
+    magnitude: blend.magnitude, intensity: blend.intensity, stats,
+  };
 }
 
 export function makePart(
@@ -360,7 +568,12 @@ function median(xs: number[]): number {
 function expectedStability(parts: Part[]): number {
   let n = 0;
   for (const p of parts) {
-    const m = magnitudeOf(materialDef(p.materialId), p.purity);
+    // THE BLENDED MAGNITUDE, not the outer layer's. This is the denominator of
+    // `stabilityIndex`, so reading only the surface would make a layered part
+    // look more (or less) stable than it is purely from which stone happened to
+    // be on the outside — and the relief that buys back the mismatch penalty
+    // would move for a reason that has nothing to do with stability.
+    const m = blendOf(p).magnitude;
     n += STAT_BASE.stability
       * weightFor(p.type, 'stability')
       * Math.pow(m, STAT_MAGNITUDE_EXP.stability);
@@ -389,14 +602,31 @@ export function coherenceOf(parts: Part[], rawStats: Record<ToolStat, number>): 
       stabilityIndex: 1, relief: 0, factor: 1,
     };
   }
-  const ords = parts.map((p) => shellOrdinal(materialDef(p.materialId).shellId));
+  /**
+   * A LAYERED PART COUNTS AS ITS BLEND — the brief's requirement, and the read
+   * that makes layering a real coherence decision rather than a loophole.
+   *
+   * Three things follow from it. A part's shell is the WEIGHTED MEAN of its
+   * layers, so a marl-over-firstiron head sits between the two rather than
+   * reading as whichever one happens to be on the outside. A part that
+   * disagrees with ITSELF adds its own internal spread to the discord, so
+   * Damascus across four shells is priced like the scatter it is. And VARIETY
+   * counts every material in every layer over the total number of layer slots,
+   * so a tool of seven three-layer parts is measured against twenty-one slots
+   * rather than seven — otherwise variety would read above 1 and the whole
+   * penalty would saturate the moment anybody tried the feature.
+   */
+  const blends = parts.map(blendOf);
+  const ords = blends.map((b) => b.shell);
   const mid = median(ords);
   const shellSpread = ords.reduce((n, o) => n + Math.abs(o - mid), 0) / ords.length;
+  const internal = blends.reduce((n, b) => n + b.spread, 0) / blends.length;
 
-  const distinct = new Set(parts.map((p) => p.materialId)).size;
-  const variety = (distinct - 1) / (parts.length - 1);
+  const slots = blends.reduce((n, b) => n + b.layers.length, 0);
+  const distinct = new Set(parts.flatMap(partMaterials)).size;
+  const variety = slots > 1 ? (distinct - 1) / (slots - 1) : 0;
 
-  const discord = shellSpread + VARIETY_WEIGHT * variety;
+  const discord = shellSpread + internal + VARIETY_WEIGHT * variety;
 
   const expect = expectedStability(parts);
   const stabilityIndex = expect > 0 ? rawStats.stability / expect : 1;
