@@ -49,10 +49,11 @@ import {
   ABILITY_PARTS, abilityMaterials, effectInHand, toolAbilityHint, toolAbilitySlots,
   toolFits, toolGrade, toolGrants,
 } from '../../engine/systems/toolAbilities';
-import { MOD_BY_ID } from '../../engine/content/toolMods';
+import { MOD_BY_ID, SYNERGY_BY_ID, abilityLevelOf } from '../../engine/content/toolMods';
 import {
-  MOD_FEED_MAX, knownMods, modCache, modHint, modSlotsTotal, modSlotsUsed,
-  modStacks, whyDormant, type ModCache,
+  MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modSlotsTotal,
+  modSlotsUsed, modStacks, synergyHints, toolInstability, whyDormant,
+  type ModCache, type ToolModStack,
 } from '../../engine/systems/toolMods';
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
@@ -956,7 +957,9 @@ function AbilitiesCard({ state }: { state: GameState }) {
                 style={{ color: hex }}
                 data-testid={`tool-ability-name-${f.slot}`}
               >
-                {f.def.name}
+                {f.def.name} {ROMAN[abilityLevelOf(
+                  state.casting.hand?.fits?.[f.slot]?.fired ?? 0,
+                )]}
               </span>
               <span className="min-w-0 flex-1 truncate text-[9px] text-cave-500">
                 every {f.def.charge.need} swings
@@ -1120,8 +1123,9 @@ function ModBench({ state }: { state: GameState }) {
                   <span
                     className="shrink-0 text-[9px] font-semibold uppercase tracking-wider"
                     style={{ color: dormant ? '#6d6459' : hex }}
+                    data-testid={`mod-name-${s.id}`}
                   >
-                    {def.name}{s.n > 1 ? ` ×${s.n}` : ''}
+                    {def.name} {ROMAN[modProgress(s).level]}{s.n > 1 ? ` ×${s.n}` : ''}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-[9px] text-cave-600">
                     {def.cost * s.n} slot{def.cost * s.n === 1 ? '' : 's'}
@@ -1135,6 +1139,7 @@ function ModBench({ state }: { state: GameState }) {
                     ✕
                   </button>
                 </div>
+                <ModLevelBar stack={s} hex={hex} dim={!!dormant} />
                 <div className="mt-0.5 text-[9px] leading-snug text-cave-500">{def.effect}</div>
                 {dormant && (
                   <div className="mt-0.5 text-[9px] font-semibold text-[#c8a15a]" data-testid={`mod-dormant-${s.id}`}>
@@ -1148,7 +1153,9 @@ function ModBench({ state }: { state: GameState }) {
       )}
 
       {/* ── 2. WHAT IT ADDS UP TO ────────────────────────────────────── */}
-      {stacks.length > 0 && <StackTotal cache={cache} />}
+      {stacks.length > 0 && <StackTotal cache={cache} state={state} />}
+      <SynergyCard state={state} />
+      <InstabilityCard state={state} />
 
       {/* ── 3. THE WORKBENCH ─────────────────────────────────────────── */}
       <div className="mt-2 border-t border-cave-800 pt-1.5">
@@ -1222,12 +1229,159 @@ function ModBench({ state }: { state: GameState }) {
   );
 }
 
+/** WHAT THIS ONE HAS LEARNED. A thin bar under the name, because the level is
+ *  a per-modifier fact and belongs beside the modifier, not in a summary. */
+function ModLevelBar({ stack, hex, dim }: { stack: ToolModStack; hex: string; dim: boolean }) {
+  const p = modProgress(stack);
+  return (
+    <div className="mt-0.5" data-testid={`mod-level-${stack.id}`}>
+      <div className="h-[3px] w-full overflow-hidden rounded-sm bg-cave-900">
+        <div
+          className="h-full transition-[width] duration-150"
+          style={{ width: `${p.frac * 100}%`, background: dim ? '#4a453e' : hex, opacity: p.max ? 1 : 0.75 }}
+        />
+      </div>
+      <div className="mt-0.5 text-[8px] text-cave-600" data-testid={`mod-level-text-${stack.id}`}>
+        {p.max
+          ? `${ROMAN[p.level]} — as far as it goes`
+          : `${ROMAN[p.level]} · ${fmt(p.into)} / ${fmt(p.need)} to ${ROMAN[p.level + 1]}`}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * WHAT IT HAS TURNED OUT TO BE, and what it is reaching for.
+ *
+ * Two halves, and the second is the pillar-5 one. AWAKE lists arrangements the
+ * tool is currently running — named, because you found them. DIRECTIONS shows
+ * the hint for anything the tool is carrying HALF of, and names neither the
+ * other half nor the result: it says there is something there and makes you
+ * find what.
+ */
+function SynergyCard({ state }: { state: GameState }) {
+  const cache = modCache(state, toolFits(state).length);
+  const hints = synergyHints(state);
+  if (cache.awake.length === 0 && hints.length === 0) return null;
+  return (
+    <div className="mt-1.5 rounded border border-cave-800 bg-cave-900/40 p-1.5" data-testid="synergies">
+      {cache.awake.length > 0 && (
+        <>
+          <div className="text-[9px] uppercase tracking-wider text-cave-600">What it turned into</div>
+          {cache.awake.map((id) => {
+            const syn = SYNERGY_BY_ID.get(id);
+            if (!syn) return null;
+            return (
+              <div key={id} className="mt-0.5" data-testid={`synergy-${id}`}>
+                <span
+                  className="text-[9px] font-semibold uppercase tracking-wider"
+                  style={{ color: `#${syn.color.toString(16).padStart(6, '0')}` }}
+                >
+                  {syn.name}
+                </span>
+                <div className="text-[9px] leading-snug text-cave-400">{syn.effect}</div>
+              </div>
+            );
+          })}
+        </>
+      )}
+      {hints.length > 0 && (
+        <div className={cache.awake.length > 0 ? 'mt-1.5 border-t border-cave-800 pt-1' : ''}>
+          <div className="text-[9px] uppercase tracking-wider text-cave-600">
+            Something on it is reaching
+          </div>
+          {hints.slice(0, 3).map((h) => (
+            <div key={h} className="mt-0.5 text-[9px] italic leading-snug text-cave-500" data-testid="synergy-hint">
+              {h}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * THE COUNTERWEIGHT, ON SCREEN. A meter, what is driving it, and what it costs
+ * — because "your abilities misfire 12% of the time" is only a decision if the
+ * player can see the number and see which thing on the tool is buying it.
+ */
+function InstabilityCard({ state }: { state: GameState }) {
+  const i = toolInstability(state);
+  if (i.raw <= 0) return null;
+  const frac = Math.min(1, i.net / 200);
+  const hot = i.misfire > 0;
+  return (
+    <div className="mt-1.5 rounded border border-cave-800 p-1.5" data-testid="instability">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[9px] uppercase tracking-wider text-cave-600">Instability</span>
+        <span
+          className={`tnum text-[9px] ${hot ? 'text-[#d8a0a0]' : 'text-cave-500'}`}
+          data-testid="instability-n"
+        >
+          {Math.round(i.net)}{hot ? ` · ${Math.round(i.misfire * 100)}% misfire` : ' · steady'}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-cave-900">
+        <div
+          className="h-full transition-[width] duration-150"
+          data-testid="instability-bar"
+          style={{ width: `${frac * 100}%`, background: hot ? '#c86a5a' : '#7f8f6a' }}
+        />
+      </div>
+      <div className="mt-0.5 text-[9px] leading-snug text-cave-600" data-testid="instability-from">
+        {i.from.length > 0
+          ? `Mostly ${i.from.slice(0, 3).map((f) => f.label).join(', ')}`
+          : 'Nothing much.'}
+        {i.steady > 0 ? ` · steadied by ${Math.round(i.steady)}` : ''}
+      </div>
+      {hot && (
+        <div className="mt-0.5 text-[9px] leading-snug text-[#c8a15a]">
+          It still mines exactly as it did. It is what it CARRIES that has started
+          going off in the wrong place. Work a stabiliser in, or take something off.
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** THE WHOLE STACK AS ONE LINE. Stacking is only fun if the total is visible —
  *  this is what makes a build feel like a build rather than a list. */
-function StackTotal({ cache }: { cache: ModCache }) {
+function StackTotal({ cache, state }: { cache: ModCache; state: GameState }) {
   const bits: string[] = [];
-  if (cache.cells > 0) bits.push(`+${cache.cells.toFixed(cache.cells % 1 ? 1 : 0)} reach`);
-  if (cache.splash > 0) bits.push(`+${Math.round(cache.splash * 100)}% off each cell`);
+  /**
+   * THE CLAMPED NUMBERS, NOT THE RAW SUM.
+   *
+   * A driven screenshot read "+16 reach · +205% off each cell" on a fully
+   * stacked tool. Both are lies the engine correctly refuses to tell: reach is
+   * floored into the 3x3 by `effectOf` and splash cannot exceed a whole cell.
+   * The card was reading `cache`, which is the sum BEFORE those clamps — so it
+   * promised roughly twice what the tool does, and the player's next stack of
+   * reach modifiers would have bought nothing while the readout said otherwise.
+   *
+   * So it reports what a swing ACTUALLY does, and says when a term has stopped
+   * paying — which is exactly the information a build needs at that point.
+   */
+  const tool = currentTool(state);
+  const e = tool ? effectOf(tool, false, toolLevel(state), cache) : null;
+  const bare = tool ? effectOf(tool, false, toolLevel(state)) : null;
+  if (e && bare) {
+    const dCells = e.cells - bare.cells;
+    if (dCells > 0) {
+      bits.push(`+${dCells} reach${e.cells >= 1 + MAX_EXTRA_CELLS ? ' (full 3×3)' : ''}`);
+    } else if (cache.cells > 0) {
+      bits.push('reach already at the full 3×3');
+    }
+    const dSplash = e.splash - bare.splash;
+    if (dSplash > 0) {
+      bits.push(`+${Math.round(dSplash * 100)}% off each cell${e.splash >= 1 ? ' (all of it)' : ''}`);
+    } else if (cache.splash > 0) {
+      bits.push('already takes all of every cell it reaches');
+    }
+  } else {
+    if (cache.cells > 0) bits.push(`+${cache.cells.toFixed(1)} reach`);
+    if (cache.splash > 0) bits.push(`+${Math.round(cache.splash * 100)}% off each cell`);
+  }
   if (cache.oreRate > 1) bits.push(`${cache.oreRate.toFixed(2)}× pockets`);
   if (cache.uses > 1) bits.push(`${cache.uses.toFixed(2)}× swings`);
   if (cache.dropWeight > 1) bits.push(`${cache.dropWeight.toFixed(2)}× drops`);

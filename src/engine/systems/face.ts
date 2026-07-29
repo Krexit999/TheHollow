@@ -21,7 +21,7 @@ import { logImplementUse } from './affinity';
 import { equippedTool } from './forge';
 import { gainToolXp, spendToolUse, toolEffect } from './toolMining';
 import { advanceToolCharges, wireHandHarvest } from './toolAbilities';
-import { modCache } from './toolMods';
+import { gainModXp, modCache } from './toolMods';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
@@ -398,6 +398,10 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     // and what there is to learn from is regen-bound, so the ladder is paced
     // by the same ceiling as everything else.
     gainToolXp(state, 1 + reached.length, ctx);
+    // AND THE MODIFIERS LEARN THE SAME WORK. Same currency as the tool's own
+    // level — cells that actually gave something up — so nothing on the tool
+    // can climb faster than the rock allows.
+    gainModXp(state, ctx, 1 + reached.length);
     // AND A SWING FILLS THE ABILITY METER. `wasFull` is the same 70%-of-cap
     // rule the bay uses, so "mining a charged cell releases lightning" means
     // the same thing in the hand as it does on the rails. This can fire an
@@ -512,6 +516,7 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     // twice over.
     spendToolUse(state, swept.length);
     gainToolXp(state, swept.length, ctx);
+    gainModXp(state, ctx, swept.length);
     // ONE GESTURE, ONE TICK OF THE METER. A sweep is nine swings of WEAR because
     // the rock does not care how the arm moved, but it is one motion of the arm
     // — charging nine would make the sweep the way you farm abilities instead of

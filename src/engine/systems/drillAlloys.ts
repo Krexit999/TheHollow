@@ -115,7 +115,7 @@ let tuneFor: (
 ) => Record<string, number> = (_s, _i, p) => p;
 export function wireParamTune(fn: typeof tuneFor): void { tuneFor = fn; }
 
-let gradeFor: (state: GameState, index: number) => number = () => 0;
+let gradeFor: (state: GameState, index: number, slot: number) => number = () => 0;
 export function wireGradeBonus(fn: typeof gradeFor): void { gradeFor = fn; }
 
 let afterFire: (
@@ -123,6 +123,28 @@ let afterFire: (
   index: number, slot: number, cell: number, depth: number,
 ) => void = () => { /* wired by toolAbilities */ };
 export function wireAfterFire(fn: typeof afterFire): void { afterFire = fn; }
+
+/**
+ * BEFORE IT GOES OFF — the carrier's last chance to say what actually happens.
+ *
+ * This is where INSTABILITY lives. It can redirect the firing to a cell nobody
+ * chose, or stop it happening at all. It may never make a firing BIGGER: the
+ * return shape has no term that could, so a misfire can only ever be a worse
+ * outcome than a clean one, which is what keeps instability off the ceiling in
+ * both directions.
+ *
+ * Identity for a drill — machines are perfectly reliable and always were.
+ */
+export interface BeforeFire {
+  /** Do not fire at all. The meter is still spent. */
+  cancel?: boolean;
+  /** Fire here instead of where it was aimed. */
+  cell?: number;
+}
+let beforeFire: (
+  state: GameState, ctx: EngineCtx, index: number, slot: number, cell: number, depth: number,
+) => BeforeFire | null = () => null;
+export function wireBeforeFire(fn: typeof beforeFire): void { beforeFire = fn; }
 
 export interface AlloyPrice {
   conv: number;
@@ -137,6 +159,9 @@ export interface DrillFit {
   id: string;
   grade: number;
   ch?: number;
+  /** FIRINGS. Only the tool counts them — a machine does not learn its ability,
+   *  it just runs it. Levels come out of this; see `abilityLevelOf`. */
+  fired?: number;
 }
 
 export interface Fit {
@@ -405,7 +430,7 @@ export function fireAbility(
   // THE CARRIER GETS A SAY. For a drill both hooks are identity; for the tool
   // they are where its modifiers turn a 3x3 into a 5x5 and a grade I into a
   // grade III. One point of resolution, sixteen shapes downstream of it.
-  const p = tuneFor(state, drillIndex, abilityParams(def, raw.grade + gradeFor(state, drillIndex)));
+  const p = tuneFor(state, drillIndex, abilityParams(def, raw.grade + gradeFor(state, drillIndex, slot)));
 
   const blocked = (i: number): boolean => deps!.blocked(state, drill, i);
   let target = at !== undefined && !blocked(at) ? at : deps.pick(state, drill);
@@ -416,6 +441,18 @@ export function fireAbility(
   if (def.id === 'cataclysm') return fireCataclysm(state, mods, ctx, drill, drillIndex, slot, target, depth);
   if (def.id === 'genesis') return fireGenesis(state, mods, ctx, drill, drillIndex, slot, target, p, depth);
   // CASCADE fires as a plain single-cell hit AND chains — see `chainOthers`.
+
+  /**
+   * INSTABILITY GETS ITS SAY, and it gets it AFTER the target is chosen and
+   * BEFORE the plan is built — so a wild firing builds a real plan for the
+   * wrong cell rather than a mangled one for the right cell.
+   *
+   * A cancelled firing still SPENDS the meter. That is the cost, and it is the
+   * only shape of cost available that cannot accidentally be a benefit.
+   */
+  const interfere = beforeFire(state, ctx, drillIndex, slot, target, depth);
+  if (interfere?.cancel) { spend(drill, slot); return false; }
+  if (interfere?.cell !== undefined && !blocked(interfere.cell)) target = interfere.cell;
 
   const plan = buildPlan(state, mods, def, p, target, blocked);
   if (!plan) return false;

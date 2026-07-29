@@ -94,6 +94,18 @@ export interface ModEffectDef {
 
   /** COMBO ONLY: multiplies what every other modifier contributes. */
   amplify?: number;
+
+  /**
+   * RELIABILITY, not power — the counterweight axis.
+   *
+   * Instability is what a tool accrues for carrying powerful things, and a
+   * `stabilize` term takes it back off. It is on the allowed list because it is
+   * the OPPOSITE of a faucet: it buys no reach, no speed and no drops, only the
+   * chance that what you already have does what you told it to. A tool with
+   * every stabiliser in the game and nothing else is a perfectly reliable tool
+   * that mines exactly like bare hands.
+   */
+  stabilize?: number;
 }
 
 /**
@@ -106,8 +118,74 @@ export interface ModEffectDef {
 export const MOD_AXES = [
   'cells', 'splash', 'oreRate', 'dropWeight', 'uses', 'xpRate', 'repairPerSec',
   'abilitySlots', 'chargePerSwing', 'abilityGrade', 'paramAdd', 'paramMult',
-  'oreReach', 'refire', 'repairOnFire', 'chargeOnFire', 'amplify',
+  'oreReach', 'refire', 'repairOnFire', 'chargeOnFire', 'amplify', 'stabilize',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// LEVELS — a modifier grows into what it does
+// ---------------------------------------------------------------------------
+
+/**
+ * A MODIFIER LEARNS THE WORK, the same way the tool carrying it does.
+ *
+ * Five levels, and the level multiplies what the modifier CONTRIBUTES — a
+ * level-V Wider Blast adds more radius than a level-I one. It never touches an
+ * axis the modifier does not already have, so levelling cannot introduce a term
+ * pillar 2 has not already cleared: it scales a vector, it does not rotate it.
+ *
+ * XP is the same currency the tool levels on — cells that actually gave
+ * something up — so a modifier is paced by field regen exactly as everything
+ * else is, and cannot be tapped for. ABILITY-facing modifiers count FIRINGS
+ * instead, weighted up because a firing is much rarer than a cell.
+ */
+export const MOD_LEVEL_MAX = 5;
+export const MOD_XP_BASE = 900;
+export const MOD_XP_EXP = 1.7;
+/** What each level past the first adds to the modifier's contribution. */
+export const MOD_LEVEL_STEP = 0.375;
+/** A firing is worth this many cells to an ability-facing modifier. */
+export const MOD_FIRE_WEIGHT = 40;
+
+export function modXpForLevel(level: number): number {
+  if (level <= 1) return 0;
+  return Math.round(MOD_XP_BASE * Math.pow(level - 1, MOD_XP_EXP));
+}
+
+export function modLevelOf(xp: number): number {
+  let n = 1;
+  while (n < MOD_LEVEL_MAX && xp >= modXpForLevel(n + 1)) n++;
+  return n;
+}
+
+/** The multiplier a level puts on everything the modifier contributes. */
+export function modLevelScale(level: number): number {
+  return 1 + MOD_LEVEL_STEP * (Math.max(1, Math.min(MOD_LEVEL_MAX, level)) - 1);
+}
+
+/**
+ * AN ABILITY LEVELS TOO, and the brief's example is the reason: "Slagburst
+ * I→V, starts small, ends screen-clearing".
+ *
+ * It reuses the GRADE machinery rather than adding a second scale — a level is
+ * worth a grade step, which `abilityParams` already knows how to spend on `r`,
+ * `hops`, `share` and the rest, and which `share`'s clamp at 1 already bounds.
+ * So a level-V Slagburst is a five-by-five (r 1 → 2 at level III, → 3 at V) and
+ * every guarantee the grade ladder carries carries over untouched.
+ *
+ * XP is FIRINGS. An ability that never goes off learns nothing.
+ */
+export const ABILITY_LEVEL_MAX = 5;
+export const ABILITY_XP_PER_LEVEL = [0, 12, 40, 110, 260];
+
+export function abilityLevelOf(fires: number): number {
+  let n = 1;
+  while (n < ABILITY_LEVEL_MAX && fires >= ABILITY_XP_PER_LEVEL[n]!) n++;
+  return n;
+}
+
+export function abilityXpForLevel(level: number): number {
+  return ABILITY_XP_PER_LEVEL[Math.max(0, Math.min(ABILITY_LEVEL_MAX - 1, level - 1))] ?? 0;
+}
 
 /** What a combo modifier waits for. Unmet = seated, visible, and INERT. */
 export interface ModRequires {
@@ -359,6 +437,38 @@ export const TOOL_MODS: ToolModDef[] = [
     fx: { refire: 0.3 }, color: HOLLOW,
   },
 
+  // ═══ STABILISERS — the counterweight, and the reason OP is engineering ══
+  // These buy NOTHING. No reach, no speed, no drops — only the chance that
+  // what you have already stacked does what you told it to. They are what
+  // turns "pile everything on" into a build with a shape.
+  {
+    id: 'trueseat', name: 'True Seat', shell: 'loam', category: 'utility',
+    effect: 'Everything on it sits a little straighter. Less goes wrong.',
+    line: 'It was always going to fit. It just needed telling once.',
+    // SIGNATURE PICKED TO BE UNSHADOWABLE, and the first one was not: with
+    // `{trueseated: 1, tough: 1}` it was byte-identical to Ferrite's Second
+    // Wind, which is deeper and therefore always won the tie — so this entry
+    // was in the registry, tested, and unreachable by any mix at any depth.
+    // The reach test caught it on the first run. Demand THREE outranks every
+    // Loam signature, so it is the answer whenever it fits at all.
+    cost: 1, maxStacks: 3, units: 4, needs: { trueseated: 2, tough: 1 },
+    fx: { stabilize: 9 }, color: LOAM,
+  },
+  {
+    id: 'deadhand', name: 'Dead Hand', shell: 'glassmere', category: 'utility',
+    effect: 'It stops arguing with itself, and lasts longer for it.',
+    line: 'No shake in it at all. You have checked twice.',
+    cost: 2, maxStacks: 3, units: 6, needs: { trueseated: 2, dense: 2 },
+    fx: { stabilize: 22, uses: 1.2 }, color: GLASSMERE,
+  },
+  {
+    id: 'theanchor', name: 'The Anchor', shell: 'aleph', category: 'utility',
+    effect: 'Whatever you have done to this thing, it holds.',
+    line: 'Every world it has been in agrees about where it is.',
+    cost: 4, maxStacks: 2, units: 10, needs: { trueseated: 3 },
+    fx: { stabilize: 55 }, color: ALEPH,
+  },
+
   // ═══ COMBO — worth nothing alone, which is the point ══════════════════
   {
     id: 'resonance', name: 'Resonance', shell: 'ferrite', category: 'combo',
@@ -393,6 +503,130 @@ export const TOOL_MODS: ToolModDef[] = [
     fx: { amplify: 2, abilityGrade: 2 }, color: ALEPH,
   },
 ];
+
+// ---------------------------------------------------------------------------
+// SYNERGIES — what two modifiers turn out to be, together
+// ---------------------------------------------------------------------------
+
+/**
+ * THE THING YOU FIND BY STACKING.
+ *
+ * A synergy is not applied. It AWAKENS: put both parents on one tool, at level
+ * two or better, and a third thing appears that neither of them was. It costs
+ * no slots, because you did not spend anything on it — you arranged the things
+ * you already had, which is the entire fantasy this phase exists to deliver.
+ *
+ * DISCOVERED, NEVER LISTED (pillar 5). Nothing anywhere shows the pairs. What
+ * the bench shows is a DIRECTION — `hint` describes the shape of the pairing in
+ * the game's voice without naming either parent or the result — and it only
+ * appears once you are carrying one half of it. So the tool tells you there is
+ * something there and makes you find what.
+ *
+ * The parents STAY. A synergy is not a fusion that eats its inputs; take one
+ * parent off and the synergy sleeps again, which makes the arrangement itself
+ * the thing you are protecting.
+ */
+export interface SynergyDef {
+  id: string;
+  name: string;
+  shell: string;
+  /** The two modifiers that wake it. Order is irrelevant. */
+  from: [string, string];
+  /** Both parents must be at least this level. */
+  minLevel: number;
+  /**
+   * The direction, shown when the player carries ONE parent. Names no modifier
+   * and no result — it describes what the half they are holding is reaching for.
+   */
+  hint: string;
+  effect: string;
+  line: string;
+  fx: ModEffectDef;
+  color: number;
+}
+
+export const SYNERGIES: SynergyDef[] = [
+  {
+    id: 'stormbreaker', name: 'Stormbreaker', shell: 'ferrite',
+    from: ['widerblast', 'longchain'], minLevel: 2,
+    hint: 'Something in the way this one goes off is looking for somewhere to go afterwards.',
+    effect: 'The blast stops being a place and starts being a direction — it goes off, and then it travels.',
+    line: 'It did not stop at the edge of the hole. It has not stopped yet.',
+    fx: { paramAdd: { r: 1, hops: 3, cap: 8 }, refire: 0.15 }, color: FERRITE,
+  },
+  {
+    id: 'cleaver', name: 'Cleaver', shell: 'verdance',
+    from: ['heavyhead', 'shatterface'], minLevel: 2,
+    hint: 'All that weight wants something that will come apart when it lands.',
+    effect: 'Weight and a fault line, in the same swing. What it touches does not survive being touched.',
+    line: 'You are not chipping any more.',
+    fx: { splash: 0.18, dropWeight: 1.2 }, color: VERDANCE,
+  },
+  {
+    id: 'avalanche', name: 'Avalanche', shell: 'cinder',
+    from: ['farreach', 'voidbite'], minLevel: 2,
+    hint: 'It reaches a long way, and what it reaches for is barely there when it arrives.',
+    effect: 'Everything within the swing empties at once, whether or not you meant it.',
+    line: 'The wall went. All of it went.',
+    fx: { cells: 1, splash: 0.2 }, color: CINDER,
+  },
+  {
+    id: 'perpetual', name: 'Perpetual', shell: 'ferrite',
+    from: ['selfmending', 'quicklearner'], minLevel: 2,
+    hint: 'It mends itself, and it is starting to mend itself better than it did.',
+    effect: 'It learns from mending and mends from learning. You have stopped maintaining it.',
+    line: 'You have not put a hand to this in a week.',
+    fx: { repairPerSec: 0.006, xpRate: 1.5, stabilize: 10 }, color: FERRITE,
+  },
+  {
+    id: 'overdrive', name: 'Overdrive', shell: 'cinder',
+    from: ['quickcharge', 'restless'], minLevel: 2,
+    hint: 'This one never settles, and something else on here is already impatient.',
+    effect: 'It comes round almost every swing. It is also extremely hard to keep pointed.',
+    line: 'It is going off. It is going to keep going off.',
+    fx: { chargePerSwing: 3, stabilize: -18 }, color: CINDER,
+  },
+  {
+    id: 'deepvein', name: 'Deep Vein', shell: 'verdance',
+    from: ['quarryjaw', 'oremagnet'], minLevel: 2,
+    hint: 'It finds pockets, and it is beginning to find them before you get there.',
+    effect: 'Every pocket in reach opens to it at once, and quickly.',
+    line: 'You stopped looking for them a while ago. They are just where you are.',
+    fx: { oreRate: 1.8, oreReach: true }, color: VERDANCE,
+  },
+  {
+    id: 'theanvil', name: 'The Anvil', shell: 'cinder',
+    from: ['unbreaking', 'deepbite'], minLevel: 2,
+    hint: 'It refuses to wear, and something else in it refuses along with it.',
+    effect: 'It does not wear and it does not shift. Everything else on it steadies too.',
+    line: 'Older than the shaft. Same shape as the day it was poured.',
+    fx: { uses: 2, stabilize: 34 }, color: CINDER,
+  },
+  {
+    id: 'harmonic', name: 'Harmonic', shell: 'aleph',
+    from: ['resonance', 'sympathy'], minLevel: 3,
+    hint: 'Two things on here have found the same note and are looking for a third.',
+    effect: 'Everything on the tool feeds everything else. It is one thing now, not a stack of them.',
+    line: 'You built this out of parts. It has stopped being parts.',
+    fx: { amplify: 1.6, chargeOnFire: 6 }, color: ALEPH,
+  },
+  {
+    id: 'firstlight', name: 'First Light', shell: 'aleph',
+    from: ['graded', 'overgrade'], minLevel: 3,
+    hint: 'It behaves as though it came from deeper than it did, and it wants to go further.',
+    effect: 'Everything it carries goes off as though poured at the bottom of the world.',
+    line: 'It is not remembering a deeper world. It is insisting on one.',
+    fx: { abilityGrade: 2, stabilize: -25 }, color: ALEPH,
+  },
+];
+
+export const SYNERGY_BY_ID = new Map(SYNERGIES.map((s) => [s.id, s]));
+
+/** Which synergies a given modifier is half of. Used for the hint, never to
+ *  list the other half. */
+export function synergiesTouching(modId: string): SynergyDef[] {
+  return SYNERGIES.filter((s) => s.from.includes(modId));
+}
 
 export const MOD_BY_ID = new Map(TOOL_MODS.map((m) => [m.id, m]));
 

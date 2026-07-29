@@ -33,19 +33,110 @@
  */
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
-  MOD_BY_ID, MOD_SHELL_ORDINAL, TOOL_MODS, matchToolMod,
-  type ModEffectDef, type ToolModDef,
+  MOD_BY_ID, MOD_FIRE_WEIGHT, MOD_LEVEL_MAX, MOD_SHELL_ORDINAL, SYNERGIES,
+  SYNERGY_BY_ID, TOOL_MODS, matchToolMod, modLevelOf, modLevelScale, modXpForLevel,
+  type ModEffectDef, type SynergyDef, type ToolModDef,
 } from '../content/toolMods';
 import { alloyHint, dominantTrait } from '../content/drillAlloys';
 import { reachedOrdinal } from './drillAlloys';
 import { currentTool } from './casting';
 import { modSlotsOf } from './toolMining';
+import { LINEAR_STATS, STAT_BASE } from '../content/forgeParts';
+import type { ToolStats } from './forgeParts';
 import { consumeMaterial, materialCount } from './forge';
 
 /** One modifier on the tool, and how many times it has been applied. */
 export interface ToolModStack {
   id: string;
   n: number;
+  /** Work this modifier has done — cells for the tool-facing ones, firings
+   *  (weighted) for the ability-facing ones. Levels come out of it. */
+  xp?: number;
+}
+
+export function levelOfStack(s: ToolModStack): number {
+  return modLevelOf(s.xp ?? 0);
+}
+
+/** Everything the level readout needs, so the panel computes nothing. */
+export function modProgress(s: ToolModStack): {
+  level: number; into: number; need: number; frac: number; xp: number; max: boolean;
+} {
+  const xp = s.xp ?? 0;
+  const level = modLevelOf(xp);
+  if (level >= MOD_LEVEL_MAX) {
+    return { level, into: 0, need: 0, frac: 1, xp, max: true };
+  }
+  const from = modXpForLevel(level);
+  const to = modXpForLevel(level + 1);
+  const need = Math.max(1, to - from);
+  return { level, xp, into: xp - from, need, frac: Math.max(0, Math.min(1, (xp - from) / need)), max: false };
+}
+
+/**
+ * RECORD THE WORK. Called from the manual verbs with cells that actually gave
+ * something up, and from the firing path with firings.
+ *
+ * WHICH MODIFIERS COUNT WHICH: an ability-facing modifier learns from FIRINGS,
+ * because that is the work it does; everything else learns from cells. A
+ * combo learns from both — it is amplifying whatever is happening.
+ */
+export function gainModXp(
+  state: GameState, ctx: EngineCtx | undefined, cells: number, fires = 0,
+): void {
+  const stacks = state.casting?.mods;
+  if (!stacks || stacks.length === 0) return;
+  if (cells <= 0 && fires <= 0) return;
+  let levelled = false;
+  for (const s of stacks) {
+    const def = MOD_BY_ID.get(s.id);
+    if (!def) continue;
+    const gain = def.category === 'ability'
+      ? fires * MOD_FIRE_WEIGHT
+      : def.category === 'combo'
+        ? cells + fires * MOD_FIRE_WEIGHT
+        : cells;
+    if (gain <= 0) continue;
+    const before = modLevelOf(s.xp ?? 0);
+    s.xp = (s.xp ?? 0) + gain;
+    const after = modLevelOf(s.xp);
+    if (after > before && ctx) {
+      ctx.emit({ type: 'toolModLevelled', id: def.id, name: def.name, level: after });
+      ctx.dirty();
+      levelled = true;
+    }
+  }
+  /**
+   * A LEVEL-UP CAN WAKE AN ARRANGEMENT, and until this line it did not tell
+   * anybody. A synergy wants both parents at a level; if the second parent
+   * crosses that level WHILE MINING, the thing wakes with no bench action to
+   * hang the announcement on, and the player would find out only the next time
+   * they opened a panel. That is the discovery moment of the whole system
+   * arriving silently.
+   */
+  if (levelled) noteSynergies(state, ctx);
+}
+
+/**
+ * A SYNERGY IS RECORDED THE FIRST TIME IT IS AWAKE. It is not applied and not
+ * bought — the player arranged two things they already had and a third thing
+ * happened, so the moment worth marking is the moment it first happens.
+ *
+ * Called wherever the arrangement could have changed: on a level-up, after a
+ * modifier is worked in or taken off, after a firing, after a rebuild.
+ */
+export function noteSynergies(state: GameState, ctx?: EngineCtx): string[] {
+  if (!state.casting) return [];
+  const known = (state.casting.knownSynergies ??= []);
+  const found: string[] = [];
+  for (const id of modCache(state, seatedAbilities(state).length).awake) {
+    if (known.includes(id)) continue;
+    known.push(id);
+    found.push(id);
+    ctx?.emit({ type: 'synergyAwoke', id, name: SYNERGY_BY_ID.get(id)?.name ?? id });
+  }
+  if (found.length > 0) ctx?.dirty();
+  return found;
 }
 
 /** How many distinct materials one application may be fed. Same as a pour. */
@@ -158,16 +249,59 @@ export interface ModCache {
   chargeOnFire: number;
   /** What Resonance and friends are multiplying everything else by. */
   amplify: number;
+  /** Instability taken back off by stabilisers. Reliability, never power. */
+  stabilize: number;
   live: string[];
   dormant: string[];
+  /** Synergies currently awake on this tool. */
+  awake: string[];
 }
 
 export const NO_MODS: ModCache = {
   cells: 0, splash: 0, oreRate: 1, dropWeight: 1, uses: 1, xpRate: 1,
   repairPerSec: 0, abilitySlots: 0, chargePerSwing: 0, abilityGrade: 0,
   paramAdd: {}, paramMult: {}, oreReach: false, refire: 0, repairOnFire: 0,
-  chargeOnFire: 0, amplify: 1, live: [], dormant: [],
+  chargeOnFire: 0, amplify: 1, stabilize: 0, live: [], dormant: [], awake: [],
 };
+
+/**
+ * WHICH SYNERGIES ARE AWAKE. Both parents present, both at the level it wants,
+ * and neither of them asleep for room or requirements — an overflowed modifier
+ * is not on the tool in any sense that should wake something else.
+ */
+export function awakeSynergies(state: GameState, liveIds: Set<string>): SynergyDef[] {
+  const stacks = modStacks(state);
+  const at = (id: string): number => {
+    const s = stacks.find((m) => m.id === id);
+    return s && liveIds.has(id) ? levelOfStack(s) : 0;
+  };
+  return SYNERGIES.filter((s) =>
+    at(s.from[0]) >= s.minLevel && at(s.from[1]) >= s.minLevel);
+}
+
+/**
+ * THE DIRECTION, for a player carrying HALF of something.
+ *
+ * Shows only for synergies where exactly one parent is on the tool, and says
+ * nothing about the other parent or the result — it describes what the half
+ * they are holding is reaching for. That is the whole of the pillar-5 contract
+ * here: the tool tells you there is something to find, never what.
+ */
+export function synergyHints(state: GameState): string[] {
+  const stacks = modStacks(state);
+  const have = new Set(stacks.map((m) => m.id));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const s of SYNERGIES) {
+    const a = have.has(s.from[0]);
+    const b = have.has(s.from[1]);
+    if (a === b) continue; // neither (nothing to hint) or both (it has woken)
+    if (seen.has(s.hint)) continue;
+    seen.add(s.hint);
+    out.push(s.hint);
+  }
+  return out;
+}
 
 /**
  * FOLD THE STACK. Pure — reads state, writes nothing.
@@ -183,7 +317,7 @@ export function modCache(state: GameState, abilities = 0): ModCache {
   if (stacks.length === 0 || !state.casting) return NO_MODS;
 
   const out: ModCache = {
-    ...NO_MODS, paramAdd: {}, paramMult: {}, live: [], dormant: [],
+    ...NO_MODS, paramAdd: {}, paramMult: {}, live: [], dormant: [], awake: [],
   };
 
   /**
@@ -216,13 +350,13 @@ export function modCache(state: GameState, abilities = 0): ModCache {
   }
 
   // ── PASS 1: who is awake, and what is the amplifier ──────────────────
-  const awake: Array<{ def: ToolModDef; n: number }> = [];
+  const awake: Array<{ def: ToolModDef; n: number; level: number }> = [];
   for (const s of stacks) {
     const def = MOD_BY_ID.get(s.id);
     if (!def || s.n <= 0) continue;
     if (overflow.has(s.id)) { out.dormant.push(s.id); continue; }
     if (modLive(state, def, abilities)) {
-      awake.push({ def, n: s.n });
+      awake.push({ def, n: s.n, level: levelOfStack(s) });
       out.live.push(s.id);
       if (def.fx.amplify) out.amplify *= Math.pow(def.fx.amplify, s.n);
     } else {
@@ -233,9 +367,24 @@ export function modCache(state: GameState, abilities = 0): ModCache {
   // ── PASS 2: fold, amplifying everything that is not itself a combo ───
   // A combo amplifies OTHER modifiers, never combos (including itself), so two
   // of them cannot multiply each other into a runaway.
-  for (const { def, n } of awake) {
-    const k = def.category === 'combo' ? 1 : out.amplify;
+  //
+  // THE LEVEL SCALES THE CONTRIBUTION and nothing else. It multiplies the
+  // vector the modifier already had; it cannot give it an axis it did not
+  // declare, which is why levelling needed no separate pillar-2 argument.
+  for (const { def, n, level } of awake) {
+    const k = (def.category === 'combo' ? 1 : out.amplify) * modLevelScale(level);
     add(out, def.fx, n, k);
+  }
+
+  // ── PASS 3: what the arrangement turned out to be ────────────────────
+  // A synergy costs no slots and is never applied — it is a property of what
+  // is already on the tool. It folds at full weight, unamplified, for the same
+  // reason a combo is: it is itself the multiplier-shaped thing.
+  const liveSet = new Set(out.live);
+  for (const syn of awakeSynergies(state, liveSet)) {
+    out.awake.push(syn.id);
+    if (syn.fx.amplify) out.amplify *= syn.fx.amplify;
+    add(out, syn.fx, 1, 1);
   }
   return out;
 }
@@ -250,6 +399,7 @@ function add(out: ModCache, fx: ModEffectDef, n: number, k: number): void {
   if (fx.refire) out.refire += fx.refire * n * k;
   if (fx.repairOnFire) out.repairOnFire += fx.repairOnFire * n * k;
   if (fx.chargeOnFire) out.chargeOnFire += fx.chargeOnFire * n * k;
+  if (fx.stabilize) out.stabilize += fx.stabilize * n * k;
   if (fx.oreReach) out.oreReach = true;
 
   // MULTIPLICATIVE AXES AMPLIFY THE BONUS, NOT THE BASELINE. An amplified 1.4x
@@ -411,6 +561,131 @@ export function stripToolMod(state: GameState, ctx: EngineCtx, id: string): Acti
  *  modifier. Same grammar and the same wording the alloy bench uses. */
 export function modHint(materialIds: string[]): string | null {
   return alloyHint(materialIds.filter(Boolean));
+}
+
+// ---------------------------------------------------------------------------
+// INSTABILITY — the counterweight
+// ---------------------------------------------------------------------------
+
+/**
+ * WHY THIS EXISTS. Without it the answer to "how OP can I make this" is "put
+ * everything on", which is a shopping list rather than a build. Instability
+ * makes the powerful things COST something other than slots, and makes the
+ * boring stabilising ones worth carrying — so a maxed tool is engineered
+ * around a constraint instead of piled up against none.
+ *
+ * WHAT IT CANNOT DO, and both are load-bearing:
+ *
+ *  PILLAR 1 — it never touches the swing. An unstable tool mines exactly as a
+ *  stable one does; only its ABILITIES misfire, and abilities are pure upside
+ *  that bare hands never had. The worst possible instability leaves you with a
+ *  tool that mines like a tool and sometimes wastes an explosion.
+ *
+ *  PILLAR 2 — a misfire only ever REMOVES. It fizzles the firing or throws it
+ *  somewhere you did not choose. There is no misfire outcome that pays more
+ *  than a clean firing would have, so instability cannot be farmed, and the
+ *  ceiling is untouched in either direction.
+ */
+
+/** Instability per point of an ability's power tier, per level. */
+export const INST_PER_ABILITY = 4;
+/** Instability per slot a modifier occupies, per level. */
+export const INST_PER_SLOT = 2.2;
+/** Instability a woken synergy adds — arrangements are volatile. */
+export const INST_PER_SYNERGY = 12;
+/** Below this, nothing ever goes wrong. Early tools live here. */
+export const INST_FLOOR = 40;
+/** Misfire chance per point of instability above the floor. */
+export const INST_PER_POINT = 0.0022;
+/** However bad it gets, most firings still land. */
+export const MISFIRE_CAP = 0.35;
+
+export interface InstabilityRead {
+  /** What the tool has accrued, before stabilisers. */
+  raw: number;
+  /** What the stabilisers take back off. */
+  steady: number;
+  /** What is left, floored at zero. */
+  net: number;
+  /** 0..MISFIRE_CAP. */
+  misfire: number;
+  /** Biggest contributors first, for the readout. */
+  from: Array<{ label: string; n: number }>;
+}
+
+/**
+ * WHAT THE TOOL IS CARRYING, PRICED IN RELIABILITY.
+ *
+ * The tool's own STABILITY stat is in here too, which is what makes the doc's
+ * `trueseated` trait ("stability, less penalty from mismatched parts") pay off
+ * twice: it already bought coherence at assembly, and now it buys steadiness
+ * under load. Read scale-free, like `toughnessIndex`, so the trade is the same
+ * trade at every depth rather than evaporating at the second shell.
+ */
+export function instability(state: GameState, abilities: Array<{ power: number; level: number }> = []): InstabilityRead {
+  const from: Array<{ label: string; n: number }> = [];
+  let raw = 0;
+
+  const cache = modCache(state, abilities.length);
+  for (const s of modStacks(state)) {
+    const def = MOD_BY_ID.get(s.id);
+    if (!def || !cache.live.includes(s.id)) continue;
+    const n = def.cost * s.n * INST_PER_SLOT * modLevelScale(levelOfStack(s));
+    if (n <= 0) continue;
+    raw += n;
+    from.push({ label: def.name, n });
+  }
+  for (const a of abilities) {
+    const n = a.power * INST_PER_ABILITY * modLevelScale(a.level);
+    raw += n;
+    from.push({ label: 'what it carries', n });
+  }
+  for (const id of cache.awake) {
+    raw += INST_PER_SYNERGY;
+    from.push({ label: SYNERGY_BY_ID.get(id)?.name ?? id, n: INST_PER_SYNERGY });
+  }
+
+  // STABILISERS. Modifier terms plus the tool's own stability shape — and a
+  // NEGATIVE stabilize (Overdrive, First Light) adds instability rather than
+  // removing it, which is what makes those two a real decision.
+  let steady = cache.stabilize;
+  const tool = currentTool(state);
+  if (tool) steady += steadyOf(tool) ;
+
+  const net = Math.max(0, raw - steady);
+  const misfire = Math.max(0, Math.min(MISFIRE_CAP, (net - INST_FLOOR) * INST_PER_POINT));
+  from.sort((a, b) => b.n - a.n);
+  return { raw, steady, net, misfire, from: from.slice(0, 6) };
+}
+
+/**
+ * THE TOOL'S OWN STEADINESS, scale-free.
+ *
+ * `stability` scales with magnitude like every other stat, so a raw reading
+ * would make an Aleph tool unshakeable and a Loam one hopeless regardless of
+ * what either was built from — which is not a trade, it is depth again. So it
+ * is read as SHAPE: how much of this tool is stability, relative to everything
+ * else it is. Same trick and same reason as `toughnessIndex`.
+ */
+export function steadyOf(tool: ToolStats): number {
+  const base = STAT_BASE.stability;
+  if (!(base > 0)) return 0;
+  let mean = 0;
+  for (const s of LINEAR_STATS) mean += tool.stats[s] / STAT_BASE[s];
+  mean /= LINEAR_STATS.length;
+  if (mean <= 0) return 0;
+  const idx = (tool.stats.stability / base) / mean;
+  return Math.max(0, Math.min(60, idx * 26));
+}
+
+/** The abilities the tool is carrying, in the shape `instability` wants.
+ *  Wired, because `toolAbilities` reads this module. */
+let seatedAbilities: (state: GameState) => Array<{ power: number; level: number }> = () => [];
+export function wireSeatedAbilities(fn: typeof seatedAbilities): void { seatedAbilities = fn; }
+
+/** The whole reading, for the panel and for the firing path. */
+export function toolInstability(state: GameState): InstabilityRead {
+  return instability(state, seatedAbilities(state));
 }
 
 // ---------------------------------------------------------------------------

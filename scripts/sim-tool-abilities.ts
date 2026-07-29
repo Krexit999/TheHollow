@@ -40,8 +40,8 @@ import { matchAllAbilities, ABILITY_BY_ID } from '../src/engine/content/drillAll
 import { handCarrier, TOOL_SLOT_CAP } from '../src/engine/systems/toolAbilities';
 import { allShells } from '../src/engine/shells';
 import { newDrill } from '../src/engine/systems/drills';
-import { TOOL_MODS } from '../src/engine/content/toolMods';
-import { modSlotsFree, modSlotsTotal, modSlotsUsed, modCache } from '../src/engine/systems/toolMods';
+import { TOOL_MODS, MOD_LEVEL_MAX, modXpForLevel } from '../src/engine/content/toolMods';
+import { modSlotsFree, modSlotsTotal, modSlotsUsed, modCache, toolInstability } from '../src/engine/systems/toolMods';
 import { xpForLevel } from '../src/engine/systems/toolMining';
 import { materialsOfShell } from '../src/engine/materials';
 
@@ -93,7 +93,7 @@ interface Arm {
    * survives a tool that cheated past its own budget, the budget is not what
    * was holding it. `'legal'` fills the slots a real deep tool actually has.
    */
-  mods?: 'all' | 'legal';
+  mods?: 'all' | 'legal' | 'engineered';
   /** Levels, for the legal arm's slot count. */
   level?: number;
 }
@@ -148,7 +148,27 @@ function runArm(arm: Arm, clicksPerSec: number, seed: number): Reading {
 
     if (arm.mods && arm.material) {
       s.casting.knownMods = TOOL_MODS.map((m) => m.id);
-      if (arm.mods === 'all') {
+      if (arm.mods === 'engineered') {
+        /**
+         * THE BRIEF'S FANTASY, BUILT: max levels, synergies awake, and
+         * DELIBERATELY STABILISED so it does not misfire.
+         *
+         * That last part is the honest choice for a ceiling test. A tool at 35%
+         * misfire takes LESS than a steady one, so leaving it unstable would
+         * hand the faucet gate a flattering number for the wrong reason — the
+         * arm would pass because it was broken, not because the ceiling holds.
+         * The strongest thing a player can actually field is the engineered
+         * one, so that is what gets measured.
+         */
+        s.casting.xp = xpForLevel(1 + 5 * 400);
+        const order = [...TOOL_MODS].sort((a, b) =>
+          (b.fx.stabilize ? 1 : 0) - (a.fx.stabilize ? 1 : 0)
+          || (b.category === 'combo' ? 1 : 0) - (a.category === 'combo' ? 1 : 0)
+          || b.cost - a.cost);
+        s.casting.mods = order.map((m) => ({
+          id: m.id, n: m.maxStacks, xp: modXpForLevel(MOD_LEVEL_MAX),
+        }));
+      } else if (arm.mods === 'all') {
         // ENOUGH ROOM THAT NOTHING FALLS ASLEEP. A stack past the tool's budget
         // goes dormant, so seating the whole library on a normal tool would
         // measure a tool carrying a third of it while the label said
@@ -179,7 +199,10 @@ function runArm(arm: Arm, clicksPerSec: number, seed: number): Reading {
       // refuse. Cheating past the limit must still not breach the ceiling.
       handCarrier(s).fits = STONE.grants
         .slice(0, arm.abilities)
-        .map((id) => ({ id, grade: arm.grade, ch: 0 }));
+        // `fired` is the ability's own level — the OP arms carry level-V
+        // abilities, which is what the phase's "starts small, ends
+        // screen-clearing" actually means at the far end.
+        .map((id) => ({ id, grade: arm.grade, ch: 0, fired: arm.mods ? 999 : 0 }));
     }
 
     const cells = s.face.cells.length;
@@ -254,6 +277,10 @@ const ARMS: Arm[] = [
     label: 'THE CHEATED TOOL — every modifier, every stack', kind: 'cheat',
     material: STONE.id, abilities: 99, grade: 7, mods: 'all', level: 80,
   },
+  {
+    label: 'THE ENGINEERED TOOL — max levels, synergies awake, stabilised', kind: 'cheat',
+    material: STONE.id, abilities: 99, grade: 7, mods: 'engineered', level: 80,
+  },
 ];
 
 /** Slow enough that the face banks regen it never collects (power-bound), and
@@ -307,6 +334,32 @@ say();
     'a build the slot count refuses, run anyway. If the ceiling survives this, ' +
     'the slot count was never what was holding it.');
   say();
+
+  // THE ENGINEERED ARM, described so it can be checked rather than trusted.
+  {
+    const eng = createEngine({ nowMs: 0 }).getState() as GameState;
+    for (const shell of allShells()) eng.depthRecords[shell.id] = 40;
+    eng.forge.built = true;
+    eng.casting.tool = PART_TYPES.map((t, i) => ({ ...makePart(t, STONE.id, 60), id: i + 1 }));
+    eng.casting.xp = xpForLevel(1 + 5 * 400);
+    eng.casting.knownMods = TOOL_MODS.map((m) => m.id);
+    eng.casting.mods = TOOL_MODS.map((m) => ({
+      id: m.id, n: m.maxStacks, xp: modXpForLevel(MOD_LEVEL_MAX),
+    }));
+    handCarrier(eng).fits = STONE.grants.map((id) => ({ id, grade: 7, ch: 0, fired: 999 }));
+    const c = modCache(eng, STONE.grants.length);
+    const inst = toolInstability(eng);
+    say(`**The engineered arm**: every modifier at level ${MOD_LEVEL_MAX}, ` +
+      `**${c.awake.length} synergies awake** (${c.awake.join(', ')}), ` +
+      `amplify ${c.amplify.toFixed(2)}×, reach +${c.cells.toFixed(1)}, ` +
+      `blast radius +${(c.paramAdd['r'] ?? 0).toFixed(1)}, grade +${Math.floor(c.abilityGrade)}. ` +
+      `Instability ${Math.round(inst.net)} net after ${Math.round(inst.steady)} of steadying — ` +
+      `**${Math.round(inst.misfire * 100)}% misfire**.`);
+    say();
+    say('It is stabilised on purpose. An unstable tool takes LESS (a fizzle takes ' +
+      'nothing), so leaving it shaky would pass the faucet gate for the wrong reason.');
+    say();
+  }
 }
 
 // --- the instrument's own noise, first --------------------------------------

@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 40;
+export const SAVE_VERSION = 41;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -924,6 +924,40 @@ export const MIGRATIONS: Record<number, Migration> = {
     if (!Array.isArray(casting['mods'])) casting['mods'] = [];
     if (!Array.isArray(casting['knownMods'])) casting['knownMods'] = [];
     return { ...p, version: 40, state };
+  },
+
+  /**
+   * v41 — MODIFIER LEVELS, SYNERGIES, INSTABILITY.
+   *
+   * Every seated modifier starts at level I with no work behind it, and every
+   * seated ability at I likewise. That is a real (small) nerf to a save that
+   * was mid-flight, and it is the honest one: a level is a record of work done,
+   * and back-dating work nobody did would make the readout a lie on its first
+   * render. They climb again from the next swing.
+   *
+   * `knownSynergies` is empty for the same reason v40's library was: a synergy
+   * is something you FOUND, and it will announce itself the moment the tool is
+   * carrying the pair — which for anyone whose stack already qualifies is the
+   * next firing.
+   */
+  40: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    const mods = casting['mods'];
+    if (Array.isArray(mods)) {
+      for (const m of mods) {
+        if (m && typeof m === 'object') (m as Record<string, unknown>)['xp'] ??= 0;
+      }
+    }
+    const hand = casting['hand'] as Record<string, unknown> | undefined;
+    const fits = hand?.['fits'];
+    if (Array.isArray(fits)) {
+      for (const f of fits) {
+        if (f && typeof f === 'object') (f as Record<string, unknown>)['fired'] ??= 0;
+      }
+    }
+    if (!Array.isArray(casting['knownSynergies'])) casting['knownSynergies'] = [];
+    return { ...p, version: 41, state };
   },
 };
 

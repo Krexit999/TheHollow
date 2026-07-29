@@ -226,7 +226,7 @@ export interface DrillState {
    * pour and never moves: making a better one means pouring a better one.
    * Absent or empty = a bare machine, which mines perfectly well.
    */
-  fits?: { id: string; grade: number; ch?: number }[];
+  fits?: { id: string; grade: number; ch?: number; fired?: number }[];
   /** How many alloys this chassis holds. Absent = 1. Only a PRIZE drill has
    *  more, and that is most of what makes it a prize. */
   slots?: number;
@@ -1314,7 +1314,12 @@ export type GameEvent =
   | { type: 'partMelted'; partType: string; materialId: string; molten: number }
   | { type: 'toolLevelled'; level: number; slots: number }
   | { type: 'toolModFound'; id: string; name: string }
-  | { type: 'toolModApplied'; id: string; name: string; stacks: number };
+  | { type: 'toolModApplied'; id: string; name: string; stacks: number }
+  | { type: 'toolModLevelled'; id: string; name: string; level: number }
+  /** A pair on the tool turned out to be a third thing. Found, never listed. */
+  | { type: 'synergyAwoke'; id: string; name: string }
+  /** Instability got its way. `kind` is what went wrong, never a payout. */
+  | { type: 'misfire'; id: string; name: string; kind: 'fizzle' | 'wild'; cell: number };
 
 export type GameEventType = GameEvent['type'];
 

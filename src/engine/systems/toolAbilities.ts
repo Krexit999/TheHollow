@@ -70,11 +70,17 @@ import {
 } from '../content/drillAlloys';
 import {
   READY_GRACE, TOOL_CARRIER, fireAbility, mixGrade, reachedOrdinal,
-  wireHandCarrier, wireParamTune, wireGradeBonus, wireAfterFire, type Fit,
+  wireHandCarrier, wireParamTune, wireGradeBonus, wireAfterFire, wireBeforeFire,
+  type Fit,
 } from './drillAlloys';
+import { abilityLevelOf } from '../content/toolMods';
 import { currentTool } from './casting';
 import { modSlotsOf } from './toolMining';
-import { modCache, tuneParams } from './toolMods';
+import {
+  gainModXp, modCache, noteSynergies, toolInstability, tuneParams, wireSeatedAbilities,
+} from './toolMods';
+
+export { noteSynergies };
 import type { ToolStats } from './forgeParts';
 
 /**
@@ -138,8 +144,22 @@ wireHandCarrier((state) => (state.casting ? handCarrier(state) : null));
 wireParamTune((state, index, p) =>
   (index === TOOL_CARRIER && state.casting ? tuneParams(modCache(state), p) : p));
 
-wireGradeBonus((state, index) =>
-  (index === TOOL_CARRIER && state.casting ? Math.floor(modCache(state).abilityGrade) : 0));
+/**
+ * WHAT AN ABILITY IS WORTH RIGHT NOW — its modifiers plus what IT has learned.
+ *
+ * A level is worth a grade step, so `abilityParams` spends it on `r`, `hops`,
+ * `share` and the rest exactly as a deeper pour would. A level-V Slagburst is
+ * a five-by-five because r 1 → 3, and it is pillar-2-safe for the reason every
+ * grade step is: `share` clamps at a whole cell and every cell goes through
+ * `harvestCell`.
+ */
+wireGradeBonus((state, index, slot) => {
+  if (index !== TOOL_CARRIER || !state.casting) return 0;
+  const fromMods = Math.floor(modCache(state).abilityGrade);
+  const fit = state.casting.hand?.fits?.[slot];
+  const fromUse = fit ? abilityLevelOf(fit.fired ?? 0) - 1 : 0;
+  return fromMods + fromUse;
+});
 
 /**
  * AFTER A TOOL ABILITY GOES OFF — the three combo behaviours.
@@ -154,11 +174,80 @@ wireGradeBonus((state, index) =>
  * can create charge, because a re-firing is a firing and every firing ends in
  * `harvestCell`. What they buy is more of the field, sooner.
  */
+/**
+ * INSTABILITY, AT THE MOMENT OF FIRING.
+ *
+ * Rolled once per firing against the tool's net instability. Two outcomes and
+ * both are strictly worse than a clean firing:
+ *
+ *   FIZZLE  nothing happens. The meter is spent anyway.
+ *   WILD    it goes off somewhere you did not choose.
+ *
+ * There is deliberately no third outcome, because a third outcome is where a
+ * designer would be tempted to put a compensating upside — and an upside on a
+ * misfire is a faucet with a costume on. It only ever removes.
+ *
+ * `depth > 0` firings (a refire, a cascade) are NOT rolled: they are already
+ * consequences of a firing that passed its roll, and rolling them again would
+ * make Echoform quietly punish the very build that earned it.
+ */
+wireBeforeFire((state, ctx, index, slot, cell, depth) => {
+  if (index !== TOOL_CARRIER || !state.casting || depth > 0) return null;
+  const inst = toolInstability(state);
+  if (inst.misfire <= 0 || Math.random() >= inst.misfire) return null;
+
+  const fit = state.casting.hand?.fits?.[slot];
+  const def = fit ? ABILITY_BY_ID.get(fit.id) : undefined;
+  const name = def?.name ?? 'it';
+
+  if (Math.random() < 0.45) {
+    ctx.emit({ type: 'misfire', id: def?.id ?? '', name, kind: 'fizzle', cell });
+    return { cancel: true };
+  }
+  const wild = Math.floor(Math.random() * state.face.cells.length);
+  ctx.emit({ type: 'misfire', id: def?.id ?? '', name, kind: 'wild', cell: wild });
+  return { cell: wild };
+});
+
+/** The abilities the tool carries, priced for the instability reading. */
+wireSeatedAbilities((state) => {
+  const fits = state.casting?.hand?.fits ?? [];
+  const out: Array<{ power: number; level: number }> = [];
+  for (const f of fits) {
+    const def = ABILITY_BY_ID.get(f.id);
+    if (def) out.push({ power: def.power, level: abilityLevelOf(f.fired ?? 0) });
+  }
+  return out;
+});
+
 wireAfterFire((state, mods, ctx, index, slot, cell, depth) => {
   if (index !== TOOL_CARRIER || !state.casting) return;
   const cache = modCache(state);
   const hand = state.casting.hand;
   if (!hand?.fits) return;
+
+  /**
+   * IT FIRED, SO IT LEARNED. The ability counts its own firings; the modifiers
+   * that act on abilities count it too. Both are paced by the charge meter,
+   * which is paced by swings, which is paced by field regen — so no part of
+   * this ladder can be climbed faster than the rock allows.
+   */
+  const fit = hand.fits[slot];
+  if (fit) {
+    const before = abilityLevelOf(fit.fired ?? 0);
+    fit.fired = (fit.fired ?? 0) + 1;
+    const after = abilityLevelOf(fit.fired);
+    if (after > before) {
+      const def = ABILITY_BY_ID.get(fit.id);
+      ctx.emit({
+        type: 'toolModLevelled',
+        id: fit.id, name: def?.name ?? fit.id, level: after,
+      });
+      ctx.dirty();
+    }
+  }
+  gainModXp(state, ctx, 0, 1);
+  noteSynergies(state, ctx);
 
   if (cache.repairOnFire > 0 && state.casting.wear > 0) {
     const tool = currentTool(state);

@@ -713,7 +713,7 @@ describe('the standing reach rule', () => {
 
 describe('the save', () => {
   it('is at v40, and the library arrives empty', () => {
-    expect(SAVE_VERSION).toBe(40);
+    expect(SAVE_VERSION).toBeGreaterThanOrEqual(40);
     const out = runMigrations({ version: 39, state: { casting: { tool: [] } } } as never);
     const casting = (out.state as Record<string, unknown>)['casting'] as Record<string, unknown>;
     expect(casting['mods']).toEqual([]);

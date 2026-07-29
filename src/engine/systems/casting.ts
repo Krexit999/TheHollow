@@ -140,10 +140,14 @@ export interface CastingState {
   hand?: DrillState;
   /** MODIFIERS seated on the tool, and how deep each is stacked. Slots come
    *  from the Binding stone and from levels — see `systems/toolMods.ts`. */
-  mods?: Array<{ id: string; n: number }>;
+  mods?: Array<{ id: string; n: number; xp?: number }>;
   /** The library: every modifier this player has ever made. Survives a rebuild,
    *  because knowing how to make a thing is not something a tool holds. */
   knownMods?: string[];
+  /** SYNERGIES the player has ever woken. A found-not-listed record (pillar 5),
+   *  kept apart from `knownMods` because a synergy is never applied — you
+   *  arranged it, and the Codex remembers that you did. */
+  knownSynergies?: string[];
 }
 
 export function defaultCastingState(): CastingState {
@@ -161,6 +165,7 @@ export function defaultCastingState(): CastingState {
     hand: { level: 1, timer: 0, lastCell: -1, name: 'your tool', fits: [] },
     mods: [],
     knownMods: [],
+    knownSynergies: [],
   };
 }
 

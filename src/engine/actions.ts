@@ -73,7 +73,7 @@ import {
 } from './systems/casting';
 import { PART_TYPES, type PartType } from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
-import { setToolAbility, syncToolAbilities } from './systems/toolAbilities';
+import { noteSynergies, setToolAbility, syncToolAbilities } from './systems/toolAbilities';
 import { applyToolMod, stripToolMod } from './systems/toolMods';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
@@ -664,10 +664,19 @@ export function handleAction(
     case 'setToolAbility':
       return setToolAbility(state, ctx, action.slot, action.id);
 
-    case 'applyToolMod':
-      return applyToolMod(state, ctx, action.materialIds, action.prefer);
-    case 'stripToolMod':
-      return stripToolMod(state, ctx, action.id);
+    // WORKING SOMETHING IN CAN WAKE AN ARRANGEMENT. Checked on both verbs,
+    // because taking a modifier OFF can put a synergy back to sleep and the
+    // readout has to follow either way.
+    case 'applyToolMod': {
+      const r = applyToolMod(state, ctx, action.materialIds, action.prefer);
+      if (r.ok) noteSynergies(state, ctx);
+      return r;
+    }
+    case 'stripToolMod': {
+      const r = stripToolMod(state, ctx, action.id);
+      if (r.ok) noteSynergies(state, ctx);
+      return r;
+    }
     case 'meltBack':
       return meltBack(state, ctx, action.partId);
     case 'repairTool':
