@@ -17,8 +17,9 @@ import {
 } from '../../engine/systems/drills';
 import {
   drillsCarrying, knownAbilities, drillFits, drillSlots, bestGradeOf,
-  abilityBudget, loadoutUsed,
+  abilityBudget, loadoutUsed, TOOL_CARRIER,
 } from '../../engine/systems/drillAlloys';
+import { effectInHand, toolFits } from '../../engine/systems/toolAbilities';
 import { PRIZE_SOURCES } from '../../engine/systems/prizeDrills';
 import { ROMAN as ROMAN_G } from '../../engine/content/drillAlloys';
 import { oreCount } from '../../engine/systems/ores';
@@ -182,6 +183,54 @@ function InHandStrip({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * THE ABILITY METERS, AT THE FACE.
+ *
+ * They belong here rather than only two rooms away at the Casting Floor for the
+ * plain reason that this is where the ability HAPPENS: the meter fills as you
+ * swing at this grid, it goes off on this grid, and a Fire button you have to
+ * change rooms to reach is a button nobody presses in time. The full card —
+ * what each one does, what else the build could carry, how to change it — stays
+ * at the Floor, where the decisions are.
+ *
+ * Absent entirely for a tool that reaches for nothing, and for bare hands.
+ */
+function ToolAbilityStrip({ state }: { state: GameState }) {
+  const fits = toolFits(state);
+  if (fits.length === 0) return null;
+  return (
+    <div className="panel flex items-center gap-2 px-2.5 py-1.5" data-testid="face-abilities">
+      <span className="shrink-0 text-[10px] uppercase tracking-widest text-cave-500">Ready</span>
+      <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+        {fits.map((f) => {
+          const pct = Math.min(1, f.charge / Math.max(1, f.def.charge.need));
+          const hex = `#${f.def.color.toString(16).padStart(6, '0')}`;
+          return (
+            <button
+              key={f.slot}
+              data-testid={`face-fire-${f.slot}`}
+              disabled={!f.ready}
+              title={f.ready
+                ? `Set ${f.def.name} off now, where you last swung`
+                : `${f.def.name} — ${effectInHand(f.def.effect)}`}
+              className={`relative min-w-0 overflow-hidden rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                f.ready ? 'border-white/70 text-white' : 'border-cave-800 text-cave-600'
+              }`}
+              onClick={() => dispatch({ type: 'fireAbility', index: TOOL_CARRIER, slot: f.slot })}
+            >
+              <span
+                className="absolute inset-y-0 left-0 transition-[width] duration-150"
+                style={{ width: `${pct * 100}%`, background: hex, opacity: f.ready ? 0.45 : 0.22 }}
+              />
+              <span className="relative">{f.def.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function DigPanel() {
   const state = useGame((s) => s.state);
   const m = useFreshMods();
@@ -203,6 +252,7 @@ export function DigPanel() {
     <div className="space-y-2">
       <FieldStats state={state as GameState} m={m} />
       <InHandStrip state={state as GameState} />
+      <ToolAbilityStrip state={state as GameState} />
       {spammable && (
         <div className="flex justify-end">
           <BulkControl />

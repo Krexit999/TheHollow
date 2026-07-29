@@ -72,6 +72,35 @@ export const BUDGET_PER_SHELL = 4;
  */
 export const READY_GRACE = 3;
 
+/**
+ * THE HAND IS A CARRIER TOO (the tool-abilities phase).
+ *
+ * Everything below this line was written for a drill and reads `state.drills.
+ * units[i]`. The tool needs the same meter, the same firing, the same plan and
+ * the same funnel — so rather than a second copy of all of it, a carrier is now
+ * an INDEX, and one index is not a drill: `TOOL_CARRIER` resolves to the thing
+ * in your hand.
+ *
+ * That is the whole of the reuse. `fireAbility`, `applyPlan`, `advanceCharges`
+ * and `fireNow` are unchanged in substance; they just stopped assuming the array
+ * they were indexing was the bay. Pillar 2 is untouched by construction, because
+ * the funnel they all end in is the same one — the tool's `hit` harvests through
+ * `harvestCell` exactly as a manual swing does, and a drill's through `strike`.
+ *
+ * The resolver is WIRED rather than imported for the usual reason: the tool side
+ * reads this module, so this module may not read it back.
+ */
+export const TOOL_CARRIER = -1;
+
+let handOf: (state: GameState) => DrillState | null = () => null;
+export function wireHandCarrier(fn: typeof handOf): void { handOf = fn; }
+
+/** The machine — or the hand — at this index. Null if there is nothing there. */
+export function carrierOf(state: GameState, index: number): DrillState | null {
+  if (index === TOOL_CARRIER) return handOf(state);
+  return state.drills.units[index] ?? null;
+}
+
 export interface AlloyPrice {
   conv: number;
   materials: number;
@@ -344,7 +373,7 @@ export function fireAbility(
   drillIndex: number, slot: number, at?: number, depth = 0,
 ): boolean {
   if (!deps || depth > 3) return false;
-  const drill = state.drills.units[drillIndex];
+  const drill = carrierOf(state, drillIndex);
   if (!drill) return false;
   const raw = drill.fits?.[slot];
   if (!raw) return false;
@@ -358,8 +387,8 @@ export function fireAbility(
   if (target < 0 || target >= state.face.cells.length) return false;
 
   // ── THE THREE THAT READ THE BAY INSTEAD OF THE ROCK ────────────────────
-  if (def.id === 'cataclysm') return fireCataclysm(state, mods, ctx, drillIndex, slot, target, depth);
-  if (def.id === 'genesis') return fireGenesis(state, mods, ctx, drillIndex, slot, target, p, depth);
+  if (def.id === 'cataclysm') return fireCataclysm(state, mods, ctx, drill, drillIndex, slot, target, depth);
+  if (def.id === 'genesis') return fireGenesis(state, mods, ctx, drill, drillIndex, slot, target, p, depth);
   // CASCADE fires as a plain single-cell hit AND chains — see `chainOthers`.
 
   const plan = buildPlan(state, mods, def, p, target, blocked);
@@ -436,9 +465,8 @@ export function applyPlan(
 /** CATACLYSM: every other ability the bay carries, at the same moment. */
 function fireCataclysm(
   state: GameState, mods: ModifierCache, ctx: EngineCtx,
-  drillIndex: number, slot: number, target: number, depth: number,
+  drill: DrillState, drillIndex: number, slot: number, target: number, depth: number,
 ): boolean {
-  const drill = state.drills.units[drillIndex]!;
   let fired = 0;
   for (let d = 0; d < state.drills.units.length; d++) {
     const u = state.drills.units[d]!;
@@ -465,11 +493,10 @@ function fireCataclysm(
  */
 function fireGenesis(
   state: GameState, mods: ModifierCache, ctx: EngineCtx,
-  drillIndex: number, slot: number, target: number,
+  drill: DrillState, drillIndex: number, slot: number, target: number,
   p: Record<string, number>, depth: number,
 ): boolean {
   if (!deps) return false;
-  const drill = state.drills.units[drillIndex]!;
   const blocked = (i: number): boolean => deps!.blocked(state, drill, i);
   const pool = DRILL_ABILITIES.filter((a) => !META_ABILITIES.has(a.id));
   const n = Math.max(2, Math.round(p['n'] ?? 8));
@@ -535,7 +562,7 @@ export function advanceCharges(
   state: GameState, mods: ModifierCache, ctx: EngineCtx,
   drillIndex: number, cellWasFull: boolean,
 ): void {
-  const drill = state.drills.units[drillIndex];
+  const drill = carrierOf(state, drillIndex);
   if (!drill?.fits) return;
   for (let slot = 0; slot < drill.fits.length; slot++) {
     const raw = drill.fits[slot]!;
@@ -668,7 +695,7 @@ export function forgeDrillAlloy(
 
 /** Pulling an alloy out is free. You can always stop doing a thing. */
 export function clearDrillAlloy(state: GameState, index: number, slot?: number): ActionResult {
-  const drill = state.drills.units[index];
+  const drill = carrierOf(state, index);
   if (!drill) return { ok: false, reason: 'No such drill' };
   const fits = drill.fits ?? [];
   if (fits.length === 0) return { ok: false, reason: 'That one is running bare already' };
@@ -687,7 +714,7 @@ export function fireNow(
   state: GameState, mods: ModifierCache, ctx: EngineCtx,
   index: number, slot: number, cell?: number,
 ): ActionResult {
-  const drill = state.drills.units[index];
+  const drill = carrierOf(state, index);
   const raw = drill?.fits?.[slot];
   if (!drill || !raw) return { ok: false, reason: 'Nothing in that slot' };
   const def = ABILITY_BY_ID.get(raw.id);

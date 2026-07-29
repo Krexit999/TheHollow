@@ -591,23 +591,46 @@ export interface MatchOpts {
 export function matchDrillAlloy(
   materialIds: string[], opts: MatchOpts = {},
 ): DrillAbilityDef | null {
-  if (materialIds.length === 0) return null;
+  return matchAllAbilities(materialIds, opts)[0] ?? null;
+}
+
+/**
+ * EVERY ability this mix satisfies, best first — the same ranking `matchDrillAlloy`
+ * has always used, lifted out so a second carrier can read it.
+ *
+ * A POUR takes the head of this list and nothing else: three materials go in the
+ * crucible and one ability comes out, which is what makes a pour a decision.
+ * A TOOL reads the whole list, because its ability-bearing parts are a standing
+ * mix rather than a one-shot pour — what it CAN do is a property of the build,
+ * and how many of them it may carry at once is a separate question the slots
+ * answer (`systems/toolAbilities.ts`).
+ *
+ * One matcher, one `satisfies`, one ranking. A second copy of this arithmetic is
+ * how the tool and the bay would drift into disagreeing about what a signature
+ * means, and this project has shipped a shadowed twin formula before (A.44).
+ */
+export function matchAllAbilities(
+  materialIds: string[], opts: MatchOpts = {},
+): DrillAbilityDef[] {
+  if (materialIds.length === 0) return [];
   const pool = traitPool(materialIds);
   const reached = opts.reached ?? 7;
   const live = DRILL_ABILITIES.filter((a) => shellOrdinal(a.shell) <= reached);
 
-  if (opts.prefer) {
-    const aim = live.find((a) => a.id === opts.prefer);
-    if (aim && satisfies(pool, aim)) return aim;
-  }
   const ranked = [...live].sort((a, b) => {
     const da = Object.values(a.needs).reduce((x, y) => x + (y as number), 0);
     const db = Object.values(b.needs).reduce((x, y) => x + (y as number), 0);
     if (db !== da) return db - da;
     return shellOrdinal(b.shell) - shellOrdinal(a.shell);
   });
-  for (const def of ranked) if (satisfies(pool, def)) return def;
-  return null;
+  const out = ranked.filter((def) => satisfies(pool, def));
+
+  // AIMING moves a known ability to the head without changing the set.
+  if (opts.prefer) {
+    const at = out.findIndex((a) => a.id === opts.prefer);
+    if (at > 0) out.unshift(...out.splice(at, 1));
+  }
+  return out;
 }
 
 /** The trait the pool leans on hardest, for the hint and the miss message. */

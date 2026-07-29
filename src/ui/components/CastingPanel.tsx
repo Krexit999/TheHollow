@@ -43,7 +43,12 @@ import {
   repairShare, toolLevel, usesLeft, usesOf, wear01, wornPart,
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
-import { shellOrdinal } from '../../engine/content/drillAlloys';
+import { ROMAN, shellOrdinal } from '../../engine/content/drillAlloys';
+import { TOOL_CARRIER } from '../../engine/systems/drillAlloys';
+import {
+  ABILITY_PARTS, abilityMaterials, effectInHand, toolAbilityHint, toolAbilitySlots,
+  toolFits, toolGrade, toolGrants,
+} from '../../engine/systems/toolAbilities';
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
 import { Select } from './Select';
@@ -643,6 +648,7 @@ function Station({ state }: { state: GameState }) {
       {preview && (
         <>
           <CoherenceReadout tool={preview} testid="bench-coherence" />
+          <BenchLean state={state} />
           {ready && <WhatItWouldDo tool={preview} testid="bench-does" />}
           <RawStats tool={preview} testid="bench-stats" />
         </>
@@ -665,6 +671,36 @@ function Station({ state }: { state: GameState }) {
         {ready ? 'Combine them' : 'Seven parts, one of each'}
       </button>
       {note && <div className="mt-1 text-center text-[11px] text-cave-300" data-testid="build-note">{note}</div>}
+    </div>
+  );
+}
+
+/**
+ * WHAT THE THREE STONES ON THE BENCH LEAN TOWARD — pillar 5's whole job here.
+ *
+ * It reads the Head, Edge and Sockets as they are slotted and describes the
+ * BEHAVIOUR the pooled traits tend toward. It never names an ability, so the
+ * first build in a new stone is a reasoned guess rather than a coin, and it
+ * moves as you swap parts so the guess can be revised before you commit.
+ */
+function BenchLean({ state }: { state: GameState }) {
+  const mats: string[] = [];
+  for (const t of ABILITY_PARTS) {
+    const id = state.casting.bench[t];
+    const part = id === undefined ? undefined : rackPart(state, id);
+    if (part) mats.push(part.materialId);
+  }
+  if (mats.length === 0) return null;
+  const hint = toolAbilityHint(mats);
+  if (!hint) return null;
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="bench-lean">
+      <div className="text-[10px] uppercase tracking-widest text-cave-500">
+        The head, the edge and the sockets
+      </div>
+      <div className="mt-0.5 text-[11px] italic leading-snug text-cave-400" data-testid="bench-lean-text">
+        {hint}
+      </div>
     </div>
   );
 }
@@ -857,6 +893,148 @@ function Durability({ state, tool }: { state: GameState; tool: ToolStats }) {
   );
 }
 
+/**
+ * WHAT THE ROCK-FACING STONES REACH FOR — the card that makes a tool more than
+ * a stat block.
+ *
+ * The seated abilities each get a name in their own colour, what they DO, a
+ * charge meter and a Fire button, which is the drill panel's layout on purpose:
+ * they are the same abilities and the player should not have to learn a second
+ * vocabulary for the version in their hand.
+ *
+ * Anything the build GRANTS but has no room for is offered underneath, so the
+ * decision ("which of these three does my one slot carry?") is on screen rather
+ * than buried in a rebuild. Nothing here lists an ability the tool cannot do —
+ * a locked list is the one thing pillar 5 forbids.
+ */
+function AbilitiesCard({ state }: { state: GameState }) {
+  const fits = toolFits(state);
+  const grants = toolGrants(state);
+  const slots = toolAbilitySlots(state);
+  const grade = toolGrade(state);
+  const mats = abilityMaterials(currentTool(state));
+
+  if (grants.length === 0) {
+    // NOT A LOCKED LIST — the hint says what the stones LEAN toward and never
+    // what they would make, so a first build is a reasoned guess.
+    const hint = toolAbilityHint(mats);
+    return (
+      <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-abilities">
+        <div className="text-[10px] uppercase tracking-widest text-cave-500">What it reaches for</div>
+        <div className="mt-1 text-[11px] leading-snug text-cave-500" data-testid="tool-abilities-none">
+          {hint ?? 'Nothing in this one is reaching for anything.'} Nothing in the
+          Head, the Edge or the Sockets wants to do more than mine.
+        </div>
+      </div>
+    );
+  }
+
+  const spare = grants.filter((g) => !fits.some((f) => f.def.id === g.id));
+
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-abilities">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">What it reaches for</span>
+        <span className="tnum text-[10px] text-cave-500" data-testid="tool-ability-slots">
+          {fits.length}/{slots} carried{grade > 1 ? ` · grade ${ROMAN[grade] ?? grade}` : ''}
+        </span>
+      </div>
+
+      {fits.map((f) => {
+        const pct = Math.min(1, f.charge / Math.max(1, f.def.charge.need));
+        const hex = `#${f.def.color.toString(16).padStart(6, '0')}`;
+        return (
+          <div key={f.slot} className="mt-1.5" data-testid={`tool-ability-${f.slot}`}>
+            <div className="flex items-baseline gap-1.5">
+              <span
+                className="shrink-0 text-[9px] font-semibold uppercase tracking-wider"
+                style={{ color: hex }}
+                data-testid={`tool-ability-name-${f.slot}`}
+              >
+                {f.def.name}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[9px] text-cave-500">
+                every {f.def.charge.need} swings
+                {f.def.charge.roll ? ' · or whenever it feels like it' : ''}
+              </span>
+              <span className={`tnum shrink-0 text-[9px] ${f.ready ? 'text-white' : 'text-cave-500'}`}>
+                {f.ready ? 'READY' : `${Math.min(f.charge, f.def.charge.need)}/${f.def.charge.need}`}
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-sm bg-cave-800">
+                <div
+                  className="h-full transition-[width] duration-150"
+                  data-testid={`tool-charge-${f.slot}`}
+                  style={{ width: `${Math.round(pct * 100)}%`, background: f.ready ? '#ffffff' : hex }}
+                />
+              </div>
+              <button
+                data-testid={`tool-fire-${f.slot}`}
+                disabled={!f.ready}
+                className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
+                  f.ready ? 'border-white/70 bg-white/10 text-white' : 'border-cave-800 text-cave-700'
+                }`}
+                title={f.ready
+                  ? `Set ${f.def.name} off now, where you last swung`
+                  : `${f.def.name} charges as you mine — it goes off by itself when it is full`}
+                onClick={() => dispatch({ type: 'fireAbility', index: TOOL_CARRIER, slot: f.slot })}
+              >
+                {f.ready ? '▶ Fire' : `${Math.round(pct * 100)}%`}
+              </button>
+              <button
+                data-testid={`tool-unseat-${f.slot}`}
+                className="btn shrink-0 px-1 py-0.5 text-[9px]"
+                title="Take it off. You can always stop doing a thing."
+                onClick={() => dispatch({ type: 'setToolAbility', slot: f.slot, id: null })}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-0.5 text-[9px] leading-snug text-cave-600">
+              {effectInHand(f.def.effect)}
+            </div>
+          </div>
+        );
+      })}
+
+      {spare.length > 0 && (
+        <div className="mt-2 border-t border-cave-800 pt-1.5" data-testid="tool-ability-spare">
+          <div className="text-[9px] uppercase tracking-wider text-cave-600">
+            {fits.length >= slots
+              ? 'Also built for — no room until it has more'
+              : 'Also built for'}
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            {spare.map((def) => (
+              <button
+                key={def.id}
+                className="rounded border border-cave-800 px-1.5 py-0.5 text-[9px] hover:border-cave-600"
+                style={{ color: `#${def.color.toString(16).padStart(6, '0')}` }}
+                data-testid={`tool-seat-${def.id}`}
+                title={effectInHand(def.effect)}
+                onClick={() => dispatch({
+                  type: 'setToolAbility',
+                  slot: fits.length < slots ? fits.length : slots - 1,
+                  id: def.id,
+                })}
+              >
+                {def.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-1.5 text-[9px] leading-snug text-cave-600">
+        Off the Head, the Edge and the Sockets — re-cast one of those in different
+        stone and this changes. Room to carry them comes from the Binding and from
+        the swings you have put in.
+      </div>
+    </div>
+  );
+}
+
 function YourTool({ state }: { state: GameState }) {
   const tool = currentTool(state);
   if (!tool) {
@@ -879,6 +1057,7 @@ function YourTool({ state }: { state: GameState }) {
           </span>
         ))}
       </div>
+      <AbilitiesCard state={state} />
       <LevelCard state={state} tool={tool} />
       <AtTheFace state={state} tool={tool} />
       <Durability state={state} tool={tool} />

@@ -73,6 +73,7 @@ import {
 } from './systems/casting';
 import { PART_TYPES, type PartType } from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
+import { setToolAbility, syncToolAbilities } from './systems/toolAbilities';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
 import { practiceRunes } from './content/shell4/runes';
@@ -644,10 +645,23 @@ export function handleAction(
       return PART_TYPES.includes(action.partType as PartType)
         ? benchClear(state, ctx, action.partType as PartType)
         : { ok: false, reason: 'No such slot' };
-    case 'buildTool':
-      return buildTool(state, ctx);
-    case 'breakDownTool':
-      return breakDownTool(state, ctx);
+    // BUILDING IS WHAT DECIDES WHAT THE TOOL CAN DO. The three rock-facing
+    // stones are its mix, so the abilities are reconciled here rather than read
+    // lazily: discovery has to happen at the moment you make the thing (that is
+    // the whole of pillar 5's "found by making"), and a seated ability the new
+    // build no longer grants has to go with it.
+    case 'buildTool': {
+      const r = buildTool(state, ctx);
+      if (r.ok) syncToolAbilities(state, ctx);
+      return r;
+    }
+    case 'breakDownTool': {
+      const r = breakDownTool(state, ctx);
+      if (r.ok) syncToolAbilities(state, ctx);
+      return r;
+    }
+    case 'setToolAbility':
+      return setToolAbility(state, ctx, action.slot, action.id);
     case 'meltBack':
       return meltBack(state, ctx, action.partId);
     case 'repairTool':

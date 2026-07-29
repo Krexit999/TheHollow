@@ -20,6 +20,7 @@ import { recordChipForFigures } from './figures';
 import { logImplementUse } from './affinity';
 import { equippedTool } from './forge';
 import { gainToolXp, spendToolUse, toolEffect } from './toolMining';
+import { advanceToolCharges, wireHandHarvest } from './toolAbilities';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
@@ -326,6 +327,10 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   const sigMult = runChipMult(state, mods, ctx, cell, true);
   const mult = D(sigMult).mul(crit ? 3 : 1);
 
+  // Read BEFORE the swing takes it: the ability meters' `onFull` rule asks
+  // whether the rock you hit was nearly full, and after the harvest it never is.
+  const wasFull = (state.face.cells[cell] ?? 0) >= cellCap(state, mods) * 0.7;
+
   const { dust, charge } = harvestCell(state, mods, cell, 1, mult);
   if (charge <= 0) return { dust, charge, crit: false, fractured: [] };
 
@@ -384,6 +389,11 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
     // and what there is to learn from is regen-bound, so the ladder is paced
     // by the same ceiling as everything else.
     gainToolXp(state, 1 + reached.length, ctx);
+    // AND A SWING FILLS THE ABILITY METER. `wasFull` is the same 70%-of-cap
+    // rule the bay uses, so "mining a charged cell releases lightning" means
+    // the same thing in the hand as it does on the rails. This can fire an
+    // ability, which harvests through `harvestCell` like everything above it.
+    advanceToolCharges(state, mods, ctx, cell, wasFull);
   }
 
   state.stats.manualChips += 1;
@@ -402,6 +412,31 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   ctx.emit({ type: 'chip', cell, dust: totalDust, charge, crit, manual: true });
   return { dust: totalDust, charge, crit, fractured };
 }
+
+/**
+ * WHAT ONE CELL OF A TOOL ABILITY'S PLAN DOES, wired into `toolAbilities` so
+ * that module never has to import this one (the meter is called from here, so
+ * the arrow runs one way).
+ *
+ * IT IS THE MANUAL FUNNEL AND NOTHING ELSE. `harvestCell` with the plan's share
+ * — the same call `manualChip` makes for its own splash, taking
+ * `min(share × held, held − floor)`. That is where pillar 2 lives for every
+ * ability in the hand: an explosion cannot take charge the field has not grown,
+ * because there is no code path here that could.
+ *
+ * The drop weight is scaled by the share for the A.56 reason: `rollForDrop`
+ * fires on WEIGHT, so a figure covering twelve cells at full weight would
+ * multiply the material economy twelvefold on a term pillar 2 cannot see. A
+ * whole explosion is worth about one swing of drops, spread wide.
+ */
+wireHandHarvest((state, mods, ctx, cell, share) => {
+  if ((state.growth.stage[cell] ?? 0) > 0) return;
+  const r = harvestCell(state, mods, cell, share, D(1));
+  if (r.charge <= 0) return;
+  const tool = toolEffect(state);
+  rollForDrop(state, mods, ctx, r.charge, tool.dropWeight * share);
+  grantXP(state, mods, ctx, D(0.7 * (1 + 0.08 * state.depth) * (r.charge / BASE_CAP)));
+});
 
 /**
  * THE SWEEP (v20). A drag chips a swathe of cells at once for stamina. It is
@@ -441,6 +476,11 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     // twice over.
     spendToolUse(state, swept.length);
     gainToolXp(state, swept.length, ctx);
+    // ONE GESTURE, ONE TICK OF THE METER. A sweep is nine swings of WEAR because
+    // the rock does not care how the arm moved, but it is one motion of the arm
+    // — charging nine would make the sweep the way you farm abilities instead of
+    // the way you clear rock quickly.
+    advanceToolCharges(state, mods, ctx, swept[swept.length - 1]!, false);
     state.stats.manualChips += swept.length;
     grantXP(state, mods, ctx, D(0.5 * swept.length * (1 + 0.08 * state.depth)));
     rollForDrop(state, mods, ctx, swept.length * 2, 1);

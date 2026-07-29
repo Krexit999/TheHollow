@@ -32,7 +32,7 @@
  * holding relics, modifiers, per-shell gating of part types. Each is its own
  * step against the doc's build order.
  */
-import type { ActionResult, EngineCtx, GameState } from '../types';
+import type { ActionResult, DrillState, EngineCtx, GameState } from '../types';
 import { PART_TYPES, type PartType } from '../content/forgeParts';
 import {
   assembleTool, derivePart, partMelt, type Part, type ToolStats,
@@ -126,6 +126,18 @@ export interface CastingState {
   /** CELLS this tool has mined, ever. The record of what it has DONE, as
    *  against what its parts say it IS. Never reset — see `gainToolXp`. */
   xp: number;
+  /**
+   * THE TOOL AS AN ABILITY CARRIER. Shaped like a drill because everything in
+   * `systems/drillAlloys.ts` reads a `DrillState`, and the tool phase reused
+   * that whole apparatus rather than growing a second one — `fits` is what the
+   * build granted and the player seated, `lastCell` is where the last swing
+   * landed, and the meters live in `fits[].ch`.
+   *
+   * Stored rather than derived because a half-full meter is state the player
+   * earned by swinging, and losing it on a reload would be a small theft.
+   * See `systems/toolAbilities.ts`.
+   */
+  hand?: DrillState;
 }
 
 export function defaultCastingState(): CastingState {
@@ -140,6 +152,7 @@ export function defaultCastingState(): CastingState {
     wear: 0,
     repairs: 0,
     xp: 0,
+    hand: { level: 1, timer: 0, lastCell: -1, name: 'your tool', fits: [] },
   };
 }
 

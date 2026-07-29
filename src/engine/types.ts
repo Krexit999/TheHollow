@@ -1538,6 +1538,9 @@ export type GameAction =
   | { type: 'benchClear'; partType: string }
   | { type: 'buildTool' }
   | { type: 'breakDownTool' }
+  /** Seat one of the abilities THIS BUILD grants in a slot, or empty it with
+   *  `null`. Firing reuses `fireAbility` with `index: TOOL_CARRIER`. */
+  | { type: 'setToolAbility'; slot: number; id: string | null }
   | { type: 'repairTool'; partType: string }
   | { type: 'meltBack'; partId: number }
   | { type: 'debug'; op: 'unlockAll' };

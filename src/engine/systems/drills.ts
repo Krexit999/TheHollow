@@ -39,7 +39,8 @@ import { runChipMult } from '../signatures';
 import { affinityMult, logImplementUse } from './affinity';
 import { lawNum } from '../laws';
 import { relicRule } from './relicPowers';
-import { advanceCharges, rotBite, wireBurnHarvest, wireFireDeps } from './drillAlloys';
+import { advanceCharges, rotBite, wireBurnHarvest, wireFireDeps, TOOL_CARRIER } from './drillAlloys';
+import { isHandCarrier, toolHit } from './toolAbilities';
 import {
   DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, oreAt, openOre, plantOre,
 } from './ores';
@@ -409,6 +410,13 @@ function strike(
  */
 wireFireDeps({
   hit: (state, mods, ctx, drill, drillIndex, cell, share) => {
+    // THE ONE PLACE A HAND DIFFERS FROM A MACHINE. A drill's bite is a POWER —
+    // an absolute amount of charge it can shift per stroke — while a swing takes
+    // a FRACTION of whatever the cell is holding (`harvestCell`, the manual
+    // funnel). Both end in `take = min(want, held)` and neither can exceed it,
+    // so the two branches are the same guarantee written in the two units the
+    // two carriers actually work in.
+    if (drillIndex === TOOL_CARRIER) { toolHit(state, mods, ctx, cell, share); return; }
     // AN ABILITY HIT IS A FRACTION OF A FULL BITE, and the bite is still
     // min(power, cellCharge). `share` is clamped at 1 by `abilityParams`.
     const power = drillPower(state, mods, drill) * rotBite(state, cell) * share;
@@ -416,7 +424,10 @@ wireFireDeps({
   },
   openPocket: (state, mods, ctx, cell, drill) => {
     if (!oreAt(state, cell)) return;
-    openOre(state, mods, ctx, cell, 'drill', DRILL_DROP_FACTOR, drill.name);
+    // A pocket opened BY HAND pays whole rolls; by machine, a fraction (A.55).
+    // The hand is slower at it, so it is not a way around the trade.
+    const byHand = isHandCarrier(state, drill);
+    openOre(state, mods, ctx, cell, byHand ? 'hand' : 'drill', DRILL_DROP_FACTOR, drill.name);
   },
   plant: (state, mods, ctx, cell) => { plantOre(state, mods, ctx, cell); },
   blocked: (state, drill, cell) => {
@@ -424,12 +435,16 @@ wireFireDeps({
     const z = drill.zone;
     return !!z && z.length > 0 && !z.includes(cell);
   },
-  pick: (state, drill) => pickTarget(
+  // A SWING AIMS ITSELF AT THE ROCK IT JUST HIT. Returning -1 for the hand lets
+  // `fireAbility` fall through to `lastCell`, which the meter stamps every
+  // swing — a tool that fired at the fullest cell on the far side of the face
+  // would not read as the thing in your hand going off.
+  pick: (state, drill) => (isHandCarrier(state, drill) ? -1 : pickTarget(
     state,
     (i) => (state.growth.stage[i] ?? 0) > 0,
     zoneSet(drill),
     (state.drills.rot?.some((v) => v > 0)) ?? false,
-  ),
+  )),
 });
 
 wireBurnHarvest((state, mods, cell, frac) => { harvestCell(state, mods, cell, frac, D(1)); });

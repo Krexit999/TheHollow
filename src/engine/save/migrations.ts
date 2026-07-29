@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 38;
+export const SAVE_VERSION = 39;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -888,6 +888,24 @@ export const MIGRATIONS: Record<number, Migration> = {
     }
     casting['crucible'] ??= { queue: [] };
     return { ...p, version: 38, state };
+  },
+
+  /**
+   * v39 — MATERIAL ABILITIES ON TOOLS. The tool became a carrier, so it needs
+   * the same shape a drill has: `casting.hand`, holding `fits` and the meters.
+   *
+   * NOTHING IS GRANTED HERE, on purpose. A save arriving with a tool already
+   * built has parts that may well satisfy two or three signatures, and awarding
+   * them silently on load would hand the player a codex entry they never made —
+   * which is the one thing pillar 5 asks this system not to do. The abilities
+   * arrive the first time they BUILD, which for an existing tool is a re-seat
+   * away and is the moment the discovery belongs to.
+   */
+  38: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    casting['hand'] ??= { level: 1, timer: 0, lastCell: -1, name: 'your tool', fits: [] };
+    return { ...p, version: 39, state };
   },
 };
 
