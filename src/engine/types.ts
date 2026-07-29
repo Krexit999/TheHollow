@@ -1312,7 +1312,9 @@ export type GameEvent =
   | { type: 'toolBuilt'; coherence: number; rockRate: number }
   | { type: 'toolRepaired'; partType: string; materialId: string }
   | { type: 'partMelted'; partType: string; materialId: string; molten: number }
-  | { type: 'toolLevelled'; level: number; slots: number };
+  | { type: 'toolLevelled'; level: number; slots: number }
+  | { type: 'toolModFound'; id: string; name: string }
+  | { type: 'toolModApplied'; id: string; name: string; stacks: number };
 
 export type GameEventType = GameEvent['type'];
 
@@ -1541,6 +1543,10 @@ export type GameAction =
   /** Seat one of the abilities THIS BUILD grants in a slot, or empty it with
    *  `null`. Firing reuses `fireAbility` with `index: TOOL_CARRIER`. */
   | { type: 'setToolAbility'; slot: number; id: string | null }
+  /** MODIFIERS: work materials into the tool. Which mix makes which modifier is
+   *  hinted and never listed — the same grammar as an alloy pour. */
+  | { type: 'applyToolMod'; materialIds: string[]; prefer?: string | null }
+  | { type: 'stripToolMod'; id: string }
   | { type: 'repairTool'; partType: string }
   | { type: 'meltBack'; partId: number }
   | { type: 'debug'; op: 'unlockAll' };

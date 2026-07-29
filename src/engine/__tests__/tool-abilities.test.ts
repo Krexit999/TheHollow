@@ -625,8 +625,11 @@ describe('an ability reads as the thing holding it', () => {
 });
 
 describe('the save', () => {
-  it('is at v39, and the hand arrives on an old one', () => {
-    expect(SAVE_VERSION).toBe(39);
+  it('the hand arrives on an old save', () => {
+    // The SAVE_VERSION number itself is pinned once, in p12.test.ts. Pinning it
+    // here too meant two files to update per phase and one of them silently
+    // describing the wrong one.
+    expect(SAVE_VERSION).toBeGreaterThanOrEqual(39);
     const out = runMigrations({ version: 38, state: { casting: { tool: [], rack: [] } } } as never);
     const casting = (out.state as Record<string, unknown>)['casting'] as Record<string, unknown>;
     expect(casting['hand']).toBeTruthy();

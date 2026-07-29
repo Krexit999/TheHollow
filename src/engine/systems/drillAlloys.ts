@@ -101,6 +101,29 @@ export function carrierOf(state: GameState, index: number): DrillState | null {
   return state.drills.units[index] ?? null;
 }
 
+/**
+ * WHAT THE CARRIER DOES TO ITS OWN ABILITY'S NUMBERS, and what happens after
+ * it fires. Both are no-ops for a drill and both are how tool MODIFIERS reach
+ * the ability layer — a Wider Blast turns a 3x3 into a 5x5 by adding one to
+ * `r` here, at the single point where an ability's params are resolved, rather
+ * than by a branch in each of sixteen shape generators.
+ *
+ * Wired for the same reason `handOf` is: the tool side reads this module.
+ */
+let tuneFor: (
+  state: GameState, index: number, p: Record<string, number>,
+) => Record<string, number> = (_s, _i, p) => p;
+export function wireParamTune(fn: typeof tuneFor): void { tuneFor = fn; }
+
+let gradeFor: (state: GameState, index: number) => number = () => 0;
+export function wireGradeBonus(fn: typeof gradeFor): void { gradeFor = fn; }
+
+let afterFire: (
+  state: GameState, mods: ModifierCache, ctx: EngineCtx,
+  index: number, slot: number, cell: number, depth: number,
+) => void = () => { /* wired by toolAbilities */ };
+export function wireAfterFire(fn: typeof afterFire): void { afterFire = fn; }
+
 export interface AlloyPrice {
   conv: number;
   materials: number;
@@ -379,7 +402,10 @@ export function fireAbility(
   if (!raw) return false;
   const def = ABILITY_BY_ID.get(raw.id);
   if (!def) return false;
-  const p = abilityParams(def, raw.grade);
+  // THE CARRIER GETS A SAY. For a drill both hooks are identity; for the tool
+  // they are where its modifiers turn a 3x3 into a 5x5 and a grade I into a
+  // grade III. One point of resolution, sixteen shapes downstream of it.
+  const p = tuneFor(state, drillIndex, abilityParams(def, raw.grade + gradeFor(state, drillIndex)));
 
   const blocked = (i: number): boolean => deps!.blocked(state, drill, i);
   let target = at !== undefined && !blocked(at) ? at : deps.pick(state, drill);
@@ -396,6 +422,7 @@ export function fireAbility(
   applyPlan(state, mods, ctx, drill, drillIndex, plan, def.id);
   spend(drill, slot);
   chainOthers(state, mods, ctx, drillIndex, depth);
+  afterFire(state, mods, ctx, drillIndex, slot, target, depth);
   return true;
 }
 

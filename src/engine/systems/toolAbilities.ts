@@ -70,10 +70,11 @@ import {
 } from '../content/drillAlloys';
 import {
   READY_GRACE, TOOL_CARRIER, fireAbility, mixGrade, reachedOrdinal,
-  wireHandCarrier, type Fit,
+  wireHandCarrier, wireParamTune, wireGradeBonus, wireAfterFire, type Fit,
 } from './drillAlloys';
 import { currentTool } from './casting';
 import { modSlotsOf } from './toolMining';
+import { modCache, tuneParams } from './toolMods';
 import type { ToolStats } from './forgeParts';
 
 /**
@@ -129,6 +130,62 @@ export function isHandCarrier(state: GameState, drill: DrillState): boolean {
 // this file, so it may not read this one back.
 wireHandCarrier((state) => (state.casting ? handCarrier(state) : null));
 
+/**
+ * THE THREE HOOKS MODIFIERS REACH THE ABILITY LAYER THROUGH. Every one of them
+ * is a strict no-op for a drill — a machine has no modifiers, and the bay must
+ * behave in this phase exactly as it did in the last.
+ */
+wireParamTune((state, index, p) =>
+  (index === TOOL_CARRIER && state.casting ? tuneParams(modCache(state), p) : p));
+
+wireGradeBonus((state, index) =>
+  (index === TOOL_CARRIER && state.casting ? Math.floor(modCache(state).abilityGrade) : 0));
+
+/**
+ * AFTER A TOOL ABILITY GOES OFF — the three combo behaviours.
+ *
+ * CONDUCTION mends the tool on every firing. SYMPATHY brings the other seated
+ * abilities most of the way round, which is what turns two abilities into a
+ * chain of them. ECHOFORM sometimes makes the whole thing happen again
+ * somewhere else.
+ *
+ * ALL THREE ARE BOUNDED BY THE SAME `depth` GUARD the meta-abilities use, so an
+ * Echoform tool carrying Sympathy cannot recurse without end — and none of them
+ * can create charge, because a re-firing is a firing and every firing ends in
+ * `harvestCell`. What they buy is more of the field, sooner.
+ */
+wireAfterFire((state, mods, ctx, index, slot, cell, depth) => {
+  if (index !== TOOL_CARRIER || !state.casting) return;
+  const cache = modCache(state);
+  const hand = state.casting.hand;
+  if (!hand?.fits) return;
+
+  if (cache.repairOnFire > 0 && state.casting.wear > 0) {
+    const tool = currentTool(state);
+    if (tool) {
+      state.casting.wear = Math.max(
+        0, state.casting.wear - tool.stats.durability * cache.repairOnFire,
+      );
+    }
+  }
+
+  if (cache.chargeOnFire > 0) {
+    for (let i = 0; i < hand.fits.length; i++) {
+      if (i === slot) continue;
+      hand.fits[i]!.ch = (hand.fits[i]!.ch ?? 0) + cache.chargeOnFire;
+    }
+  }
+
+  if (cache.refire > 0 && depth < 2 && Math.random() < cache.refire) {
+    const size = state.face.cells.length;
+    const at = Math.floor(Math.random() * size);
+    // Re-firing does NOT re-spend the meter — `fireAbility` clears it, and it
+    // is already clear. It is the same firing, happening twice.
+    fireAbility(state, mods, ctx, TOOL_CARRIER, slot, at, depth + 1);
+    void cell;
+  }
+});
+
 // ---------------------------------------------------------------------------
 // What the build grants
 // ---------------------------------------------------------------------------
@@ -180,7 +237,19 @@ export function toolAbilitySlots(state: GameState): number {
   const tool = currentTool(state);
   if (!tool) return 0;
   const m = modSlotsOf(state, tool);
-  return Math.max(1, Math.min(TOOL_SLOT_CAP, m.fromParts - 1 + m.fromUse));
+  const base = Math.max(1, Math.min(TOOL_SLOT_CAP, m.fromParts - 1 + m.fromUse));
+  /**
+   * MODIFIERS BUY PAST THE CAP, and that is the point of `Second Seat`.
+   *
+   * `TOOL_SLOT_CAP` bounds what the BUILD alone can reach, so a deep tool does
+   * not silently arrive carrying six things; going past it costs modifier slots
+   * — a trade between the two pools rather than a bigger number. The hard cap
+   * above is what a player earns; this is what they spend to exceed it.
+   *
+   * `modCache` is asked with the BASE count so a combo requiring "two seated
+   * abilities" cannot count seats it is itself providing.
+   */
+  return base + Math.floor(modCache(state, base).abilitySlots);
 }
 
 /**
@@ -348,11 +417,13 @@ export function advanceToolCharges(
   if (!h?.fits || h.fits.length === 0) return;
   if (!currentTool(state)) return;
   h.lastCell = cell;
+  // QUICK CHARGE and RESTLESS land here: a swing is worth more than a swing.
+  const per = swings * (1 + modCache(state).chargePerSwing);
   for (let slot = 0; slot < h.fits.length; slot++) {
     const raw = h.fits[slot]!;
     const def = ABILITY_BY_ID.get(raw.id);
     if (!def) continue;
-    let ch = (raw.ch ?? 0) + swings;
+    let ch = (raw.ch ?? 0) + per;
     if (cellWasFull && def.charge.onFull) ch += def.charge.onFull;
     if (def.charge.roll && Math.random() < def.charge.roll) ch = def.charge.need;
     raw.ch = ch;

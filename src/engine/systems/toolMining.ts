@@ -47,6 +47,22 @@ import {
 import { derivePart, shapeOf, intensityOf, partTraits, type ToolStats } from './forgeParts';
 import { materialDef } from '../materials';
 import { currentTool } from './casting';
+/**
+ * A DELIBERATE CYCLE, AND THE ONE PLACE THIS FILE ALLOWS ONE.
+ *
+ * `toolMods` reads `modSlotsOf` from here and this file reads `modCache` from
+ * there. Unlike the wired pairs elsewhere in the engine (`wireFireDeps`,
+ * `wireBurnHarvest`, `wireHandHarvest`), which exist because a module-level
+ * SIDE EFFECT would run before its dependency was initialised, neither side of
+ * this pair touches the other at module-evaluation time: `modSlotsOf` is a
+ * hoisted function declaration and `NO_MODS` is only ever read as a default
+ * parameter, i.e. at call time. Both load orders resolve.
+ *
+ * The alternative was a third module holding one frozen object, or a wire whose
+ * fallback would be a second copy of `NO_MODS` — and a shadowed twin constant
+ * is exactly the failure A.44 spent a phase on.
+ */
+import { modCache, NO_MODS, type ModCache } from './toolMods';
 import { consumeMaterial, equippedTool, materialCount } from './forge';
 import { maxToolTier } from '../shells';
 import type { PartType } from '../content/forgeParts';
@@ -127,19 +143,34 @@ export const BARE_HANDS: ToolEffect = {
  * buys is still clamped to the same 3x3: a levelled tool clears the face
  * faster, it cannot make the face hold more.
  */
-export function effectOf(tool: ToolStats | null, broken: boolean, level = 1): ToolEffect {
+export function effectOf(
+  tool: ToolStats | null, broken: boolean, level = 1, mod: ModCache = NO_MODS,
+): ToolEffect {
   if (!tool) return BARE_HANDS;
   const grant = grantsFor(level);
+  /**
+   * MODIFIERS LAND HERE, INSIDE THE SAME CLAMPS EVERYTHING ELSE DOES.
+   *
+   * That placement is the pillar-2 argument for the whole modifier library: a
+   * stack of reach modifiers is still floored into `MAX_EXTRA_CELLS` (the 3x3),
+   * a stack of splash modifiers is still capped at taking ALL of a cell, and
+   * ore rate still stops at `ORE_RATE_CAP`. An OP tool clears the face in one
+   * swing instead of nine; the face still holds exactly W x H x regen.
+   */
   const extra = Math.min(
     MAX_EXTRA_CELLS,
-    Math.max(1, Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells),
+    Math.max(1, Math.round(tierOf(tool.stats.cadence, REF.cadence)) + 1 + grant.cells + mod.cells),
   );
-  const splash = Math.min(1, SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite));
+  const splash = Math.min(
+    1, SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite) + mod.splash,
+  );
   const oreRate = Math.min(
     ORE_RATE_CAP,
-    1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed) * grant.oreRate,
+    (1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed) * grant.oreRate) * mod.oreRate,
   );
-  const dropWeight = Math.min(DROP_CAP, 1 + DROP_PER_TIER * tierOf(tool.stats.control, REF.control));
+  const dropWeight = Math.min(
+    DROP_CAP, (1 + DROP_PER_TIER * tierOf(tool.stats.control, REF.control)) * mod.dropWeight,
+  );
 
   // Broken keeps a quarter of everything the tool adds OVER bare hands, so the
   // floor is the hands and never below them.
@@ -158,7 +189,7 @@ export function effectOf(tool: ToolStats | null, broken: boolean, level = 1): To
 export function toolEffect(state: GameState): ToolEffect {
   const tool = currentTool(state);
   if (!tool) return BARE_HANDS;
-  return effectOf(tool, isBroken(state, tool), toolLevel(state));
+  return effectOf(tool, isBroken(state, tool), toolLevel(state), modCache(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -207,13 +238,14 @@ export function toughnessIndex(tool: ToolStats): number {
 }
 
 /** Swings this tool has before it is at the floor. */
-export function usesOf(tool: ToolStats, level = 1): number {
+export function usesOf(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): number {
   const idx = toughnessIndex(tool);
   const scale = Math.max(USES_MIN, Math.min(USES_MAX, Math.pow(idx, 1.5)));
   // THE LEVEL LANDS HERE AND NOT ON THE POOL. `wearPerUse` is pool / uses, so
   // a bigger pool would cancel itself out exactly and the grant would do
   // nothing. Swings are the thing a player feels; swings are what it buys.
-  return Math.max(1, Math.round(BASE_USES * scale * grantsFor(level).durability));
+  // Durability modifiers land here for the same reason.
+  return Math.max(1, Math.round(BASE_USES * scale * grantsFor(level).durability * mod.uses));
 }
 
 /** The size of the pool, in the units `state.casting.wear` counts. */
@@ -221,8 +253,8 @@ export function poolOf(tool: ToolStats): number {
   return tool.stats.durability;
 }
 
-export function wearPerUse(tool: ToolStats, level = 1): number {
-  return poolOf(tool) / usesOf(tool, level);
+export function wearPerUse(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): number {
+  return poolOf(tool) / usesOf(tool, level, mod);
 }
 
 export function isBroken(state: GameState, tool: ToolStats): boolean {
@@ -236,7 +268,7 @@ export function wear01(state: GameState, tool: ToolStats): number {
 }
 
 export function usesLeft(state: GameState, tool: ToolStats): number {
-  const per = wearPerUse(tool, toolLevel(state));
+  const per = wearPerUse(tool, toolLevel(state), modCache(state));
   return per <= 0 ? 0 : Math.max(0, Math.floor((poolOf(tool) - state.casting.wear) / per));
 }
 
@@ -388,7 +420,10 @@ export function gainToolXp(state: GameState, cells: number, ctx?: EngineCtx): vo
   if (cells <= 0) return;
   if (state.casting.tool.length === 0) return;
   const before = toolLevel(state);
-  state.casting.xp = (state.casting.xp ?? 0) + cells;
+  // A LEARNING MODIFIER SPEEDS THE LADDER, IT DOES NOT SHORTEN IT. The credit
+  // is scaled, the curve is not — so `xpForLevel` still means what it says and
+  // nothing downstream of the level has to know this happened.
+  state.casting.xp = (state.casting.xp ?? 0) + cells * modCache(state).xpRate;
   const after = toolLevel(state);
   if (after > before && ctx) {
     ctx.emit({ type: 'toolLevelled', level: after, slots: grantsFor(after).slots });
@@ -508,5 +543,8 @@ export function spendToolUse(state: GameState, count = 1): void {
   if (!tool) return;
   const pool = poolOf(tool);
   if (state.casting.wear >= pool) return; // already at the floor; it cannot get worse
-  state.casting.wear = Math.min(pool, state.casting.wear + wearPerUse(tool, toolLevel(state)) * count);
+  state.casting.wear = Math.min(
+    pool,
+    state.casting.wear + wearPerUse(tool, toolLevel(state), modCache(state)) * count,
+  );
 }

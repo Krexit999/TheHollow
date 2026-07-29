@@ -21,13 +21,14 @@ import { logImplementUse } from './affinity';
 import { equippedTool } from './forge';
 import { gainToolXp, spendToolUse, toolEffect } from './toolMining';
 import { advanceToolCharges, wireHandHarvest } from './toolAbilities';
+import { modCache } from './toolMods';
 import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
 import { registerTechnique } from '../techniques';
 import { masteryLevel } from './mastery';
 import { lawNum, sealed, challengeNum } from '../laws';
-import { oreRichness } from '../content/ores';
+import { oreDef, oreRichness } from '../content/ores';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -367,10 +368,18 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   const tool = toolEffect(state);
   let splashCharge = 0;
   const reached: number[] = [];
+  const reachMods = modCache(state);
   if (tool.cells > 1 && tool.splash > 0) {
     for (const n of reachFrom(state, cell, tool.cells - 1)) {
-      // A pocket is immune to a swing, the same as it is to the first strike.
-      if (state.face.ore?.[n]) continue;
+      // A pocket is immune to a swing, the same as it is to the first strike —
+      // UNLESS the tool carries a Lodestone Head, which works every pocket it
+      // reaches instead of only the one under the hand. It still WORKS them
+      // (the hold gesture's progress, not an opening), so a pocket is still a
+      // decision about attention and this is only ever a wider hand.
+      if (state.face.ore?.[n]) {
+        if (reachMods.oreReach) reachPocket(state, n, tool.oreRate);
+        continue;
+      }
       const r = harvestCell(state, mods, n, tool.splash, D(1));
       if (r.charge > 0) {
         totalDust = totalDust.add(r.dust);
@@ -411,6 +420,33 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   logImplementUse(equippedTool(state), currentShell(state).id, 1);
   ctx.emit({ type: 'chip', cell, dust: totalDust, charge, crit, manual: true });
   return { dust: totalDust, charge, crit, fractured };
+}
+
+/**
+ * THE LODESTONE HEAD — a swing works the pockets it reaches.
+ *
+ * IT ADVANCES A DIG AND NEVER OPENS ONE. Opening lives in `openOre`, which is
+ * in `systems/ores.ts`, and that module reads THIS one — so a call the other
+ * way would close a cycle. That constraint turned out to be the right design
+ * as well as the necessary one: the modifier widens the HAND, it does not
+ * remove the decision. A pocket still has to be finished by the hold gesture
+ * or left to a drill, so "attention is what a pocket costs" (A.55) survives a
+ * player who has stacked every ore modifier in the library.
+ *
+ * The seconds per swing are deliberately small. At `oreRate` 1 a pocket wants
+ * several seconds of the hold; this is a fraction of one swing's worth, spread
+ * over however many pockets happen to be under the arc.
+ */
+const SWING_ORE_SECONDS = 0.35;
+
+function reachPocket(state: GameState, cell: number, oreRate: number): void {
+  const id = state.face.ore?.[cell];
+  if (!id) return;
+  const dug = state.face.oreDug;
+  if (!Array.isArray(dug) || dug.length !== state.face.cells.length) return;
+  const def = oreDef(id);
+  if (!def) return;
+  dug[cell] = Math.min(def.digSec, (dug[cell] ?? 0) + SWING_ORE_SECONDS * oreRate);
 }
 
 /**

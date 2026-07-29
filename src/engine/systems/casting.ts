@@ -138,6 +138,12 @@ export interface CastingState {
    * See `systems/toolAbilities.ts`.
    */
   hand?: DrillState;
+  /** MODIFIERS seated on the tool, and how deep each is stacked. Slots come
+   *  from the Binding stone and from levels — see `systems/toolMods.ts`. */
+  mods?: Array<{ id: string; n: number }>;
+  /** The library: every modifier this player has ever made. Survives a rebuild,
+   *  because knowing how to make a thing is not something a tool holds. */
+  knownMods?: string[];
 }
 
 export function defaultCastingState(): CastingState {
@@ -153,6 +159,8 @@ export function defaultCastingState(): CastingState {
     repairs: 0,
     xp: 0,
     hand: { level: 1, timer: 0, lastCell: -1, name: 'your tool', fits: [] },
+    mods: [],
+    knownMods: [],
   };
 }
 

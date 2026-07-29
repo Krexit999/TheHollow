@@ -74,6 +74,7 @@ import {
 import { PART_TYPES, type PartType } from './content/forgeParts';
 import { repairTool } from './systems/toolMining';
 import { setToolAbility, syncToolAbilities } from './systems/toolAbilities';
+import { applyToolMod, stripToolMod } from './systems/toolMods';
 import { salvageTool, bulkSalvage } from './systems/salvage';
 import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
 import { practiceRunes } from './content/shell4/runes';
@@ -662,6 +663,11 @@ export function handleAction(
     }
     case 'setToolAbility':
       return setToolAbility(state, ctx, action.slot, action.id);
+
+    case 'applyToolMod':
+      return applyToolMod(state, ctx, action.materialIds, action.prefer);
+    case 'stripToolMod':
+      return stripToolMod(state, ctx, action.id);
     case 'meltBack':
       return meltBack(state, ctx, action.partId);
     case 'repairTool':

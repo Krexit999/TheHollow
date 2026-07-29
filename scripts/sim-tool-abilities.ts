@@ -40,6 +40,9 @@ import { matchAllAbilities, ABILITY_BY_ID } from '../src/engine/content/drillAll
 import { handCarrier, TOOL_SLOT_CAP } from '../src/engine/systems/toolAbilities';
 import { allShells } from '../src/engine/shells';
 import { newDrill } from '../src/engine/systems/drills';
+import { TOOL_MODS } from '../src/engine/content/toolMods';
+import { modSlotsFree, modSlotsTotal, modSlotsUsed, modCache } from '../src/engine/systems/toolMods';
+import { xpForLevel } from '../src/engine/systems/toolMining';
 import { materialsOfShell } from '../src/engine/materials';
 
 const SECONDS = 600;
@@ -60,14 +63,39 @@ function seedRandom(seed: number): () => void {
   return () => { Math.random = original; };
 }
 
+/**
+ * WHAT AN ARM IS, AS A TAG RATHER THAN AS ITS NAME.
+ *
+ * The first version of the gates below selected arms with `label.includes('+')`
+ * and `label.startsWith('tool + 4')`. That worked until this phase added two
+ * arms whose names contain neither — so THE TWO STRONGEST BUILDS IN THE SIM
+ * were silently excluded from the faucet test, which then reported on the third
+ * strongest and passed. The output looked identical to a correct run.
+ *
+ * Same family as every instrument failure in this project's ledger: a filter
+ * that cannot tell "nothing matched" from "nothing was wrong". Arms are tagged
+ * now, and adding one without a tag is a type error.
+ */
+type ArmKind = 'bare' | 'tool' | 'armed' | 'op' | 'cheat';
+
 interface Arm {
   label: string;
+  kind: ArmKind;
   material: string | null;
   /** How many of what the build grants to seat. */
   abilities: number;
   grade: number;
   /** Machines on the rails — the idle layer, for the pillar-1 comparison. */
   drills?: number;
+  /**
+   * MODIFIERS. `'all'` seats every modifier in the library at full stacks — a
+   * build no slot count would ever permit, which is the point: if the ceiling
+   * survives a tool that cheated past its own budget, the budget is not what
+   * was holding it. `'legal'` fills the slots a real deep tool actually has.
+   */
+  mods?: 'all' | 'legal';
+  /** Levels, for the legal arm's slot count. */
+  level?: number;
 }
 
 /** Pick a Loam stone whose three rock-facing parts grant the most abilities —
@@ -114,6 +142,35 @@ function runArm(arm: Arm, clicksPerSec: number, seed: number): Reading {
     if (arm.drills) {
       s.drills.bayBuilt = true;
       for (let i = 0; i < arm.drills; i++) s.drills.units.push(newDrill(`D${i}`));
+    }
+
+    if (arm.level) s.casting.xp = xpForLevel(arm.level);
+
+    if (arm.mods && arm.material) {
+      s.casting.knownMods = TOOL_MODS.map((m) => m.id);
+      if (arm.mods === 'all') {
+        // ENOUGH ROOM THAT NOTHING FALLS ASLEEP. A stack past the tool's budget
+        // goes dormant, so seating the whole library on a normal tool would
+        // measure a tool carrying a third of it while the label said
+        // "everything" — the arm has to actually BE what it claims.
+        s.casting.xp = xpForLevel(1 + 5 * 400);
+        s.casting.mods = TOOL_MODS.map((m) => ({ id: m.id, n: m.maxStacks }));
+      } else {
+        // FILL THE REAL BUDGET, worst-case-first: the biggest, most explosive
+        // things a player could actually seat, then cheaper ones until the
+        // slots run out. Combos go in FIRST so the amplifiers are live.
+        s.casting.mods = [];
+        const order = [...TOOL_MODS].sort((a, b) =>
+          (b.category === 'combo' ? 1 : 0) - (a.category === 'combo' ? 1 : 0) || b.cost - a.cost);
+        for (const m of order) {
+          for (let k = 0; k < m.maxStacks; k++) {
+            if (m.cost > modSlotsFree(s)) break;
+            const at = s.casting.mods.find((x) => x.id === m.id);
+            if (at) at.n += 1;
+            else s.casting.mods.push({ id: m.id, n: 1 });
+          }
+        }
+      }
     }
 
     if (arm.material && arm.abilities > 0) {
@@ -184,11 +241,19 @@ function measure(arm: Arm, rate: number): { med: number; produced: number } {
 // ---------------------------------------------------------------------------
 
 const ARMS: Arm[] = [
-  { label: 'bare hands', material: null, abilities: 0, grade: 1 },
-  { label: 'tool, no ability', material: STONE.id, abilities: 0, grade: 1 },
-  { label: 'tool + 1 ability', material: STONE.id, abilities: 1, grade: 1 },
-  { label: `tool + ${TOOL_SLOT_CAP}, grade VII`, material: STONE.id, abilities: TOOL_SLOT_CAP, grade: 7 },
-  { label: 'tool + EVERYTHING it grants, grade VII', material: STONE.id, abilities: 99, grade: 7 },
+  { label: 'bare hands', kind: 'bare', material: null, abilities: 0, grade: 1 },
+  { label: 'tool, no ability', kind: 'tool', material: STONE.id, abilities: 0, grade: 1 },
+  { label: 'tool + 1 ability', kind: 'armed', material: STONE.id, abilities: 1, grade: 1 },
+  { label: `tool + ${TOOL_SLOT_CAP}, grade VII`, kind: 'armed', material: STONE.id, abilities: TOOL_SLOT_CAP, grade: 7 },
+  { label: 'tool + EVERYTHING it grants, grade VII', kind: 'armed', material: STONE.id, abilities: 99, grade: 7 },
+  {
+    label: 'THE OP TOOL — legal build, level 80', kind: 'op',
+    material: STONE.id, abilities: 99, grade: 7, mods: 'legal', level: 80,
+  },
+  {
+    label: 'THE CHEATED TOOL — every modifier, every stack', kind: 'cheat',
+    material: STONE.id, abilities: 99, grade: 7, mods: 'all', level: 80,
+  },
 ];
 
 /** Slow enough that the face banks regen it never collects (power-bound), and
@@ -210,6 +275,40 @@ say(`Stone: **${STONE.id}** — its Head/Edge/Sockets grant ${STONE.grants.lengt
   STONE.grants.map((id) => ABILITY_BY_ID.get(id)?.name ?? id).join(', '));
 say();
 
+// WHAT THE OP ARMS ACTUALLY ARE — printed, because an arm nobody can inspect is
+// an arm nobody can check. The legal one is what a real deep player can hold.
+{
+  const probe = createEngine({ nowMs: 0 }).getState() as GameState;
+  for (const shell of allShells()) probe.depthRecords[shell.id] = 40;
+  probe.forge.built = true;
+  probe.casting.tool = PART_TYPES.map((t, i) => ({ ...makePart(t, STONE.id, 60), id: i + 1 }));
+  probe.casting.xp = xpForLevel(80);
+  const total = modSlotsTotal(probe);
+  probe.casting.knownMods = TOOL_MODS.map((m) => m.id);
+  probe.casting.mods = [];
+  const order = [...TOOL_MODS].sort((a, b) =>
+    (b.category === 'combo' ? 1 : 0) - (a.category === 'combo' ? 1 : 0) || b.cost - a.cost);
+  for (const m of order) {
+    for (let k = 0; k < m.maxStacks; k++) {
+      if (m.cost > modSlotsFree(probe)) break;
+      const at = probe.casting.mods.find((x) => x.id === m.id);
+      if (at) at.n += 1; else probe.casting.mods.push({ id: m.id, n: 1 });
+    }
+  }
+  const c = modCache(probe, 4);
+  say(`**The OP arm**: ${total} slots (${modSlotsUsed(probe)} used), ` +
+    `${probe.casting.mods.length} distinct modifiers, ${c.live.length} awake, ` +
+    `${c.dormant.length} asleep. Amplify **${c.amplify.toFixed(2)}×**. ` +
+    `Reach +${c.cells.toFixed(1)}, splash +${(c.splash * 100).toFixed(0)}%, ` +
+    `blast radius +${(c.paramAdd['r'] ?? 0).toFixed(1)}, grade +${Math.floor(c.abilityGrade)}, ` +
+    `charge ${(1 + c.chargePerSwing).toFixed(1)}×.`);
+  say();
+  say(`**The cheated arm**: all ${TOOL_MODS.length} modifiers at full stacks — ` +
+    'a build the slot count refuses, run anyway. If the ceiling survives this, ' +
+    'the slot count was never what was holding it.');
+  say();
+}
+
 // --- the instrument's own noise, first --------------------------------------
 say('## The instrument');
 say();
@@ -226,7 +325,7 @@ say('A real faucet here is a tens-of-points effect, not a tenth of one.');
 say();
 
 // --- the two scenarios ------------------------------------------------------
-interface Row { arm: string; rate: number; med: number; produced: number; vs: number }
+interface Row { arm: string; kind: ArmKind; rate: number; med: number; produced: number; vs: number }
 const rows: Row[] = [];
 
 for (const [name, rates] of [['POWER-BOUND', POWER_BOUND], ['CEILING-BOUND', CEILING_BOUND]] as const) {
@@ -239,7 +338,7 @@ for (const [name, rates] of [['POWER-BOUND', POWER_BOUND], ['CEILING-BOUND', CEI
     for (const rate of rates) {
       const m = measure(arm, rate);
       const base = measure(ARMS[0]!, rate).med;
-      rows.push({ arm: arm.label, rate, med: m.med, produced: m.produced, vs: m.med / base });
+      rows.push({ arm: arm.label, kind: arm.kind, rate, med: m.med, produced: m.produced, vs: m.med / base });
       cells.push(`${m.med.toFixed(3)} (${(m.med / base).toFixed(3)}×)`);
     }
     say(`| ${arm.label} | ${cells.join(' | ')} |`);
@@ -254,8 +353,8 @@ say();
 // 1 — worth something when the field is banking regen.
 const slow = rows.filter((r) => r.rate === POWER_BOUND[0] && r.arm !== 'bare hands');
 const bestSlow = Math.max(...slow.map((r) => r.vs));
-const abilitySlow = rows.filter((r) => r.rate === POWER_BOUND[0] && r.arm.includes('+'));
-const plainSlow = rows.find((r) => r.rate === POWER_BOUND[0] && r.arm === 'tool, no ability')!;
+const abilitySlow = rows.filter((r) => r.rate === POWER_BOUND[0] && (r.kind === 'armed' || r.kind === 'op' || r.kind === 'cheat'));
+const plainSlow = rows.find((r) => r.rate === POWER_BOUND[0] && r.kind === 'tool')!;
 const lift = Math.max(...abilitySlow.map((r) => r.vs)) / plainSlow.vs;
 say(`**Power-bound, abilities are worth something.** At ${POWER_BOUND[0]}/s the best arm ` +
   `reads **${bestSlow.toFixed(2)}×** bare hands, and the abilities are worth ` +
@@ -293,13 +392,13 @@ say();
  *     banked pocket charge is not read as having grown it
  */
 const topRate = CEILING_BOUND[CEILING_BOUND.length - 1]!;
-const bareTop = rows.find((r) => r.rate === topRate && r.arm === 'bare hands')!;
-const bareMid = rows.find((r) => r.rate === CEILING_BOUND[0] && r.arm === 'bare hands')!;
+const bareTop = rows.find((r) => r.rate === topRate && r.kind === 'bare')!;
+const bareMid = rows.find((r) => r.rate === CEILING_BOUND[0] && r.kind === 'bare')!;
 const saturated = bareTop.produced;
 const plateau = Math.abs(bareTop.med - bareMid.med) / bareTop.med;
 
 const worst = rows
-  .filter((r) => r.arm.includes('+') && r.rate === topRate)
+  .filter((r) => r.kind !== 'bare' && r.kind !== 'tool' && r.rate === topRate)
   .reduce((a, b) => (b.produced > a.produced ? b : a));
 const ratio = worst.produced / saturated;
 
@@ -326,20 +425,22 @@ say();
  * The idle arm is the same world at ZERO clicks: seepage only, no drills, which
  * is the floor an idle player without machines actually sits on.
  */
-const idleBare = measure({ label: 'idle', material: null, abilities: 0, grade: 1 }, 0).med;
+const idleBare = measure(
+  { label: 'idle', kind: 'bare', material: null, abilities: 0, grade: 1 }, 0,
+).med;
 const idleBay = measure(
-  { label: 'idle + bay', material: null, abilities: 0, grade: 1, drills: 6 }, 0,
+  { label: 'idle + bay', kind: 'bare', material: null, abilities: 0, grade: 1, drills: 6 }, 0,
 ).med;
 
-// THE LEGAL LOADOUT, not the cheated one. `tool + EVERYTHING` seats six
+// THE LEGAL LOADOUT, not the cheated one. The cheated arm seats every
 // abilities on a tool whose slots cap at four — correct for the ceiling proof
 // (a limit is not what enforces pillar 2) and wrong for pillar 1, which asks
 // what a player can actually run.
 const legal = rows
-  .filter((r) => r.arm.startsWith(`tool + ${TOOL_SLOT_CAP}`) && r.rate <= 0.2)
+  .filter((r) => r.kind === 'op' && r.rate <= 0.2)
   .reduce((a, b) => (b.med > a.med ? b : a));
 const plain = rows
-  .filter((r) => r.arm === 'tool, no ability' && r.rate <= 0.2)
+  .filter((r) => r.kind === 'tool' && r.rate <= 0.2)
   .reduce((a, b) => (b.med > a.med ? b : a));
 
 const vsBare = legal.med / Math.max(1e-9, idleBare);

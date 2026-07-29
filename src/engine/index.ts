@@ -40,6 +40,7 @@ import { tickExpeditions, noteMuseum } from './systems/museum';
 import { noticeConfluences } from './systems/confluence';
 import { tickAutoRefine } from './systems/refinery';
 import { tickCasting } from './systems/casting';
+import { tickToolMods } from './systems/toolMods';
 import { doCollapse } from './systems/collapseSys';
 import { automationRate } from './content/shell7/gridModules';
 import { tickParallelShells, checkChallengeGoal } from './systems/spiral';
@@ -165,6 +166,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     // THE NEW FORGE, step 2: the crucible melting down. The only thing in that
     // system that takes time, and the one number its CSS fill bar draws.
     tickCasting(state, dt);
+    // SELF-MENDING. The one modifier that does its work while nobody is
+    // holding the tool — and it is the tool's own wear, never income, so the
+    // idle layer gains nothing from it (pillar 1).
+    tickToolMods(state, dt);
     tickAssay(state, mods, ctx);
     tickCombat(state, mods, ctx);
     tickGuild(state, mods, ctx, dt);

@@ -49,6 +49,11 @@ import {
   ABILITY_PARTS, abilityMaterials, effectInHand, toolAbilityHint, toolAbilitySlots,
   toolFits, toolGrade, toolGrants,
 } from '../../engine/systems/toolAbilities';
+import { MOD_BY_ID } from '../../engine/content/toolMods';
+import {
+  MOD_FEED_MAX, knownMods, modCache, modHint, modSlotsTotal, modSlotsUsed,
+  modStacks, whyDormant, type ModCache,
+} from '../../engine/systems/toolMods';
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
 import { Select } from './Select';
@@ -1035,6 +1040,225 @@ function AbilitiesCard({ state }: { state: GameState }) {
   );
 }
 
+/**
+ * THE MODIFIER BENCH — where the OP build gets assembled, and where it has to
+ * be legible enough to be worth assembling.
+ *
+ * Three parts, in the order a player uses them:
+ *
+ *  1. THE STACK. What is on the tool, what each one is doing, and — the part
+ *     that makes combos work at all — which ones are ASLEEP and what they are
+ *     waiting for. An inert modifier the player cannot see is a slot they have
+ *     lost with no explanation.
+ *  2. WHAT IT ADDS UP TO. The whole stack folded into one line of plain
+ *     numbers. Stacking is only fun if you can see the total move.
+ *  3. THE WORKBENCH. Feed up to three stones. The lean is hinted, never the
+ *     modifier (pillar 5); a known one can be AIMED at, because with thirty-two
+ *     signatures live a generous mix would otherwise make an old favourite
+ *     progressively harder to re-make.
+ */
+function ModBench({ state }: { state: GameState }) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [aim, setAim] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  const tool = currentTool(state);
+  if (!tool) return null;
+
+  const stacks = modStacks(state);
+  const total = modSlotsTotal(state);
+  const used = modSlotsUsed(state);
+  const abilities = toolFits(state).length;
+  const cache = modCache(state, abilities);
+  const library = knownMods(state);
+  const held = heldMaterials(state);
+
+  const toggle = (id: string): void => {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : p.length >= MOD_FEED_MAX ? p : [...p, id]));
+  };
+
+  const hint = modHint(picked);
+  const frac = total > 0 ? used / total : 0;
+
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="mod-bench">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Worked into it</span>
+        <span
+          className={`tnum text-[10px] ${used > total ? 'text-[#d8a0a0]' : 'text-cave-400'}`}
+          data-testid="mod-slots"
+        >
+          {used}/{total} slots{used > total ? ' — over' : ''}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-sm bg-cave-900">
+        <div
+          className="h-full transition-[width] duration-150"
+          style={{ width: `${Math.min(1, frac) * 100}%`, background: frac >= 1 ? '#e0902a' : '#7f8f6a' }}
+        />
+      </div>
+
+      {/* ── 1. THE STACK ─────────────────────────────────────────────── */}
+      {stacks.length === 0 ? (
+        <div className="mt-1.5 text-[11px] italic text-cave-600" data-testid="mod-stack-empty">
+          Nothing worked into it yet. Feed it stone below and see what takes.
+        </div>
+      ) : (
+        <div className="mt-1.5 space-y-1" data-testid="mod-stack">
+          {stacks.map((s) => {
+            const def = MOD_BY_ID.get(s.id);
+            if (!def) return null;
+            const dormant = whyDormant(state, def, abilities);
+            const hex = `#${def.color.toString(16).padStart(6, '0')}`;
+            return (
+              <div
+                key={s.id}
+                className={`rounded border p-1.5 ${dormant ? 'border-dashed border-cave-800 opacity-70' : 'border-cave-700 bg-cave-850/40'}`}
+                data-testid={`mod-${s.id}`}
+              >
+                <div className="flex items-baseline gap-1.5">
+                  <span
+                    className="shrink-0 text-[9px] font-semibold uppercase tracking-wider"
+                    style={{ color: dormant ? '#6d6459' : hex }}
+                  >
+                    {def.name}{s.n > 1 ? ` ×${s.n}` : ''}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[9px] text-cave-600">
+                    {def.cost * s.n} slot{def.cost * s.n === 1 ? '' : 's'}
+                  </span>
+                  <button
+                    className="btn shrink-0 px-1 py-0.5 text-[9px]"
+                    data-testid={`mod-strip-${s.id}`}
+                    title="Take one back off. Free — the room comes back, the stone does not."
+                    onClick={() => dispatch({ type: 'stripToolMod', id: s.id })}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="mt-0.5 text-[9px] leading-snug text-cave-500">{def.effect}</div>
+                {dormant && (
+                  <div className="mt-0.5 text-[9px] font-semibold text-[#c8a15a]" data-testid={`mod-dormant-${s.id}`}>
+                    {dormant}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── 2. WHAT IT ADDS UP TO ────────────────────────────────────── */}
+      {stacks.length > 0 && <StackTotal cache={cache} />}
+
+      {/* ── 3. THE WORKBENCH ─────────────────────────────────────────── */}
+      <div className="mt-2 border-t border-cave-800 pt-1.5">
+        <div className="text-[9px] uppercase tracking-wider text-cave-600">
+          Work stone into it — up to {MOD_FEED_MAX}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {held.slice(0, 14).map((m) => (
+            <button
+              key={m.id}
+              className={`flex items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] ${
+                picked.includes(m.id) ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100' : 'border-cave-800 text-cave-400'
+              }`}
+              data-testid={`mod-feed-${m.id}`}
+              onClick={() => toggle(m.id)}
+            >
+              <MaterialIcon id={m.id} size={12} />
+              <span>{materialDef(m.id).name}</span>
+              <span className="tnum text-cave-600">{fmt(m.count)}</span>
+            </button>
+          ))}
+        </div>
+
+        {hint && (
+          <div className="mt-1 text-[10px] italic leading-snug text-cave-400" data-testid="mod-lean">
+            {hint}
+          </div>
+        )}
+
+        {library.length > 0 && (
+          <div className="mt-1.5 flex items-center gap-1.5">
+            <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-600">Aim at</span>
+            <Select
+              value={aim ?? ''}
+              onChange={(v) => setAim(v || null)}
+              className="min-w-0 flex-1 text-[10px]"
+              data-testid="mod-aim"
+              options={[
+                { value: '', label: 'whatever it turns out to be' },
+                ...library.map((m) => ({ value: m.id, label: m.name })),
+              ]}
+            />
+          </div>
+        )}
+
+        <button
+          className="btn btn-warm mt-1.5 w-full py-1 text-[11px]"
+          disabled={picked.length === 0}
+          data-testid="mod-apply"
+          onClick={() => {
+            const r = dispatch({ type: 'applyToolMod', materialIds: picked, prefer: aim });
+            const d = r.data as { mod: string | null; reason?: string; seated?: boolean } | undefined;
+            setNote(r.ok
+              ? d?.reason ?? (d?.mod ? `${MOD_BY_ID.get(d.mod)?.name ?? d.mod} — worked in.` : 'It took nothing.')
+              : r.reason ?? null);
+            setPicked([]);
+          }}
+        >
+          {picked.length === 0 ? 'Pick stone to work in' : `Work it in (${picked.length})`}
+        </button>
+        {note && (
+          <div className="mt-1 text-center text-[11px] text-cave-300" data-testid="mod-note">{note}</div>
+        )}
+
+        <div className="mt-1 text-[9px] leading-snug text-cave-600">
+          {library.length} of what there is to find, found. Room comes from the
+          Binding stone and from the swings you have put in.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** THE WHOLE STACK AS ONE LINE. Stacking is only fun if the total is visible —
+ *  this is what makes a build feel like a build rather than a list. */
+function StackTotal({ cache }: { cache: ModCache }) {
+  const bits: string[] = [];
+  if (cache.cells > 0) bits.push(`+${cache.cells.toFixed(cache.cells % 1 ? 1 : 0)} reach`);
+  if (cache.splash > 0) bits.push(`+${Math.round(cache.splash * 100)}% off each cell`);
+  if (cache.oreRate > 1) bits.push(`${cache.oreRate.toFixed(2)}× pockets`);
+  if (cache.uses > 1) bits.push(`${cache.uses.toFixed(2)}× swings`);
+  if (cache.dropWeight > 1) bits.push(`${cache.dropWeight.toFixed(2)}× drops`);
+  if (cache.xpRate > 1) bits.push(`${cache.xpRate.toFixed(2)}× learning`);
+  if (cache.chargePerSwing > 0) bits.push(`${(1 + cache.chargePerSwing).toFixed(1)}× charge`);
+  if (cache.abilityGrade > 0) bits.push(`+${Math.floor(cache.abilityGrade)} grade`);
+  for (const [k, v] of Object.entries(cache.paramAdd)) {
+    if (k === 'r' && v > 0) bits.push(`+${Math.round(v)} blast radius`);
+  }
+  if (cache.abilitySlots > 0) bits.push(`+${Math.floor(cache.abilitySlots)} ability seat`);
+  if (cache.repairPerSec > 0) bits.push('mends itself');
+  if (cache.repairOnFire > 0) bits.push('mends when it fires');
+  if (cache.chargeOnFire > 0) bits.push('one firing feeds the rest');
+  if (cache.refire > 0) bits.push(`${Math.round(cache.refire * 100)}% it happens twice`);
+  if (cache.oreReach) bits.push('works pockets it reaches');
+
+  return (
+    <div className="mt-1.5 rounded border border-cave-800 bg-cave-900/40 p-1.5" data-testid="mod-total">
+      <div className="text-[9px] uppercase tracking-wider text-cave-600">All told</div>
+      <div className="mt-0.5 text-[10px] leading-snug text-cave-200" data-testid="mod-total-text">
+        {bits.length > 0 ? bits.join(' · ') : 'Nothing awake yet.'}
+      </div>
+      {cache.amplify > 1 && (
+        <div className="mt-0.5 text-[9px] font-semibold text-[#c8a15a]" data-testid="mod-amplify">
+          ...and everything else on it counts {cache.amplify.toFixed(2)}× over.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function YourTool({ state }: { state: GameState }) {
   const tool = currentTool(state);
   if (!tool) {
@@ -1058,6 +1282,7 @@ function YourTool({ state }: { state: GameState }) {
         ))}
       </div>
       <AbilitiesCard state={state} />
+      <ModBench state={state} />
       <LevelCard state={state} tool={tool} />
       <AtTheFace state={state} tool={tool} />
       <Durability state={state} tool={tool} />

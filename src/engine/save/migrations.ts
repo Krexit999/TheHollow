@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 39;
+export const SAVE_VERSION = 40;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -906,6 +906,24 @@ export const MIGRATIONS: Record<number, Migration> = {
     const casting = (state['casting'] ??= {}) as Record<string, unknown>;
     casting['hand'] ??= { level: 1, timer: 0, lastCell: -1, name: 'your tool', fits: [] };
     return { ...p, version: 39, state };
+  },
+
+  /**
+   * v40 — THE MODIFIER LIBRARY. Two empty arrays, and they are empty on
+   * purpose: the library is what you have MADE, and an existing tool's owner
+   * has made none of it. Seeding a starter modifier would be the same mistake
+   * v39 avoided one phase earlier — handing the player a thing they never did.
+   *
+   * Nothing about an existing tool changes value here. `modCache` on an empty
+   * stack returns `NO_MODS`, whose every term is the identity, so a save that
+   * loads with no modifiers mines exactly as it did before this existed.
+   */
+  39: (p) => {
+    const state = p.state as Record<string, unknown>;
+    const casting = (state['casting'] ??= {}) as Record<string, unknown>;
+    if (!Array.isArray(casting['mods'])) casting['mods'] = [];
+    if (!Array.isArray(casting['knownMods'])) casting['knownMods'] = [];
+    return { ...p, version: 40, state };
   },
 };
 
