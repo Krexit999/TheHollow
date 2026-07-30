@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 44;
+export const SAVE_VERSION = 45;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -1048,6 +1048,20 @@ export const MIGRATIONS: Record<number, Migration> = {
     // Nothing to add. Recorded explicitly so the chain has no silent gap.
     void casting;
     return { ...p, version: 44, state };
+  },
+  /**
+   * v45 — SOCKETS. An empty row, and it grants nothing to anybody.
+   *
+   * Nobody's tool gains a socket it did not earn (the count is DERIVED from the
+   * Sockets part already in the tool, so an existing save reads its real number
+   * the moment it loads) and nothing is seated in it. A relic that was worn stays
+   * worn; the shared pool has nothing to reconcile because no socket is filled.
+   */
+  44: (p) => {
+    const state = { ...(p.state as Record<string, unknown>) };
+    const casting = state['casting'] as Record<string, unknown> | undefined;
+    if (casting && casting['sockets'] === undefined) casting['sockets'] = [];
+    return { ...p, version: 45, state };
   },
 };
 

@@ -27,7 +27,7 @@
  * entirely (drop rates, combat, craft ranks). Nothing bypasses the field.
  */
 import type { EngineCtx, GameState, RelicInstance, RelicsState } from '../types';
-import { registerModifier, foldBonus, type Bucket } from '../modifiers';
+import { registerModifier, foldBonus, isBucket, type Bucket } from '../modifiers';
 import { spendCurrency, getCurrency } from '../resources';
 import { D } from '../decimal';
 import {
@@ -37,6 +37,32 @@ import {
 export const RELIC_SLOTS = 6;
 export const RARITIES = ['Common', 'Uncommon', 'Rare', 'Fabled', 'Mythic'] as const;
 export type Rarity = (typeof RARITIES)[number];
+
+/**
+ * IS THIS RELIC SET IN THE TOOL? (A.64 sockets.)
+ *
+ * The Forge's Sockets part can now hold a real relic, and a relic is worn OR
+ * socketed and never both — otherwise two registrars would fold the same
+ * affixes and the socket would be a straight double-count.
+ *
+ * WIRED rather than imported because `toolSockets` reads `currentTool`, so
+ * importing it here would drag `casting` and everything under it into the relic
+ * module. Same pattern and same reason as `wireHandCarrier`. The fallback is
+ * `false`, which is exactly the pre-socket behaviour — so if this is ever left
+ * unwired the relic system behaves as it always did rather than throwing.
+ */
+let socketedRelic: (state: GameState, uid: number) => boolean = () => false;
+export function wireSocketed(fn: typeof socketedRelic): void { socketedRelic = fn; }
+export function isSocketedRelic(state: GameState, uid: number): boolean {
+  return socketedRelic(state, uid);
+}
+
+/** Worn OR set in the tool — the "you cannot destroy this" set. */
+function spokenFor(state: GameState): Set<number> {
+  const out = new Set(state.relics.equipped);
+  for (const r of state.relics.held) if (socketedRelic(state, r.uid)) out.add(r.uid);
+  return out;
+}
 
 /** Affix pools by CONTEXT. The context you farm decides the shape you get. */
 export interface RelicAffixDef {
@@ -188,7 +214,10 @@ export function shardValue(relic: RelicInstance): number {
 
 /** Weakest first: rarity, then affix weight, then age. Never locked or worn. */
 function renderCandidates(state: GameState): RelicInstance[] {
-  const worn = new Set(state.relics.equipped);
+  // SPOKEN FOR = worn or set in the tool. Auto-scrap runs unattended, so a
+  // socketed relic missing from this set would be the worst possible bug: the
+  // standing order quietly eating the relic in your pickaxe.
+  const worn = spokenFor(state);
   return state.relics.held
     .filter((r) => !r.locked && !worn.has(r.uid))
     .sort((a, b) => {
@@ -206,6 +235,7 @@ export function renderRelic(state: GameState, uid: number): { ok: boolean; reaso
   if (!r) return { ok: false, reason: 'No such relic' };
   if (r.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
   if (state.relics.equipped.includes(uid)) return { ok: false, reason: 'It is being carried. Take it off first' };
+  if (socketedRelic(state, uid)) return { ok: false, reason: 'It is set in your tool. Pull it out first' };
   const gained = shardValue(r);
   state.relics.held = state.relics.held.filter((x) => x.uid !== uid);
   state.relics.shards += gained;
@@ -344,6 +374,9 @@ export function fuseRelics(state: GameState, keepUid: number, feedUid: number): 
   // Checked BEFORE the price (A.48): "you are short 20 shards" is a wrong answer
   // to "that one is locked", and the player would go and earn the shards.
   if (feed.locked) return { ok: false, reason: 'That one is locked — unlock it first' };
+  // Only the FED relic is eaten, so only the fed one has to be free. A socketed
+  // relic may still be the KEEPER and be improved while it sits in the tool.
+  if (socketedRelic(state, feedUid)) return { ok: false, reason: 'That one is set in your tool. Pull it out first' };
   const afford = fusionAfford(state, keep, feed);
   if (!afford.ok) {
     const wants = afford.price.cores > 0
@@ -457,6 +490,10 @@ export function toggleRelicLock(state: GameState, uid: number): { ok: boolean; r
 export function equipRelic(state: GameState, uid: number, slot: number): { ok: boolean; reason?: string } {
   if (slot < 0 || slot >= RELIC_SLOTS) return { ok: false, reason: 'No such slot' };
   if (!state.relics.held.some((r) => r.uid === uid)) return { ok: false, reason: 'You do not hold that' };
+  // THE SHARED POOL, HALF TWO. Socketing already pulls a relic off the belt;
+  // this is the other direction, and without it the same relic would be folded
+  // by both `relics.*` and `sockets.relics.*` at once.
+  if (socketedRelic(state, uid)) return { ok: false, reason: 'That one is set in your tool. Pull it out first' };
   state.relics.equipped = state.relics.equipped.filter((u) => u !== uid);
   const next = [...state.relics.equipped];
   while (next.length < RELIC_SLOTS) next.push(-1);
@@ -614,6 +651,46 @@ export function effectiveAffixes(relic: RelicInstance): Record<string, number> {
   return bestKey === null ? {} : { [bestKey]: relic.affixes[bestKey]! };
 }
 
+/**
+ * AN AFFIX'S CONTRIBUTION TO A BUCKET, WITH THE KEY RESOLVED — and this closes a
+ * bug that had been eating 44% of every relic in the game since Phase 15.
+ *
+ * `mintRelic` writes `affixes[key]` where `key` is the AFFIX ID (`hardDrill`,
+ * `deepYield`, `fatSeam`), and every reader looked it up by BUCKET NAME
+ * (`drillPower`, `dustYield`, `dropRate`). Fourteen of the thirty affixes have an
+ * id that differs from their bucket — precisely the thirteen Phase 15 added "so a
+ * pool is a hunt and not a list", plus `offlineEff` — so those fourteen landed in
+ * a key nothing ever read.
+ *
+ * MEASURED, not estimated: over 3,000 mints from the `depth` pool, 1,903 of
+ * 4,283 rolled affixes (**44.4%**) were inert. A relic could roll Deep Yield
+ * +28%, print it on its card, and do nothing at all.
+ *
+ * Found by the SOCKET driver, which asked the live modifier bucket to move and
+ * watched it refuse — a socketed relic inherited the bug verbatim because it
+ * reuses this exact read, which is the intended design working correctly on a
+ * broken foundation.
+ *
+ * This affects the BELT as much as the socket, so it is fixed here, once, where
+ * both paths read it. `effectiveAffixes` is left keyed by affix id because the
+ * cards display those names and the ids are the interesting half ("Deep Yield"
+ * is a better thing to be told than "yield").
+ */
+export function affixBucketBonus(relic: RelicInstance, bucket: Bucket): number {
+  let total = 0;
+  for (const [key, mag] of Object.entries(effectiveAffixes(relic))) {
+    const def = AFFIXES[key];
+    // An unknown key is a relic from a build whose affix was since removed. Fall
+    // back to reading the key AS a bucket, which is what old saves whose ids
+    // happened to match were relying on — checked through the type guard rather
+    // than asserted, because `modifierIntegrity` forbids asserting a bucket name
+    // into place and is right to.
+    const target = def ? def.bucket : isBucket(key) ? key : null;
+    if (target === bucket) total += mag;
+  }
+  return total;
+}
+
 /** The equipped set's contribution to a bucket — read by the modifier layer.
  *  Waking and resonance both scale what a worn relic gives; neither creates a
  *  new source of income, so pillar 2's argument above is untouched. */
@@ -627,7 +704,7 @@ export function relicBonus(state: GameState, bucket: Bucket): number {
   for (const uid of state.relics.equipped) {
     const r = state.relics.held.find((x) => x.uid === uid);
     if (!r) continue;
-    const base = effectiveAffixes(r)[bucket] ?? 0;
+    const base = affixBucketBonus(r, bucket);
     if (base === 0) continue;
     const res = active.filter((x) => x.source === r.source).reduce((m, x) => m * x.mult, 1);
     total += base * wakingStep(r).mult * res * pair;

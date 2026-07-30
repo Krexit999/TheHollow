@@ -31,6 +31,7 @@ import {
 import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
 import { craftTool, craftFromParts, discardTool, socketAlloy, socketGem, consumeMaterial, materialCount, addMaterial } from './systems/forge';
+import { setSocket, type SocketFill } from './systems/toolSockets';
 import { forgeDrillAlloy, clearDrillAlloy, fireNow } from './systems/drillAlloys';
 import { digComplete, openOre, workOre } from './systems/ores';
 import { lightOverstoke } from './systems/kiln';
@@ -695,6 +696,8 @@ export function handleAction(
       return matureLivingPart(
         state, ctx, action.partType as PartType, action.boon as GrowthBoonId,
       );
+    case 'setSocket':
+      return setSocket(state, ctx, action.slot, action.fill as SocketFill | null);
     case 'meltBack':
       return meltBack(state, ctx, action.partId);
     case 'repairTool':

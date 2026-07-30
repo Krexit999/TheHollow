@@ -66,6 +66,15 @@ import {
   modSlotsUsed, modStacks, synergyHints, toolInstability, whyDormant,
   type ModCache, type ToolModStack,
 } from '../../engine/systems/toolMods';
+import {
+  SOCKET_KINDS, fillLabel, pairLabel, relicName, runeName, socketCount, socketFocus,
+  socketOverflow, socketRow, socketRunePairs, socketRuneTriples,
+  type SocketFill, type SocketKind,
+} from '../../engine/systems/toolSockets';
+import { RARITIES, isSocketedRelic, wakingStep } from '../../engine/systems/relics';
+import { powerLive, powerOf } from '../../engine/systems/relicPowers';
+import { RUNES, RUNE_GLYPHS, type RuneId } from '../../engine/content/shell4/runes';
+import { GEMS, gemDef } from '../../engine/materials';
 import { dispatch, useGame } from '../store';
 import { MaterialIcon } from './MaterialIcon';
 import { Select } from './Select';
@@ -1805,6 +1814,223 @@ function LivingCard({ tool }: { tool: ToolStats }) {
  * HOW WELL THE POURS CAME OUT. Only rendered when there is something to say —
  * a tool of Good parts has no craftsmanship story, which is most tools.
  */
+/**
+ * THE SOCKETS — the doc's tie-in, and the only card here that reaches OUTSIDE
+ * the Forge for what it shows.
+ *
+ * Laid out as a ROW rather than a list, because the row IS the mechanism: rune
+ * sockets speak to their NEIGHBOURS, so seeing slot 1 beside slot 2 is seeing
+ * why the order matters. Everything a socket can hold is drawn from the real
+ * pile — held relics, found runes, held gems — so an empty picker means an
+ * empty pile and never a missing feature.
+ */
+function SocketsCard({ state, tool }: { state: GameState; tool: ToolStats }) {
+  const [slot, setSlot] = useState(0);
+  const [kind, setKind] = useState<SocketKind>('relic');
+  const [why, setWhy] = useState<string | null>(null);
+  const n = socketCount(tool);
+  if (n <= 0) return null;
+
+  const row = socketRow(state);
+  const focus = socketFocus(tool);
+  const overflow = socketOverflow(state);
+  const named = (k: string): boolean => pairLabel(k) !== k;
+  const pairs = socketRunePairs(state).filter(named);
+  const triples = socketRuneTriples(state).filter(named);
+  const at = Math.min(slot, n - 1);
+  const held = row[at] ?? null;
+
+  // WHAT COULD GO IN — the real piles, never a catalogue of what exists.
+  const relicOpts = state.relics.held
+    .filter((r) => !isSocketedRelic(state, r.uid))
+    .slice(0, 40)
+    .map((r) => ({
+      value: `relic:${r.uid}`,
+      label: `${relicName(r)} · ${wakingStep(r).name}`,
+    }));
+  const runeOpts = RUNES
+    .filter((id) => (state.runes.found[id] ?? 0) > 0)
+    .map((id) => ({
+      value: `rune:${id}`,
+      label: `${RUNE_GLYPHS[id]} ${runeName(id)} ×${state.runes.found[id]}`,
+    }));
+  const gemOpts = GEMS
+    .filter((g) => (state.materials.gems[g.id] ?? 0) > 0)
+    .map((g) => ({ value: `gem:${g.id}`, label: `${g.name} — ${g.effectText}` }));
+  const opts = kind === 'relic' ? relicOpts : kind === 'rune' ? runeOpts : gemOpts;
+
+  const put = (raw: string): void => {
+    const cut = raw.indexOf(':');
+    const k = raw.slice(0, cut);
+    const v = raw.slice(cut + 1);
+    const fill: SocketFill = k === 'relic'
+      ? { kind: 'relic', uid: Number(v) }
+      : k === 'rune'
+        ? { kind: 'rune', id: v as RuneId }
+        : { kind: 'gem', id: v };
+    const r = dispatch({ type: 'setSocket', slot: at, fill });
+    setWhy(r.ok ? null : (r.reason ?? 'No'));
+  };
+
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-sockets">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Sockets</span>
+        <span className="tnum text-[9px] text-cave-400" data-testid="socket-count">
+          {row.filter(Boolean).length}/{n}
+          {focus > 1.005 ? ` · holds ${Math.round((focus - 1) * 100)}% harder` : ''}
+        </span>
+      </div>
+
+      {/* THE ROW. Adjacency is the rune grammar, so it is drawn as adjacency. */}
+      <div className="mt-1.5 flex gap-1">
+        {row.map((f, i) => (
+          <button
+            key={i}
+            className={`min-w-0 flex-1 rounded border px-0.5 py-1 text-[9px] leading-tight ${
+              i === at ? 'border-[#e0b054] text-cave-200' : 'border-cave-700 text-cave-400'
+            }`}
+            data-testid={`socket-${i}`}
+            onClick={() => { setSlot(i); setWhy(null); }}
+            title={f ? fillLabel(state, f) : 'Empty'}
+          >
+            <div className="tnum text-[8px] text-cave-600">{i + 1}</div>
+            <div className="truncate">
+              {f === null
+                ? '—'
+                : f.kind === 'rune'
+                  ? RUNE_GLYPHS[f.id]
+                  : f.kind === 'gem' ? gemDef(f.id).name.slice(0, 4) : 'relic'}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* WHAT IS IN THE ONE YOU PICKED, and the way back out. */}
+      <div className="mt-1.5 text-[9px] leading-snug text-cave-300" data-testid="socket-detail">
+        {held === null
+          ? <span className="italic text-cave-500">Socket {at + 1} is empty.</span>
+          : <SocketHeld state={state} fill={held} />}
+      </div>
+      {held !== null && (
+        <button
+          className="btn mt-1 w-full py-0.5 text-[9px]"
+          data-testid="socket-clear"
+          onClick={() => {
+            const r = dispatch({ type: 'setSocket', slot: at, fill: null });
+            setWhy(r.ok ? null : (r.reason ?? null));
+          }}
+        >
+          Take it out · nothing is used up
+        </button>
+      )}
+
+      {/* THE PICKER. Three kinds, each one the real pile. */}
+      <div className="mt-1.5 flex gap-1">
+        {SOCKET_KINDS.map((k) => (
+          <button
+            key={k}
+            className={`min-w-0 flex-1 rounded border py-0.5 text-[9px] capitalize ${
+              k === kind ? 'border-cave-500 text-cave-200' : 'border-cave-800 text-cave-500'
+            }`}
+            data-testid={`socket-kind-${k}`}
+            onClick={() => { setKind(k); setWhy(null); }}
+          >
+            {k}s
+          </button>
+        ))}
+      </div>
+      <div className="mt-1">
+        {opts.length === 0
+          ? (
+            <div className="text-[9px] italic text-cave-600" data-testid="socket-none">
+              {kind === 'relic'
+                ? 'You hold no free relics.'
+                : kind === 'rune' ? 'You have found no runes yet.' : 'You hold no gems.'}
+            </div>
+          )
+          : (
+            <Select
+              value=""
+              onChange={put}
+              options={opts}
+              className="w-full"
+              placeholder={`Set into socket ${at + 1}…`}
+              ariaLabel={`Set into socket ${at + 1}`}
+            />
+          )}
+      </div>
+      {why && (
+        <div className="mt-1 text-[9px] leading-snug text-[#c46a5a]" data-testid="socket-why">
+          {why}
+        </div>
+      )}
+
+      {/* WHAT THE ROW SAYS — the rune grammar's own readout, pairs then triples. */}
+      {(pairs.length > 0 || triples.length > 0) && (
+        <div className="mt-1.5 border-t border-cave-800 pt-1" data-testid="socket-speaks">
+          <div className="text-[9px] uppercase tracking-wider text-cave-500">It says</div>
+          {[...pairs, ...triples].map((k) => (
+            <div key={k} className="text-[9px] leading-snug text-[#9ac07a]">{pairLabel(k)}</div>
+          ))}
+        </div>
+      )}
+
+      {overflow.length > 0 && (
+        <div className="mt-1.5 text-[9px] leading-snug text-[#c4a05a]" data-testid="socket-overflow">
+          {overflow.length} more {overflow.length === 1 ? 'thing is' : 'things are'} in there doing
+          nothing — this Sockets part holds {n}. None of it was lost; a deeper one counts them again.
+        </div>
+      )}
+
+      <div className="mt-1 text-[8px] leading-snug text-cave-600">
+        A relic in a socket is off your belt, and it stops waking. Wear it to grow it; set it once it has.
+      </div>
+    </div>
+  );
+}
+
+/** What one socketed thing is doing, said in the source system's own words. */
+function SocketHeld({ state, fill }: { state: GameState; fill: SocketFill }) {
+  if (fill.kind === 'rune') {
+    return <span>{RUNE_GLYPHS[fill.id]} {runeName(fill.id)} — it speaks through its neighbours.</span>;
+  }
+  if (fill.kind === 'gem') {
+    const g = gemDef(fill.id);
+    return (
+      <span>
+        <span style={{ color: g.color }}>{g.name}</span>
+        {' — '}
+        {g.effectText.replace('while socketed', 'through the tool')}
+      </span>
+    );
+  }
+  const r = state.relics.held.find((x) => x.uid === fill.uid);
+  if (!r) return <span className="italic text-cave-500">Gone.</span>;
+  const power = powerOf(r);
+  const affixes = Object.entries(r.affixes).slice(0, 4);
+  return (
+    <span>
+      {RARITIES[r.rarity]} {r.source} · {wakingStep(r).name}
+      {power && (powerLive(r)
+        ? <> · <span className="text-[#c9a7e0]">{power.name}</span></>
+        : (
+          <>
+            {' · '}
+            <span className="text-cave-600">
+              {power.name} is asleep — it wakes on the belt, not in here
+            </span>
+          </>
+        ))}
+      {affixes.length > 0 && (
+        <div className="tnum mt-0.5 text-[9px] text-cave-400" data-testid="socket-affixes">
+          {affixes.map(([k, v]) => `${k} ${v > 0 ? '+' : ''}${(v * 100).toFixed(0)}%`).join(' · ')}
+        </div>
+      )}
+    </span>
+  );
+}
+
 function CraftCard({ tool }: { tool: ToolStats }) {
   const fold = craftFold(tool.parts);
   const notable = tool.parts.filter((p) => p.craft === 'masterwork' || p.craft === 'excellent');
@@ -1969,6 +2195,7 @@ function YourTool({ state }: { state: GameState }) {
       <BalanceCard state={state} tool={tool} />
       <LivingCard tool={tool} />
       <CraftCard tool={tool} />
+      <SocketsCard state={state} tool={tool} />
       <AbilitiesCard state={state} />
       <ModBench state={state} />
       <LevelCard state={state} tool={tool} />

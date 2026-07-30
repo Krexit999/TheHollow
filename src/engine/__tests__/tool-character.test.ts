@@ -318,7 +318,38 @@ describe('the biography is information', () => {
    * tool, one with a long history and one with none, must mine identically.
    */
   it('and it grants NOTHING — a swing with a full history is identical', () => {
+    /**
+     * SEEDED, AND THE PREVIOUS VERSION OF THIS TEST FAILED ON A CLEAN TREE.
+     *
+     * The A.63 fix widened the window to twenty swings and a thirty-second tick
+     * so a leak would have somewhere to show — which was the right instinct and
+     * broke the instrument, because thirty seconds of ticking runs ore spawning,
+     * growth and the drop rolls on live `Math.random`. Two arms then differed by
+     * ~0.003% in a RANDOM DIRECTION (the two readings swapped between runs), and
+     * an exact-equality assertion cannot survive that.
+     *
+     * So the window stays wide and the stream is pinned. This is still an
+     * EQUALITY and not a tolerance: with the same seed the two arms differ only
+     * in the biography, and something that should be bit-identical either is or
+     * is not. The sim's version of this claim (`sim-tool-character.ts`) has been
+     * seeded from the start, which is why it held while this did not.
+     */
     const swing = (withHistory: boolean): number => {
+      const realRandom = Math.random;
+      let seed = 0x9e3779b9;
+      Math.random = () => {
+        seed ^= seed << 13; seed >>>= 0;
+        seed ^= seed >> 17;
+        seed ^= seed << 5; seed >>>= 0;
+        return seed / 4294967296;
+      };
+      try {
+        return measure(withHistory);
+      } finally {
+        Math.random = realRandom;
+      }
+    };
+    const measure = (withHistory: boolean): number => {
       engine = createEngine({ nowMs: 0 });
       reachAll(st());
       hold(DEAD);
@@ -571,8 +602,8 @@ describe('the pillars survive the character layer', () => {
 });
 
 describe('the save', () => {
-  it('is at v44, and adds no growth, tier or history to anybody', () => {
-    expect(SAVE_VERSION).toBe(44);
+  it('adds no growth, tier or history to anybody', () => {
+    expect(SAVE_VERSION).toBe(45);
     const out = runMigrations({
       version: 43,
       state: {

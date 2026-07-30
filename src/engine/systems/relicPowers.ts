@@ -241,10 +241,31 @@ export function powerLive(relic: RelicInstance): boolean {
  * agonising choice", not "wear six of the same"). A power is a rule the worn
  * set either has or does not have.
  */
+/**
+ * RELICS SET IN THE TOOL (A.64 sockets) contribute their power exactly as a worn
+ * one does — the brief's "a socketed relic applies its power to the tool".
+ *
+ * The de-duplication below is what makes this safe to widen: powers are DERIVED
+ * from (uid, source, rarity), so nothing stops a socketed relic deriving the
+ * same power as a worn one, and six copies of Glass Lung would be a pillar-2
+ * problem. `seen` already refuses that, and it now refuses it across both sets.
+ *
+ * And the socket does not smuggle a power past its gate: `powerLive` wants
+ * Stirring, and `tickRelics` only wakes what is WORN. So a relic put straight
+ * into a socket has no power and will never grow one — wear it first. That is
+ * the trade the socket phase is priced on, and it is enforced here by doing
+ * nothing special.
+ *
+ * WIRED for the same reason as `wireSocketed` in `relics.ts`: the socket module
+ * reads `currentTool`. Fallback is the empty list, i.e. the old behaviour.
+ */
+let socketedUids: (state: GameState) => number[] = () => [];
+export function wireSocketedPowers(fn: typeof socketedUids): void { socketedUids = fn; }
+
 export function activePowers(state: GameState): Array<{ relic: RelicInstance; def: RelicPowerDef }> {
   const out: Array<{ relic: RelicInstance; def: RelicPowerDef }> = [];
   const seen = new Set<string>();
-  for (const uid of state.relics.equipped) {
+  for (const uid of [...state.relics.equipped, ...socketedUids(state)]) {
     const r = state.relics.held.find((x) => x.uid === uid);
     if (!r || !powerLive(r)) continue;
     const def = powerOf(r);

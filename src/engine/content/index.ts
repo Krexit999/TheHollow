@@ -22,6 +22,7 @@ import { registerAxioms } from './shell7/axioms';
 import { clearLaws, registerChallengeLaws } from '../laws';
 import { CHALLENGES } from './shell7/challenges';
 import { registerRelicModifiers } from '../systems/relics';
+import { registerSocketModifiers } from '../systems/toolSockets';
 import { registerMuseumModifiers } from '../systems/museum';
 import { registerConfluenceModifiers } from '../systems/confluence';
 import { registerChains } from './shell2/chains';
@@ -136,6 +137,7 @@ export function ensureContentLoaded(): void {
   registerAxioms();
   registerSpiralContent();
   registerRelicModifiers();
+  registerSocketModifiers();
   registerMuseumModifiers();
   registerConfluenceModifiers();
   registerChains();

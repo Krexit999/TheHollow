@@ -1320,6 +1320,8 @@ export type GameEvent =
   /** A living part has done enough work to become something. Offers a choice. */
   | { type: 'partReadyToGrow'; partType: string }
   | { type: 'partMatured'; partType: string; boon: string; name: string; stage: number }
+  | { type: 'socketSet'; slot: number; kind: 'relic' | 'rune' | 'gem' }
+  | { type: 'socketCleared'; slot: number; kind: 'relic' | 'rune' | 'gem' }
   | { type: 'toolModLevelled'; id: string; name: string; level: number }
   /** A pair on the tool turned out to be a third thing. Found, never listed. */
   | { type: 'synergyAwoke'; id: string; name: string }
@@ -1560,6 +1562,16 @@ export type GameAction =
   /** Take one of the three things a matured living part offers. */
   | { type: 'matureLivingPart'; partType: string; boon: string }
   | { type: 'repairTool'; partType: string }
+  /**
+   * SET OR CLEAR ONE SOCKET. `fill: null` pulls out whatever is in the slot, so
+   * one action covers both directions — socketing is reversible by the shape of
+   * the verb rather than by a second one beside it.
+   */
+  | {
+      type: 'setSocket';
+      slot: number;
+      fill: { kind: 'relic'; uid: number } | { kind: 'rune'; id: string } | { kind: 'gem'; id: string } | null;
+    }
   | { type: 'meltBack'; partId: number }
   | { type: 'debug'; op: 'unlockAll' };
 

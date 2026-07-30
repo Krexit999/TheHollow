@@ -42,6 +42,7 @@ import {
   assembleTool, derivePart, partMelt, growthProgress, type Part, type ToolStats,
 } from './forgeParts';
 import type { ToolBio } from './toolBio';
+import type { SocketFill } from './toolSockets';
 import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
 
@@ -165,6 +166,17 @@ export interface CastingState {
   windup?: number;
   /** THE TOOL'S HISTORY. Information only — see `systems/toolBio.ts`. */
   bio?: ToolBio;
+  /**
+   * WHAT IS SET IN THE SOCKETS — a relic uid, a rune id or a gem id per slot,
+   * in row order. The ROW LENGTH is derived from the Sockets part's attunement
+   * (`socketCount`) and this array is only the contents, stored sparse: a fill
+   * past the current end is held but inert, so re-pouring a shallower Sockets
+   * stone cannot destroy what the player put in. See `systems/toolSockets.ts`.
+   *
+   * Deliberately NOT part of `toolKey`: sockets sit on the TOOL, not on a Part,
+   * and `assembleTool` does not read them — so the memo is unaffected.
+   */
+  sockets?: Array<SocketFill | null>;
 }
 
 /**
@@ -761,6 +773,17 @@ export function breakDownTool(state: GameState, ctx: EngineCtx): ActionResult {
   if (state.casting.tool.length === 0) return { ok: false, reason: 'You have not built one' };
   for (const p of state.casting.tool) state.casting.rack.push(p);
   state.casting.tool = [];
+  // EVERY PIECE COMES BACK, which the button has always promised — and that has
+  // to include the sockets, or taking the tool apart would eat a relic. Called
+  // through a wire because `toolSockets` reads `currentTool` from this module.
+  emptyTheSockets(state);
   ctx.dirty();
   return { ok: true };
 }
+
+/**
+ * Sockets are emptied by `toolSockets.emptySockets`, which has to put runes and
+ * gems back on their piles. Wired rather than imported for the usual reason.
+ */
+let emptyTheSockets: (state: GameState) => void = (state) => { state.casting.sockets = []; };
+export function wireEmptySockets(fn: typeof emptyTheSockets): void { emptyTheSockets = fn; }
