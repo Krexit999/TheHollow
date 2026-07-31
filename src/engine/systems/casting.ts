@@ -126,6 +126,15 @@ export interface CastingState {
   rack: RackPart[];
   /** The seven station slots, each holding a rack part's id. */
   bench: Partial<Record<PartType, number>>;
+  /**
+   * LEGEND IDS THE PLAYER HAS EARNED (`systems/legendary.ts`).
+   *
+   * The DEED, not the holding — a legend you melted down is still one you
+   * earned, and inferring from the rack would hand out a second copy the moment
+   * you salvaged one. Absent on every save written before this, which reads as
+   * none, so no migration is needed.
+   */
+  legends?: string[];
   /** YOUR TOOL. Empty until you build one; replaced, never lost. */
   tool: RackPart[];
   crucible: Crucible;
@@ -454,7 +463,10 @@ function toolKey(parts: Part[]): string {
   for (const p of parts) {
     k += `${p.type}:${p.materialId}:${p.purity}:${p.shape ?? ''}`;
     for (const l of p.layers ?? []) k += `/${l.materialId}:${l.purity}`;
-    k += `:${(p.grown ?? []).join('+')}:${p.growth ?? 0}:${p.craft ?? ''}:${p.work ?? ''}|`;
+    k += `:${(p.grown ?? []).join('+')}:${p.growth ?? 0}:${p.craft ?? ''}:${p.work ?? ''}`;
+    // EVERY FIELD OF `Part` MUST APPEAR HERE or the memo serves a stale tool —
+    // the standing rule this cache has caught people on more than once.
+    k += `:${p.legend ?? ''}|`;
   }
   return k;
 }

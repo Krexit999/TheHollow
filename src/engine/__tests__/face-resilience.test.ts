@@ -16,12 +16,30 @@
  *     canvases must stay wired. A future refactor that drops them silently
  *     reintroduces the catastrophe, and nothing else would catch it.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngine } from '../index';
 
 const read = (p: string) => readFileSync(join(process.cwd(), 'src', p), 'utf8');
+
+/**
+ * SEEDED, BECAUSE AN UNSEEDED GATE IS NOT A GATE.
+ *
+ * These two cases chip a live face, and chipping rolls drops, crits and ore
+ * formation off the shared Math.random stream. Alone the file passed every
+ * time; inside the full suite it failed intermittently, and THE FAILING LINE
+ * MOVED between runs -- once on the upgrade being affordable, once on the chip
+ * landing at all -- which is the signature of a shared stream, not of a bug in
+ * anything this file guards.
+ *
+ * A gate that fails at random says nothing on either outcome, so it had stopped
+ * being evidence about the thing it exists to protect. Pinned to a constant:
+ * the invariant under test is "an upgrade never wedges chipping", which has
+ * nothing to do with what the dice said.
+ */
+beforeEach(() => { vi.spyOn(Math, 'random').mockReturnValue(0.5); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('buying an upgrade never wedges the face', () => {
   it('a chip still pays after any purchase', () => {

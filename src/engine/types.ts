@@ -1283,6 +1283,9 @@ export type GameEvent =
   | { type: 'drillHold'; drill: number; at: number }
   /** A drill arrived from somewhere that was not the shop. */
   | { type: 'prizeDrill'; source: string; name: string; slots: number }
+  /** A legend arrived, poured in the best stone the Hold was holding. */
+  | { type: 'legendaryPart'; legend: string; name: string; partType: string; materialId: string; line: string }
+  | { type: 'legendaryRecast'; legend: string; name: string; materialId: string; cost: number }
   /** ORES: a pocket formed, opened, or the drought floor seeded the face. */
   | { type: 'oreAppeared'; cells: number[]; oreId: string }
   | { type: 'oreOpened'; cell: number; oreId: string; charge: number; by: 'hand' | 'drill'; first: boolean }
@@ -1449,6 +1452,7 @@ export type GameAction =
   | { type: 'refine'; materialId: string; band: string }
   /** Walk every rung up to a target band in one act. Same cost, fewer taps. */
   | { type: 'refineTo'; materialId: string; band: string }
+  | { type: 'recastLegendary'; legend: string; materialId: string }
   | { type: 'transmute'; a: string; b: string }
   | { type: 'salvageTool'; toolId: number; extract: boolean }
   | { type: 'temperTool'; temperId: string }

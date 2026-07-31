@@ -48,6 +48,7 @@ import {
 import { RARITIES, bandOf, materialDef, type MaterialDef, BAND_RANGES, BANDS } from '../materials';
 import { traitsOf } from '../traits';
 import { shellOrdinal } from '../content/drillAlloys';
+import { LEGENDARY_BY_ID } from '../content/legendaryParts';
 
 // ---------------------------------------------------------------------------
 // The part
@@ -104,6 +105,29 @@ export interface Part {
   /** Which Masterwork it turned out to be. Only ever set with `craft:
    *  'masterwork'`. */
   work?: MasterworkId;
+  /**
+   * A LEGEND THIS PART IS AN INSTANCE OF (`content/legendaryParts.ts`).
+   *
+   * Absent on every part ever cast, which is why this needed no migration: the
+   * boost below is `1` for an absent legend, i.e. the identity, so nothing that
+   * already existed derives differently by a single decimal.
+   *
+   * It is a NAME, not a stat block. Everything a legend does is expressed in
+   * fields this interface already had — `purity` at the ceiling, `craft`
+   * 'masterwork', a chosen `work` — plus exactly one multiplier, so a legendary
+   * part is derived by the same code path as a lump of Marl.
+   */
+  legend?: string;
+}
+
+/**
+ * THE ONE NEW TERM. Looked up rather than stored, so re-rating a legend re-rates
+ * every copy a player holds instead of leaving stale numbers in a save — the
+ * same "derive, never store" rule the rest of `Part` follows.
+ */
+export function legendBoost(part: Part): number {
+  if (!part.legend) return 1;
+  return LEGENDARY_BY_ID.get(part.legend)?.boost ?? 1;
 }
 
 /** Is this part alive — i.e. is any of its stock Verdance? */
@@ -289,6 +313,12 @@ export function blendOf(part: Part): PartBlend {
   for (const l of layers) {
     spread += l.weight * Math.abs(shellOrdinal(l.material.shellId) - shell);
   }
+
+  // THE LEGEND LIFTS THE STONE; IT DOES NOT REPLACE IT. Applied to magnitude and
+  // nothing else, so traits, shell, spread and intensity are still the stone's —
+  // which is what keeps a legendary part answerable to coherence, to ruling 1,
+  // and to every trait reader in the forge exactly as an ordinary part is.
+  magnitude *= legendBoost(part);
 
   return {
     layers,
@@ -577,7 +607,7 @@ export function gradeBonusOf(m: MaterialDef): number {
  * again, which is the same "derive it, do not restate it" rule the trait
  * hints and the socket domain both follow.
  */
-const PURITY_CEILING = BAND_RANGES[BANDS[BANDS.length - 1]!][1];
+export const PURITY_CEILING = BAND_RANGES[BANDS[BANDS.length - 1]!][1];
 
 function clampPurity(p: number): number {
   return Math.max(1, Math.min(PURITY_CEILING, Math.round(p)));

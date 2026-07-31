@@ -56,6 +56,8 @@ import {
   repairShare, toolEffect, toolLevel, usesLeft, usesOf, wear01, wornPart,
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
+import { legendRows, legendCost } from '../../engine/systems/legendary';
+import { LEGENDARY_BY_ID } from '../../engine/content/legendaryParts';
 import { climbPreview, refineryUnlocked } from '../../engine/systems/refinery';
 import { ROMAN, shellOrdinal } from '../../engine/content/drillAlloys';
 import { TOOL_CARRIER, reachedOrdinal } from '../../engine/systems/drillAlloys';
@@ -185,17 +187,17 @@ function partSkin(materialId: string): { deep: string; mid: string; light: strin
   return { deep, mid, light };
 }
 
-interface Seated { materialId: string; purity: number; onBench: boolean }
+interface Seated { materialId: string; purity: number; onBench: boolean; legend?: string }
 
 /** The working set: the bench part if you have seated one, else what you carry. */
 function workingPart(state: GameState, t: PartType): Seated | null {
   const benchId = state.casting.bench[t];
   if (benchId !== undefined) {
     const p = rackPart(state, benchId);
-    if (p) return { materialId: p.materialId, purity: p.purity, onBench: true };
+    if (p) return { materialId: p.materialId, purity: p.purity, onBench: true, legend: p.legend };
   }
   const built = state.casting.tool.find((p) => p.type === t);
-  return built ? { materialId: built.materialId, purity: built.purity, onBench: false } : null;
+  return built ? { materialId: built.materialId, purity: built.purity, onBench: false, legend: built.legend } : null;
 }
 
 function ToolDiagram({
@@ -367,6 +369,23 @@ function ToolDiagram({
                 fontStyle: held ? undefined : 'italic',
                 fontWeight: held?.onBench ? 600 : undefined,
               }}>
+                {/* THE MARK IS INLINE, NOT ITS OWN ROW.
+                    A rim does not survive the clip-path (three attempts,
+                    ledgered), so the mark has to be text — but a name on its own
+                    line was worse: the labels sit at FIXED tops 34px apart, so
+                    "✦ The First Bite" pushed into the Edge's slot and ran off
+                    the left of its 66px box. One gold star costs no height and
+                    cannot overflow; the name lives in the title and in the
+                    Legends drawer, which have room for it. */}
+                {held?.legend && LEGENDARY_BY_ID.get(held.legend) && (
+                  <span
+                    style={{ color: '#e0b054' }}
+                    data-testid={`diagram-legend-${t}`}
+                    title={LEGENDARY_BY_ID.get(held.legend)!.name}
+                  >
+                    ✦{' '}
+                  </span>
+                )}
                 {held ? materialDef(held.materialId).name : 'empty'}
               </div>
               {held?.onBench && (
@@ -724,6 +743,17 @@ function RackShelf({
                       width: 8, height: 8, borderRadius: 2, flexShrink: 0,
                       background: `linear-gradient(135deg, ${skin.light}, ${skin.deep})`,
                     }} />
+                    {/* A LEGEND MUST NOT LOOK LIKE A PLAIN PART HERE. This chip
+                        is where a part is CHOSEN, and the stone alone does not
+                        say which of two Protolith heads is the earned one. */}
+                    {p.legend && (
+                      <span
+                        style={{ fontSize: 9, color: '#e0b054', flexShrink: 0 }}
+                        data-testid={`rack-chip-legend-${p.id}`}
+                      >
+                        ✦
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1 truncate text-[10px]" style={{ color: skin.light }}>
                       {materialDef(p.materialId).name}
                     </span>
@@ -1531,10 +1561,133 @@ function TheStation({ state }: { state: GameState }) {
             </button>
           </Drawer>
         )}
+        <Drawer
+          label={`Legends · ${legendRows(state).filter((r) => r.earned).length} of ${legendRows(state).length}`}
+          testid="drawer-legends"
+        >
+          <Legends state={state} />
+        </Drawer>
         <Drawer label="The rack, in full" testid="drawer-rack">
           <Rack state={state} />
         </Drawer>
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LEGENDS — the seven parts you earn, and the stone you keep choosing for them
+// ---------------------------------------------------------------------------
+
+/**
+ * SEVEN ROWS, ALWAYS ALL SEVEN — and that is the pillar-5 question this panel
+ * had to answer carefully.
+ *
+ * "Never show a locked list" forbids a grid of grey padlocks with names you
+ * cannot read. It does not forbid telling a player what a thing IS once they
+ * know the category exists, and a legend whose requirement is invisible is not
+ * mysterious, it is unfindable — nobody stumbles into "fell three Floor Wardens"
+ * by accident. So an unearned row shows its REQUIREMENT (a goal, phrased as
+ * something to go and do) and withholds its NAME and its LINE, which are the
+ * parts that are worth arriving. You know there is something at Loam 120; you
+ * do not know it is called The First Bite until you are standing there.
+ */
+function Legends({ state }: { state: GameState }) {
+  const rows = legendRows(state);
+  const [open, setOpen] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+
+  return (
+    <div data-testid="legends">
+      <div className="mb-1.5 text-[10px] leading-snug italic text-cave-500">
+        Seven parts nobody poured. What you earn is the pattern — the stone stays
+        yours, and can be poured again deeper.
+      </div>
+      <div className="flex flex-col gap-1">
+        {rows.map((r) => {
+          const held = r.part;
+          const cost = legendCost(r.def.partType);
+          return (
+            <div
+              key={r.def.id}
+              className="rounded border border-cave-800 px-1.5 py-1"
+              data-testid={`legend-${r.def.id}`}
+              style={{ opacity: r.earned ? 1 : 0.7 }}
+            >
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-[11px]" style={{ color: r.earned ? '#e0b054' : '#8a7f70' }}>
+                  {r.earned ? r.def.name : `A ${PART_DEFS[r.def.partType].name.toLowerCase()}, somewhere`}
+                </span>
+                <span className="shrink-0 text-[9px] uppercase tracking-wider text-cave-500">
+                  {PART_DEFS[r.def.partType].name}
+                </span>
+              </div>
+              {!r.earned && (
+                <div className="text-[10px] italic text-cave-500" data-testid={`legend-req-${r.def.id}`}>
+                  {r.def.requirement}
+                </div>
+              )}
+              {r.earned && held && (
+                <>
+                  <div className="mt-0.5 flex items-baseline justify-between gap-2 text-[10px]">
+                    <span className="truncate text-cave-300">
+                      {materialDef(held.materialId).name}
+                      <span className="ml-1 text-cave-500">{r.inTool ? '· in the tool' : '· on the rack'}</span>
+                    </span>
+                    <button
+                      className="btn shrink-0 px-1.5 py-0.5 text-[9px]"
+                      data-testid={`legend-repour-${r.def.id}`}
+                      onClick={() => { setOpen(open === r.def.id ? null : r.def.id); setNote(null); }}
+                    >
+                      Re-pour
+                    </button>
+                  </div>
+                  {open === r.def.id && (
+                    <div className="mt-1" data-testid={`legend-stones-${r.def.id}`}>
+                      <div className="mb-0.5 text-[9px] uppercase tracking-wider text-cave-500">
+                        {cost} of a stone you hold
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {/* DEEPEST FIRST, because ruling 1 says that is the ranking
+                            and there is no argument to have about it. Capped at
+                            eight so a Hold with sixty stones in it is still a row
+                            of choices rather than the 158-material list the picker
+                            was rebuilt to escape. */}
+                        {allShells()
+                          .flatMap((sh) => materialsOfShell(sh.id))
+                          .filter((m) => m.id !== held.materialId && materialCount(state, m.id) >= cost)
+                          .sort((a, b) => shellOrdinal(b.shellId) - shellOrdinal(a.shellId)
+                            || materialCount(state, b.id) - materialCount(state, a.id))
+                          .slice(0, 8)
+                          .map((m) => (
+                            <button
+                              key={m.id}
+                              className="btn px-1.5 py-0.5 text-[9px]"
+                              data-testid={`legend-stone-${m.id}`}
+                              onClick={() => {
+                                const res = dispatch({
+                                  type: 'recastLegendary', legend: r.def.id, materialId: m.id,
+                                });
+                                setNote(res.ok ? `${r.def.name} re-poured in ${m.name}.` : res.reason ?? null);
+                                if (res.ok) setOpen(null);
+                              }}
+                            >
+                              {m.name}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="mt-0.5 text-[10px] leading-snug italic text-cave-600">
+                    {r.def.line}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {note && <div className="mt-1 text-[10px] italic text-cave-400" data-testid="legend-note">{note}</div>}
     </div>
   );
 }

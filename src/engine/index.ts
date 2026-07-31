@@ -32,6 +32,7 @@ import { tickKiln } from './systems/kiln';
 import { tickDrills } from './systems/drills';
 import { tickAlloys } from './systems/drillAlloys';
 import { checkPrizeDrills } from './systems/prizeDrills';
+import { checkLegendaryParts } from './systems/legendary';
 import { tickOres } from './systems/ores';
 import { tickAssay } from './systems/drops';
 import { tickCombat } from './combat/combat';
@@ -277,6 +278,9 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // A DRILL YOU DID NOT BUY. Checked right after the achievements, because
       // that is where three of the four sources come from (systems/prizeDrills).
       checkPrizeDrills(state, ctx);
+      // A PART YOU DID NOT POUR. Same beat, same pure-read idempotence — a legend
+      // earned with an empty Hold simply arrives on a later tick (legendary.ts).
+      checkLegendaryParts(state, ctx);
     }
   }
 

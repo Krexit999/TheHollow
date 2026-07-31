@@ -68,6 +68,7 @@ import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
 import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw, installSocket } from './content/shell5/emberArray';
 import { produceExport } from './content/exports';
 import { refine, refineTo, transmute } from './systems/refinery';
+import { recastLegendary } from './systems/legendary';
 import {
   benchClear, benchPlace, breakDownTool, buildTool, castPart, chargeCrucible, drainCrucible,
   meltBack, bringToFront, matureLivingPart,
@@ -627,6 +628,9 @@ export function handleAction(
 
     case 'refine':
       return refine(state, ctx, action.materialId, action.band as PurityBand);
+
+    case 'recastLegendary':
+      return recastLegendary(state, ctx, action.legend, action.materialId);
 
     case 'refineTo':
       return refineTo(state, ctx, action.materialId, action.band as PurityBand);
