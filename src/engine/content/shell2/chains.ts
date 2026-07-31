@@ -137,4 +137,58 @@ export function registerChains(): void {
     name: 'The Kiln Firing',
     flavor: 'Gold that lost its colour, fired into clay that remembers the sea. What comes out makes every other stone agree to melt.',
   });
+
+  /*
+   * ── THE SHALLOW BOARD (A.71) ────────────────────────────────────────────
+   *
+   * MEASURED, then fixed: a Loam+Ferrite player could FIRE exactly three of the
+   * nineteen chains. Twelve want inputs from Verdance and deeper, three more
+   * want `bindingclay`, which is itself an output — so the bench a shallow
+   * player meets had almost nothing on it, and the reported "2497 runs, nothing
+   * found" was the honest arithmetic of that rather than a fault anywhere.
+   *
+   * WHY THESE INPUTS AND NOT ORPHANS. The founding rule is that a chain should
+   * pull an orphan back into the economy, and the audit says the only orphans
+   * left in these two shells are five alloy CASTINGS (crafted, never dropped)
+   * and Starmarl, which rolls eleven times in nine thousand. None of them can
+   * carry a shallow board. So these five earn their place by the rule's OTHER
+   * route, the one the test already accepts: every one REACHES UP a rarity gate,
+   * turning stone that drops constantly into stone the depth gates withhold.
+   * That is the same job — reach — by the arm that is actually available here.
+   *
+   * Every input below drops in the hundreds in Loam/Ferrite (measured), so the
+   * board is made of what a shallow player is already holding.
+   */
+
+  // Two commons the whole game ignored become the universal binder — the same
+  // move `ashgritBinder` makes in Cinder, finally available in Loam.
+  registerChain({
+    id: 'bonemeal', a: 'bonechalk', b: 'graveclay', out: 'bindingclay', cost: 4,
+    name: 'The Bonemeal',
+    flavor: 'Ground chalk and grave clay, worked wet. It sets harder than either had any right to.',
+  });
+  // ...and the other commons pair fires the kiln, so a player who found one
+  // binder route is not told the other is the only one.
+  registerChain({
+    id: 'ochreFiring', a: 'ochre', b: 'bonechalk', out: 'kilnflux', cost: 3, yield: 4,
+    name: 'The Ochre Firing',
+    flavor: 'The yellow burns off first and takes the chalk with it. What is left will melt anything.',
+  });
+  // Rich + rich -> pure: the first time the bench reaches a band the rock has
+  // not started dropping yet.
+  registerChain({
+    id: 'lodeknitting', a: 'loamiron', b: 'lodestone', out: 'magnetile', cost: 3,
+    name: 'The Lode Knitting',
+    flavor: 'Iron from the soil and iron from the drift, and neither will lie flat again.',
+  });
+  registerChain({
+    id: 'rimeworking', a: 'rimeiron', b: 'bluesteel', out: 'wormsteel', cost: 3,
+    name: 'The Rime Working',
+    flavor: 'Cold iron folded into blue, over and over, until it moves like something alive.',
+  });
+  registerChain({
+    id: 'flintstaining', a: 'duskflint', b: 'ochre', out: 'umberjade', cost: 3,
+    name: 'The Flint Staining',
+    flavor: 'The ochre goes into the flint and does not come out. It goes green about a week later.',
+  });
 }

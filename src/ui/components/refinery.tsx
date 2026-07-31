@@ -216,12 +216,30 @@ export function RefineryPanel() {
                 </div>
               ))}
             </div>
-            <div
-              className="mt-1.5 text-[10px] leading-snug italic text-cave-400"
-              data-testid="bench-reading"
-            >
-              {benchReading(state as GameState, feedA, feedB).line}
-            </div>
+            {/*
+              THE PAIR READING. A.70 shipped two SOLO readings ("both of these
+              want something"), which meant only that each stone appears in some
+              chain and read as "this pair will work" — so it sent players to
+              pour two unrelated stones with confidence. This says whether THESE
+              TWO make something, before anything is spent. What they make is
+              still found only by pouring.
+            */}
+            {(() => {
+              const r = benchReading(state as GameState, feedA, feedB);
+              const tone = r.read === 'reacts' ? '#9ac07a'
+                : r.read === 'known' ? '#9fc4dd'
+                  : r.read === 'inert' ? '#c46a5a' : '#8a7f70';
+              return (
+                <div
+                  className="mt-1.5 rounded border px-1.5 py-1 text-[10px] leading-snug"
+                  style={{ borderColor: `${tone}55`, color: tone }}
+                  data-testid="bench-reading"
+                  data-read={r.read}
+                >
+                  {r.line}
+                </div>
+              );
+            })()}
             <button
               className="btn btn-warm mt-2 w-full py-1.5 text-xs"
               disabled={!feedA || !feedB || feedA === feedB}
@@ -236,7 +254,14 @@ export function RefineryPanel() {
                   : `Slag, and a smell. ${d.line ?? ''}`);
               }}
             >
-              {feedA === feedB && feedA ? 'Two of the same thing is a pile' : 'Run it'}
+              {(() => {
+                const r = benchReading(state as GameState, feedA, feedB);
+                if (r.read === 'same') return 'Two of the same thing is a pile';
+                if (r.read === 'inert') return 'Run it anyway — this is slag';
+                if (r.read === 'known') return 'Run it';
+                if (r.read === 'reacts') return 'Run it — these two make something';
+                return 'Run it';
+              })()}
             </button>
             {result && <div className="mt-1.5 text-center text-[11px] text-cave-300">{result}</div>}
 

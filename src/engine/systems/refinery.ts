@@ -330,34 +330,66 @@ export function scentOf(materialId: string | null | undefined): ScentLevel {
 }
 
 /**
- * WHAT THE BENCH SAYS ABOUT THE PAIR CURRENTLY IN IT, before anything is spent.
+ * WHAT THE BENCH SAYS ABOUT THE PAIR IN IT, before anything is spent.
  *
- * It deliberately does NOT answer "is this a chain" — that would be the locked
- * list with extra steps, and the finding would stop being a finding. It answers
- * the strictly weaker question the player actually needs to stop flailing: are
- * these two stones the KIND of thing that reacts at all.
+ * A.70 SHIPPED THIS AS TWO SOLO READINGS AND IT WAS WORSE THAN NOTHING.
+ * It said "both of these want something", which meant only that each stone
+ * appears in SOME chain -- and it read as "this pair will work". A player who
+ * trusted it poured two stones with nothing to do with each other and got
+ * slag: the same lottery as before, with a confident voice on top.
+ *
+ * So the reading is a PAIR reading now. It answers the question actually being
+ * asked at the moment two stones are in the slots: do THESE TWO have something
+ * to make together.
+ *
+ * WHAT THIS COSTS PILLAR 5, said plainly rather than pretended away. It gives
+ * up "which pairs react" as a thing to discover. It keeps the half that was
+ * ever worth discovering -- WHAT they make, still found only by pouring and
+ * still the only thing the Codex records. Finding a chain becomes reading what
+ * you hold rather than a one-in-117 lottery, and that trade is the right way
+ * round: the fun was never in the guessing.
  */
+export type PairRead = 'empty' | 'same' | 'reacts' | 'known' | 'inert';
+
+export interface BenchReading {
+  read: PairRead;
+  /** Solo scents, still per slot so the PICKER can be narrowed before you pair. */
+  a: ScentLevel;
+  b: ScentLevel;
+  line: string;
+}
+
 export function benchReading(
   state: GameState, aId: string | null, bId: string | null,
-): { a: ScentLevel; b: ScentLevel; line: string } {
-  void state;
+): BenchReading {
   const a = scentOf(aId);
   const b = scentOf(bId);
-  const name = (id: string | null): string => (id ? materialDef(id).name : '');
-  if (a === 'unknown' || b === 'unknown') {
-    return { a, b, line: 'Two stones, and the bench will tell you whether either is worth the loss.' };
+  const name = (id: string | null): string => (id ? materialDef(id).name : "");
+
+  if (!aId || !bId) {
+    return { read: 'empty', a, b, line: 'Put two stones in. The bench will say whether they have anything to make together.' };
   }
-  if (a === 'inert' && b === 'inert') {
-    return { a, b, line: `Neither ${name(aId)} nor ${name(bId)} reacts with anything at all. This will be slag.` };
+  if (aId === bId) {
+    return { read: 'same', a, b, line: 'Two of the same thing is a pile, not a reaction.' };
   }
-  if (a === 'inert' || b === 'inert') {
-    const dead = a === 'inert' ? name(aId) : name(bId);
-    const live = a === 'inert' ? name(bId) : name(aId);
-    return { a, b, line: `${live} wants something. ${dead} is not it — nothing reacts with ${dead}.` };
+
+  const chain = findChain(aId, bId);
+  if (!chain) {
+    return {
+      read: 'inert', a, b,
+      line: `${name(aId)} and ${name(bId)} have nothing to say to each other. This would come back as slag.`,
+    };
+  }
+  // ALREADY FOUND: no reason to make a player re-derive their own Codex.
+  if (state.refinery?.found?.includes(chain.id)) {
+    return {
+      read: 'known', a, b,
+      line: `${chain.name} — you have run this one. ${chain.cost} of each makes ${materialDef(chain.out).name}.`,
+    };
   }
   return {
-    a, b,
-    line: 'Both of these want something. Whether they want each other is the part you have to find out.',
+    read: 'reacts', a, b,
+    line: `These two have something to make together. What it is, you find out by pouring — ${chain.cost} of each.`,
   };
 }
 
