@@ -481,20 +481,15 @@ export const QUESTLINES: Record<string, QuestStep[]> = {
     { note: 'Hold the Ember Array in its band for three unbroken minutes.', check: (s) => (s.ember?.bestSustainSec ?? 0) >= 180, reward: { scrip: 35, renown: 4 } },
     { note: 'Vent a thousand heat and flood nothing. Devotion is restraint.', check: (s) => (s.pressure?.ventedTotal ?? 0) >= 1000 && (s.pressure?.floods ?? 0) === 0, reward: { renown: 10 } },
   ],
-  jib: [
-    { note: 'Chase down three anomalies. He wants the details RUNNING order.', check: (s) => (s.anomalies?.resolved ?? 0) >= 3, reward: { scrip: 20 } },
-    { note: 'Meet the merchant who should not be down there.', check: (s) => (s.anomalies?.merchantMeets ?? 0) >= 1, reward: { scrip: 30, renown: 3 } },
-    { note: 'Twelve anomalies answered. Jib retires the word "unconfirmed".', check: (s) => (s.anomalies?.resolved ?? 0) >= 12, reward: { renown: 8 } },
-  ],
+  // jib: emptied A.72 — all three asks named anomalies (cut).
+  jib: [],
   cully: [
     { note: 'Forge a Tier X tool. Cully takes notes over your shoulder.', check: (s) => s.forge.tools.some((t) => t.tier >= 10), reward: { scrip: 20 } },
     { note: 'Tier XIII. Marrow pretends not to watch either of you.', check: (s) => s.forge.tools.some((t) => t.tier >= 13), reward: { scrip: 35, renown: 4 } },
     { note: 'Forge the Fifteenth. The ladder ends; the apprenticeship does too.', check: (s) => s.forge.tools.some((t) => t.tier >= 15), reward: { charter: 1, renown: 12 } },
   ],
   rane: [
-    { note: 'Witness five anomalies. Every rumor was true, which ruins her.', check: (s) => (s.anomalies?.seen ?? 0) >= 5, reward: { scrip: 20 } },
     { note: 'Ride a Magma Well to a payout she can misquote.', check: (s) => (s.wells?.wins ?? 0) >= 1, reward: { scrip: 30, renown: 3 } },
-    { note: 'Meet the merchant twice. Now SHE owes YOU a story.', check: (s) => (s.anomalies?.merchantMeets ?? 0) >= 2, reward: { renown: 8 } },
   ],
   // Phase 10 accrual — the last five askings. The book of the hall closes.
   lark: [

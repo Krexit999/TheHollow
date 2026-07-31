@@ -216,7 +216,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   A('vent1k', 5, 13, 'A Thousand Breaths', 'Vent 1,000 heat.', (s) => s.pressure.ventedTotal >= 1000, 'regen', 1.05, '+5% regen'),
   A('pipes8', 6, 13, 'Plumbing the Depths', 'Lay eight sections of the Vent Network.', (s) => s.pressure.pipes.filter((p) => p > 0).length >= 8, 'dustYield', 1.04, '+4% chip yield'),
   A('sustain3', 7, 13, 'The Steady Fire', 'Hold the Ember Array in band for three minutes.', (s) => s.ember.bestSustainSec >= 180, 'kilnRate', 1.05, '+5% converter intake'),
-  A('anomalies5', 8, 13, 'Five Strange Answers', 'Answer five anomalies.', (s) => s.anomalies.resolved >= 5, 'dropRate', 1.05, '+5% drops'),
   A('wellRoll', 9, 13, 'The Rope Went Down', 'Collect a Magma Well, win or lose.', (s) => s.wells.rolls >= 1, 'dropRate', 1.04, '+4% drops'),
   A('heat90', 0, 14, 'Ninety Degrees of Nerve', 'Run the shaft at ninety heat.', (s) => s.pressure.peakHeat >= 90, 'dustYield', 1.06, '+6% chip yield'),
   A('unflooded', 1, 14, 'The Klaxon, Answered', 'Enter OVERPRESSURE and never flood.', (s) => s.pressure.overpressures >= 1 && s.pressure.floods === 0, 'regen', 1.05, '+5% regen'),
@@ -226,8 +225,6 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   A('network2', 5, 14, 'A Second Wind', 'Route the Vent Network to two heat per second.', (s) => networkCapacity(s) >= 2, 'regen', 1.05, '+5% regen'),
   A('sustain10', 6, 14, 'The Long Burn', 'Hold the band for ten minutes.', (s) => s.ember.bestSustainSec >= 600, 'kilnRate', 1.06, '+6% converter intake'),
   A('hotKill', 7, 14, "Ambition's Own Predator", 'Fell a creature that only exists above fifty heat.', (s) => (s.combat.kills['magmalurk'] ?? 0) + (s.combat.kills['moltenchoir'] ?? 0) >= 1, 'strikePower', 1.06, '+6% strike power'),
-  A('anomalies12', 8, 14, 'A Local Expert', 'Answer twelve anomalies.', (s) => s.anomalies.resolved >= 12, 'dropRate', 1.05, '+5% drops'),
-  A('merchantTwice', 9, 14, 'A Regular, Somehow', 'Meet the stray merchant twice.', (s) => s.anomalies.merchantMeets >= 2, 'scripGain', 1.1, '+10% Scrip'),
   // Columns 16-19 (Phase 10): the last columns. The grid closes.
   A('void100k', 0, 15, 'A Hundred Thousand Nothings', 'Earn 100K Void.', (s) => (s.totals['void']?.gte(1e5)) ?? false, 'dustYield', 1.05, '+5% chip yield'),
   A('breach5', 1, 15, 'Five Floors Down', 'Breach into the Hollow.', (s) => s.shell.breachCount >= 5, 'dustYield', 1.1, '+10% chip yield'),

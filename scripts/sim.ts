@@ -751,18 +751,11 @@ function masteryLevelOf(s: GameState, shellId: string): number {
 let heatStance: Args['heat'] = 'balanced';
 const cinderMetrics = {
   heatSum: 0, heatSamples: 0, purges: 0, wellsNet: 0, wellsCommitted: 0,
-  fuelLit: 0, anomaliesAnswered: 0,
+  fuelLit: 0,
 };
 let lastArrayTend = -1e9;
 
 function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
-  // Anomalies: every stance answers them — they are pure upside by charter.
-  if (s.anomalies.active) {
-    if (engine.dispatch({ type: 'answerAnomaly' }).ok) {
-      cinderMetrics.anomaliesAnswered += 1;
-      if (s.combat.active) fightManually(engine, s);
-    }
-  }
   if (currentShell(s).id !== 'cinder') return;
   const p = s.pressure;
   cinderMetrics.heatSum += p.heat;
@@ -2689,7 +2682,6 @@ function main(): void {
       `pipes ${s.pressure.pipes.filter((p: number) => p > 0).length} (vented ${fmt(s.pressure.ventedTotal)}) | ` +
       `array best ${Math.floor(s.ember.bestSustainSec / 60)}m${Math.floor(s.ember.bestSustainSec % 60)}s (rank ${s.ember.passiveRank}) | ` +
       `wells ${s.wells.rolls} rolls ${s.wells.wins}W/${s.wells.losses}L (net ${fmt(cinderMetrics.wellsNet)}) | ` +
-      `anomalies seen ${s.anomalies.seen} answered ${cinderMetrics.anomaliesAnswered} (merchant ${s.anomalies.merchantMeets}) | ` +
       `crew ${s.guild.crewRecalled ? 'RECALLED' : 'stationed'}, fallen ${Object.values(s.guild.hirelings).filter((h) => h.status === 'fallen').length}`,
   );
   console.error(

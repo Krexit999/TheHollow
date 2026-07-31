@@ -19,7 +19,7 @@ import { GuildPanel } from './components/guild';
 import { JournalPanel } from './components/journal';
 import { BrewPanel, GreenhousePanel, GrowthChip, LoomPanel, MyceliumPanel, WeatherChip } from './components/verdance';
 import { BenchPanel, ObservatoryPanel, RunesPanel, WarrensPanel } from './components/glassmere';
-import { AnomalyBanner, EmberPanel, FloodModal, OverpressureOverlay, VentsPanel, WellsPanel } from './components/cinder';
+import { EmberPanel, FloodModal, OverpressureOverlay, VentsPanel, WellsPanel } from './components/cinder';
 import { ChamberPanel, HollowPanel, ParallelView, RewritePanel } from './components/hollow';
 import { NextHint } from './components/NextHint';
 import { DisclosureGate } from './components/DisclosureGate';
@@ -253,7 +253,6 @@ export function App() {
                 <GrowthChip />
                 <EncounterBanner />
                 <OverpressureOverlay />
-                <AnomalyBanner />
               </PanelErrorBoundary>
             </div>
             {shaftAvailable && (

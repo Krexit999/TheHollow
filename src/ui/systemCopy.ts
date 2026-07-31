@@ -452,7 +452,7 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       return `${s.relics.equipped.length}/6 worn · ${s.relics.held.length} held${locked > 0 ? ` · ${locked} locked` : ''}`;
     },
     next: (s) => {
-      if (s.relics.held.length === 0) return 'Nothing yet. They come out of the deep shaft, the Warrens, anomalies, wells, and back with the crews.';
+      if (s.relics.held.length === 0) return 'Nothing yet. They come out of the deep shaft, the Warrens, wells, and back with the crews.';
       if (s.relics.equipped.length === 0) return 'Nothing worn. A relic in the hold does nothing at all — wear one.';
       if (s.relics.held.length > s.relics.equipped.length + 2) return 'You are carrying spares. Fuse them in — nothing is lost, and the keeper only ever improves.';
       return `${s.relics.equipped.length} of six worn. An empty slot is pure loss.`;

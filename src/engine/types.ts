@@ -498,13 +498,6 @@ export interface WellsState {
   totalReturned: Decimal;
 }
 
-export interface AnomaliesState {
-  nextAtPlaySec: number;
-  active: { id: string; startedAtPlaySec: number } | null;
-  seen: number;
-  resolved: number;
-  merchantMeets: number;
-}
 
 // ---------------------------------------------------------------------------
 // Hollow, Aleph, Recursion (Phase 10)
@@ -943,7 +936,6 @@ export interface GameState {
   pressure: PressureState;
   ember: EmberState;
   wells: WellsState;
-  anomalies: AnomaliesState;
   hollow: HollowState;
   chamber: ChamberState;
   aleph: AlephState;
@@ -1241,9 +1233,6 @@ export type GameEvent =
   | { type: 'arrayBest'; seconds: number }
   | { type: 'emberglassAnnealed'; total: number }
   | { type: 'wellResult'; wellId: string; mult: number; amount: Decimal }
-  | { type: 'anomaly'; id: string }
-  | { type: 'anomalyAnswered'; id: string; line: string }
-  | { type: 'anomalySettled'; id: string }
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
   | { type: 'cellRebuilt'; cell: number; total: number }
   | { type: 'faceWhole' }
@@ -1465,7 +1454,6 @@ export type GameAction =
   | { type: 'temperTool'; temperId: string }
   | { type: 'commitWell'; wellId: string; amount: number }
   | { type: 'collectWell'; wellId: string }
-  | { type: 'answerAnomaly' }
   | { type: 'listen' }
   | { type: 'setListenAt'; stacks: number }
   | { type: 'rebuildCell'; cell: number }

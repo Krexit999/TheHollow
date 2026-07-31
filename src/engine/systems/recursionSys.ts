@@ -12,7 +12,7 @@
  *  every CODEX (bestiary seen/kills, chords + progressions discovered,
  *  alloys discovered + ranks, strains, brews, loom shapes, lenses solved,
  *  star charts, rune grammar + found runes + inscriptions, warren uniques,
- *  Array best-burn, Chamber best program, wells/anomaly lifetime counts,
+ *  Array best-burn, Chamber best program, wells lifetime counts,
  *  lifetime stats and totals), meta currencies (Scrip, Renown, Charter,
  *  Axioms), and the Axioms owned.
  *  TOOLS SURVIVE AS HEIRLOOMS (ruling): name, purity, gems, and alloys kept;
@@ -122,9 +122,6 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
   next.wells.rolls = state.wells.rolls;
   next.wells.wins = state.wells.wins;
   next.wells.losses = state.wells.losses;
-  next.anomalies.seen = state.anomalies.seen;
-  next.anomalies.resolved = state.anomalies.resolved;
-  next.anomalies.merchantMeets = state.anomalies.merchantMeets;
   // Meta currencies ride; everything else washes. Resonance rides too (Part B
   // export spine): every Axiom is written IN it, and what you banked listening
   // in the old world's Hollow must be spendable on the new world's laws — or

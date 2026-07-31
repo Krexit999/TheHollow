@@ -702,16 +702,6 @@ async function main(): Promise<void> {
   await desktop.waitForTimeout(400);
   await desktop.screenshot({ path: `${OUT}/desktop-wells.png` });
 
-  // An anomaly asking politely.
-  await desktop.evaluate(() => {
-    const engine = (window as unknown as Record<string, any>)['__engine'];
-    const s = engine.getState();
-    s.anomalies.active = { id: 'strayMerchant', startedAtPlaySec: s.stats.playTimeSec };
-  });
-  await desktop.getByRole('button', { name: 'Dig', exact: true }).click();
-  await desktop.waitForTimeout(400);
-  await desktop.screenshot({ path: `${OUT}/desktop-anomaly.png` });
-
   // --- Phone ---
   const phone = await browser.newPage({
     viewport: { width: 390, height: 844 },

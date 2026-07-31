@@ -219,7 +219,7 @@ export const CONCEPT_PAGES: ConceptPage[] = [
     paragraphs: [
       'Everything rate-based keeps running: the field refills, drills harvest, the converter burns, craft boards accrue passive rank, expeditions walk, observatory exposures finish, and the Guild clock turns.',
       'On return the game computes the interval and pays it at your offline efficiency. There is no cap on the interval. A year works; it has been tested.',
-      'Nothing expires while you are gone. Expedition hauls wait at the gate forever, Well results wait forever, contracts never time out, and an anomaly you miss settles on its own and still pays a little. If you find something in this game that punishes you for being away, it is a bug — report it.',
+      'Nothing expires while you are gone. Expedition hauls wait at the gate forever, Well results wait forever, and contracts never time out. If you find something in this game that punishes you for being away, it is a bug — report it.',
     ],
   },
   {

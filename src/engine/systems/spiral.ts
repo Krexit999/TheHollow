@@ -130,9 +130,6 @@ export function doSpiral(
   next.wells.rolls = state.wells.rolls;
   next.wells.wins = state.wells.wins;
   next.wells.losses = state.wells.losses;
-  next.anomalies.seen = state.anomalies.seen;
-  next.anomalies.resolved = state.anomalies.resolved;
-  next.anomalies.merchantMeets = state.anomalies.merchantMeets;
   for (const id of ['scrip', 'renown', 'charter'] as const) {
     next.currencies[id] = state.currencies[id] ?? D(0);
   }

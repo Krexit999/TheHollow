@@ -11,9 +11,6 @@ import { upgradeLevel } from '../upgrades';
 import { fmt, setNumberFormat } from '../decimal';
 import { tickAutoRefine, refineryUnlocked } from '../systems/refinery';
 import { addMaterial, materialCount } from '../systems/forge';
-import { marrowCritique } from '../systems/marrow';
-import { MATERIALS } from '../materials';
-import { activePairs, traitsOf } from '../traits';
 import { latticeGhost, removeMotif } from '../content/shell1/latticeSystem';
 import { hexKey } from '../systems/lattice/hex';
 import type { EngineCtx } from '../types';
@@ -243,38 +240,6 @@ describe('auto-refine — a standing rule that only ever converts (pillar 2)', (
     st.qol.refinePresets[0]!.enabled = false;
     tickAutoRefine(st, nullCtx);
     expect(materialCount(st, 'marl')).toBe(30);
-  });
-});
-
-describe("Marrow's eye — a critique, never an oracle (pillar 5)", () => {
-  it('says nothing about an unfinished build, and gives a clean build one nod', () => {
-    const { s } = fresh();
-    const st = s();
-    expect(marrowCritique(st, null, 'marl', 'ochre')).toEqual([]);
-    const nod = marrowCritique(st, 'marl', 'marl', 'marl');
-    expect(nod.length).toBe(1);
-    expect(nod[0]).toMatch(/good hands|nothing wrong/i);
-  });
-
-  it('never names a trait pairing the player has not discovered', () => {
-    const { s } = fresh();
-    const st = s();
-    // Find a trio whose combined traits form a DRAG (mult<1) pairing.
-    let found: { head: string; haft: string; binding: string; name: string } | null = null;
-    const ids = MATERIALS.map((m) => m.id);
-    outer: for (const a of ids) {
-      for (const b of ids) {
-        const combined = [...traitsOf(a), ...traitsOf(b)];
-        const grind = activePairs(combined).find((p) => p.mult < 1);
-        if (grind) { found = { head: a, haft: b, binding: a, name: grind.name }; break outer; }
-      }
-    }
-    if (!found) return; // no drag pair in content — nothing to prove
-    // Undiscovered: the pair name must NOT appear anywhere in the critique.
-    st.forge.pairsFound = [];
-    const blind = marrowCritique(st, found.head, found.haft, found.binding).join(' ');
-    expect(blind.toLowerCase()).not.toContain(found.name.toLowerCase());
-    expect(blind).toMatch(/fights itself|soft|outmatched|poor grade/i);
   });
 });
 

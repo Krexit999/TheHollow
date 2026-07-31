@@ -28,7 +28,6 @@ import { defaultLoomState } from './content/shell3/loomSystem';
 import { defaultPressureState } from './systems/pressure';
 import { defaultEmberState } from './content/shell5/emberArray';
 import { defaultWellsState } from './content/shell5/wells';
-import { defaultAnomaliesState } from './systems/anomalies';
 import { defaultHollowState } from './systems/absence';
 import { defaultChamberState } from './content/shell6/chamber';
 import { defaultRecursionState } from './systems/recursionSys';
@@ -117,7 +116,6 @@ export function initialState(nowMs: number): GameState {
     pressure: defaultPressureState(),
     ember: defaultEmberState(),
     wells: defaultWellsState(),
-    anomalies: defaultAnomaliesState(),
     hollow: defaultHollowState(),
     chamber: defaultChamberState(),
     aleph: { sigils: 0, coreTouched: false },

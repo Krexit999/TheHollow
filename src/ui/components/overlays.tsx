@@ -15,7 +15,6 @@ import { CONSTELLATIONS } from '../../engine/content/shell4/observatory';
 import { lensFor } from '../../engine/content/shell4/bench';
 import { WARREN_BY_ID } from '../../engine/content/shell4/warrens';
 import { RUNE_NAMES, RUNE_PAIRS } from '../../engine/content/shell4/runes';
-import { ANOMALY_BY_ID } from '../../engine/systems/anomalies';
 import { AXIOM_BY_ID } from '../../engine/content/shell7/axioms';
 import { RARITY_COLOR } from './HoldPanel';
 import { dispatch, useGame } from '../store';
@@ -380,10 +379,6 @@ export function Toasts() {
           body: ev.mult === 0 ? `${fmt(ev.amount)} gone where the rope goes. The odds said this, out loud.` : `${fmt(ev.amount.mul(ev.mult))} up the rope. The posted odds, honored.`,
           color: ev.mult === 0 ? '#8a7f70' : '#ffb36a',
         });
-      } else if (ev.type === 'anomalyAnswered') {
-        fresh.push({ key: entry.seq, title: ANOMALY_BY_ID.get(ev.id)?.name ?? 'An anomaly', body: ev.line, color: '#c9a8e8' });
-      } else if (ev.type === 'anomalySettled') {
-        fresh.push({ key: entry.seq, title: 'It settled', body: ANOMALY_BY_ID.get(ev.id)?.settleLine ?? 'The strangeness kept to itself.', color: '#8a7f70' });
       } else if (ev.type === 'hirelingLost') {
         fresh.push({ key: entry.seq, title: `${npcDef(ev.npcId).name} is gone`, body: 'The flood took the longest-serving hand still on the floor. The hall will hold a wake.', color: '#e07a6a' });
       } else if (ev.type === 'silenceHarvest') {

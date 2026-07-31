@@ -90,7 +90,6 @@ import { temperTool } from './systems/tempering';
 import type { PurityBand } from './materials';
 import { materialDef, MATERIALS, GEMS } from './materials';
 import { collectWell, commitToWell } from './content/shell5/wells';
-import { answerAnomaly } from './systems/anomalies';
 import { listen, rebuildCell } from './systems/absence';
 import { buyAxiom, doRecursion } from './systems/recursionSys';
 import { wardenOf, SPECIES } from './combat/species';
@@ -719,9 +718,6 @@ export function handleAction(
 
     case 'collectWell':
       return collectWell(state, ctx, action.wellId);
-
-    case 'answerAnomaly':
-      return answerAnomaly(state, mods, ctx);
 
     case 'listen':
       return listen(state, mods, ctx);

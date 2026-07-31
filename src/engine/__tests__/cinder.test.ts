@@ -15,7 +15,6 @@ import {
 } from '../systems/pressure';
 import { ARRAY_SIZE, BAND_LOW, buyFuel, lightCell, placeFuel, setDraw, setOverdrive, DRAW_FLOOR } from '../content/shell5/emberArray';
 import { WELL_ODDS, WELLS, collectWell, commitToWell, wellProgress } from '../content/shell5/wells';
-import { ANOMALIES, answerAnomaly, tickAnomalies } from '../systems/anomalies';
 import { AUTO_SKILL, resolveFight } from '../combat/combat';
 import { rollSpecies, speciesOfShell, wardenOf } from '../combat/species';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
@@ -276,47 +275,6 @@ describe('magma wells: published odds, capped commits, results that wait', () =>
   });
 });
 
-describe('anomalies: rare, optional, never a loss', () => {
-  it('the teaching hours stay clean; afterwards they spawn, answer, and settle harmlessly', () => {
-    const { engine, s } = fresh();
-    engine.dispatch({ type: 'debug', op: 'warp', seconds: 3 * 3600 });
-    expect(s.anomalies.seen).toBe(0); // pre-breach: nothing strange, ever
-    s.shell.breachCount = 1;
-    tickAnomalies(s, new ModifierCache(), ctx as never); // schedules
-    expect(s.anomalies.nextAtPlaySec).toBeGreaterThan(s.stats.playTimeSec + 9000 - 1);
-    s.anomalies.nextAtPlaySec = s.stats.playTimeSec + 1;
-    engine.tick(3);
-    expect(s.anomalies.active).not.toBe(null);
-    expect(s.anomalies.seen).toBe(1);
-    // Ignoring it costs NOTHING: it settles, still counted, nothing applied.
-    s.anomalies.active!.startedAtPlaySec = s.stats.playTimeSec - 1801;
-    engine.tick(2);
-    expect(s.anomalies.active).toBe(null);
-    expect(s.anomalies.resolved).toBe(0); // settled ≠ answered — no effect ran
-    // Answering one pays.
-    s.anomalies.active = { id: 'echoPocket', startedAtPlaySec: s.stats.playTimeSec };
-    const motifs = getCurrency(s, 'motif').toNumber();
-    const mods = new ModifierCache();
-    expect(answerAnomaly(s, mods, ctx as never).ok).toBe(true);
-    expect(getCurrency(s, 'motif').toNumber()).toBe(motifs + 12);
-    expect(s.anomalies.resolved).toBe(1);
-  });
-
-  it('every anomaly is answerable without a crash, in its own shell', () => {
-    for (const def of ANOMALIES) {
-      const { s } = cindery();
-      if (def.shellId && def.shellId !== 'cinder') {
-        s.shell.current = def.shellId;
-        s.depthRecords[def.shellId] = 60;
-      }
-      s.depth = 50;
-      const mods = new ModifierCache();
-      s.anomalies.active = { id: def.id, startedAtPlaySec: 0 };
-      expect(answerAnomaly(s, mods, ctx as never).ok).toBe(true);
-    }
-  });
-});
-
 describe('the cinder bestiary: heat is the ecology', () => {
   it('fifteen species; the hot ones do not exist below their heat', () => {
     expect(speciesOfShell('cinder')).toHaveLength(15);
@@ -360,7 +318,7 @@ describe('save v9', () => {
     const { s } = fresh();
     s.guild.hirelings['pell'] = { level: 1, xp: 100, status: 'well' };
     const raw = JSON.parse(serialize(s, 0)) as { state: Record<string, unknown> };
-    for (const k of ['pressure', 'ember', 'wells', 'anomalies']) delete raw.state[k];
+    for (const k of ['pressure', 'ember', 'wells']) delete raw.state[k];
     delete (raw.state['guild'] as Record<string, unknown>)['crewRecalled'];
     const migrated = runMigrations({ version: 8, savedAt: 0, state: raw.state } as never);
     expect(migrated.version).toBe(SAVE_VERSION);

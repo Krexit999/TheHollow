@@ -50,7 +50,6 @@ import { tickWeather } from './systems/weather';
 import { tickGreenhouse } from './content/shell3/greenhouse';
 import { tickMycelium } from './content/shell3/mycelium';
 import { tickBrewing } from './content/shell3/brews';
-import { tickAnomalies } from './systems/anomalies';
 import { RESONANCE_PER_STEP, TAPE_WHITELIST, replayInterval, tapeLabel } from './content/shell6/chamber';
 import { lawFlag, lawNum } from './laws';
 import { addCurrency, getTotal, spendCurrency } from './resources';
@@ -195,7 +194,6 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       tickMycelium(state, ctx);
       tickBrewing(state, ctx);
       noticeConfluences(state, ctx);
-      tickAnomalies(state, mods, ctx);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

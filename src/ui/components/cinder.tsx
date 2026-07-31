@@ -1,8 +1,8 @@
 /**
  * Phase 9 UI: heat and threat. The Pressure card (the gauge and its two
  * levers), the OVERPRESSURE and flood states (calm, legible, motionless),
- * the Vent Network, the Ember Array, the Magma Wells, and the anomaly
- * banner. The boldness budget is spent on heat; everything else is quiet.
+ * the Vent Network, the Ember Array, and the Magma Wells.
+ * The boldness budget is spent on heat; everything else is quiet.
  */
 import { useEffect, useRef, useState } from 'react';
 import { fmt, getCurrency } from '../../engine';
@@ -18,7 +18,6 @@ import {
 import { materialCount } from '../../engine/systems/forge';
 import { InstallButton } from './exports';
 import { WELLS, WELL_ODDS, wellProgress, wellsUnlocked, wellTapLive } from '../../engine/content/shell5/wells';
-import { ANOMALY_BY_ID } from '../../engine/systems/anomalies';
 import { floodCasualty } from '../../engine/systems/pressure';
 import { npcDef } from '../../engine/guild/npcs';
 import { dispatch, useGame } from '../store';
@@ -187,31 +186,6 @@ export function FloodModal() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// The anomaly banner — an event, not a chore. Ignoring it is always free.
-// ---------------------------------------------------------------------------
-
-export function AnomalyBanner() {
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  if (!state?.anomalies.active) return null;
-  const def = ANOMALY_BY_ID.get(state.anomalies.active.id);
-  if (!def) return null;
-  return (
-    <div className="pointer-events-auto absolute inset-x-0 bottom-2 z-20 mx-auto w-full max-w-md px-3">
-      <div className="rounded-lg border border-[#8a6aa8] bg-cave-900/95 p-2.5 shadow-xl">
-        <div className="text-xs font-semibold text-[#c9a8e8]">{def.name}</div>
-        <div className="mt-0.5 text-[11px] leading-snug text-cave-300">{def.banner}</div>
-        <div className="mt-1.5 flex items-center gap-2">
-          <button className="btn btn-warm flex-1 py-1 text-xs" onClick={() => dispatch({ type: 'answerAnomaly' })}>
-            {def.answerLabel}
-          </button>
-          <span className="text-[9px] italic text-cave-400">or ignore it — it settles harmlessly</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // The Vent Network — plumbing as a hobby, headroom as the payoff.

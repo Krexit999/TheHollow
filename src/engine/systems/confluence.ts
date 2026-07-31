@@ -187,16 +187,6 @@ export const CONFLUENCES: ConfluenceDef[] = [
     bucket: 'dropRate', bonus: 0.12,
   },
 
-  // --- SPECIES × ANOMALY --------------------------------------------------
-  {
-    // 'vents' since B5: the wells are a tap in the vent gallery now, and the
-    // strange seasons rise the same shafts.
-    id: 'drawnOut', name: 'Drawn Out', systems: ['vents', 'bestiary'],
-    flavor: 'Anomalies bring things up with them. The Bestiary fills faster in a strange season.',
-    active: (s) => s.anomalies.resolved >= 3 && s.combat.seen.length >= 12,
-    bucket: 'xpGain', bonus: 0.18,
-  },
-
   // --- MATERIALS WITH SOULS (Phase 17): traits reach outward --------------
   {
     id: 'liveTool', name: 'The Live Tool', systems: ['forge', 'polarity'],

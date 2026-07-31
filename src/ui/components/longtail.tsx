@@ -532,7 +532,7 @@ export function RelicsPanel() {
       />
       {sorted.length === 0 && (
         <p className="mt-1 text-[11px] italic leading-snug text-cave-500">
-          Nothing spare. They come up out of the deep shaft, out of Warrens, out of anomalies and
+          Nothing spare. They come up out of the deep shaft, out of Warrens, out of
           wells, and back with the crews.
         </p>
       )}
