@@ -859,12 +859,32 @@ export function toolInstability(state: GameState): InstabilityRead {
  * part — this is the tool quietly getting better while you are elsewhere, which
  * is the whole of what the modifier promises.
  */
+/**
+ * HOW LONG THE TOOL HAS TO BE PUT DOWN BEFORE IT STARTS MENDING ITSELF.
+ *
+ * Reported: "with Unbreaking 5 + auto-regen, tools never break." Measured, a
+ * stacked build mended **1.658 wear a second against 0.001 spent** — outpacing
+ * hard use by more than a thousand times — so durability had stopped existing.
+ *
+ * The fix is the modifier's own flavour text, enforced: Self-Mending says "it
+ * puts itself right, slowly, WHILE YOU ARE DOING SOMETHING ELSE", and it was
+ * doing it mid-swing. Now it means it. Mining hard genuinely wears the tool
+ * down; the pool comes back while you are at the Forge, in the Refinery, or
+ * away — which is the maintenance rhythm the brief asks for and costs an idle
+ * player nothing at all (pillar 1).
+ */
+export const MEND_IDLE_SEC = 10;
+
 export function tickToolMods(state: GameState, dt: number): void {
   if (!state.casting) return;
   const cache = modCache(state, 0);
   if (state.casting.wear <= 0) return;
   const tool = currentTool(state);
   if (!tool) return;
+  // PUT IT DOWN FIRST. An absent stamp reads as "never used", which is correct
+  // for a save written before this and for a tool that has not swung yet.
+  const since = state.stats.playTimeSec - (state.casting.lastUsedAt ?? -Infinity);
+  if (since < MEND_IDLE_SEC) return;
   // A KNITTING living part closes its own wear over, exactly as Self-Mending
   // does — one term, two sources.
   const rate = cache.repairPerSec + growthFold(tool.parts).repairPerSec;

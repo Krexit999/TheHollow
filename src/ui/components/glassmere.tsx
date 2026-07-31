@@ -551,6 +551,7 @@ export function RunesPanel() {
   useGame((s) => s.rev);
   const [target, setTarget] = useState<(typeof INSCRIPTION_TARGETS)[number]>('tool');
   const [seq, setSeq] = useState<(RuneId | null)[]>([null, null, null]);
+  const [practice, setPractice] = useState<{ harmonic: number; dissonant: number; silent: number } | null>(null);
   if (!state) return null;
   const anyRunes = Object.values(state.runes.found).some((n) => n > 0) || state.runes.pairsSeen.length > 0;
   if (!anyRunes) {
@@ -623,13 +624,44 @@ export function RunesPanel() {
             </button>
           ))}
         </div>
-        <button
-          className="btn btn-warm mt-2 w-full py-1.5 text-xs"
-          disabled={!view.some(Boolean)}
-          onClick={() => dispatch({ type: 'inscribe', target, sequence: view })}
-        >
-          Etch the sequence
-        </button>
+        {/*
+          PRACTISE ON SCRAP — re-homed from the Workbench (A.70).
+          The Workbench was stripped as redundant with the Casting station, and
+          it was, for TOOLS. But it also carried this, which has nothing to do
+          with casting: try a join for a little Silica and learn its SHAPE — how
+          many rang, how many fought — never which, and never spending a real
+          rune. Deleting the room would have deleted the feature, so it moves to
+          the screen it was always about.
+        */}
+        <div className="mt-2 flex gap-1">
+          <button
+            className="btn flex-1 py-1.5 text-[11px]"
+            data-testid="rune-practice"
+            disabled={view.filter(Boolean).length < 2}
+            title="Practise this join on scrap for a little Silica — learn if it rings, not what it does"
+            onClick={() => {
+              const r = dispatch({ type: 'practiceRunes', sequence: view });
+              if (r.ok) setPractice(r.data as { harmonic: number; dissonant: number; silent: number });
+            }}
+          >
+            Practise on scrap
+          </button>
+          <button
+            className="btn btn-warm flex-1 py-1.5 text-xs"
+            disabled={!view.some(Boolean)}
+            onClick={() => dispatch({ type: 'inscribe', target, sequence: view })}
+          >
+            Etch the sequence
+          </button>
+        </div>
+        {practice && (
+          <div className="mt-1 text-[10px] leading-snug text-cave-400" data-testid="rune-practice-out">
+            The scrap says: <span className="text-[#9ab87a]">{practice.harmonic} rang</span>
+            {practice.dissonant > 0 && <>, <span className="text-[#e0604a]">{practice.dissonant} fought</span></>}
+            {practice.silent > 0 && <>, <span className="text-cave-500">{practice.silent} stayed silent</span></>}.
+            What they mean is yours to find.
+          </div>
+        )}
         {/* What the ETCHED inscription is doing right now — named where you have
             found it, honest that the rest is already in your totals (rule 5). */}
         {(() => {

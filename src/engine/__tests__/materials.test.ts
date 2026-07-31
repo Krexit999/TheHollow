@@ -26,6 +26,7 @@ import {
   SHELL1_MAX_TIER,
 } from '../systems/forge';
 import { assayDuration, dropChance, startAssay } from '../systems/drops';
+import { UNDER_TIER_FARE } from '../systems/depthSys';
 import { computeBucket } from '../modifiers';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
@@ -216,21 +217,37 @@ describe('hardness walls', () => {
     expect(nextWall(s, 200)).toBeNull();
   });
 
-  it('descending past a wall is blocked without the tier', () => {
-    const { engine, s } = fresh();
-    s.depth = 44;
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e9 });
-    const result = engine.dispatch({ type: 'descend' });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toMatch(/Tier II/);
-    // With a tier II tool the same descent works.
-    s.forge.tools.push({
+  it('descending past a wall COSTS more without the tier — it is never blocked', () => {
+    /**
+     * A.70 CHANGED THIS CONTRACT DELIBERATELY. The wall used to REFUSE, and the
+     * brief is explicit that a specific tool must never be required to progress:
+     * "let the new tool improve mining without being a wall." So the assertion
+     * flipped from "you cannot" to "you can, and here is what it costs" — a
+     * better tool is now a discount rather than a key.
+     */
+    const under = fresh();
+    under.s.depth = 44;
+    under.engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e12 });
+    const beforeUnder = under.s.currencies['dust']!.toNumber();
+    const r = under.engine.dispatch({ type: 'descend' });
+    expect(r.ok, 'the wall must not refuse').toBe(true);
+    expect(under.s.depth).toBe(45);
+    const paidUnder = beforeUnder - under.s.currencies['dust']!.toNumber();
+
+    // The same step, properly tooled, is cheaper by exactly the fare.
+    const tooled = fresh();
+    tooled.s.depth = 44;
+    tooled.engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e12 });
+    tooled.s.forge.tools.push({
       id: 9, recipeId: 'loamironPick', name: 'Loamiron Pick', tier: 2,
       purity: 50, chipPower: 1.35, strikePower: 5, sockets: [null], alloys: [],
     });
-    s.forge.equipped = s.forge.tools.length - 1;
-    expect(engine.dispatch({ type: 'descend' }).ok).toBe(true);
-    expect(s.depth).toBe(45);
+    tooled.s.forge.equipped = tooled.s.forge.tools.length - 1;
+    const beforeTooled = tooled.s.currencies['dust']!.toNumber();
+    expect(tooled.engine.dispatch({ type: 'descend' }).ok).toBe(true);
+    const paidTooled = beforeTooled - tooled.s.currencies['dust']!.toNumber();
+
+    expect(paidUnder / paidTooled).toBeCloseTo(UNDER_TIER_FARE, 2);
   });
 });
 

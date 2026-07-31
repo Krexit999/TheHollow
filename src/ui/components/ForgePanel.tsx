@@ -22,7 +22,6 @@ import { traitsOf, TRAITS, type TraitId } from '../../engine/traits';
 import { dispatch, useGame } from '../store';
 import { GemIcon, MaterialIcon } from './MaterialIcon';
 import { GearBench } from './combat';
-import { CraftWorkbench } from './CraftWorkbench';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'];
 
@@ -222,18 +221,28 @@ export function ForgePanel() {
         >Casting Floor</button>. What you already own still works, and still comes apart here.
       </div>
 
-      {/* THE WORKBENCH — the active craft job, or the carve/cut/cast launchers */}
-      <CraftWorkbench />
+      {/*
+        THE WORKBENCH IS GONE (A.70). Its three launchers — Carving, Cutting,
+        Casting — were the old route to making a tool, and every one of them is
+        the Casting Floor's job now: the crucible pours the parts, the station
+        assembles them, and the notice above already points there. Two doors
+        onto the same room is worse than one, and this was the older and worse.
 
+        It was NOT purely redundant, and `reachability.test.ts` said so the
+        moment the file was deleted: it also carried rune PRACTICE and gem
+        FUSION, neither of which casting replaces. Those moved to the rune wall
+        and the Refinery's gem bench rather than dying with the room.
+      */}
       {/* Gear — the second bench (Phase 5) */}
       <GearBench />
 
-      {/* THE ALLOY BENCH — a subsection of the Forge, not a floating panel of
-          its own. It sits with the other benches because that is what it is:
-          another thing this room does. (A.54 moved it down here from the top,
-          where it was the first thing a player saw on a screen that is mostly
-          about tools.) */}
-      <AlloyBench state={state} />
+      {/*
+        THE ALLOY BENCH MOVED TO THE DRILLS (A.70). An alloy has never done
+        anything to a tool — it decides a DRILL's ability and is poured AT named
+        drills, and the bay's own "how do I get one" signpost had to send the
+        player to another room to find it. A bench whose only consumer is
+        another room belongs in that room. `DrillsPanel` renders it now.
+      */}
     </div>
   );
 }
@@ -297,7 +306,7 @@ function TierChip({ shellId, newest }: { shellId: string; newest?: boolean }) {
   );
 }
 
-function AlloyBench({ state }: { state: GameState }) {
+export function AlloyBench({ state }: { state: GameState }) {
   const [picks, setPicks] = useState<string[]>([]);
   const [aim, setAim] = useState<string | null>(null);
   /** THE FIX FOR "guess blind across 100 materials". */

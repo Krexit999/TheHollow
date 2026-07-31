@@ -11,13 +11,25 @@ import { descendCost } from '../prestigeMath';
 import { grantXP } from './xp';
 import { D } from '../decimal';
 import { requiredTier } from './forge';
+
+/**
+ * WHAT ONE TIER SHORT COSTS AT THE STAIR, compounding per tier. Three was the
+ * old "unwritten wall" law's surcharge for exactly one tier under, and it read
+ * as a fair premium in play — so it becomes the general rate rather than a
+ * special case. Two tiers under is 9x, three is 27x: possible, and plainly a
+ * bad idea, which is what a choice should feel like.
+ */
+export const UNDER_TIER_FARE = 3;
+
+/** What the UNWRITTEN WALL law is worth now that it is not the only way through:
+ *  it takes the one-tier surcharge back off entirely. */
+export const WALL_SOFTNESS_RELIEF = 1 / UNDER_TIER_FARE;
 import { effectiveToolTier } from './toolMining';
 import { currentShell } from '../shells';
 import { lawFlag, lawNum, challengeNum } from '../laws';
 import { descendMultiplier, noteReached, clearDigStop } from './shaftSys';
 import { settleRelief, spendSettle } from './settle';
 
-const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 
 /** The base descend cost before the Shaft's re-tread/rail adjustment. */
 export function currentDescendCost(state: GameState, mods: ModifierCache): Decimal {
@@ -54,30 +66,47 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
   const mult = descendMultiplier(state, state.depth + 1);
   if (mult === 0) return finishDescend(state, mods, ctx);
 
-  // The rock hardens with depth — a legible wall, never a trap: you cannot
-  // descend past what your tool can chip. THE UNWRITTEN WALL (law) softens
-  // this to one tier under at triple fare — a slow push, not an open door.
+  // The rock hardens with depth. It is a PRICE, never a door — see below.
   const needed = requiredTier(state, state.depth + 1);
   // THE BETTER OF THE TWO BENCHES. Tool crafting moved to the Casting Floor,
   // so a cast tool has to be able to answer a wall — otherwise a new save is
   // stuck at depth 45 forever. Old tools still count; nothing anyone already
   // paid for gets worse.
   const have = effectiveToolTier(state);
-  const soft = lawNum(state, 'wallSoftness') > 0 && have === needed - 1;
-  if (have < needed && !soft) {
-    return {
-      ok: false,
-      reason: `The rock below is too hard — a Tier ${ROMAN[needed] ?? needed} tool is needed`,
-    };
-  }
+  /**
+   * THE WALL IS A PRICE NOW, NOT A DOOR (A.70).
+   *
+   * It used to REFUSE: "a Tier II tool is needed", full stop, and a player
+   * without one simply could not go down. The brief is explicit that this is
+   * unwanted — "do NOT require a specific tool to progress ... let the new tool
+   * improve mining without being a wall" — and the pillars agree twice over:
+   * pillar 1 says both an idle and an active player must have a path, and the
+   * standing rule against gating a structural unlock behind the wall it exists
+   * to cross is the same shape of bug.
+   *
+   * So being under-tooled costs FARE instead of stopping you: `UNDER_TIER_FARE`
+   * per tier short, compounding. One tier under is a real but payable premium;
+   * three tiers under is possible and stupid, which is exactly the shape a
+   * choice should have. A better tool still matters everywhere it mattered
+   * before — bite, reach, ore speed, and now a cheaper stair — it simply is not
+   * a locked door any more.
+   *
+   * THE UNWRITTEN WALL (law) keeps its meaning as a DISCOUNT on that fare
+   * rather than as the only way through.
+   */
+  const under = Math.max(0, needed - have);
+  const softened = lawNum(state, 'wallSoftness') > 0 && under === 1;
+  const fare = under > 0
+    ? Math.pow(UNDER_TIER_FARE, under) * (softened ? WALL_SOFTNESS_RELIEF : 1)
+    : 1;
   // Railed rock is cheaper to re-descend — the infrastructure carries you down.
   // THE SETTLING (A.42) then erodes what is left, by however much quiet the
-  // shaft has banked. Charged BEFORE the wall-softness triple so the two
-  // compose the way the player reads them: a discount on the price, then the
-  // fare for going down under-tooled.
+  // shaft has banked. Charged BEFORE the under-tier fare so the two compose the
+  // way the player reads them: a discount on the price, then the surcharge for
+  // going down under-tooled.
   const relief = settleRelief(state, state.depth + 1);
   let cost = currentDescendCost(state, mods).mul(mult).mul(relief);
-  if (soft) cost = cost.mul(3);
+  if (fare !== 1) cost = cost.mul(fare);
   // THE WEIGHTLESS PURSE (law): the stair takes the converter currency when
   // that purse is deeper (1 conv counts for 4 chip — the Kiln's own ratio).
   if (lawFlag(state, 'convDescend')) {

@@ -57,6 +57,7 @@ import {
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
 import { legendRows, legendCost } from '../../engine/systems/legendary';
+import { modEffectLine, stabilisingMods, MOD_SHELL_ORDINAL } from '../../engine/content/toolMods';
 import { seasonRows, wearResist } from '../../engine/systems/toolSeason';
 import { LEGENDARY_BY_ID } from '../../engine/content/legendaryParts';
 import { climbPreview, refineryUnlocked } from '../../engine/systems/refinery';
@@ -1206,19 +1207,35 @@ function ModLibrary({ state }: { state: GameState }) {
           {library.map((m) => {
             const from = modRevealedBy(state, m.id);
             return (
-              <div key={m.id} className="flex items-baseline gap-1.5" data-testid={`lib-${m.id}`}>
-                <span
-                  className="shrink-0 text-[9px] font-semibold"
-                  style={{ color: `#${m.color.toString(16).padStart(6, '0')}` }}
+              /*
+               * WHAT IT DOES, ON THE ROW. This listed a name and where it came
+               * from — the two things that do not help you decide anything —
+               * while the typed `fx` block the engine actually applies sat
+               * unrendered. `modEffectLine` reads that same block, so the menu
+               * cannot drift from the numbers in play.
+               */
+              <div key={m.id} className="py-0.5" data-testid={`lib-${m.id}`}>
+                <div className="flex items-baseline gap-1.5">
+                  <span
+                    className="shrink-0 text-[9px] font-semibold"
+                    style={{ color: `#${m.color.toString(16).padStart(6, '0')}` }}
+                  >
+                    {m.name}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[8px] text-cave-600">
+                    {from ? `from ${from}` : 'known a while'}
+                  </span>
+                  <span className="shrink-0 text-[8px] text-cave-600">
+                    {m.cost} slot{m.cost === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div
+                  className="text-[9px] leading-snug text-[#9ac07a]"
+                  data-testid={`lib-fx-${m.id}`}
                 >
-                  {m.name}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[8px] text-cave-600">
-                  {from ? `from ${from}` : 'known a while'}
-                </span>
-                <span className="shrink-0 text-[8px] text-cave-600">
-                  {m.cost} slot{m.cost === 1 ? '' : 's'}
-                </span>
+                  {modEffectLine(m)}
+                </div>
+                <div className="text-[8px] leading-snug italic text-cave-600">{m.effect}</div>
               </div>
             );
           })}
@@ -2747,11 +2764,15 @@ function InstabilityCard({ state }: { state: GameState }) {
   // STABILISERS THE PLAYER ACTUALLY KNOWS, named and priced. "Work a stabiliser
   // in" is not actionable advice if you cannot tell which of your modifiers is
   // one — derived from the library rather than restated in prose.
+  // The ones the player ALREADY KNOWS — advice they can act on today.
   const steadiers = knownMods(state)
     .filter((m) => (m.fx.stabilize ?? 0) > 0)
-    .sort((a, b) => (b.fx.stabilize ?? 0) - (a.fx.stabilize ?? 0)) as Array<
-      { name: string; fx: { stabilize: number } }
-    >;
+    .sort((x, y) => (y.fx.stabilize ?? 0) - (x.fx.stabilize ?? 0));
+  // ...and, when they know none, the shallowest one that exists, so "keep
+  // pouring" points at something rather than at nothing.
+  const firstSteadier = stabilisingMods()
+    .filter((m) => (MOD_SHELL_ORDINAL[m.shell] ?? 9) <= reachedOrdinal(state))
+    .sort((x, y) => (x.fx.stabilize ?? 0) - (y.fx.stabilize ?? 0))[0];
   const frac = Math.min(1, i.net / 200);
   const hot = i.misfire > 0;
   return (
@@ -2779,11 +2800,12 @@ function InstabilityCard({ state }: { state: GameState }) {
       */}
       <div className="mt-1 text-[9px] leading-snug text-cave-300" data-testid="instability-what">
         {hot
-          ? `About ${Math.round(i.misfire * 100)} swings in 100, an ability fires at the WRONG `
-            + 'cell or does not fire at all. Its charge is spent either way. It never costs you '
-            + 'dust, and the tool itself mines exactly as it did.'
-          : 'Nothing misfires. Below the line, this number does nothing at all — '
-            + 'it is headroom, not a penalty.'}
+          ? `Roughly ${Math.round(i.misfire * 100)} swings in every 100, an ability on this tool `
+            + 'goes off in the wrong place, or does not go off at all. You lose that use of it. '
+            + 'Nothing else is affected — your dust, your drops and your ordinary mining are '
+            + 'exactly the same.'
+          : 'Nothing is going wrong. Instability only bites once it passes the number below, '
+            + 'and you are under it — so right now this costs you nothing at all.'}
       </div>
 
       {/* THE LEDGER: what is spending the headroom, priced. */}
@@ -2808,14 +2830,40 @@ function InstabilityCard({ state }: { state: GameState }) {
         </div>
       </div>
 
-      {/* AND HOW TO ACT ON IT — named things, not "work a stabiliser in". */}
-      <div className="mt-1 text-[9px] leading-snug text-cave-500" data-testid="instability-how">
-        {hot ? 'To bring it down: ' : 'Headroom left. If you want more: '}
-        {steadiers.length > 0
-          ? `seat ${steadiers.slice(0, 3).map((m) => `${m.name} (−${m.fx.stabilize})`).join(', ')}`
-          : 'no stabilising modifier is known yet — forging turns them up'}
-        {'; grow a SUPPLE or STILLNESS boon on a living part; pour EXCELLENT or '}
-        {'TRUEBORN parts; or unseat the loudest thing above.'}
+      {/*
+        HOW TO LOWER IT, IN PLAIN ENGLISH.
+        The old line read "seat The Anchor, grow a SUPPLE or STILLNESS boon,
+        pour EXCELLENT or TRUEBORN parts" — four pieces of internal vocabulary
+        in one sentence, none of which tells a player what to go and DO. Every
+        route below is now phrased as an action first, with the in-game name
+        second, and each says WHERE the thing comes from.
+      */}
+      <div className="mt-1 border-t border-cave-900 pt-1" data-testid="instability-how">
+        <div className="text-[9px] uppercase tracking-wider text-cave-500">
+          {hot ? 'Three ways to bring it down' : 'If you want to carry more'}
+        </div>
+        <ul className="mt-0.5 space-y-0.5 text-[9px] leading-snug text-cave-400">
+          <li>
+            <span className="text-cave-200">Take something off.</span> The list above is
+            sorted by how much each thing costs you. Unseating the top one is the
+            fastest fix and costs nothing to undo.
+          </li>
+          <li>
+            <span className="text-cave-200">Fit a calming modifier.</span>{' '}
+            {steadiers.length > 0
+              ? `You know ${steadiers.slice(0, 2).map((m) => `${m.name} (worth ${m.fx.stabilize})`).join(' and ')}. `
+                + 'Seat it at the bench below, same as any other.'
+              : `You have not found one yet. ${firstSteadier
+                ? `${firstSteadier.name} is the first — keep pouring parts and it will turn up.`
+                : 'Keep pouring parts; forging is what turns them up.'}`}
+          </li>
+          <li>
+            <span className="text-cave-200">Build with steadier stone.</span> Parts that
+            come out unusually well steady the tool on their own, and a part made
+            of living Verdance stone can be grown into a calmer one once it has
+            done enough work — the &ldquo;still growing&rdquo; panel offers it.
+          </li>
+        </ul>
       </div>
     </div>
   );

@@ -82,7 +82,9 @@ import { noteToolClass } from './systems/toolClass';
 import { startBio } from './systems/toolBio';
 import { applyToolMod, stripToolMod } from './systems/toolMods';
 import { salvageTool, bulkSalvage } from './systems/salvage';
-import { beginCraft, craftStage, delegateCraft, abandonCraft, fuseGems } from './systems/workbenchActs';
+// The staged craft verbs retired with the Workbench (A.70); `fuseGems` did not
+// — it moved to the Refinery's gem bench.
+import { fuseGems } from './systems/workbenchActs';
 import { practiceRunes } from './content/shell4/runes';
 import { temperTool } from './systems/tempering';
 import type { PurityBand } from './materials';
@@ -350,18 +352,6 @@ export function handleAction(
       state.lattice.pressOn = action.on;
       return { ok: true };
     }
-
-    case 'beginCraft':
-      return beginCraft(state, ctx, action.act, action.context);
-
-    case 'craftStage':
-      return craftStage(state, mods, ctx, action.execution, action.data);
-
-    case 'delegateCraft':
-      return delegateCraft(state, mods, ctx);
-
-    case 'abandonCraft':
-      return abandonCraft(state, ctx);
 
     case 'equipTool': {
       const idx = state.forge.tools.findIndex((t) => t.id === action.toolId);

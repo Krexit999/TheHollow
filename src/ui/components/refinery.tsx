@@ -12,7 +12,7 @@
 import { useState } from 'react';
 import { getCurrency, fmt } from '../../engine';
 import type { GameState } from '../../engine';
-import { BANDS, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
+import { BANDS, BAND_LABELS, GEMS, materialDef, type PurityBand } from '../../engine/materials';
 import { materialCount, toolRecipeName, equippedTool } from '../../engine/systems/forge';
 import {
   refineryUnlocked, transmuteUnlocked, refinePreview, climbPreview, foundChains,
@@ -265,6 +265,65 @@ export function RefineryPanel() {
 
       {/* --- SALVAGE ---------------------------------------------------- */}
       <SalvagePanel />
+
+      {/* --- GEM FUSION (re-homed A.70) ---------------------------------- */}
+      <GemBench />
+    </div>
+  );
+}
+
+/**
+ * GEM FUSION — re-homed from the Workbench (A.70).
+ *
+ * The Workbench was stripped as redundant with the Casting station, and for
+ * TOOLS it was. It also carried this, which casting does not replace: two
+ * duplicate gems fuse into a better cut. It is non-destructive by design (the
+ * cut only ever improves), so a duplicate is always progress rather than
+ * clutter — and deleting the room would have silently deleted the feature.
+ *
+ * It sits in the Refinery because that is the room where things are broken down
+ * and re-made, next to the bench that already draws gems back out of a tool.
+ */
+function GemBench() {
+  const state = useLive();
+  if (!state) return null;
+  const held = GEMS.filter((g) => (state.materials.gems[g.id] ?? 0) > 0);
+  if (held.length === 0) return null;
+  const pairs = held.filter((g) => (state.materials.gems[g.id] ?? 0) >= 2);
+
+  return (
+    <div className="panel p-3" data-testid="gem-bench">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[#c9a8dd]">The gem bench</span>
+        <span className="tnum text-[10px] text-cave-400">{pairs.length} can be fused</span>
+      </div>
+      <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
+        Two of the same stone go in and one better cut comes out. It can never come
+        out worse, so a duplicate is never waste.
+      </p>
+      <div className="mt-2 space-y-1">
+        {held.map((g) => {
+          const n = state.materials.gems[g.id] ?? 0;
+          return (
+            <div key={g.id} className="flex items-center gap-1.5" data-testid={`gem-${g.id}`}>
+              <span className="min-w-0 flex-1">
+                <span className="text-[11px] text-cave-200">{g.name}</span>
+                <span className="tnum ml-1 text-[10px] text-cave-500">x{n}</span>
+                <span className="block text-[10px] leading-snug text-cave-400">{g.effectText}</span>
+              </span>
+              <button
+                className="min-h-[44px] shrink-0 rounded border border-cave-700 px-2 text-[10px] text-cave-300 disabled:opacity-40"
+                disabled={n < 2}
+                data-testid={`gem-fuse-${g.id}`}
+                title="Fuse two duplicates into a better cut — never worse"
+                onClick={() => dispatch({ type: 'fuseGems', gemId: g.id })}
+              >
+                fuse x2
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

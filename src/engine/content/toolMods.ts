@@ -139,8 +139,28 @@ export const MOD_AXES = [
  * instead, weighted up because a firing is much rarer than a cell.
  */
 export const MOD_LEVEL_MAX = 5;
-export const MOD_XP_BASE = 900;
-export const MOD_XP_EXP = 1.7;
+/**
+ * SIZED AGAINST A MEASURED RATE, A.70. An active player at three clicks a
+ * second banks **25,486 cells an hour** (measured, not assumed). At the shipped
+ * 900/1.7 a modifier reached level V in 9,504 cells — **twenty-two minutes** —
+ * so the whole five-level ladder was a single sitting, and the report ("5 min of
+ * mining maxes one") was if anything generous, because reach credits more than
+ * one cell per chip.
+ *
+ * Re-rated so the ladder is a long-term investment with an early taste:
+ *
+ *   L2   8,000 cells   ~19 min    you feel it the first session
+ *   L3  76,000         ~3 h
+ *   L4 269,000         ~10.5 h
+ *   L5 724,000         ~28 h      a thing you are still working toward
+ *
+ * The EXPONENT does most of the work rather than the base, so the first level
+ * stays inside a session — a curve that is merely scaled up would have pushed
+ * L2 out of reach too, and the first level is where a player learns the ladder
+ * exists at all.
+ */
+export const MOD_XP_BASE = 8000;
+export const MOD_XP_EXP = 3.25;
 /** What each level past the first adds to the modifier's contribution. */
 export const MOD_LEVEL_STEP = 0.375;
 /** A firing is worth this many cells to an ability-facing modifier. */
@@ -962,4 +982,86 @@ export function pairingLine(
     return `Put ${done.map((h) => h.trait).join(' or ')} beside it and something finishes.`;
   }
   return `It leans toward ${hints.slice(0, 3).map((h) => h.trait).join(', ')} — still short of anything.`;
+}
+
+// ---------------------------------------------------------------------------
+// WHAT A MODIFIER ACTUALLY DOES, IN NUMBERS — A.70
+// ---------------------------------------------------------------------------
+
+/**
+ * Reported: the modifier menu listed "Long Arm, Heavy Head, Lucky Seam" with no
+ * effect at all, so a player could not tell what they had discovered or what
+ * seating one would do.
+ *
+ * Every modifier has ALWAYS carried a typed `fx`. Nothing new is authored here;
+ * this renders the block the engine already reads, so the menu and the panel
+ * cannot drift from the numbers that are actually applied. Additive terms print
+ * as `+n`, multipliers as `+n%` (or `-n%` below 1), and anything that is not a
+ * plain scalar is named rather than guessed at.
+ */
+const FX_LABEL: Record<string, { label: string; kind: 'add' | 'mult' | 'pct' }> = {
+  cells: { label: 'cells reached per swing', kind: 'add' },
+  splash: { label: 'of each extra cell taken', kind: 'pct' },
+  oreRate: { label: 'ore-pocket speed', kind: 'mult' },
+  dropWeight: { label: 'chance of a drop', kind: 'mult' },
+  uses: { label: 'swings before re-seating', kind: 'mult' },
+  xpRate: { label: 'levelling speed', kind: 'mult' },
+  repairPerSec: { label: 'of the wear pool mended each second', kind: 'pct' },
+  abilitySlots: { label: 'ability slots', kind: 'add' },
+  chargePerSwing: { label: 'ability meter per swing', kind: 'add' },
+  abilityGrade: { label: 'grade on every seated ability', kind: 'add' },
+  oreReach: { label: 'ore cells a swing touches', kind: 'add' },
+  refire: { label: 'chance to fire twice', kind: 'pct' },
+  repairOnFire: { label: 'of the pool mended on each firing', kind: 'pct' },
+  chargeOnFire: { label: 'meter returned on each firing', kind: 'add' },
+  amplify: { label: 'to everything else it carries', kind: 'mult' },
+  stabilize: { label: 'steadiness', kind: 'add' },
+};
+
+function fxBit(axis: string, value: number): string | null {
+  const def = FX_LABEL[axis];
+  if (!def || value === 0) return null;
+  if (def.kind === 'add') {
+    // `stabilize` is the one axis that is meaningfully negative: Overdrive and
+    // First Light BUY power with steadiness, and hiding the minus would make
+    // them read as free.
+    return `${value > 0 ? '+' : ''}${Math.round(value * 100) / 100} ${def.label}`;
+  }
+  if (def.kind === 'pct') {
+    return `${value > 0 ? '+' : ''}${Math.round(value * 1000) / 10}% ${def.label}`;
+  }
+  const pct = (value - 1) * 100;
+  if (Math.abs(pct) < 0.05) return null;
+  return `${pct > 0 ? '+' : ''}${Math.round(pct)}% ${def.label}`;
+}
+
+/** Every numeric thing this modifier does, one stack, at level one. */
+export function modEffectBits(def: ToolModDef): string[] {
+  const out: string[] = [];
+  for (const [axis, value] of Object.entries(def.fx)) {
+    if (typeof value === 'number') {
+      const bit = fxBit(axis, value);
+      if (bit) out.push(bit);
+      continue;
+    }
+    // `paramAdd` / `paramMult` reach into a named ability parameter, so they are
+    // named rather than rendered as a percentage of nothing.
+    if (value && typeof value === 'object') {
+      const names = Object.keys(value as Record<string, number>).join(', ');
+      if (names) out.push(axis === 'paramMult' ? `widens ${names}` : `+${names} on its abilities`);
+    }
+  }
+  return out;
+}
+
+/** One line for a list. Falls back to the authored flavour if `fx` is empty. */
+export function modEffectLine(def: ToolModDef): string {
+  const bits = modEffectBits(def);
+  return bits.length > 0 ? bits.join(' · ') : def.effect;
+}
+
+/** Stabilisers, biggest first — what the instability card offers as the fix. */
+export function stabilisingMods(): ToolModDef[] {
+  return TOOL_MODS.filter((m) => (m.fx.stabilize ?? 0) > 0)
+    .sort((a, b) => (b.fx.stabilize ?? 0) - (a.fx.stabilize ?? 0));
 }

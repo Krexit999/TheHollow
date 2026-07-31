@@ -299,6 +299,11 @@ export function toughnessIndex(tool: ToolStats): number {
 }
 
 /** Swings this tool has before it is at the floor. */
+/** The most a BUILD (level grants x durability modifiers) may multiply swings.
+ *  The tool's own SHAPE is separate and still free to vary — this bounds the
+ *  stack, not the craft. */
+export const ENDURANCE_CAP = 12;
+
 export function usesOf(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): number {
   const idx = toughnessIndex(tool);
   const scale = Math.max(USES_MIN, Math.min(USES_MAX, Math.pow(idx, 1.5)));
@@ -306,7 +311,23 @@ export function usesOf(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): num
   // a bigger pool would cancel itself out exactly and the grant would do
   // nothing. Swings are the thing a player feels; swings are what it buys.
   // Durability modifiers land here for the same reason.
-  return Math.max(1, Math.round(BASE_USES * scale * grantsFor(level).durability * mod.uses));
+  /**
+   * THE ENDURANCE CEILING (A.70). Reported: "with Unbreaking 5 + auto-regen,
+   * tools never break."
+   *
+   * Measured: a high-level tool has the slots for Unbreaking x2 and Self-Mending
+   * x3, and comes out at **471,891 swings against a bare 7,108** — sixty-six
+   * times — before self-mending is even counted. Multiplied stacks with no
+   * ceiling do that; nothing was wrong with any single number.
+   *
+   * So the multiplier a BUILD may put on swings is capped. It is a generous cap
+   * — a full endurance build is still worth `ENDURANCE_CAP` times a bare tool,
+   * which is an enormous amount of mining — but it is finite, and past it the
+   * slots you are spending on Unbreaking are buying nothing, which is the trade
+   * the brief asks for: the strongest builds give something up to get there.
+   */
+  const buildMult = Math.min(ENDURANCE_CAP, grantsFor(level).durability * mod.uses);
+  return Math.max(1, Math.round(BASE_USES * scale * buildMult));
 }
 
 /** The size of the pool, in the units `state.casting.wear` counts. */
@@ -638,4 +659,6 @@ export function spendToolUse(state: GameState, count = 1): void {
     pool,
     state.casting.wear + wearPerUse(tool, toolLevel(state), modCache(state), wearResist(state)) * count,
   );
+  // WHEN IT WAS LAST WORKED. Self-mending reads this — see `tickToolMods`.
+  state.casting.lastUsedAt = state.stats.playTimeSec;
 }

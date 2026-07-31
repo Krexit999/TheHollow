@@ -1364,10 +1364,17 @@ export type GameAction =
   | { type: 'upgradeMotif'; q: number; r: number }
   | { type: 'buyLatticeRing' }
   | { type: 'setLatticePress'; on: boolean }
-  | { type: 'beginCraft'; act: 'forge' | 'carve' | 'cut' | 'cast'; context: Record<string, unknown> }
-  | { type: 'craftStage'; execution: number; data?: Record<string, unknown> }
-  | { type: 'delegateCraft' }
-  | { type: 'abandonCraft' }
+  /*
+   * RETIRED A.70 — 'beginCraft' / 'craftStage' / 'delegateCraft' / 'abandonCraft'.
+   *
+   * These four drove the Workbench's staged craft job (carve / cut / cast), and
+   * the Casting Floor does all three now: the crucible pours the part, the
+   * station assembles the tool, and the rune wall and the gem bench took the two
+   * jobs that were NOT about tools. With the Workbench stripped, nothing could
+   * dispatch them — `reachability.test.ts` said so the moment the file was
+   * deleted, which is exactly what that test exists for. Removed from the union
+   * rather than left as an unreachable branch, so the compiler enforces it.
+   */
   | { type: 'equipTool'; toolId: number }
   | { type: 'socketGem'; toolId: number; slot: number; gemId: string }
   /** RETIRED FROM THE UI (the Casting Floor makes tools now), still driven by

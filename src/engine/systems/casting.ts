@@ -146,6 +146,9 @@ export interface CastingState {
   /** STEP 3: how much the tool has been used, against `poolOf(tool)`. One
    *  shared pool (the doc's lean), and the WORN PART is what you re-seat. */
   wear: number;
+  /** `playTimeSec` of the last swing. Self-mending waits `MEND_IDLE_SEC`
+   *  past it — absent reads as "never used", so no migration is needed. */
+  lastUsedAt?: number;
   repairs: number;
   /** CELLS this tool has mined, ever. The record of what it has DONE, as
    *  against what its parts say it IS. Never reset — see `gainToolXp`. */

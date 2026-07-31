@@ -550,14 +550,22 @@ describe('the Casting Floor answers the walls the old Forge used to', () => {
     s.forge.built = true;
     s.currencies['dust'] = s.currencies['dust']!.add(1e12);
     s.depth = requiredWallDepth(s) - 1;
-    // Bare-handed, the wall refuses.
+    // A.70: THE WALL IS A PRICE, NOT A DOOR. Bare-handed still gets through —
+    // the brief forbids a hard tool requirement — it simply pays the fare.
     hold(null);
-    const blocked = engine.dispatch({ type: 'descend' });
-    expect(blocked.ok, 'the wall should refuse a starter tool').toBe(false);
-    expect(blocked.reason).toMatch(/too hard/);
-    // With a cast tool of the right grade, it does not.
+    const before = s.currencies['dust']!.toNumber();
+    const bare = engine.dispatch({ type: 'descend' });
+    expect(bare.ok, 'the wall must not refuse a starter tool').toBe(true);
+    const paidBare = before - s.currencies['dust']!.toNumber();
+
+    // And a properly cast tool makes the SAME step cheaper, which is the whole
+    // of what a better tool now buys at the stair.
+    s.depth = requiredWallDepth(s) - 1;
     hold('starmarl', 95);
+    const before2 = s.currencies['dust']!.toNumber();
     expect(engine.dispatch({ type: 'descend' }).ok).toBe(true);
+    const paidTooled = before2 - s.currencies['dust']!.toNumber();
+    expect(paidBare).toBeGreaterThan(paidTooled);
   });
 });
 

@@ -140,10 +140,13 @@ export const useGame = create<UIStore>((set, get) => ({
   setTab: (tab) =>
     set((s) => ({ tab, freshTabs: s.freshTabs.filter((t) => t !== tab) })),
   setAlloyTargets: (drills) => set({ alloyTargets: drills }),
+  // A.70: THE BENCH IS IN THE DRILLS ROOM NOW. Every ALLOY button on a drill's
+  // card came through here, and it was still sending the player to the Forge —
+  // which is where the bench used to be and no longer is.
   openAlloyBench: (drills) =>
     set((s) => ({
-      tab: 'forge', alloyTargets: drills, alloyJumpSeq: s.alloyJumpSeq + 1,
-      freshTabs: s.freshTabs.filter((t) => t !== 'forge'),
+      tab: 'drills', alloyTargets: drills, alloyJumpSeq: s.alloyJumpSeq + 1,
+      freshTabs: s.freshTabs.filter((t) => t !== 'drills'),
     })),
   setOpticsMode: (on) => set({ opticsMode: on }),
   setFaceMode: (m) => set({ faceMode: m, ...(m !== 'technique' ? { armedTechnique: null } : {}) }),

@@ -21,6 +21,7 @@ import {
 } from '../../engine/systems/drillAlloys';
 import { effectInHand, toolFits } from '../../engine/systems/toolAbilities';
 import { PRIZE_SOURCES } from '../../engine/systems/prizeDrills';
+import { AlloyBench } from './ForgePanel';
 import { ROMAN as ROMAN_G } from '../../engine/content/drillAlloys';
 import { oreCount } from '../../engine/systems/ores';
 import { oreDef, oreOddsHint } from '../../engine/content/ores';
@@ -727,7 +728,8 @@ export function DrillsPanel() {
             which. The materials&apos; TRAITS are the clue.
           </p>
           <ol className="mt-1.5 space-y-1 text-[11px] text-cave-300">
-            <li><span className="text-lamp-300">1.</span> Go to the Forge&apos;s alloy bench.</li>
+            {/* A.70: the bench is DOWN THIS PAGE now, not in another room. */}
+            <li><span className="text-lamp-300">1.</span> Scroll down to the alloy bench, at the foot of this room.</li>
             <li><span className="text-lamp-300">2.</span> Pick a drill, then two or three materials that lean hard on ONE trait.</li>
             <li><span className="text-lamp-300">3.</span> Pour. If it takes, that drill has it from then on and fires it by itself.</li>
           </ol>
@@ -1100,6 +1102,15 @@ export function DrillsPanel() {
           );
         })}
       </div>
+
+      {/*
+        THE ALLOY BENCH, WHERE ITS OUTPUT ACTUALLY GOES (A.70).
+        It lived in the Forge, and an alloy has never touched a tool: it
+        decides a DRILL's ability and is poured AT named drills. The bay's own
+        "how do I get one" panel had to send the player to another room to
+        find the thing this room is about.
+      */}
+      <AlloyBench state={state} />
     </div>
   );
 }
