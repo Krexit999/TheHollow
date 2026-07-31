@@ -669,8 +669,42 @@ export const INST_PER_ABILITY = 4;
 export const INST_PER_SLOT = 2.2;
 /** Instability a woken synergy adds — arrangements are volatile. */
 export const INST_PER_SYNERGY = 12;
-/** Below this, nothing ever goes wrong. Early tools live here. */
-export const INST_FLOOR = 40;
+/**
+ * THE FLOOR IS RELATIVE TO WHAT THE TOOL CAN CARRY — and the fixed 40 it
+ * replaces made this whole mechanic unreachable for most of a game.
+ *
+ * MEASURED before changing anything: a level-40 tool packed with every
+ * modifier that fits reads raw 18 against a floor of 40, so its net is ZERO
+ * and always was. Instability only ever bit on a 61-slot level-200 tool with
+ * ten capstones at level five (raw 332). It was not a stat with no teeth; it
+ * was a stat with teeth nobody could reach until the last hour.
+ *
+ * The reason is structural: `raw` is bounded by the SLOT BUDGET (a dormant
+ * modifier contributes nothing, correctly), and the budget grows across the
+ * whole game while the floor sat still. So the floor now grows with it. What
+ * the mechanic actually wants to say is "you have packed this tool with the
+ * strongest things it can hold", and that is a statement about a FRACTION of
+ * capacity, not an absolute number — which makes it true at Loam and at Aleph
+ * rather than only at the bottom.
+ */
+export const INST_FLOOR_BASE = 6;
+/** Per modifier slot the tool has. Half a tool of ordinary work stays quiet. */
+export const INST_FLOOR_PER_SLOT = 1.6;
+
+/**
+ * POWER COSTS MORE THAN ITS SIZE — the other half of giving this teeth.
+ *
+ * A 5-slot capstone used to be worth exactly five 1-slot modifiers, so there
+ * was no such thing as a volatile CHOICE, only a volatile amount. Weighting by
+ * the modifier's own cost again makes a capstone disproportionately unstable:
+ * five slots of cheap work is calm, one capstone in the same five slots is not.
+ * That is the trade the brief asks for — you want the strong thing, and the
+ * strong thing is what shakes.
+ */
+export const INST_POWER_EXP = 1.6;
+
+/** Kept as the name older readers know; now the BASE of a relative floor. */
+export const INST_FLOOR = INST_FLOOR_BASE;
 /** Misfire chance per point of instability above the floor. */
 export const INST_PER_POINT = 0.0022;
 /** However bad it gets, most firings still land. */
@@ -685,6 +719,8 @@ export interface InstabilityRead {
   net: number;
   /** 0..MISFIRE_CAP. */
   misfire: number;
+  /** What this tool may carry before anything goes wrong. Scales with slots. */
+  floor: number;
   /** Biggest contributors first, for the readout. */
   from: Array<{ label: string; n: number }>;
 }
@@ -698,6 +734,14 @@ export interface InstabilityRead {
  * under load. Read scale-free, like `toughnessIndex`, so the trade is the same
  * trade at every depth rather than evaporating at the second shell.
  */
+/**
+ * WHAT THIS TOOL MAY CARRY BEFORE IT STARTS SHAKING. Grows with the modifier
+ * budget, so "packed with power" means the same thing at every depth.
+ */
+export function instabilityFloor(state: GameState): number {
+  return INST_FLOOR_BASE + INST_FLOOR_PER_SLOT * modSlotsTotal(state);
+}
+
 export function instability(state: GameState, abilities: Array<{ power: number; level: number }> = []): InstabilityRead {
   const from: Array<{ label: string; n: number }> = [];
   let raw = 0;
@@ -706,13 +750,16 @@ export function instability(state: GameState, abilities: Array<{ power: number; 
   for (const s of modStacks(state)) {
     const def = MOD_BY_ID.get(s.id);
     if (!def || !cache.live.includes(s.id)) continue;
-    const n = def.cost * s.n * INST_PER_SLOT * modLevelScale(levelOfStack(s));
+    // COST^EXP, not cost: a capstone is worth more than its slots.
+    const n = Math.pow(def.cost, INST_POWER_EXP) * s.n * INST_PER_SLOT
+      * modLevelScale(levelOfStack(s));
     if (n <= 0) continue;
     raw += n;
     from.push({ label: def.name, n });
   }
   for (const a of abilities) {
-    const n = a.power * INST_PER_ABILITY * modLevelScale(a.level);
+    // Same shape for what it carries — a power-5 ability is not five power-1s.
+    const n = Math.pow(a.power, INST_POWER_EXP) * INST_PER_ABILITY * modLevelScale(a.level);
     raw += n;
     from.push({ label: 'what it carries', n });
   }
@@ -735,9 +782,13 @@ export function instability(state: GameState, abilities: Array<{ power: number; 
   }
 
   const net = Math.max(0, raw - steady);
-  const misfire = Math.max(0, Math.min(MISFIRE_CAP, (net - INST_FLOOR) * INST_PER_POINT));
+  // THE FLOOR SCALES WITH THE TOOL. A big tool is allowed to carry more before
+  // it starts shaking; what matters is how much of its capacity is spent on
+  // power, not the raw total.
+  const floor = instabilityFloor(state);
+  const misfire = Math.max(0, Math.min(MISFIRE_CAP, (net - floor) * INST_PER_POINT));
   from.sort((a, b) => b.n - a.n);
-  return { raw, steady, net, misfire, from: from.slice(0, 6) };
+  return { raw, steady, net, misfire, floor, from: from.slice(0, 6) };
 }
 
 /**

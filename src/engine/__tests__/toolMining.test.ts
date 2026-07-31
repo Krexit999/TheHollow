@@ -203,7 +203,18 @@ describe('ore speed buys seconds off the hold gesture', () => {
     s.face.ore = new Array(s.face.cells.length).fill('');
     s.face.oreDug = new Array(s.face.cells.length).fill(0);
     s.face.ore[5] = 'fatseam';
-    engine.dispatch({ type: 'workOre', cell: 5, seconds: 1 });
+    /**
+     * A SHORT GESTURE, because ore work now has teeth.
+     *
+     * This used to hold for a whole second, which was fine while the best
+     * tool was worth ~4x the hands. A heavy build is worth far more than that
+     * now, so it FINISHED the pocket inside the second — and the `workOre`
+     * action opens a finished pocket, which clears `oreDug`. The test then
+     * read zero progress off the best tool in the game and called it a
+     * regression. It is measuring leftover progress, so it has to stop short
+     * of completion to measure anything at all.
+     */
+    engine.dispatch({ type: 'workOre', cell: 5, seconds: 0.05 });
     return (engine.getState() as GameState).face.oreDug![5]!;
   }
 
@@ -215,7 +226,7 @@ describe('ore speed buys seconds off the hold gesture', () => {
   });
 
   it('bare hands work at exactly the rate they always did', () => {
-    expect(digProgress(null)).toBe(1);
+    expect(digProgress(null)).toBeCloseTo(0.05, 6);
   });
 
   it('the rate is capped, so a pocket stays a decision', () => {

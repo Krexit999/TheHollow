@@ -335,9 +335,22 @@ describe('instability is what makes OP an engineering problem', () => {
   });
 
   it('a stabiliser brings it back down, and buys nothing else', () => {
+    /**
+     * A GENUINELY OP BUILD, because the floor is relative now (A.67).
+     *
+     * Three modifiers used to clear a fixed floor of 40. The floor now scales
+     * with the tool's modifier budget — which is what made instability reachable
+     * before the last hour of the game — so a three-modifier build on a roomy
+     * tool sits UNDER it and misfires at zero, and a test asserting the misfire
+     * FELL had nothing to fall from. Pack it properly and the assertion means
+     * what it always meant.
+     */
     const s = st();
-    for (const m of ['farreach', 'voidbite', 'widerblast2']) seat(m, 2, MOD_LEVEL_MAX);
+    for (const m of ['farreach', 'voidbite', 'widerblast2', 'detonation', 'firstform']) {
+      seat(m, 2, MOD_LEVEL_MAX);
+    }
     const before = toolInstability(s);
+    expect(before.misfire, 'the fixture is no longer an OP build').toBeGreaterThan(0);
     const reach = modCache(s, 0).cells;
     seat('theanchor', 2, MOD_LEVEL_MAX);
     const after = toolInstability(s);

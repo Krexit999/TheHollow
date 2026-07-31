@@ -261,6 +261,15 @@ async function main(): Promise<void> {
   check(rackAfter === rackBefore + 1, 'pour: a cast part lands on the rack', `${rackBefore} → ${rackAfter}`);
 
   // SEAT — tap a rack chip.
+  // THE RACK IS SEVEN SLOTS NOW (A.67), one per part type, so that all of it
+  // fits at 380px without scrolling. A part lives behind its slot — open the
+  // one that has something in it, then seat from there.
+  const openSlot = await page.evaluate(() => {
+    const el = Array.from(document.querySelectorAll('[data-testid^="rack-slot-"]'))
+      .find((e) => Number((e as HTMLElement).dataset['held'] ?? 0) > 0) as HTMLElement | undefined;
+    return el ? (el.dataset['testid'] ?? '') : '';
+  });
+  if (openSlot) await tapp(page, `[data-testid="${openSlot}"]`);
   const chip = page.locator('[data-testid^="rack-chip-"]').first();
   const chipPart = await chip.getAttribute('data-part-type');
   await dismiss(page);
@@ -270,11 +279,15 @@ async function main(): Promise<void> {
     'seat: the tapped part goes ON the tool, marked as bench', `${chipPart}`);
   check(await page.locator('[data-testid="combine"]').count() === 1, 'and Combine appears');
 
-  // TAKE OFF — tap the part on the tool, then take it off.
-  await page.locator(`[data-testid="diagram-${chipPart}"]`).click();
-  await page.waitForTimeout(300);
+  // TAKE OFF. The rack slot and the diagram share one selection now (A.67), so
+  // opening the slot to seat from it ALREADY opened that part's seat bar —
+  // tapping the diagram part again would toggle the selection back off. Assert
+  // the bar is open and use it, which is also what a player would do.
+  if (await page.locator('[data-testid="seat-bar"]').count() === 0) {
+    await tapp(page, `[data-testid="diagram-${chipPart}"]`);
+  }
   check(await page.locator('[data-testid="seat-bar"]').count() === 1,
-    'tapping a part on the tool opens its seat bar');
+    'the seated part has a seat bar with a way back out');
   await tapp(page, '[data-testid="seat-bar-clear"]');
   check(await page.locator(`[data-testid="diagram-${chipPart}"][data-bench="1"]`).count() === 0,
     'take off: benchClear puts it back on the rack');

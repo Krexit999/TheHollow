@@ -37,7 +37,7 @@ import {
   TRAIT_INTENSITY, FORGE_TRAITS, GRADE_BONUS, SHELL_STEP, RARITY_STEP,
   PURITY_FLOOR, PURITY_PER_POINT, W_PRIMARY, W_SECONDARY, W_SPILL,
   MISMATCH_K, VARIETY_WEIGHT, RELIEF_PIVOT, RELIEF_SLOPE, MAX_RELIEF,
-  LAYER_MAX, layerWeights, HEFT, BALANCE_DEADZONE,
+  LAYER_MAX, layerWeights, HEFT, BALANCE_DEADZONE, BALANCE_ORE,
   LIVING_SHELL, GROWTH_MAX, growthForStage, BOON_REACH, BOON_MEND, BOON_STEADY,
   BOON_WEAR, CRAFT_TIERS, EXCELLENT_STEADY, MASTERWORK_STEADY,
   WINDUP_MAX, BALANCE_REACH, BALANCE_SPLASH, BALANCE_WEAR, BALANCE_CHARGE,
@@ -354,6 +354,10 @@ export interface Balance {
   wear: number;
   /** Additive ability meter per swing. Light only. */
   charge: number;
+  /** Multiplier on how fast a pocket is worked. Heavy cracks ore. */
+  oreRate: number;
+  /** Which cell this build is FOR, in one word. Readout only. */
+  job: 'ore' | 'rock' | 'either';
   /** What is making it heavy or light, biggest first. */
   from: Array<{ trait: ForgeTraitId; n: number }>;
 }
@@ -361,6 +365,8 @@ export interface Balance {
 export const EVEN_BALANCE: Balance = {
   value: 0, raw: 0, label: 'even', windup: 0,
   cells: 1, splash: 1, wear: 1, charge: 0, from: [],
+  oreRate: 1,
+  job: 'either',
 };
 
 /** Divides the summed heft into the −1..+1 range. Measured, not chosen — see
@@ -419,10 +425,28 @@ export function balanceOf(parts: Part[]): Balance {
     // "faster than neutral" is not a thing that can be sold; light is paid in
     // wear and meter instead. Asymmetric on purpose — see content/forgeParts.
     windup: WINDUP_MAX * heavy,
-    cells: 1 + BALANCE_REACH * value,
+    // REACH IS LIGHT'S — it sweeps more plain rock per swing.
+    cells: 1 - BALANCE_REACH * value,
+    // PER-CELL BITE AND ORE WORK ARE HEAVY'S — it takes more of what it hits
+    // and it cracks a pocket faster.
     splash: 1 + BALANCE_SPLASH * value,
+    /**
+     * ORE WORK IS HEAVY-ONLY, and that is a correction the tests caught.
+     *
+     * Two-sided, a light tool dug pockets SLOWER THAN BARE HANDS — marl reads
+     * -0.90 balance, so the starter tool would have been a downgrade at the one
+     * job it is most likely to meet first. The project holds a standing
+     * guarantee that a tool is never worse than the hands, and a trade between
+     * two builds must not be paid for out of that.
+     *
+     * So heavy BUYS ore speed and light simply does not, exactly as the wind-up
+     * is a heavy-only cost and the meter a light-only gain. Light gets its own
+     * half of the trade in reach, wear and meter.
+     */
+    oreRate: 1 + BALANCE_ORE * Math.max(0, value),
     wear: 1 + BALANCE_WEAR * value,
     charge: BALANCE_CHARGE * Math.max(0, -value),
+    job: value > 0 ? 'ore' : 'rock',
     from,
   };
 }

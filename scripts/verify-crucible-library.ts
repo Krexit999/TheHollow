@@ -197,6 +197,12 @@ async function main(): Promise<void> {
   // ═══ 5. THE LIBRARY FILLS BY FORGING ═════════════════════════════════════
   console.log('\n5 — the modifier library: empty → taught by forging → installed');
 
+  // THE LIBRARY LIVES IN THE MODIFIERS DRAWER NOW (A.67) — it was inside
+  // `ModBench`, which renders nothing without a built tool, so everything a
+  // player had earned was invisible until they assembled. A collapsed
+  // `<details>` reports no innerText, so open it the way a player would.
+  await tapp(page, '[data-testid="drawer-mods"] > summary');
+
   check((await txt(page, '[data-testid="mod-library-count"]')) === '0 known',
     'the library starts EMPTY', await txt(page, '[data-testid="mod-library-count"]'));
   check(await page.locator('[data-testid="mod-library-empty"]').count() === 1,

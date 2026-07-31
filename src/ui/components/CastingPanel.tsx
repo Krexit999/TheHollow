@@ -63,11 +63,11 @@ import {
   toolFits, toolGrade, toolGrants,
 } from '../../engine/systems/toolAbilities';
 import {
-  MOD_BY_ID, SYNERGY_BY_ID, abilityLevelOf, pointedAtBy, traitPointsAt,
+  MOD_BY_ID, SYNERGY_BY_ID, abilityLevelOf, pairingLine, pointedAtBy, traitPointsAt,
 } from '../../engine/content/toolMods';
 import { traitsOf, type TraitId } from '../../engine/traits';
 import {
-  INST_FLOOR, MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modRevealedBy,
+  MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modRevealedBy,
   modSlotsTotal,
   modSlotsUsed, modStacks, synergyHints, toolInstability, whyDormant,
   type ModCache, type ToolModStack,
@@ -485,9 +485,23 @@ function LowerDials({ state, tool }: { state: GameState; tool: ToolStats | null 
   const bal = tool ? balanceOf(tool.parts) : null;
   // The meter runs to the floor below which nothing ever goes wrong, so a
   // needle sitting under it reads as headroom rather than as a small problem.
-  const instPct = Math.min(100, Math.round((inst.net / (INST_FLOOR * 2)) * 100));
-  const instColor = inst.net < INST_FLOOR ? '#9ac07a' : inst.misfire > 0.2 ? '#c46a5a' : '#e0b054';
+  // Drawn against the tool OWN floor — half the bar is the headroom it has.
+  const instPct = Math.min(100, Math.round((inst.net / Math.max(1, inst.floor * 2)) * 100));
+  const instColor = inst.net <= inst.floor ? '#9ac07a' : inst.misfire > 0.2 ? '#c46a5a' : '#e0b054';
   const balLeft = bal ? Math.round(((bal.value + 1) / 2) * 100) : 50;
+  /**
+   * REACH IS AN INTEGER, so a multiplier on it can round to nothing.
+   *
+   * A light tool multiplies reach by ~1.27, and on an early tool that is 1.27
+   * extra cells, which rounds to the 1 an even tool already had. The driver
+   * caught the panel claiming "+27% more rock a swing" while the swing touched
+   * exactly the same cells. So the line reports the CELLS, measured, and says
+   * plainly when the bonus has not bitten yet.
+   */
+  const reachNow = tool ? effectOf(tool, false, levelProgress(state).level).cells : 1;
+  const reachEven = tool
+    ? effectOf({ ...tool, parts: [] }, false, levelProgress(state).level).cells
+    : 1;
 
   return (
     <div className="mt-1.5 flex gap-2.5">
@@ -506,10 +520,14 @@ function LowerDials({ state, tool }: { state: GameState; tool: ToolStats | null 
         }}>
           <div style={{ height: '100%', width: `${instPct}%`, background: instColor }} />
         </div>
-        <div style={{ marginTop: 2, fontSize: 8, lineHeight: 1.3, color: '#6a6055' }}>
-          {inst.net < INST_FLOOR
-            ? 'steady — nothing misfires'
-            : `${Math.round(inst.misfire * 100)}% of firings go wrong`}
+        {/* THE FLOOR IS THE POINT. It scales with what the tool can carry, so
+            "how close am I to trouble" is a fraction rather than a number the
+            player has to memorise. */}
+        <div style={{ marginTop: 2, fontSize: 8, lineHeight: 1.3, color: '#6a6055' }}
+          data-testid="dial-instability-note">
+          {inst.net <= inst.floor
+            ? `steady — ${Math.round(inst.floor - inst.net)} of headroom left`
+            : `${Math.round(inst.misfire * 100)}% of firings go wrong · ${Math.round(inst.steady)} steadied`}
         </div>
       </div>
 
@@ -546,24 +564,64 @@ function LowerDials({ state, tool }: { state: GameState; tool: ToolStats | null 
           />
         </div>
         <div className="flex justify-between" style={{ marginTop: 2, fontSize: 8, color: '#6a6055' }}>
-          <span>light</span><span>heavy</span>
+          <span>rock</span><span>ore</span>
+        </div>
+        {/* THE JOB, in words. Balance used to be a label with no consequence;
+            it now says which of the two things on the face it is FOR. */}
+        <div style={{ marginTop: 2, fontSize: 8, lineHeight: 1.3, color: '#9ac07a' }}
+          data-testid="dial-balance-job">
+          {!bal || bal.job === 'either'
+            ? 'Even — no better at either.'
+            : bal.job === 'ore'
+              ? `Cracks pockets ${Math.round((bal.oreRate - 1) * 100)}% faster.`
+              : reachNow > reachEven
+                ? `Sweeps ${reachNow} cells a swing — ${reachNow - reachEven} more than an even tool.`
+                : 'Sweeps wider — but not yet. Levels buy the reach this multiplies.'}
         </div>
       </div>
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// THE RACK — a shelf of cast parts you tap onto the tool
-// ---------------------------------------------------------------------------
-
+/**
+ * THE RACK — SEVEN SLOTS, ALL OF THEM ON SCREEN.
+ *
+ * The first cut was a horizontal strip of every cast part, which scrolled the
+ * moment you had more than four. That is the wrong shape twice over: it hid
+ * parts behind a gesture, and it organised by CAST ORDER when the only question
+ * being asked is "what do I have for the Head".
+ *
+ * So the rack is a fixed 7-cell grid, one cell per PART TYPE — the same seven
+ * the tool has, in the same order — and every one is visible at 380px with no
+ * scroll. A cell shows how many you hold and the best of them; tapping it opens
+ * that type. The grid never grows, so it cannot start scrolling later either.
+ */
 function RackShelf({
   state, want, onWant,
 }: { state: GameState; want: PartType | null; onWant: (t: PartType | null) => void }) {
   const [note, setNote] = useState<string | null>(null);
   const all = state.casting.rack;
-  const shown = want ? all.filter((p) => p.type === want) : all;
   const seatedIds = new Set(Object.values(state.casting.bench));
+
+  /**
+   * NOT MEMOISED, and that is the fix rather than the shortcut.
+   *
+   * The first cut keyed a `useMemo` on `[all]` — the rack array itself. The
+   * engine appends with `state.casting.rack.push(part)`, which keeps the same
+   * array IDENTITY, so the memo never invalidated: the header read "1 cast"
+   * while every one of the seven slots read 0. Caught in a screenshot, not by a
+   * test, because the test counted SLOTS and not what was in them.
+   *
+   * Seven buckets over a short array is nothing to compute; the memo was buying
+   * no time and costing correctness. Any future memo over engine state has to
+   * key on a value, never on a mutated container.
+   */
+  const byType = (() => {
+    const out = {} as Record<PartType, RackPart[]>;
+    for (const t of PART_TYPES) out[t] = [];
+    for (const p of all) out[p.type]?.push(p);
+    for (const t of PART_TYPES) out[t].sort((a, b) => b.purity - a.purity);
+    return out;
+  })();
 
   return (
     <div className="mt-2 rounded-lg border border-cave-800 p-2" data-testid="rack-shelf">
@@ -572,67 +630,115 @@ function RackShelf({
           The rack
         </span>
         <span className="tnum" style={{ fontSize: 9, color: '#6a6055' }} data-testid="rack-count">
-          {all.length} cast{want ? ` · ${PART_DEFS[want].name} only` : ' · tap to seat'}
+          {all.length} cast · tap a slot
         </span>
       </div>
 
-      {want && (
-        <button
-          className="btn mt-1 w-full py-0.5 text-[9px]"
-          data-testid="rack-clear-filter"
-          onClick={() => onWant(null)}
-        >
-          Show everything
-        </button>
-      )}
-
-      {shown.length === 0 ? (
-        <div className="mt-1.5 text-[10px] italic text-cave-600" data-testid="rack-empty">
-          {want
-            ? `Nothing cast for the ${PART_DEFS[want].name.toLowerCase()} yet — pour one below.`
-            : 'Nothing on the rack. Melt a stone and pour a part.'}
-        </div>
-      ) : (
-        <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1" data-testid="rack-strip">
-          {shown.slice(0, 40).map((p) => {
-            const skin = partSkin(p.materialId);
-            const onBench = seatedIds.has(p.id);
-            return (
-              <button
-                key={p.id}
-                data-testid={`rack-chip-${p.id}`}
-                data-part-type={p.type}
-                className="shrink-0 rounded-md border p-1 text-left"
-                style={{
-                  minWidth: 78,
-                  borderColor: onBench ? 'rgba(224,176,84,0.7)' : '#35302a',
-                  background: onBench ? 'rgba(224,176,84,0.06)' : 'transparent',
-                }}
-                title={onBench ? 'Already on the bench' : `Seat this ${PART_DEFS[p.type].name}`}
-                onClick={() => {
-                  const r = dispatch({ type: 'benchPlace', partId: p.id });
-                  setNote(r.ok ? null : (r.reason ?? null));
-                  if (r.ok) onWant(null);
-                }}
-              >
-                <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#6a6055' }}>
-                  {PART_DEFS[p.type].name}
-                </div>
-                <div className="flex items-center gap-1">
+      {/* SEVEN SLOTS. Four then three — the whole rack, always, no scroll. */}
+      <div className="mt-1.5 grid grid-cols-4 gap-1" data-testid="rack-slots">
+        {PART_TYPES.map((t) => {
+          const held = byType[t];
+          const best = held[0];
+          const skin = best ? partSkin(best.materialId) : null;
+          const seated = state.casting.bench[t] !== undefined;
+          return (
+            <button
+              key={t}
+              className="min-w-0 rounded border px-0.5 py-1 text-center"
+              style={{
+                borderColor: t === want ? '#e0b054' : seated ? 'rgba(224,176,84,0.45)' : '#35302a',
+                background: t === want ? 'rgba(224,176,84,0.08)' : 'transparent',
+                opacity: held.length === 0 && !seated ? 0.45 : 1,
+              }}
+              data-testid={`rack-slot-${t}`}
+              data-held={held.length}
+              title={held.length === 0
+                ? `No ${PART_DEFS[t].name} cast. ${PART_DEFS[t].governs}`
+                : `${held.length} cast — best ${materialDef(best!.materialId).name} ${best!.purity}`}
+              onClick={() => onWant(t === want ? null : t)}
+            >
+              <div style={{ fontSize: 7, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6a6055' }}>
+                {PART_DEFS[t].name.slice(0, 4)}
+              </div>
+              <div className="flex items-center justify-center gap-0.5">
+                {skin && (
                   <span style={{
-                    width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                    width: 6, height: 6, borderRadius: 1, flexShrink: 0,
                     background: `linear-gradient(135deg, ${skin.light}, ${skin.deep})`,
                   }} />
-                  <span className="truncate" style={{ fontSize: 10, color: skin.light }}>
-                    {materialDef(p.materialId).name}
-                  </span>
+                )}
+                <span className="tnum" style={{ fontSize: 10, color: held.length ? '#d4c9b8' : '#6a6055' }}>
+                  {held.length}
+                </span>
+              </div>
+              {seated && (
+                <div style={{ fontSize: 6, letterSpacing: '0.1em', color: '#e0b054' }}>seated</div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* THE OPEN SLOT — only one type's parts at a time, so this never scrolls. */}
+      {want && (
+        <div className="mt-1.5 border-t border-cave-800 pt-1.5" data-testid="rack-open">
+          <div className="flex items-baseline justify-between">
+            <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#e0b054' }}>
+              {PART_DEFS[want].name}
+            </span>
+            <button
+              className="text-[9px] text-cave-500"
+              data-testid="rack-clear-filter"
+              onClick={() => onWant(null)}
+            >
+              close
+            </button>
+          </div>
+          {byType[want].length === 0 ? (
+            <div className="mt-1 text-[9px] italic text-cave-600" data-testid="rack-empty">
+              Nothing cast for the {PART_DEFS[want].name.toLowerCase()} yet — pour one below.
+            </div>
+          ) : (
+            <div className="mt-1 space-y-0.5" data-testid="rack-list">
+              {byType[want].slice(0, 8).map((p) => {
+                const skin = partSkin(p.materialId);
+                const onBench = seatedIds.has(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    data-testid={`rack-chip-${p.id}`}
+                    data-part-type={p.type}
+                    className="flex w-full items-center gap-1 rounded border px-1 py-0.5 text-left"
+                    style={{
+                      borderColor: onBench ? 'rgba(224,176,84,0.7)' : 'transparent',
+                      background: onBench ? 'rgba(224,176,84,0.06)' : 'transparent',
+                    }}
+                    title={onBench ? 'Already on the bench' : `Seat this ${PART_DEFS[p.type].name}`}
+                    onClick={() => {
+                      const r = dispatch({ type: 'benchPlace', partId: p.id });
+                      setNote(r.ok ? null : (r.reason ?? null));
+                    }}
+                  >
+                    <span style={{
+                      width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                      background: `linear-gradient(135deg, ${skin.light}, ${skin.deep})`,
+                    }} />
+                    <span className="min-w-0 flex-1 truncate text-[10px]" style={{ color: skin.light }}>
+                      {materialDef(p.materialId).name}
+                    </span>
+                    <span className="tnum shrink-0 text-[8px] text-cave-600">
+                      {p.purity} · {shapeDef(p.shape, p.type).name}
+                    </span>
+                  </button>
+                );
+              })}
+              {byType[want].length > 8 && (
+                <div className="text-[8px] italic text-cave-600">
+                  …and {byType[want].length - 8} more of these.
                 </div>
-                <div className="tnum" style={{ fontSize: 8, color: '#6a6055' }}>
-                  {p.purity} · {shapeDef(p.shape, p.type).name}
-                </div>
-              </button>
-            );
-          })}
+              )}
+            </div>
+          )}
         </div>
       )}
       {note && <div className="mt-1 text-[9px] text-[#c46a5a]" data-testid="rack-note-new">{note}</div>}
@@ -791,6 +897,19 @@ function StonePicker({
       {trait && (
         <div className="mt-1 text-[8px] leading-snug text-[#9ac07a]" data-testid={`${testid}-lean`}>
           {traitPointsAt(trait, reached)}
+        </div>
+      )}
+
+      {/**
+        * WHAT TO PUT BESIDE IT. `traitPointsAt` says where a stone LEANS and
+        * still left the actual question open — a signature is two or three
+        * traits, and nothing said which one to look for next. This names the
+        * TRAIT, never the modifier, so the destination stays discovered while
+        * the next step stops being a guess.
+        */}
+      {value && (
+        <div className="mt-1 text-[8px] leading-snug text-[#c9a7e0]" data-testid={`${testid}-pair`}>
+          {pairingLine([value], { reached, classId: toolClass(state).def?.id ?? null })}
         </div>
       )}
 
@@ -1327,13 +1446,31 @@ function TheStation({ state }: { state: GameState }) {
       <CrucibleBar state={state} want={want} />
 
       {/* ── SECONDARY, tucked. Nothing lost; it is just not in the way. ── */}
-      <ModLibrary state={state} />
-
       <div className="mt-2 space-y-1.5" data-testid="station-secondary">
         {built && <SocketsCard state={state} tool={built} slot={socketSlot} onSlot={setSocketSlot} />}
         {built && <AbilitiesCard state={state} />}
-        <Drawer label="Modifiers" testid="drawer-mods">
+        {/**
+          * THE TAB THE PLAYER MEANS. `ModBench` returns null without a built
+          * tool, and the library used to render INSIDE it — so a player who had
+          * poured parts but not yet assembled opened Modifiers and found an
+          * empty box, with everything they had earned invisible behind the same
+          * guard. The library is unconditional now and sits at the top of the
+          * drawer; the bench below it explains itself instead of vanishing.
+          */}
+        <Drawer
+          label={`Modifiers · ${knownMods(state).length} known`}
+          testid="drawer-mods"
+          open={knownMods(state).length > 0 && !currentTool(state)}
+        >
+          <ModLibrary state={state} />
           <ModBench state={state} />
+          {!currentTool(state) && (
+            <div className="mt-2 text-[10px] leading-snug italic text-cave-500"
+              data-testid="mod-bench-no-tool">
+              Build a tool and these can be worked into it. Knowing one and
+              carrying one are different things.
+            </div>
+          )}
           <SynergyCard state={state} />
         </Drawer>
         {built && (
@@ -1369,10 +1506,10 @@ function TheStation({ state }: { state: GameState }) {
 
 /** A tucked section. Closed by default — the bench is the screen, this is not. */
 function Drawer({
-  label, testid, children,
-}: { label: string; testid: string; children: React.ReactNode }) {
+  label, testid, children, open = false,
+}: { label: string; testid: string; children: React.ReactNode; open?: boolean }) {
   return (
-    <details className="rounded-lg border border-cave-800" data-testid={testid}>
+    <details className="rounded-lg border border-cave-800" data-testid={testid} open={open}>
       <summary
         className="cursor-pointer select-none px-2 py-1.5"
         style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}

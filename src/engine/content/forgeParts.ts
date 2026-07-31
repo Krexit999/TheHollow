@@ -530,14 +530,44 @@ export const BALANCE_DEADZONE = 0.15;
 /** The longest a maximally heavy tool waits between swings, in seconds. */
 export const WINDUP_MAX = 0.30;
 
-/** How far a full heavy build moves reach and per-cell take, and a full light
- *  build moves them the other way. */
+/**
+ * REACH BELONGS TO LIGHT, and this is a sign flip from the first cut.
+ *
+ * A.62 gave heavy both reach AND per-cell bite, so heavy was simply the
+ * bigger swing and light was the same swing more often — a rate trade with no
+ * character. Splitting them gives each side something the other cannot do:
+ * light TOUCHES MORE CELLS, heavy TAKES MORE OF EACH and cracks pockets.
+ * Both still land inside `MAX_EXTRA_CELLS` and the whole-cell splash cap.
+ */
 export const BALANCE_REACH = 0.30;
+/** Per-cell take still belongs to heavy — the half that did not move. */
 export const BALANCE_SPLASH = 0.25;
 /** How far balance moves wear per swing — heavy costs more, light less. */
 export const BALANCE_WEAR = 0.4;
 /** Ability meter a full light build adds per swing. */
 export const BALANCE_CHARGE = 0.6;
+
+/**
+ * BALANCE IS A JOB, NOT A STAT — the axis given teeth.
+ *
+ * Heavy and light converged to the same ceiling and traded reach against
+ * cadence, which is correct and gave nobody a reason to care: the readout
+ * said "heavy" and the player shrugged. So the trade is now against something
+ * they are already doing — the two kinds of cell on the face.
+ *
+ *   HEAVY cracks ORE. A pocket is worked by attention rather than by reach,
+ *     so a big slow hit is exactly the right tool for it, and the ore rate is
+ *     the one term a wind-up does not tax.
+ *   LIGHT sweeps ROCK. Plain cells reward touching MORE of them, which is
+ *     what a fast light swing does, so light widens the swing instead.
+ *
+ * PILLAR 2 IS UNTOUCHED BY BOTH: ore rate is how fast you work a pocket the
+ * field already made (A.55 — an ore raises a cell CAP and `dpsMax` has no cap
+ * term), and reach lands in the same `MAX_EXTRA_CELLS` clamp it always did.
+ * Neither is a multiplier on charge-to-currency. What changes is WHICH cells a
+ * build is efficient at, which is the whole point.
+ */
+export const BALANCE_ORE = 0.55;
 
 export type BalanceLabel = 'light' | 'nimble' | 'even' | 'weighty' | 'heavy';
 

@@ -388,14 +388,37 @@ describe('balance is read off the stone, and mostly reads even', () => {
 // ---------------------------------------------------------------------------
 
 describe('heavy buys reach and pays a wind-up; light the reverse', () => {
-  it('a heavy tool reaches further and takes more of each cell', () => {
+  /**
+   * REACH CHANGED SIDES (A.67), and this test is the record of why.
+   *
+   * A.62 gave heavy BOTH reach and per-cell bite, so heavy was simply the
+   * bigger swing and light was the same swing more often — a rate trade with
+   * no character, and nothing a player had a reason to build toward. Splitting
+   * them gives each side a job the other cannot do: LIGHT touches more cells
+   * (sweeping plain rock), HEAVY takes more of each and cracks ore pockets.
+   */
+  it('light sweeps wider; heavy takes more of each cell and cracks ore', () => {
     hold([HEAVY]);
     const heavy = toolEffect(st());
     hold([LIGHT]);
     const light = toolEffect(st());
-    expect(heavy.balance.cells).toBeGreaterThan(light.balance.cells);
+    // LIGHT sweeps: more cells per swing.
+    expect(light.balance.cells).toBeGreaterThan(heavy.balance.cells);
+    expect(light.cells).toBeGreaterThanOrEqual(heavy.cells);
+    // HEAVY bites: more of each cell it touches, and it cracks pockets.
     expect(heavy.balance.splash).toBeGreaterThan(light.balance.splash);
     expect(heavy.splash).toBeGreaterThan(light.splash);
+    // ISOLATE THE AXIS. Comparing the two tools composite oreRate would be
+    // comparing two different MATERIALS — their base ore speed differs, so the
+    // composite can favour either and says nothing about balance. The balance
+    // term is the thing under test.
+    expect(heavy.balance.oreRate).toBeGreaterThan(light.balance.oreRate);
+    expect(heavy.balance.oreRate).toBeGreaterThan(1);
+    // And the job each is for is named, so the player can read it.
+    expect(heavy.balance.job).toBe('ore');
+    expect(light.balance.job).toBe('rock');
+    // NEITHER is worse than bare hands at the other one job.
+    expect(light.balance.oreRate).toBeGreaterThanOrEqual(1);
   });
 
   it('and pays for it with a wind-up that light never has', () => {

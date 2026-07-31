@@ -877,3 +877,89 @@ export function traitPointsAt(trait: TraitId, reached = 7): string {
     ? `Nothing you can work in wants it yet, but an ability does.`
     : `Work it in and it reaches for ${lead}.${tail}`;
 }
+
+/**
+ * WHAT THIS STONE WANTS BESIDE IT — the pairing hint.
+ *
+ * `traitPointsAt` says where a trait LEANS, which made the direction legible and
+ * still left the actual question unanswered: a player looking at graveclay knows
+ * it reaches for reach and endurance, and has no idea what to put NEXT to it.
+ * Pairing is where the whole system lives — a signature is two or three traits —
+ * and it was the one thing nothing said out loud.
+ *
+ * So this answers the real question: given what you have picked so far, which
+ * trait would carry you furthest toward completing SOMETHING. It names the
+ * TRAIT, never the modifier, so the destination stays discovered while the next
+ * step stops being a guess.
+ *
+ * DERIVED from `TOOL_MODS` and `DRILL_ABILITIES` together, gated by depth — the
+ * same two registries the matchers read, so it cannot recommend a pairing the
+ * game would not honour.
+ */
+export interface PairHint {
+  /** The trait to add. */
+  trait: TraitId;
+  /** How many separate signatures it moves you toward. */
+  reach: number;
+  /** True when adding it COMPLETES something you could then make. */
+  completes: boolean;
+}
+
+/**
+ * Rank the traits worth adding to a partial mix. `have` is the trait pool you
+ * already hold; the answer is what to look for next.
+ */
+export function pairsWellWith(
+  materialIds: string[],
+  opts: { reached?: number; classId?: string | null } = {},
+): PairHint[] {
+  const reached = opts.reached ?? 7;
+  const have = traitPool(materialIds);
+  const score = new Map<TraitId, { reach: number; completes: boolean }>();
+
+  const consider = (needs: Partial<Record<TraitId, number>>): void => {
+    // How short is this signature, and of what?
+    const missing: TraitId[] = [];
+    let shortBy = 0;
+    for (const [t, want] of Object.entries(needs) as Array<[TraitId, number]>) {
+      const short = want - (have[t] ?? 0);
+      if (short > 0) { missing.push(t); shortBy += short; }
+    }
+    // Already satisfied, or hopeless in one step — neither is a hint.
+    if (missing.length === 0 || shortBy > 2) return;
+    for (const t of missing) {
+      const at = score.get(t) ?? { reach: 0, completes: false };
+      at.reach += 1;
+      if (shortBy === 1) at.completes = true;
+      score.set(t, at);
+    }
+  };
+
+  for (const m of TOOL_MODS) {
+    if ((MOD_SHELL_ORDINAL[m.shell] ?? 7) > reached) continue;
+    if (m.classOnly && m.classOnly !== opts.classId) continue;
+    consider(m.needs);
+  }
+  for (const a of DRILL_ABILITIES) {
+    if (shellOrdinal(a.shell) > reached) continue;
+    consider(a.needs as Partial<Record<TraitId, number>>);
+  }
+
+  return [...score.entries()]
+    .map(([trait, v]) => ({ trait, ...v }))
+    .sort((a, b) => (Number(b.completes) - Number(a.completes)) || (b.reach - a.reach));
+}
+
+/** The hint as one sentence, for a stone you are about to pick. */
+export function pairingLine(
+  materialIds: string[],
+  opts: { reached?: number; classId?: string | null } = {},
+): string {
+  const hints = pairsWellWith(materialIds, opts);
+  if (hints.length === 0) return 'Nothing obvious wants to sit beside this yet.';
+  const done = hints.filter((h) => h.completes).slice(0, 3);
+  if (done.length > 0) {
+    return `Put ${done.map((h) => h.trait).join(' or ')} beside it and something finishes.`;
+  }
+  return `It leans toward ${hints.slice(0, 3).map((h) => h.trait).join(', ')} — still short of anything.`;
+}

@@ -207,10 +207,13 @@ export function effectOf(
     (SPLASH_FLOOR + SPLASH_PER_TIER * tierOf(tool.stats.bite, REF.bite) + mod.splash)
       * shape.splash * balance.splash,
   );
+  // BALANCE LANDS ON ORE WORK, inside the cap that already bounded it. A
+  // pocket is charge the field already made, held at a higher cell cap — so
+  // working it faster is reach-and-speed, never a new source (the A.55 ruling).
   const oreRate = Math.min(
     ORE_RATE_CAP,
     (1 + ORE_PER_TIER * tierOf(tool.stats.oreSpeed, REF.oreSpeed) * grant.oreRate)
-      * mod.oreRate * shape.oreRate,
+      * mod.oreRate * shape.oreRate * balance.oreRate,
   );
   const dropWeight = Math.min(
     DROP_CAP,
