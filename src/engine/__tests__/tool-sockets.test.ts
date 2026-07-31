@@ -550,8 +550,8 @@ describe('an affix reaches its bucket even when its id is not the bucket name', 
 // ---------------------------------------------------------------------------
 
 describe('the save', () => {
-  it('is at v45 and seats nothing in anybody\'s tool', () => {
-    expect(SAVE_VERSION).toBe(45);
+  it('seats nothing in anybody\'s tool', () => {
+    expect(SAVE_VERSION).toBe(46);
     const out = runMigrations({
       version: 44,
       state: {

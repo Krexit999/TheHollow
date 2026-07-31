@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 45;
+export const SAVE_VERSION = 46;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -1057,6 +1057,20 @@ export const MIGRATIONS: Record<number, Migration> = {
    * the moment it loads) and nothing is seated in it. A relic that was worn stays
    * worn; the shared pool has nothing to reconcile because no socket is filled.
    */
+  /**
+   * v46 — the modifier library learns WHERE it learned things.
+   *
+   * An empty map, and deliberately not back-filled: a modifier you already knew
+   * was discovered at a bench before forging taught anything, and inventing a
+   * pour you never made would be a worse record than none. The readout says
+   * "you have known this a while" for those.
+   */
+  45: (p) => {
+    const state = { ...(p.state as Record<string, unknown>) };
+    const casting = state['casting'] as Record<string, unknown> | undefined;
+    if (casting && casting['modFrom'] === undefined) casting['modFrom'] = {};
+    return { ...p, version: 46, state };
+  },
   44: (p) => {
     const state = { ...(p.state as Record<string, unknown>) };
     const casting = state['casting'] as Record<string, unknown> | undefined;

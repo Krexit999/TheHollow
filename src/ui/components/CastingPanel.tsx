@@ -44,7 +44,7 @@ import { readBio } from '../../engine/systems/toolBio';
 import { allShells, currentShell } from '../../engine/shells';
 import {
   MELT_BACK_SHARE, TUB_CAPACITY,
-  benchComplete, benchPreview, canCast, crucibleFill, currentTool, frontCharge,
+  benchComplete, benchPreview, canCast, currentTool, frontCharge,
   castMelt, layerDraw, meltBackValue, queued, rackPart, tubHeld, unitsThatFit,
   type RackPart,
 } from '../../engine/systems/casting';
@@ -57,14 +57,18 @@ import {
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
 import { ROMAN, shellOrdinal } from '../../engine/content/drillAlloys';
-import { TOOL_CARRIER } from '../../engine/systems/drillAlloys';
+import { TOOL_CARRIER, reachedOrdinal } from '../../engine/systems/drillAlloys';
 import {
   ABILITY_PARTS, abilityMaterials, effectInHand, toolAbilityHint, toolAbilitySlots,
   toolFits, toolGrade, toolGrants,
 } from '../../engine/systems/toolAbilities';
-import { MOD_BY_ID, SYNERGY_BY_ID, abilityLevelOf } from '../../engine/content/toolMods';
 import {
-  INST_FLOOR, MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modSlotsTotal,
+  MOD_BY_ID, SYNERGY_BY_ID, abilityLevelOf, pointedAtBy, traitPointsAt,
+} from '../../engine/content/toolMods';
+import { traitsOf, type TraitId } from '../../engine/traits';
+import {
+  INST_FLOOR, MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modRevealedBy,
+  modSlotsTotal,
   modSlotsUsed, modStacks, synergyHints, toolInstability, whyDormant,
   type ModCache, type ToolModStack,
 } from '../../engine/systems/toolMods';
@@ -679,10 +683,375 @@ function SeatBar({
   );
 }
 
+// ---------------------------------------------------------------------------
+// THE STONE PICKER — 158 materials, never all at once
+// ---------------------------------------------------------------------------
+/**
+ * THE PROBLEM: a `<Select>` over every material you hold is a scroll, and by
+ * mid-game that is well over a hundred rows of near-identical names. Finding
+ * "the dense one I have a lot of" meant reading all of them.
+ *
+ * Three cuts, and they are the three questions a player actually asks:
+ *   WHAT AM I LOOKING FOR — a trait filter, because a stone is chosen for what
+ *     it leans toward far more often than by name.
+ *   WHERE IS IT FROM — a shell filter, which is also the depth ladder.
+ *   WHAT DO I HAVE — the default sort is simply "most held", so the stones you
+ *     could actually spend are the ones on top.
+ * Plus a text box, because sometimes you do know the name.
+ *
+ * Nothing here is a locked list: it filters what you HOLD. A trait you own no
+ * stone of does not appear as an empty category.
+ */
+function StonePicker({
+  state, value, onPick, testid = 'stone-picker',
+}: {
+  state: GameState; value: string; onPick: (id: string) => void; testid?: string;
+}) {
+  const [q, setQ] = useState('');
+  const [trait, setTrait] = useState<TraitId | null>(null);
+  const [shell, setShell] = useState<string | null>(null);
+  const reached = reachedOrdinal(state);
+
+  const held = useMemo(() => {
+    const out: Array<{ id: string; n: number; shell: string; traits: TraitId[] }> = [];
+    for (const sh of allShells()) {
+      for (const m of materialsOfShell(sh.id)) {
+        const n = materialCount(state, m.id);
+        if (n > 0) out.push({ id: m.id, n, shell: sh.id, traits: traitsOf(m.id) });
+      }
+    }
+    return out.sort((a, b) => b.n - a.n);
+  }, [state, state.materials.stacks]);
+
+  // Only offer a cut that would actually narrow anything you hold.
+  const liveTraits = useMemo(() => {
+    const seen = new Map<TraitId, number>();
+    for (const h of held) for (const t of h.traits) seen.set(t, (seen.get(t) ?? 0) + 1);
+    return [...seen.entries()].sort((a, b) => b[1] - a[1]);
+  }, [held]);
+  const liveShells = useMemo(
+    () => allShells().filter((sh) => held.some((h) => h.shell === sh.id)),
+    [held],
+  );
+
+  const shown = held.filter((h) =>
+    (!trait || h.traits.includes(trait))
+    && (!shell || h.shell === shell)
+    && (!q || materialDef(h.id).name.toLowerCase().includes(q.toLowerCase())));
+
+  return (
+    <div className="mt-1.5" data-testid={testid}>
+      <input
+        className="w-full rounded border border-cave-800 bg-cave-900 px-1.5 py-1 text-[10px] text-cave-200 placeholder:text-cave-600"
+        placeholder={`Search ${held.length} stones…`}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        data-testid={`${testid}-search`}
+        aria-label="Search stones"
+      />
+
+      <div className="mt-1 flex flex-wrap gap-0.5" data-testid={`${testid}-traits`}>
+        {liveTraits.map(([t, n]) => (
+          <button
+            key={t}
+            className="rounded border px-1 text-[8px] capitalize leading-[14px]"
+            style={{
+              borderColor: t === trait ? '#e0b054' : '#35302a',
+              color: t === trait ? '#e0b054' : '#8a7f70',
+            }}
+            data-testid={`${testid}-trait-${t}`}
+            title={traitPointsAt(t, reached)}
+            onClick={() => setTrait((c) => (c === t ? null : t))}
+          >
+            {t} {n}
+          </button>
+        ))}
+      </div>
+
+      {liveShells.length > 1 && (
+        <div className="mt-1 flex flex-wrap gap-0.5" data-testid={`${testid}-shells`}>
+          {liveShells.map((sh) => (
+            <button
+              key={sh.id}
+              className="rounded border px-1 text-[8px] leading-[14px]"
+              style={{
+                borderColor: sh.id === shell ? '#e0b054' : '#35302a',
+                color: sh.id === shell ? '#e0b054' : '#8a7f70',
+              }}
+              data-testid={`${testid}-shell-${sh.id}`}
+              onClick={() => setShell((c) => (c === sh.id ? null : sh.id))}
+            >
+              {sh.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* WHAT THE FILTER MEANS — the trait's direction, in words, right here. */}
+      {trait && (
+        <div className="mt-1 text-[8px] leading-snug text-[#9ac07a]" data-testid={`${testid}-lean`}>
+          {traitPointsAt(trait, reached)}
+        </div>
+      )}
+
+      <div
+        className="mt-1 max-h-[132px] space-y-0.5 overflow-y-auto"
+        data-testid={`${testid}-list`}
+      >
+        {shown.length === 0 ? (
+          <div className="text-[9px] italic text-cave-600" data-testid={`${testid}-none`}>
+            Nothing you hold matches that.
+          </div>
+        ) : shown.slice(0, 60).map((h) => {
+          const [deep, , light] = materialDef(h.id).palette;
+          return (
+            <button
+              key={h.id}
+              className="flex w-full items-center gap-1 rounded border px-1 py-0.5 text-left"
+              style={{
+                borderColor: h.id === value ? '#e0b054' : 'transparent',
+                background: h.id === value ? 'rgba(224,176,84,0.07)' : 'transparent',
+              }}
+              data-testid={`${testid}-opt-${h.id}`}
+              onClick={() => onPick(h.id)}
+            >
+              <span style={{
+                width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                background: `linear-gradient(135deg, ${light}, ${deep})`,
+              }} />
+              <span className="min-w-0 flex-1 truncate text-[10px] text-cave-200">
+                {materialDef(h.id).name}
+              </span>
+              <span className="shrink-0 text-[8px] text-cave-600">{h.traits.join(' ')}</span>
+              <span className="tnum shrink-0 text-[9px] text-cave-400">{h.n}</span>
+            </button>
+          );
+        })}
+        {shown.length > 60 && (
+          <div className="text-[8px] italic text-cave-600">
+            …and {shown.length - 60} more. Narrow it with a trait.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * THE MELT IS THE MATERIAL — one tub, stones in it, and the front one is what
+ * pours next.
+ *
+ * The first cut drew a two-tone bar (molten orange, solid grey) and a separate
+ * row of "queued" chips, which taught the player that the crucible is a QUEUE
+ * with a preview. It is not: the engine has always merged same-material charges
+ * into ONE stone (`chargeCrucible`'s `existing` branch) and always poured from
+ * the front. So the picture was wrong about the mechanism it was drawing.
+ *
+ * Now the tub IS the stones: each takes the share of the bar it holds, in its
+ * OWN material colour, and the leftmost pours next. Tap any stone and it comes
+ * to the front — that is `bringToFront`, which existed all along and had no
+ * picture. Adding more of a stone already in the tub widens that stone rather
+ * than adding another, which is the merge, drawn.
+ *
+ * THE COLOUR IS `MaterialDef.palette`, the same [deep, mid, light] the icon
+ * generator and the tool diagram use — so the melt is visibly the stone you put
+ * in, and it recolours when the front changes because the front IS the colour.
+ */
+function CrucibleTub({
+  state, onNote,
+}: { state: GameState; onNote: (s: string | null) => void }) {
+  const c = state.casting.crucible;
+  const stones = queued(c);
+  const held = tubHeld(c);
+  const front = frontCharge(c);
+
+  return (
+    <div data-testid="crucible-tub-wrap">
+      <div className="flex items-baseline justify-between">
+        <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+          Crucible
+        </span>
+        <span className="tnum" style={{ fontSize: 9, color: '#6a6055' }} data-testid="crucible-held">
+          {Math.round(held)}/{TUB_CAPACITY}
+        </span>
+      </div>
+
+      {/* THE TUB. One vessel; the stones share it, front on the left. */}
+      <div
+        style={{
+          marginTop: 4, height: 14, borderRadius: 3, overflow: 'hidden', display: 'flex',
+          background: '#0a0908', boxShadow: 'inset 0 0 0 1px rgba(138,127,112,0.28)',
+        }}
+        data-testid="crucible-tub"
+      >
+        {stones.length === 0 ? (
+          <div className="flex-1" data-testid="crucible-empty" />
+        ) : stones.map((ch, i) => {
+          const mine = ch.solid + ch.molten;
+          const [deep, mid, light] = materialDef(ch.materialId).palette;
+          const moltenShare = mine > 0 ? ch.molten / mine : 0;
+          return (
+            <button
+              key={ch.materialId}
+              data-testid={`crucible-stone-${i}`}
+              data-material={ch.materialId}
+              data-front={i === 0 ? '1' : '0'}
+              title={i === 0
+                ? `${materialDef(ch.materialId).name} — pours next`
+                : `${materialDef(ch.materialId).name} — tap to bring it to the front`}
+              onClick={() => {
+                if (i === 0) return;
+                const r = dispatch({ type: 'bringToFront', index: i });
+                onNote(r.ok ? null : (r.reason ?? null));
+              }}
+              style={{
+                width: `${(mine / TUB_CAPACITY) * 100}%`,
+                height: '100%', padding: 0, border: 'none', cursor: i === 0 ? 'default' : 'pointer',
+                /**
+                 * MOLTEN IS THE STONE'S OWN COLOUR, LIT. Solid is the same colour
+                 * banked down — so a stone that is still heating and one that is
+                 * ready read as the same material at two temperatures, rather than
+                 * as two different substances the way orange-vs-grey did.
+                 */
+                background: `linear-gradient(90deg, ${light} 0%, ${mid} ${Math.round(moltenShare * 100)}%, ${deep} 100%)`,
+                filter: i === 0 ? 'brightness(1.15) saturate(1.15)' : 'brightness(0.72)',
+                boxShadow: i === 0
+                  ? 'inset 0 0 0 1px rgba(245,192,90,0.9), inset 0 1px 0 rgba(255,255,255,0.25)'
+                  : 'inset 0 0 0 1px rgba(0,0,0,0.5)',
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* THE STONES, NAMED. Same order, same colours, and the same tap. */}
+      {stones.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-1" data-testid="crucible-stones">
+          {stones.map((ch, i) => {
+            const [deep, , light] = materialDef(ch.materialId).palette;
+            return (
+              <button
+                key={ch.materialId}
+                className="flex items-center gap-1 rounded border px-1 py-0.5"
+                style={{
+                  borderColor: i === 0 ? '#e0b054' : '#35302a',
+                }}
+                data-testid={`crucible-chip-${i}`}
+                data-material={ch.materialId}
+                title={i === 0 ? 'Pours next' : 'Bring it to the front'}
+                onClick={() => {
+                  if (i === 0) return;
+                  const r = dispatch({ type: 'bringToFront', index: i });
+                  onNote(r.ok ? null : (r.reason ?? null));
+                }}
+              >
+                <span style={{
+                  width: 7, height: 7, borderRadius: 2,
+                  background: `linear-gradient(135deg, ${light}, ${deep})`,
+                }} />
+                <span className="tnum" style={{ fontSize: 8, color: i === 0 ? '#e0b054' : '#8a7f70' }}>
+                  {materialDef(ch.materialId).name} {Math.round(ch.solid + ch.molten)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{ marginTop: 3, fontSize: 9, color: '#8a7f70' }} data-testid="crucible-front">
+        {front
+          ? `${materialDef(front.materialId).name} pours next`
+          : 'cold and empty'}
+        {stones.length > 1 ? ` · ${stones.length} stones in it` : ''}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE LIBRARY — what forging has taught you
+// ---------------------------------------------------------------------------
+/**
+ * WHAT WAS ACTUALLY BROKEN, and it is worth being exact because the mechanism
+ * was not missing.
+ *
+ * `applyToolMod` has always discovered modifiers. But it needs a BUILT TOOL to
+ * render at all, and it is a deliberate second act at a second bench — so a
+ * player who had not assembled anything saw nothing, and one who had was asked
+ * to spend stone on a blind mix to find out what a stone was even for.
+ *
+ * So the library is now its own surface, visible with or without a tool, and it
+ * fills from FORGING (`forgeDiscover`, called at every pour and every assembly).
+ * It shows what you know, what revealed it, and — the part that makes the whole
+ * thing reasoned rather than guessed — what your NEXT pour would teach.
+ */
+function ModLibrary({ state }: { state: GameState }) {
+  const library = knownMods(state);
+  const reached = reachedOrdinal(state);
+  const bench = PART_TYPES
+    .map((t) => state.casting.bench[t])
+    .filter((id): id is number => id !== undefined)
+    .map((id) => rackPart(state, id))
+    .filter((p): p is RackPart => !!p);
+  const soon = bench.length > 0
+    ? pointedAtBy(bench.map((p) => p.materialId), {
+      reached, classId: toolClass(state).def?.id ?? null,
+    }).filter((m) => !library.some((k) => k.id === m.id))
+    : [];
+
+  return (
+    <div className="mt-2 rounded-lg border border-cave-800 p-2" data-testid="mod-library">
+      <div className="flex items-baseline justify-between">
+        <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+          What forging has taught you
+        </span>
+        <span className="tnum" style={{ fontSize: 9, color: '#6a6055' }} data-testid="mod-library-count">
+          {library.length} known
+        </span>
+      </div>
+
+      {library.length === 0 ? (
+        <div className="mt-1 text-[10px] leading-snug italic text-cave-500" data-testid="mod-library-empty">
+          Nothing yet. Pour a part and the stone will tell you what it reaches for —
+          every trait leans somewhere.
+        </div>
+      ) : (
+        <div className="mt-1 space-y-0.5" data-testid="mod-library-list">
+          {library.map((m) => {
+            const from = modRevealedBy(state, m.id);
+            return (
+              <div key={m.id} className="flex items-baseline gap-1.5" data-testid={`lib-${m.id}`}>
+                <span
+                  className="shrink-0 text-[9px] font-semibold"
+                  style={{ color: `#${m.color.toString(16).padStart(6, '0')}` }}
+                >
+                  {m.name}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[8px] text-cave-600">
+                  {from ? `from ${from}` : 'known a while'}
+                </span>
+                <span className="shrink-0 text-[8px] text-cave-600">
+                  {m.cost} slot{m.cost === 1 ? '' : 's'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* THE NEXT LESSON, so the bench is a decision and not a lottery. */}
+      {soon.length > 0 && (
+        <div className="mt-1.5 border-t border-cave-800 pt-1 text-[9px] leading-snug text-[#9ac07a]"
+          data-testid="mod-library-soon">
+          Combining what is on the bench would teach you {soon.length} more.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CrucibleBar({ state, want }: { state: GameState; want: PartType | null }) {
   const c = state.casting.crucible;
-  const fill = crucibleFill(c);
-  const front = frontCharge(c);
   const q = queued(c);
   const [target, setTarget] = useState<string>('');
   const [part, setPart] = useState<PartType>('head');
@@ -713,50 +1082,12 @@ function CrucibleBar({ state, want }: { state: GameState; want: PartType | null 
 
   return (
     <div className="mt-2 flex gap-2" data-testid="crucible-bar">
-      {/* THE TUB */}
+      {/* THE TUB — one vessel, the stones in it, front pours next. */}
       <div className="min-w-0 flex-1 rounded-lg border border-cave-800 p-2">
-        <div className="flex items-baseline justify-between">
-          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
-            Crucible
-          </span>
-          <span className="tnum" style={{ fontSize: 9, color: '#6a6055' }} data-testid="crucible-held">
-            {Math.round(tubHeld(c))}/{TUB_CAPACITY}
-          </span>
-        </div>
-        <div
-          style={{
-            marginTop: 4, height: 10, borderRadius: 3, overflow: 'hidden',
-            background: '#0a0908', boxShadow: 'inset 0 0 0 1px rgba(138,127,112,0.28)',
-            display: 'flex',
-          }}
-          data-testid="crucible-tub"
-        >
-          <div style={{
-            width: `${Math.round(fill.molten01 * 100)}%`,
-            background: 'linear-gradient(90deg,#8a3c12,#e0902e,#f5c05a)',
-          }} data-testid="crucible-molten" />
-          <div style={{
-            width: `${Math.round(fill.solid01 * 100)}%`,
-            background: 'linear-gradient(90deg,#4a4038,#6a6055)',
-          }} data-testid="crucible-solid" />
-        </div>
-        <div style={{ marginTop: 3, fontSize: 9, color: '#8a7f70' }} data-testid="crucible-front">
-          {front
-            ? `${materialDef(front.materialId).name} · ${Math.round(front.solid + front.molten)}`
-            : 'cold and empty'}
-          {q.length > 1 ? ` · ${q.length} queued` : ''}
-        </div>
+        <CrucibleTub state={state} onNote={setNote} />
 
-        <Select
-          value={pick}
-          onChange={setTarget}
-          options={owned.map((o) => ({
-            value: o.id, label: `${materialDef(o.id).name} · ${o.n} held`,
-          }))}
-          className="mt-1.5 w-full"
-          placeholder="Nothing in the Hold"
-          ariaLabel="Stone to melt"
-        />
+        <StonePicker state={state} value={pick} onPick={setTarget} testid="melt-picker" />
+
         <div className="mt-1 flex gap-1">
           {[1, 5].map((n) => (
             <button
@@ -782,25 +1113,6 @@ function CrucibleBar({ state, want }: { state: GameState; want: PartType | null 
             Fill
           </button>
         </div>
-        {q.length > 1 && (
-          <div className="mt-1 flex flex-wrap gap-1" data-testid="crucible-queue">
-            {q.map((ch, i) => (
-              <button
-                key={`${ch.materialId}-${i}`}
-                className="rounded border px-1 py-0.5 text-[8px]"
-                style={{
-                  borderColor: i === 0 ? '#e0b054' : '#35302a',
-                  color: i === 0 ? '#e0b054' : '#8a7f70',
-                }}
-                data-testid={`queue-${i}`}
-                title={i === 0 ? 'Pours first' : 'Bring this one to the front'}
-                onClick={() => dispatch({ type: 'bringToFront', index: i })}
-              >
-                {materialDef(ch.materialId).name}
-              </button>
-            ))}
-          </div>
-        )}
         {q.length > 0 && (
           <button
             className="btn mt-1 w-full py-0.5 text-[9px]"
@@ -811,7 +1123,6 @@ function CrucibleBar({ state, want }: { state: GameState; want: PartType | null 
           </button>
         )}
       </div>
-
       {/* THE MOULDS */}
       <div className="min-w-0 flex-1 rounded-lg border border-cave-800 p-2">
         <div className="flex items-baseline justify-between">
@@ -1016,6 +1327,8 @@ function TheStation({ state }: { state: GameState }) {
       <CrucibleBar state={state} want={want} />
 
       {/* ── SECONDARY, tucked. Nothing lost; it is just not in the way. ── */}
+      <ModLibrary state={state} />
+
       <div className="mt-2 space-y-1.5" data-testid="station-secondary">
         {built && <SocketsCard state={state} tool={built} slot={socketSlot} onSlot={setSocketSlot} />}
         {built && <AbilitiesCard state={state} />}

@@ -44,7 +44,7 @@
  * something you assemble, notice, and then deliberately go and finish.
  */
 import type { TraitId } from '../traits';
-import { traitPool } from './drillAlloys';
+import { DRILL_ABILITIES, shellOrdinal, traitPool } from './drillAlloys';
 
 export type ModCategory = 'stat' | 'ability' | 'utility' | 'combo';
 
@@ -740,6 +740,140 @@ export function matchToolMod(
   return null;
 }
 
+/**
+ * EVERY modifier a mix satisfies, best first — the exact mirror of
+ * `matchAllAbilities`, and it exists for the same reason.
+ *
+ * `matchToolMod` answers "what does this pour BECOME", which is the right
+ * question at a bench where you are working one thing in. Forging asks a
+ * different one: you have just poured a part, or assembled seven, and what
+ * that stone TEACHES you is everything it reaches for — not only the deepest.
+ * Same ranking, same depth gate, same class filter; it just does not stop at
+ * the first hit.
+ */
+/**
+ * WHAT A SET OF STONES POINTS AT — the DISCOVERY matcher, and it is deliberately
+ * looser than the making one.
+ *
+ *  asks "could this mix BE these", which needs the full trait
+ * COUNTS: Heavy Head wants two dense stones and one dense stone is not two. That
+ * is right at the bench, and it is wrong for learning — a single graveclay Head
+ * is one dense stone, so a first pour satisfied nothing and taught nothing. The
+ * first cut of this shipped exactly that and a fresh save could pour all day
+ * without the library moving.
+ *
+ * So discovery matches on trait PRESENCE and ignores how many. Pour dense stone
+ * and you learn that dense stone reaches for Heavy Head; you still cannot MAKE
+ * Heavy Head until you bring it two. Knowing a thing exists and being able to
+ * make it are different, and splitting them is what turns a blind mix into a
+ * goal you can work toward.
+ */
+export function pointedAtBy(
+  materialIds: string[],
+  opts: { reached?: number; classId?: string | null } = {},
+): ToolModDef[] {
+  if (materialIds.length === 0) return [];
+  const pool = traitPool(materialIds);
+  const reached = opts.reached ?? 7;
+  return TOOL_MODS.filter((m) =>
+    MOD_SHELL_ORDINAL[m.shell]! <= reached
+    && (!m.classOnly || m.classOnly === opts.classId)
+    && Object.keys(m.needs).length > 0
+    && Object.keys(m.needs).every((t) => (pool[t as TraitId] ?? 0) > 0));
+}
+
 export const MOD_SHELL_ORDINAL: Record<string, number> = {
   loam: 1, ferrite: 2, verdance: 3, glassmere: 4, cinder: 5, hollow: 6, aleph: 7,
 };
+
+// ---------------------------------------------------------------------------
+// WHAT A TRAIT POINTS AT — the semi-known half of pillar 5
+// ---------------------------------------------------------------------------
+/**
+ * THE PROBLEM THIS SOLVES: which stone makes which modifier was BLIND.
+ *
+ * Pillar 5 says discovery, not a locked list — and it has always meant "found
+ * by experimenting", not "found by brute force". A player holding umberjade
+ * could read that it is `brittle` and `charged` and still had no idea whether
+ * feeding it produced reach, durability or nothing, so the honest strategy was
+ * to feed everything and see. That is guessing, and guessing is not discovery.
+ *
+ * So a trait now names its DIRECTION and never its destination. `charged`
+ * says "it reaches for what the tool carries — meters, grades, firings"; it
+ * does not say Quick Charge, or Second Seat, or which mix would make either.
+ * You reason toward a modifier and the making confirms it, which is the shape
+ * the doc asked for ("discovered, not fully listed").
+ *
+ * DERIVED, NOT AUTHORED, and that is the important part. The direction comes
+ * from walking `TOOL_MODS` — which axes do the modifiers that DEMAND this trait
+ * actually touch — so a new modifier changes the hint automatically and the hint
+ * can never drift from the registry. An authored table would be a second source
+ * of truth about the same thing, and this project has paid for those twice
+ * (the axiom formula, the affix keys).
+ */
+
+/** The plain-language family each effect axis belongs to. */
+const AXIS_FAMILY: Record<string, string> = {
+  cells: 'reach', splash: 'reach', oreReach: 'reach',
+  oreRate: 'ore work', dropWeight: 'what it turns up',
+  uses: 'endurance', repairPerSec: 'endurance', repairOnFire: 'endurance',
+  xpRate: 'learning',
+  abilitySlots: 'what it carries', chargePerSwing: 'what it carries',
+  abilityGrade: 'what it carries', paramAdd: 'what it carries',
+  paramMult: 'what it carries', refire: 'what it carries',
+  chargeOnFire: 'what it carries',
+  amplify: 'everything else it holds',
+  stabilize: 'steadiness',
+};
+
+/**
+ * Which families the modifiers demanding this trait actually touch, commonest
+ * first. `reached` gates it the same way the matcher does — a Loam player is
+ * told what `charged` means for the modifiers they could actually make.
+ */
+export function traitFamilies(trait: TraitId, reached = 7): string[] {
+  const weight = new Map<string, number>();
+  for (const m of TOOL_MODS) {
+    if ((MOD_SHELL_ORDINAL[m.shell] ?? 7) > reached) continue;
+    const want = m.needs[trait];
+    if (!want) continue;
+    for (const axis of Object.keys(m.fx)) {
+      const fam = AXIS_FAMILY[axis];
+      if (fam) weight.set(fam, (weight.get(fam) ?? 0) + want);
+    }
+  }
+  return [...weight.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+}
+
+/** The same question for ABILITIES: does this trait reach for one, and what kind? */
+export function traitAbilityLean(trait: TraitId, reached = 7): string[] {
+  const kinds = new Map<string, number>();
+  for (const a of DRILL_ABILITIES) {
+    if (shellOrdinal(a.shell) > reached) continue;
+    const want = (a.needs as Partial<Record<TraitId, number>>)[trait];
+    if (!want) continue;
+    kinds.set(a.shape, (kinds.get(a.shape) ?? 0) + want);
+  }
+  return [...kinds.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+}
+
+/**
+ * ONE LINE PER TRAIT, in the game's voice, naming the direction only.
+ *
+ * The families come from the data; the sentence around them is written, because
+ * "reach, endurance" is a readout and this has to be a thing a person reads
+ * once and remembers. If the registry ever stops pointing a trait anywhere the
+ * line says exactly that rather than inventing a promise.
+ */
+export function traitPointsAt(trait: TraitId, reached = 7): string {
+  const fams = traitFamilies(trait, reached);
+  const ab = traitAbilityLean(trait, reached);
+  if (fams.length === 0 && ab.length === 0) {
+    return 'Nothing you could make yet reaches for this one.';
+  }
+  const lead = fams.slice(0, 2).join(' and ');
+  const tail = ab.length > 0 ? ` It is also in what an ability wants.` : '';
+  return fams.length === 0
+    ? `Nothing you can work in wants it yet, but an ability does.`
+    : `Work it in and it reaches for ${lead}.${tail}`;
+}

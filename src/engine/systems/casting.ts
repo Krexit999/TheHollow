@@ -34,14 +34,22 @@
  */
 import type { ActionResult, DrillState, EngineCtx, GameState } from '../types';
 import {
-  LAYER_MAX, LAYER_MELT_EXTRA, PART_TYPES, layerWeights, shapeDef,
+  LAYER_MAX, LAYER_MELT_EXTRA, PART_DEFS, PART_TYPES, layerWeights, shapeDef,
   BOON_BY_ID, CRAFT_ODDS, MASTERWORKS,
   type CraftTier, type GrowthBoonId, type MasterworkId, type PartShape, type PartType,
 } from '../content/forgeParts';
 import {
-  assembleTool, derivePart, partMelt, growthProgress, type Part, type ToolStats,
+  assembleTool, derivePart, partMaterials, partMelt, growthProgress, type Part, type ToolStats,
 } from './forgeParts';
 import type { ToolBio } from './toolBio';
+/**
+ * THE ONE DELIBERATE CYCLE, and it is the same one `toolMining` documents.
+ * `toolMods` reads `currentTool` from here and this reads `forgeDiscover` from
+ * there. Neither touches the other at module-evaluation time — `forgeDiscover`
+ * is a hoisted function declaration called only from inside a verb — so both
+ * load orders resolve.
+ */
+import { forgeDiscover } from './toolMods';
 import type { SocketFill } from './toolSockets';
 import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
@@ -150,6 +158,15 @@ export interface CastingState {
   /** The library: every modifier this player has ever made. Survives a rebuild,
    *  because knowing how to make a thing is not something a tool holds. */
   knownMods?: string[];
+  /**
+   * WHAT REVEALED EACH ONE — "a graveclay Head", "a tool of seven". Flavour on
+   * the surface and a real affordance underneath: the library becomes a record
+   * of REASONING, so a player who can see that dense stone taught them Heavy
+   * Head can work out what dense stone is likely to teach them next. Absent for
+   * anything discovered before this existed, which reads as "you have known this
+   * a while" rather than as a hole.
+   */
+  modFrom?: Record<string, string>;
   /** SYNERGIES the player has ever woken. A found-not-listed record (pillar 5),
    *  kept apart from `knownMods` because a synergy is never applied — you
    *  arranged it, and the Codex remembers that you did. */
@@ -261,6 +278,7 @@ export function defaultCastingState(): CastingState {
     hand: { level: 1, timer: 0, lastCell: -1, name: 'your tool', fits: [] },
     mods: [],
     knownMods: [],
+    modFrom: {},
     knownSynergies: [],
     knownClasses: [],
     windup: 0,
@@ -642,8 +660,19 @@ export function castPart(
   ctx.emit({
     type: 'partCast', partType: type, materialId: part.materialId, purity: part.purity,
   });
+  /**
+   * THE POUR ITSELF TEACHES. Every stone that went into this part — the outer
+   * and every layer under it — is read for what it reaches for, and whatever
+   * the player has been deep enough to understand enters the library. This is
+   * the mirror of `syncToolAbilities` reading a build's three rock-facing
+   * stones, one step earlier in the process.
+   */
+  const learned = forgeDiscover(
+    state, ctx, partMaterials(part),
+    `a ${materialDef(part.materialId).name} ${PART_DEFS[type].name}`,
+  );
   ctx.dirty();
-  return { ok: true, data: { partId: part.id, layers: want } };
+  return { ok: true, data: { partId: part.id, layers: want, learned: learned.map((m) => m.id) } };
 }
 
 /**
@@ -764,8 +793,26 @@ export function buildTool(state: GameState, ctx: EngineCtx): ActionResult {
 
   const tool = assembleTool(parts);
   ctx.emit({ type: 'toolBuilt', coherence: tool.coherence.factor, rockRate: tool.rockRate });
+  /**
+   * AND SO DOES ASSEMBLY, over all seven at once — a bigger pool than any one
+   * pour, so a coherent set teaches things a single part never could. Run AFTER
+   * `state.casting.tool` is seated, because the class gate reads the built tool
+   * and a class-locked modifier should be learnable by the set that earned it.
+   */
+  const learned = forgeDiscover(
+    state, ctx, parts.map((p) => p.materialId),
+    `a tool of ${new Set(parts.map((p) => p.materialId)).size === 1
+      ? materialDef(parts[0]!.materialId).name
+      : 'seven parts'}`,
+  );
   ctx.dirty();
-  return { ok: true, data: { coherence: tool.coherence.factor, returned: returned.length } };
+  return {
+    ok: true,
+    data: {
+      coherence: tool.coherence.factor, returned: returned.length,
+      learned: learned.map((m) => m.id),
+    },
+  };
 }
 
 /** Take the tool apart. Its parts go back on the rack; you keep every one. */

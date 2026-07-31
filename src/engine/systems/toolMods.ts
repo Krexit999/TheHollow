@@ -34,7 +34,8 @@
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
   MOD_BY_ID, MOD_FIRE_WEIGHT, MOD_LEVEL_MAX, MOD_SHELL_ORDINAL, SYNERGIES,
-  SYNERGY_BY_ID, TOOL_MODS, matchToolMod, modLevelOf, modLevelScale, modXpForLevel,
+  SYNERGY_BY_ID, TOOL_MODS, matchToolMod, pointedAtBy, modLevelOf, modLevelScale,
+  modXpForLevel,
   type ModEffectDef, type SynergyDef, type ToolModDef,
 } from '../content/toolMods';
 import { alloyHint, dominantTrait } from '../content/drillAlloys';
@@ -174,6 +175,61 @@ export function modSlotsFree(state: GameState): number {
 }
 
 /** Everything the player has ever made, whether or not it is on the tool. */
+// ---------------------------------------------------------------------------
+// DISCOVERY BY FORGING — the source the tab was missing
+// ---------------------------------------------------------------------------
+/**
+ * WHAT WAS ACTUALLY WRONG, because the mechanism was not missing.
+ *
+ * `applyToolMod` has always discovered modifiers: feed stone at the bench and
+ * what it becomes enters `knownMods`. But that verb needs a BUILT TOOL, and it
+ * is a deliberate second trip to a second bench — so a player who had not yet
+ * assembled anything saw an empty library and no way in, and one who had was
+ * asked to spend materials on a blind mix to find out what a stone was for.
+ *
+ * So this is a SECOND SOURCE, not a replacement: forging itself teaches. Pour
+ * a part, assemble a tool, and the stone you used reveals what it reaches for.
+ * The bench still works and still installs.
+ *
+ * IT MIRRORS THE ABILITY GRAMMAR RATHER THAN INVENTING ONE — the brief asked
+ * for that and it is also the only honest option, since abilities already
+ * solved this exact problem. `syncToolAbilities` reads the build's materials,
+ * matches them against the registry gated by `reachedOrdinal`, records what it
+ * found in a codex and emits a found-event. This does the same four things.
+ * The depth gate is what makes the tab grow with descent: a Loam player can
+ * only ever be taught Loam modifiers, however the stone leans.
+ */
+export function forgeDiscover(
+  state: GameState, ctx: EngineCtx | undefined, materialIds: string[], source: string,
+): ToolModDef[] {
+  if (!state.casting) return [];
+  const mats = materialIds.filter(Boolean);
+  if (mats.length === 0) return [];
+  const found = pointedAtBy(mats, {
+    reached: reachedOrdinal(state),
+    classId: toolClass(state).def?.id ?? null,
+  });
+  const known = (state.casting.knownMods ??= []);
+  const from = (state.casting.modFrom ??= {});
+  const fresh: ToolModDef[] = [];
+  for (const def of found) {
+    if (known.includes(def.id)) continue;
+    known.push(def.id);
+    // WHAT REVEALED IT, kept because "you know this" is a worse answer than
+    // "you learned this pouring a graveclay head" — and because it is the only
+    // record of the reasoning that got there.
+    from[def.id] = source;
+    fresh.push(def);
+    ctx?.emit({ type: 'toolModFound', id: def.id, name: def.name });
+  }
+  if (fresh.length > 0) ctx?.dirty();
+  return fresh;
+}
+
+/** What revealed a modifier, for the library readout. */
+export function modRevealedBy(state: GameState, id: string): string | null {
+  return state.casting?.modFrom?.[id] ?? null;
+}
 export function knownMods(state: GameState): ToolModDef[] {
   const known = state.casting?.knownMods ?? [];
   return TOOL_MODS.filter((m) => known.includes(m.id));

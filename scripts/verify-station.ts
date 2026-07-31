@@ -234,7 +234,8 @@ async function main(): Promise<void> {
   const held = await txt(page, '[data-testid="crucible-held"]');
   check(!held.startsWith('0/'), 'melt: the crucible takes stone', held);
 
-  // BRING TO FRONT — needs a second stone queued.
+  // BRING TO FRONT — needs a second stone in the tub. The crucible is one tub
+  // of stones now, not a queue, so this reads the stone rather than a queue row.
   const queued = await page.evaluate(async () => {
     const w = window as unknown as Record<string, any>;
     const mats = await import(/* @vite-ignore */ '/src/engine/materials' + '.ts');
@@ -243,9 +244,9 @@ async function main(): Promise<void> {
     return { ok: r.ok, reason: r.reason ?? '', second };
   });
   await page.waitForTimeout(350);
-  if (queued.ok && await page.locator('[data-testid="queue-1"]').count() > 0) {
+  if (queued.ok && await page.locator('[data-testid="crucible-stone-1"]').count() > 0) {
     const before = await txt(page, '[data-testid="crucible-front"]');
-    await tapp(page, '[data-testid="queue-1"]');
+    await tapp(page, '[data-testid="crucible-stone-1"]');
     const after = await txt(page, '[data-testid="crucible-front"]');
     check(before !== after, 'bring-to-front: tapping a queued stone promotes it', `${before} → ${after}`);
   } else {
