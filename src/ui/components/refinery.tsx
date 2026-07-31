@@ -15,7 +15,7 @@ import type { GameState } from '../../engine';
 import { BANDS, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import { materialCount, toolRecipeName, equippedTool } from '../../engine/systems/forge';
 import {
-  refineryUnlocked, transmuteUnlocked, refinePreview, foundChains,
+  refineryUnlocked, transmuteUnlocked, refinePreview, climbPreview, foundChains,
   REFINE_RATIO, REFINERY_MASTERY,
 } from '../../engine/systems/refinery';
 import { salvagePreview } from '../../engine/systems/salvage';
@@ -43,6 +43,51 @@ function heldMaterials(state: GameState): Array<{ id: string; bands: Array<[Puri
     }))
     .filter((m) => m.bands.length > 0)
     .sort((a, b) => materialDef(a.id).name.localeCompare(materialDef(b.id).name));
+}
+
+/**
+ * THE WHOLE CLIMB, PRICED BEFORE YOU COMMIT.
+ *
+ * One band at a time is honest and, past the first rung, tedious — and 3:1
+ * compounding is not arithmetic anyone should be asked to do in their head to
+ * find out what "take this lot to Fine" costs. So the plan is quoted first:
+ * what it spends, what arrives, what comes back as slag.
+ *
+ * It is NOT a discount. Every rung is the same `refine` the buttons above
+ * call, in the same order, at the same ratio.
+ */
+function ClimbRow({ state, id }: { state: GameState; id: string }) {
+  const [note, setNote] = useState<string | null>(null);
+  // Only bands you could actually climb TO — never a locked list.
+  const targets = BANDS.slice(1).filter((b) => climbPreview(state, id, b) !== null);
+  if (targets.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1 border-t border-cave-800 pt-1"
+      data-testid={`climb-${id}`}>
+      <span className="text-[9px] uppercase tracking-wider text-cave-600">take it all to</span>
+      {targets.map((b) => {
+        const plan = climbPreview(state, id, b)!;
+        return (
+          <button
+            key={b}
+            className="btn tnum px-1.5 py-0.5 text-[10px]"
+            data-testid={`climb-${id}-${b}`}
+            title={`${plan.spent} spent → ${plan.got} ${BAND_LABELS[b]}, ${plan.slag} slag back`}
+            onClick={() => {
+              const r = dispatch({ type: 'refineTo', materialId: id, band: b });
+              const d = r.data as { spent?: number; got?: number } | undefined;
+              setNote(r.ok
+                ? `${d?.spent ?? 0} spent, ${d?.got ?? 0} ${BAND_LABELS[b]} out`
+                : (r.reason ?? null));
+            }}
+          >
+            {BAND_LABELS[b]} <span className="text-cave-500">−{plan.spent}</span>
+          </button>
+        );
+      })}
+      {note && <span className="text-[9px] text-cave-400" data-testid={`climb-note-${id}`}>{note}</span>}
+    </div>
+  );
 }
 
 export function RefineryPanel() {
@@ -82,7 +127,8 @@ export function RefineryPanel() {
             <p className="text-[11px] italic text-cave-500">Nothing in the Hold to work with yet.</p>
           )}
           {held.map(({ id, bands }) => (
-            <div key={id} className="flex items-center gap-2 rounded-md border border-cave-800 p-1.5">
+            <div key={id} className="rounded-md border border-cave-800 p-1.5">
+              <div className="flex items-center gap-2">
               <MaterialIcon id={id} size={20} />
               <span className="min-w-0 flex-1 truncate text-[11px] text-cave-300">{materialDef(id).name}</span>
               <div className="flex shrink-0 flex-wrap justify-end gap-1">
@@ -103,6 +149,8 @@ export function RefineryPanel() {
                   );
                 })}
               </div>
+              </div>
+              <ClimbRow state={state as GameState} id={id} />
             </div>
           ))}
         </div>

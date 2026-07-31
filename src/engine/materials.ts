@@ -64,9 +64,23 @@ export function rollPurity(rarity: MaterialRarity, rng: () => number = Math.rand
 }
 
 /** Purity bands — inventory stacks by these, not exact values. */
-export type PurityBand = 'poor' | 'fair' | 'good' | 'fine' | 'exalted';
+/**
+ * SIX BANDS. `pristine` is A.68 and sits ABOVE the natural range.
+ *
+ * A drop rolls 0-100, so `exalted` [95,100] was the top of the ladder AND the
+ * end of it: a player with a mountain of exalted stock had nothing left to
+ * spend it on, which is exactly the dead end the Refinery exists to prevent.
+ *
+ * `pristine` is therefore UNROLLABLE — nothing in the rock produces it and no
+ * drop table can. It exists only at the end of a refine, which makes it the
+ * one band that is purely MADE. That is also why adding it is safe for every
+ * existing save: no held stack can already be in it, and no band boundary
+ * below it moved, so nobody wakes up in a different band than they went to
+ * sleep in.
+ */
+export type PurityBand = 'poor' | 'fair' | 'good' | 'fine' | 'exalted' | 'pristine';
 
-export const BANDS: PurityBand[] = ['poor', 'fair', 'good', 'fine', 'exalted'];
+export const BANDS: PurityBand[] = ['poor', 'fair', 'good', 'fine', 'exalted', 'pristine'];
 
 export const BAND_RANGES: Record<PurityBand, [number, number]> = {
   poor: [0, 39],
@@ -74,6 +88,8 @@ export const BAND_RANGES: Record<PurityBand, [number, number]> = {
   good: [60, 79],
   fine: [80, 94],
   exalted: [95, 100],
+  /** Above what the world produces. Only a refine reaches here. */
+  pristine: [101, 110],
 };
 
 export const BAND_LABELS: Record<PurityBand, string> = {
@@ -82,9 +98,11 @@ export const BAND_LABELS: Record<PurityBand, string> = {
   good: 'Good',
   fine: 'Fine',
   exalted: 'Exalted',
+  pristine: 'Pristine',
 };
 
 export function bandOf(purity: number): PurityBand {
+  if (purity >= 101) return 'pristine';
   if (purity >= 95) return 'exalted';
   if (purity >= 80) return 'fine';
   if (purity >= 60) return 'good';

@@ -1117,6 +1117,13 @@ export const SHELL_TRAIT: Record<string, ShellTraitId> = {
  */
 export const TRAIT_INTENSITY: Record<PurityBand, number> = {
   poor: 0.70, fair: 0.85, good: 1.00, fine: 1.15, exalted: 1.30,
+  /**
+   * PRISTINE keeps the same 0.15 step every other band takes. It is one more
+   * rung, not a new curve — the ladder stays linear so the top of it cannot
+   * quietly become a different kind of thing. And it cuts BOTH ways, like
+   * every other band: a pristine brittle stone is more brittle.
+   */
+  pristine: 1.45,
 };
 
 /** The net budget a trait's numbers actually add up to. `grade` must match. */

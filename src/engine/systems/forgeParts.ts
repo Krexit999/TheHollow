@@ -45,7 +45,7 @@ import {
   type BalanceLabel, type CraftTier, type ForgeTraitId, type GrowthBoonId,
   type MasterworkId, type PartType, type PartShape, type ReachPattern, type ToolStat,
 } from '../content/forgeParts';
-import { RARITIES, bandOf, materialDef, type MaterialDef } from '../materials';
+import { RARITIES, bandOf, materialDef, type MaterialDef, BAND_RANGES, BANDS } from '../materials';
 import { traitsOf } from '../traits';
 import { shellOrdinal } from '../content/drillAlloys';
 
@@ -567,8 +567,20 @@ export function gradeBonusOf(m: MaterialDef): number {
   return n;
 }
 
+/**
+ * THE PURITY CEILING IS THE TOP BAND'S TOP, not 100.
+ *
+ * A drop cannot roll above 100 and never could — but a REFINE can now reach
+ * `pristine` (101-110), and a hard clamp at 100 would have silently thrown the
+ * whole new band away at the one place it is read. Reading the ceiling off
+ * `BAND_RANGES` means the clamp can never fall out of step with the ladder
+ * again, which is the same "derive it, do not restate it" rule the trait
+ * hints and the socket domain both follow.
+ */
+const PURITY_CEILING = BAND_RANGES[BANDS[BANDS.length - 1]!][1];
+
 function clampPurity(p: number): number {
-  return Math.max(1, Math.min(100, Math.round(p)));
+  return Math.max(1, Math.min(PURITY_CEILING, Math.round(p)));
 }
 
 /** The theoretical best and worst magnitude a shell can produce — the numbers

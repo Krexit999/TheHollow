@@ -1447,6 +1447,8 @@ export type GameAction =
   | { type: 'installLoomFrame' }
   | { type: 'installSocket' }
   | { type: 'refine'; materialId: string; band: string }
+  /** Walk every rung up to a target band in one act. Same cost, fewer taps. */
+  | { type: 'refineTo'; materialId: string; band: string }
   | { type: 'transmute'; a: string; b: string }
   | { type: 'salvageTool'; toolId: number; extract: boolean }
   | { type: 'temperTool'; temperId: string }

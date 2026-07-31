@@ -142,6 +142,91 @@ export function tickAutoRefine(state: GameState, ctx: EngineCtx): void {
  * in this game should be a pure sink — means the loss ratio above is not
  * destruction, it is a change of form.
  */
+/**
+ * REFINE-TO-TARGET — the whole climb in one act, priced before you commit.
+ *
+ * The bench has always been one band at a time, which is honest and, past the
+ * first rung, tedious: taking a heap of poor stock to Fine is three separate
+ * decisions with the same answer. This walks the ladder for you.
+ *
+ * IT IS NOT A DISCOUNT. Every rung is the same `refine` the button always
+ * called, in the same order, at the same 3:1 — so the cost of the climb is
+ * exactly the cost of doing it by hand, and the faucet argument is untouched.
+ * What it removes is clicking, not loss.
+ *
+ * THE PREVIEW IS THE POINT. `climbPreview` walks the same rungs against a
+ * COPY of the counts and reports what will be spent and what will arrive,
+ * before anything is consumed — because "take all my bonechalk to Good" is a
+ * decision a player should be able to price, and 3:1 compounding is not
+ * something anyone should be asked to do in their head.
+ */
+export interface ClimbStep { from: PurityBand; to: PurityBand; spent: number; got: number }
+export interface ClimbPlan {
+  steps: ClimbStep[];
+  /** Units consumed across the whole climb. */
+  spent: number;
+  /** Units standing in the target band at the end. */
+  got: number;
+  /** Slag the climb hands back. */
+  slag: number;
+}
+
+export function climbPreview(
+  state: GameState, materialId: string, target: PurityBand,
+): ClimbPlan | null {
+  const targetIdx = BANDS.indexOf(target);
+  if (targetIdx <= 0) return null;
+  const stack = state.materials.stacks[materialId];
+  if (!stack) return null;
+
+  // A COPY. Nothing below touches real counts — this is a quote, not a spend.
+  const have: number[] = BANDS.map((b) => stack[b]?.count ?? 0);
+  const steps: ClimbStep[] = [];
+  let spent = 0;
+
+  // BOTTOM-UP, so a rung feeds the one above it in the same climb. Walking
+  // top-down would price each band against only what it already held.
+  for (let i = 0; i < targetIdx; i++) {
+    const batches = Math.floor(have[i]! / REFINE_RATIO);
+    if (batches < 1) continue;
+    const from = batches * REFINE_RATIO;
+    have[i]! -= from;
+    have[i + 1]! += batches;
+    spent += from;
+    steps.push({ from: BANDS[i]!, to: BANDS[i + 1]!, spent: from, got: batches });
+  }
+  if (steps.length === 0) return null;
+  const got = have[targetIdx]! - (stack[target]?.count ?? 0);
+  /**
+   * A PLAN THAT ARRIVES WITH NOTHING IS NOT A PLAN.
+   *
+   * 3:1 compounding means a climb can consume real stock and land ZERO units in
+   * the target: ninety poor is thirty fair, ten good, three fine, one exalted —
+   * and nothing at all in the band above that. The first cut returned that as a
+   * valid plan, so the Casting floor cheerfully offered 'would take 132 of these
+   * to 0 Pristine' and the trough drew a button that spent everything for
+   * nothing. Refusing it here fixes every caller at once.
+   */
+  if (got <= 0) return null;
+  return { steps, spent, got, slag: spent - steps.reduce((n, x) => n + x.got, 0) };
+}
+
+/** Run the climb. Every rung is the plain one-band refine, in the plan order. */
+export function refineTo(
+  state: GameState, ctx: EngineCtx, materialId: string, target: PurityBand,
+): ActionResult {
+  if (!refineryUnlocked(state)) return { ok: false, reason: 'The trough is cold' };
+  const plan = climbPreview(state, materialId, target);
+  if (!plan) return { ok: false, reason: 'Nothing there will climb that far' };
+  let ran = 0;
+  for (const step of plan.steps) {
+    if (refine(state, ctx, materialId, step.from).ok) ran += 1;
+  }
+  if (ran === 0) return { ok: false, reason: 'Nothing to refine' };
+  ctx.dirty();
+  return { ok: true, data: { steps: ran, spent: plan.spent, got: plan.got, band: target } };
+}
+
 export const SLAG_MATERIAL = 'refineslag';
 
 function grantSlag(state: GameState, units: number): void {

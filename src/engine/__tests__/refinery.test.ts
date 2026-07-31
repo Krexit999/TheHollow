@@ -15,10 +15,10 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngine } from '../index';
 import type { GameState } from '../types';
-import { MATERIALS, materialDef, RARITY_GATES, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
+import { MATERIALS, materialDef, RARITY_GATES, BANDS, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
 import { addMaterial, materialCount, recipeDef, equippedTool } from '../systems/forge';
 import {
-  CHAINS, findChain, refine, refinePreview, transmute, REFINE_RATIO,
+  CHAINS, climbPreview, findChain, refine, refinePreview, refineTo, transmute, REFINE_RATIO,
   REFINERY_MASTERY, refineryUnlocked, transmuteUnlocked, SLAG_MATERIAL,
 } from '../systems/refinery';
 import { salvageTool, salvagePreview, SALVAGE_RESIDUE } from '../systems/salvage';
@@ -97,12 +97,97 @@ describe('refining makes purity workable', () => {
     expect(materialCount(s, 'marl')).toBe(REFINE_RATIO - 1); // untouched
   });
 
-  it('nothing refines past the top band', () => {
+  it('nothing refines past the top band, whatever the top band is', () => {
+    /**
+     * READ THE TOP OFF THE LADDER rather than naming it. A.68 added `pristine`
+     * above `exalted`, and this test previously asserted that `exalted` was the
+     * end — so it failed the moment the ladder grew, correctly, and would have
+     * gone on failing every time it grew again. The claim is about the LAST
+     * band, not about a particular one.
+     */
     const { s } = fresh();
     openBench(s);
-    addMaterial(s, 'marl', 99, 9);
-    expect(refinePreview(s, 'marl', 'exalted')).toBeNull();
-    expect(refine(s, ctx, 'marl', 'exalted').ok).toBe(false);
+    const top = BANDS[BANDS.length - 1]!;
+    addMaterial(s, 'marl', BAND_RANGES[top][0], 9);
+    expect(refinePreview(s, 'marl', top)).toBeNull();
+    expect(refine(s, ctx, 'marl', top).ok).toBe(false);
+  });
+
+  it('a save that predates the band loads and behaves unchanged', () => {
+    /**
+     * NO MIGRATION, AND THAT IS PROVED RATHER THAN ASSUMED.
+     *
+     * A band is only ever a KEY on a material stack, `addMaterial` creates one
+     * on demand, and every read is optional-chained — so a save written before
+     * `pristine` existed simply has no such key, which reads as zero. Nothing
+     * iterates raw stack keys, so nothing can trip over the gap. This asserts
+     * that rather than trusting it: a stack with the OLD five bands counts,
+     * refines and climbs exactly as it did.
+     */
+    const { s } = fresh();
+    openBench(s);
+    s.materials.stacks['marl'] = {
+      poor: { count: 9, puritySum: 9 * 10 },
+      fair: { count: 3, puritySum: 3 * 45 },
+    } as GameState['materials']['stacks'][string];
+    expect(materialCount(s, 'marl')).toBe(12);
+    expect(s.materials.stacks['marl']?.pristine).toBeUndefined();
+    const r = refine(s, ctx, 'marl', 'poor');
+    expect(r.ok).toBe(true);
+    expect(materialCount(s, 'marl')).toBe(6);
+  });
+
+  it('and a climb that would arrive with nothing is refused, not offered', () => {
+    /**
+     * 3:1 COMPOUNDING CAN CONSUME EVERYTHING AND LAND ZERO. Ninety poor is
+     * thirty fair, ten good, three fine, one exalted — and nothing at all above
+     * that. The first cut returned that as a valid plan, so the Casting floor
+     * offered "would take 132 of these to 0 Pristine" and the trough drew a
+     * button that spent everything for nothing. Caught in a driven screenshot.
+     */
+    const { s } = fresh();
+    openBench(s);
+    addMaterial(s, 'marl', BAND_RANGES['poor'][0], 90);
+    expect(climbPreview(s, 'marl', 'pristine')).toBeNull();
+    const near = climbPreview(s, 'marl', 'exalted');
+    expect(near).not.toBeNull();
+    expect(near!.got).toBeGreaterThan(0);
+  });
+
+  it('and the climb costs exactly what the rungs cost by hand', () => {
+    // Refine-to-target removes taps, never loss.
+    const byHand = fresh().s;
+    openBench(byHand);
+    addMaterial(byHand, 'marl', BAND_RANGES['poor'][0], 81);
+    const startA = materialCount(byHand, 'marl');
+    refine(byHand, ctx, 'marl', 'poor');
+    refine(byHand, ctx, 'marl', 'fair');
+    const handCost = startA - materialCount(byHand, 'marl');
+
+    const climbed = fresh().s;
+    openBench(climbed);
+    addMaterial(climbed, 'marl', BAND_RANGES['poor'][0], 81);
+    const startB = materialCount(climbed, 'marl');
+    refineTo(climbed, ctx, 'marl', 'good');
+    const climbCost = startB - materialCount(climbed, 'marl');
+
+    expect(climbCost).toBe(handCost);
+  });
+
+  it('and the new top band is reachable, but only by making it', () => {
+    /**
+     * PRISTINE IS UNROLLABLE — no drop table produces it, so the only way in is
+     * a refine. That is the point of adding it: the top of the ladder stops
+     * being a dead end for surplus deep stock.
+     */
+    const { s } = fresh();
+    openBench(s);
+    addMaterial(s, 'marl', BAND_RANGES['exalted'][0], 9);
+    const inBand = (): number => s.materials.stacks['marl']?.pristine?.count ?? 0;
+    expect(inBand()).toBe(0);
+    const r = refine(s, ctx, 'marl', 'exalted');
+    expect(r.ok).toBe(true);
+    expect(inBand()).toBe(3);
   });
 
   // THE ANTI-TREADMILL PROMISE, as a property.

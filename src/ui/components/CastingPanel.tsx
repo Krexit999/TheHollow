@@ -28,7 +28,7 @@ import { useMemo, useState } from 'react';
 import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
 import {
-  BANDS, materialDef, materialsOfShell, type PurityBand,
+  BANDS, BAND_LABELS, materialDef, materialsOfShell, type PurityBand,
 } from '../../engine/materials';
 import {
   BOON_BY_ID, CRAFT_COLOR, CRAFT_LABEL, GROWTH_BOONS, GROWTH_MAX, LAYER_MAX, LAYER_NAMES,
@@ -56,6 +56,7 @@ import {
   repairShare, toolEffect, toolLevel, usesLeft, usesOf, wear01, wornPart,
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
+import { climbPreview, refineryUnlocked } from '../../engine/systems/refinery';
 import { ROMAN, shellOrdinal } from '../../engine/content/drillAlloys';
 import { TOOL_CARRIER, reachedOrdinal } from '../../engine/systems/drillAlloys';
 import {
@@ -808,6 +809,28 @@ function SeatBar({
  * Nothing here is a locked list: it filters what you HOLD. A trait you own no
  * stone of does not appear as an empty category.
  */
+/**
+ * "You could take this one up a band" — read-only, priced, and only when true.
+ *
+ * Deliberately not a refine BUTTON: the trough is a room you go to, and moving
+ * the verb here would make two places that spend your stock. It offers the
+ * knowledge, not the act.
+ */
+function RefineOffer({ state, id }: { state: GameState; id: string }) {
+  if (!refineryUnlocked(state)) return null;
+  // The best climb this stone could actually make, deepest band first.
+  for (const b of [...BANDS].reverse()) {
+    const plan = climbPreview(state, id, b);
+    if (!plan) continue;
+    return (
+      <div className="mt-1 text-[8px] leading-snug text-[#9ac07a]" data-testid="melt-picker-refine">
+        The trough would take {plan.spent} of these to {plan.got} {BAND_LABELS[b]}.
+      </div>
+    );
+  }
+  return null;
+}
+
 function StonePicker({
   state, value, onPick, testid = 'stone-picker',
 }: {
@@ -912,6 +935,18 @@ function StonePicker({
           {pairingLine([value], { reached, classId: toolClass(state).def?.id ?? null })}
         </div>
       )}
+
+      {/**
+        * THE REFINERY, WHERE THE NEED IS ACTUALLY FELT.
+        *
+        * The machine has its own room and has had since Ferrite, and the moment
+        * a player wants it is HERE — looking at a stone they are about to pour
+        * and wishing it were better. Sending them to another room to find that
+        * out is how a working system stays invisible. This does not refine
+        * anything; it says the option exists and what it would cost, which is
+        * the part the Casting floor was missing.
+        */}
+      {value && <RefineOffer state={state} id={value} />}
 
       <div
         className="mt-1 max-h-[132px] space-y-0.5 overflow-y-auto"
