@@ -94,19 +94,19 @@ export const ORES: OreDef[] = [
   // --- the universal seams: every shell, from the first minute ---------------
   {
     id: 'fatseam', name: 'Fat Seam', shell: null,
-    richness: 1.8, digSec: 8, depthMult: 0.6, rolls: 1, weight: 62, minDepth: 0,
+    richness: 1.8, digSec: 2, depthMult: 0.6, rolls: 1, weight: 62, minDepth: 0,
     colour: 0xe0b552, pattern: 'bands',
     line: 'The rock swells here. Something took its time about it.',
   },
   {
     id: 'blindglut', name: 'Blind Glut', shell: null,
-    richness: 2.6, digSec: 12, depthMult: 1.4, rolls: 2, weight: 26, minDepth: 25,
+    richness: 2.6, digSec: 4, depthMult: 1.4, rolls: 2, weight: 26, minDepth: 25,
     colour: 0x5fe0b4, pattern: 'cluster',
     line: 'No seam runs to it and none runs away. It simply gathered, in the dark, alone.',
   },
   {
     id: 'heartrot', name: 'Heartrot', shell: null,
-    richness: 3.6, digSec: 16, depthMult: 3.0, rolls: 3, weight: 9, minDepth: 60,
+    richness: 3.6, digSec: 6, depthMult: 3.0, rolls: 3, weight: 9, minDepth: 60,
     colour: 0xe85f9c, pattern: 'core',
     line: 'The stone went soft at its middle and kept everything it ever held.',
   },
@@ -117,7 +117,7 @@ export const ORES: OreDef[] = [
   // yet and fall back to the universal three, which is why nothing goes dead.
   {
     id: 'lodeknot', name: 'Lodeknot', shell: 'ferrite',
-    richness: 3.0, digSec: 14, depthMult: 1.8, rolls: 2, weight: 22, minDepth: 0,
+    richness: 3.0, digSec: 5, depthMult: 1.8, rolls: 2, weight: 22, minDepth: 0,
     colour: 0x74a6f5, pattern: 'needles',
     line: 'Every filing in the drift leans at it. Cut it out and the compasses settle again.',
   },

@@ -282,7 +282,7 @@ describe('the drills: hunting is on by default, and it is one switch', () => {
   it('will not be lured off a half-dug pocket by a fatter one appearing', () => {
     const { s } = fresh();
     bay(s);
-    put(s, 3);
+    put(s, 3, 'blindglut');
     tickDrills(s, mods(), ctx, 2);
     expect(s.drills.units[0]!.oreCell).toBe(3);
     // A far richer pocket turns up mid-dig, brim full.
@@ -297,8 +297,8 @@ describe('the drills: hunting is on by default, and it is one switch', () => {
     const { s } = fresh();
     const m = mods();
     bay(s);
-    put(s, 10);
-    tickDrills(s, m, ctx, 3);
+    put(s, 10, 'blindglut');
+    tickDrills(s, m, ctx, 2);
     const progress = s.drills.units[0]!.oreProgress!;
     expect(s.drills.units[0]!.oreCell).toBe(10);
 
@@ -345,7 +345,7 @@ describe('the drills: hunting is on by default, and it is one switch', () => {
   it('lets go only when the pocket is gone — the player got there first', () => {
     const { s } = fresh();
     bay(s);
-    put(s, 6);
+    put(s, 6, 'blindglut');
     tickDrills(s, mods(), ctx, 2);
     expect(s.drills.units[0]!.oreCell).toBe(6);
     openOre(s, mods(), ctx, 6, 'hand', 1); // the hand takes it
@@ -566,7 +566,7 @@ describe('a drill locks onto a pocket and stays until it is finished', () => {
     const { s } = fresh();
     s.drills.bayBuilt = true;
     richFace(s);
-    put(s, 5);
+    put(s, 5, 'blindglut');
     const d = newDrill('D0');
     d.priority = 'oresFirst';
     s.drills.units.push(d);
@@ -577,7 +577,7 @@ describe('a drill locks onto a pocket and stays until it is finished', () => {
     expect(claimed, 'the drill should have taken the pocket').toBe(5);
 
     // Everything that might tempt it away, all at once.
-    put(s, 20);
+    put(s, 20, 'blindglut');
     s.face.cells = s.face.cells.map((c, i) => (i === 20 ? 900 : c));
     let held = 0;
     for (let t = 0; t < 400; t++) {
@@ -595,7 +595,7 @@ describe('a drill locks onto a pocket and stays until it is finished', () => {
     const { s } = fresh();
     s.drills.bayBuilt = true;
     richFace(s);
-    put(s, 5);
+    put(s, 5, 'blindglut');
     const d = newDrill('D0');
     d.priority = 'oresFirst';
     s.drills.units.push(d);
@@ -604,7 +604,11 @@ describe('a drill locks onto a pocket and stays until it is finished', () => {
     expect(d.oreCell).toBe(5);
     // Re-zone the drill to the far side of the face. The claim stands.
     d.zone = [30, 31, 32];
-    for (let t = 0; t < 50; t++) tickDrills(s, m, ctx, 0.1);
+    // 2.0s of disturbance against blindglut's 3.2s machine dig — the window
+    // has to stay INSIDE the dig or the drill legitimately finishes and the
+    // test stops measuring the lock. (A.69 cut every dig time; this budget was
+    // sized against fatseam's old 6.4s.)
+    for (let t = 0; t < 20; t++) tickDrills(s, m, ctx, 0.1);
     expect(d.oreCell).toBe(5);
     // A machine keeps its OWN progress (`oreProgress`); `face.oreDug` is the
     // hand's hold-gesture and stays at zero here.
@@ -615,7 +619,7 @@ describe('a drill locks onto a pocket and stays until it is finished', () => {
     const { s } = fresh();
     s.drills.bayBuilt = true;
     richFace(s);
-    put(s, 7);
+    put(s, 7, 'blindglut');
     const d = newDrill('D0');
     d.priority = 'oresFirst';
     s.drills.units.push(d);
@@ -623,7 +627,11 @@ describe('a drill locks onto a pocket and stays until it is finished', () => {
     tickDrills(s, m, ctx, 1);
     expect(d.oreCell).toBe(7);
     d.priority = 'rock';
-    for (let t = 0; t < 50; t++) tickDrills(s, m, ctx, 0.1);
+    // 2.0s of disturbance against blindglut's 3.2s machine dig — the window
+    // has to stay INSIDE the dig or the drill legitimately finishes and the
+    // test stops measuring the lock. (A.69 cut every dig time; this budget was
+    // sized against fatseam's old 6.4s.)
+    for (let t = 0; t < 20; t++) tickDrills(s, m, ctx, 0.1);
     expect(d.oreCell, 'a priority change stranded a half-dug pocket').toBe(7);
   });
 

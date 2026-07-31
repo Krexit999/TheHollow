@@ -285,6 +285,82 @@ export function findChain(a: string, b: string): TransmuteChain | undefined {
   );
 }
 
+// ---------------------------------------------------------------------------
+// THE SCENT — why 2,497 attempts found nothing
+// ---------------------------------------------------------------------------
+
+/**
+ * A PLAYER REPORTED "0 known · 2497 run". THE BENCH WAS NEVER BROKEN.
+ *
+ * Measured rather than guessed: **19 valid pairs hide among 12,403** — one in
+ * 653 — and it is worse than that number looks, because the design rule at the
+ * top of `content/shell2/chains.ts` is that every chain consumes a material with
+ * ZERO other consumers. Those are precisely the stones a player never stocks and
+ * never thinks about. Several chains then take `bindingclay`, which is itself an
+ * OUTPUT, so half the table is unreachable until you have blundered into the
+ * first half by accident.
+ *
+ * Pillar 5 says discovery over unlocking and never show a locked list. It does
+ * not say the search has to be a lottery. Two thousand pulls with no feedback is
+ * not experimenting — it is a slot machine, and the player correctly concluded
+ * the machine was broken.
+ *
+ * SO THE BENCH READS ONE STONE AT A TIME. Put a stone in a slot and it tells you
+ * whether ANYTHING in the world wants it — never what, never with what. That
+ * narrows the field from 158 stones to the ~30 that appear in any chain, so the
+ * pairs worth trying fall from 12,403 to a few hundred, and every one of them is
+ * a REASON rather than a guess. The pair itself is still yours to find.
+ *
+ * This is the same move the forge already made for materials: a trait hints the
+ * DIRECTION and you still do the work (`pairingLine`, A.67).
+ */
+export type ScentLevel = 'unknown' | 'inert' | 'wanted';
+
+/** Every stone that appears in ANY chain, either side. Derived, never restated. */
+export function reactiveMaterials(): Set<string> {
+  const s = new Set<string>();
+  for (const c of CHAINS) { s.add(c.a); s.add(c.b); }
+  return s;
+}
+
+/** Does anything in the world want this stone? One bit, and only one bit. */
+export function scentOf(materialId: string | null | undefined): ScentLevel {
+  if (!materialId) return 'unknown';
+  return reactiveMaterials().has(materialId) ? 'wanted' : 'inert';
+}
+
+/**
+ * WHAT THE BENCH SAYS ABOUT THE PAIR CURRENTLY IN IT, before anything is spent.
+ *
+ * It deliberately does NOT answer "is this a chain" — that would be the locked
+ * list with extra steps, and the finding would stop being a finding. It answers
+ * the strictly weaker question the player actually needs to stop flailing: are
+ * these two stones the KIND of thing that reacts at all.
+ */
+export function benchReading(
+  state: GameState, aId: string | null, bId: string | null,
+): { a: ScentLevel; b: ScentLevel; line: string } {
+  void state;
+  const a = scentOf(aId);
+  const b = scentOf(bId);
+  const name = (id: string | null): string => (id ? materialDef(id).name : '');
+  if (a === 'unknown' || b === 'unknown') {
+    return { a, b, line: 'Two stones, and the bench will tell you whether either is worth the loss.' };
+  }
+  if (a === 'inert' && b === 'inert') {
+    return { a, b, line: `Neither ${name(aId)} nor ${name(bId)} reacts with anything at all. This will be slag.` };
+  }
+  if (a === 'inert' || b === 'inert') {
+    const dead = a === 'inert' ? name(aId) : name(bId);
+    const live = a === 'inert' ? name(bId) : name(aId);
+    return { a, b, line: `${live} wants something. ${dead} is not it — nothing reacts with ${dead}.` };
+  }
+  return {
+    a, b,
+    line: 'Both of these want something. Whether they want each other is the part you have to find out.',
+  };
+}
+
 export function transmuteUnlocked(state: GameState): boolean {
   // Transmutation is the deeper half of the same bench.
   return masteryLevel(state, 'ferrite') >= REFINERY_MASTERY + 3;
@@ -318,7 +394,10 @@ export function transmute(
     grantSlag(state, cost);
     state.refinery.attempts += 1;
     ctx.dirty();
-    return { ok: true, data: { found: null, slag: cost } };
+    // THE MISS NARROWS. A failure that says only "nothing happened" is what
+    // turned this bench into a slot machine; the same one bit that priced the
+    // attempt is worth repeating after it, because that is when it is read.
+    return { ok: true, data: { found: null, slag: cost, ...benchReading(state, aId, bId) } };
   }
 
   // The output inherits the WORSE of the two inputs' typical purity — you

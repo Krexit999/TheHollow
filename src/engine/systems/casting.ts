@@ -39,7 +39,8 @@ import {
   type CraftTier, type GrowthBoonId, type MasterworkId, type PartShape, type PartType,
 } from '../content/forgeParts';
 import {
-  assembleTool, derivePart, partMaterials, partMelt, growthProgress, type Part, type ToolStats,
+  assembleTool, derivePart, partMaterials, partMelt, growthProgress, boonsFor, boonCost,
+  type Part, type ToolStats,
 } from './forgeParts';
 import type { ToolBio } from './toolBio';
 /**
@@ -236,13 +237,20 @@ export function matureLivingPart(
   const prog = growthProgress(part);
   if (!prog.living) return { ok: false, reason: 'That part is not alive' };
   if (prog.grown) return { ok: false, reason: 'That part is finished growing' };
-  if (!prog.ready) {
-    return { ok: false, reason: `It has more to do first — ${Math.floor(prog.into)}/${prog.need}` };
+  // EACH BOON COSTS ITS OWN PACE. A part can be ready for Grasping (0.8x) and
+  // still owe work for Thickening (1.5x) — which is the variety the report asked
+  // for, and it only reads as variety if the refusal names the right number.
+  if (!boonsFor(part).some((b) => b.id === boon)) {
+    return { ok: false, reason: `This part is not the sort of thing that becomes that` };
+  }
+  const cost = boonCost(part, boon);
+  if ((part.growth ?? 0) < cost) {
+    return { ok: false, reason: `${BOON_BY_ID.get(boon)!.name} wants more — ${Math.floor(part.growth ?? 0)}/${cost}` };
   }
 
   (part.grown ??= []).push(boon);
   // The work spent goes with it; the next stage starts from nothing.
-  part.growth = Math.max(0, (part.growth ?? 0) - prog.need);
+  part.growth = Math.max(0, (part.growth ?? 0) - cost);
   ctx.emit({
     type: 'partMatured',
     partType: type,

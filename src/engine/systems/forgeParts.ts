@@ -40,6 +40,8 @@ import {
   LAYER_MAX, layerWeights, HEFT, BALANCE_DEADZONE, BALANCE_ORE,
   LIVING_SHELL, GROWTH_MAX, growthForStage, BOON_REACH, BOON_MEND, BOON_STEADY,
   BOON_WEAR, CRAFT_TIERS, EXCELLENT_STEADY, MASTERWORK_STEADY,
+  BOON_GRASP, BOON_QUICKEN, BOON_THICKEN, BOON_SEEK, BOON_STILL,
+  GROWTH_BOONS, BOON_BY_ID, BOONS_OFFERED, type GrowthBoonDef,
   WINDUP_MAX, BALANCE_REACH, BALANCE_SPLASH, BALANCE_WEAR, BALANCE_CHARGE,
   shapeDef,
   type BalanceLabel, type CraftTier, type ForgeTraitId, type GrowthBoonId,
@@ -144,13 +146,30 @@ export function growthNeed(part: Part): number | null {
   return growthForStage(stage + 1);
 }
 
+/**
+ * THE CHEAPEST THING THIS PART COULD BECOME RIGHT NOW.
+ *
+ * `ready` has to mean "some option is affordable", not "the base figure is
+ * met" — otherwise `pace` would be a lie the panel tells: a part would report
+ * itself ready and then refuse the Thickening it was offering. So readiness is
+ * the MINIMUM over the offer, and each boon still costs its own `boonCost`.
+ */
+export function cheapestBoonCost(part: Part): number | null {
+  const base = growthNeed(part);
+  if (base === null) return null;
+  const offer = boonsFor(part);
+  if (offer.length === 0) return base;
+  return Math.min(...offer.map((b) => Math.round(base * b.pace)));
+}
+
 /** Everything the growth readout needs, so the panel computes nothing. */
 export function growthProgress(part: Part): {
   living: boolean; stage: number; into: number; need: number; frac: number; ready: boolean; grown: boolean;
 } {
   const living = isLiving(part);
   const stage = (part.grown ?? []).length;
-  const need = growthNeed(part);
+  // READINESS IS THE CHEAPEST OFFER, not the base figure — see `cheapestBoonCost`.
+  const need = cheapestBoonCost(part);
   if (!living || need === null) {
     return { living, stage, into: 0, need: 0, frac: living ? 1 : 0, ready: false, grown: living };
   }
@@ -172,13 +191,88 @@ export interface GrowthFold {
   repairPerSec: number;
   stabilize: number;
   wear: number;
+  /** Resilience multiplier — `thickening`'s whole contribution. */
+  resilience: number;
+  /** Cadence multiplier — `quickening`'s. */
+  cadence: number;
+  /** Ore-rate multiplier — `seeking`'s. */
+  oreRate: number;
+  /** Control multiplier — `grasp`'s. */
+  control: number;
   /** Parts with a boon ready to take. The panel surfaces the choice. */
   ready: PartType[];
 }
 
 export const NO_GROWTH: GrowthFold = {
-  cells: 0, repairPerSec: 0, stabilize: 0, wear: 1, ready: [],
+  cells: 0, repairPerSec: 0, stabilize: 0, wear: 1,
+  resilience: 1, cadence: 1, oreRate: 1, control: 1, ready: [],
 };
+
+// ---------------------------------------------------------------------------
+// WHAT A PARTICULAR LIVING PART CAN BECOME
+// ---------------------------------------------------------------------------
+
+/**
+ * THE OFFER, and why it is no longer the same three every time.
+ *
+ * The report: "every part offers identical RUNNER/KNITTING/SUPPLE with no
+ * context". That was literally true — the pool WAS three, nothing filtered it,
+ * and no number was printed anywhere. Three separate faults wearing one coat.
+ *
+ * The offer is now built from what the part IS and what it is MADE OF:
+ *
+ *   1. Boons that name `parts` are only offered to those parts. A Handle does
+ *      not sprout reach; a Head does not learn grip.
+ *   2. Boons whose `wants` trait the STONE actually pulls are offered FIRST, so
+ *      a dense living core reliably sees Thickening and a hollow one sees
+ *      Runner. What it is decides what it can become.
+ *   3. The rest fills up from the eligible pool, in a stable order, so the offer
+ *      is deterministic — the same part always offers the same three, and a
+ *      player can plan a build around it instead of re-rolling.
+ *
+ * DETERMINISTIC ON PURPOSE. A random offer would make the "informed choice" the
+ * report asks for impossible: you could not decide to grow a Thickening core,
+ * only hope for one.
+ */
+export function boonsFor(part: Part): GrowthBoonDef[] {
+  const traits = new Set(blendOf(part).traits);
+  const eligible = GROWTH_BOONS.filter((b) => !b.parts || b.parts.includes(part.type));
+  const called = eligible.filter((b) => b.wants && traits.has(b.wants));
+  const rest = eligible.filter((b) => !called.includes(b));
+  return [...called, ...rest].slice(0, BOONS_OFFERED);
+}
+
+/**
+ * WHAT THIS BOON WOULD COST THIS PART, in cells. `pace` is the per-boon rate —
+ * Grasping arrives in 80% of the work, Thickening takes half again as long.
+ */
+export function boonCost(part: Part, boon: GrowthBoonId): number {
+  const base = growthNeed(part);
+  if (base === null) return 0;
+  return Math.round(base * (BOON_BY_ID.get(boon)?.pace ?? 1));
+}
+
+/**
+ * WHAT ONE TAKEN BOON IS ACTUALLY WORTH, as numbers the panel can print.
+ *
+ * Exported rather than buried in `growthFold` because the report's third
+ * complaint was that the choice showed flavour and no effect. A player cannot
+ * weigh "it puts out a little further" against "it lays down another ring"; they
+ * can weigh `+1 cell` against `+12% resilience`.
+ */
+export function boonNumbers(boon: GrowthBoonId): string {
+  switch (boon) {
+    case 'reach': return `+${BOON_REACH} cell to the swing`;
+    case 'mending': return `+${(BOON_MEND * 100).toFixed(1)}% of the pool mended per second`;
+    case 'supple': return `+${BOON_STEADY} steadiness · ${Math.round((1 - BOON_WEAR) * 100)}% less wear per swing`;
+    case 'grasp': return `+${Math.round((BOON_GRASP - 1) * 100)}% control`;
+    case 'quickening': return `+${Math.round((BOON_QUICKEN - 1) * 100)}% cadence`;
+    case 'thickening': return `+${Math.round((BOON_THICKEN - 1) * 100)}% resilience`;
+    case 'seeking': return `+${Math.round((BOON_SEEK - 1) * 100)}% ore speed`;
+    case 'stillness': return `+${BOON_STILL} steadiness`;
+    default: return '';
+  }
+}
 
 /**
  * WHAT THE LIVING PARTS HAVE BECOME. Additive across parts and boons, and the
@@ -195,6 +289,13 @@ export function growthFold(parts: Part[]): GrowthFold {
       if (id === 'reach') out.cells += BOON_REACH;
       else if (id === 'mending') out.repairPerSec += BOON_MEND;
       else if (id === 'supple') { out.stabilize += BOON_STEADY; out.wear *= BOON_WEAR; }
+      // THE FIVE ADDED AT A.69, each on a term the tool already had. None of
+      // them is yield — the vocabulary still has no word for it.
+      else if (id === 'grasp') out.control *= BOON_GRASP;
+      else if (id === 'quickening') out.cadence *= BOON_QUICKEN;
+      else if (id === 'thickening') out.resilience *= BOON_THICKEN;
+      else if (id === 'seeking') out.oreRate *= BOON_SEEK;
+      else if (id === 'stillness') out.stabilize += BOON_STILL;
     }
   }
   return touched || out.ready.length > 0 ? out : { ...NO_GROWTH, ready: out.ready };
@@ -879,6 +980,20 @@ export function assembleTool(parts: Part[]): ToolStats {
   const coherence = coherenceOf(parts, rawStats);
   const stats = {} as Record<ToolStat, number>;
   for (const s of TOOL_STATS) stats[s] = rawStats[s] * coherence.factor;
+
+  /**
+   * WHAT THE LIVING PARTS GREW INTO, on the three terms that are STATS.
+   *
+   * The other four growth terms (reach, mending, steadiness, wear) are consumed
+   * at their own sites — `effectOf`, `tickToolMods`, `instability`, `wearPerUse`
+   * — because they are not stats. These three are, so they land here, after
+   * coherence, where every other stat is finished. A part that has grown nothing
+   * multiplies by exactly 1, which is why no existing tool moves.
+   */
+  const grown = growthFold(parts);
+  stats.control *= grown.control;
+  stats.cadence *= grown.cadence;
+  stats.resilience *= grown.resilience;
 
   return {
     parts,

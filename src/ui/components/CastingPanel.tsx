@@ -31,13 +31,13 @@ import {
   BANDS, BAND_LABELS, materialDef, materialsOfShell, type PurityBand,
 } from '../../engine/materials';
 import {
-  BOON_BY_ID, CRAFT_COLOR, CRAFT_LABEL, GROWTH_BOONS, GROWTH_MAX, LAYER_MAX, LAYER_NAMES,
+  BOON_BY_ID, CRAFT_COLOR, CRAFT_LABEL, GROWTH_MAX, LAYER_MAX, LAYER_NAMES,
   MASTERWORK_BY_ID, PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape,
   shapeDef, shapesFor,
   type PartShape, type PartType,
 } from '../../engine/content/forgeParts';
 import {
-  balanceOf, craftFold, growthFold, growthProgress, isLiving,
+  balanceOf, craftFold, growthFold, growthProgress, isLiving, boonsFor, boonCost, boonNumbers,
   shapeFold, type ToolStats,
 } from '../../engine/systems/forgeParts';
 import { readBio } from '../../engine/systems/toolBio';
@@ -57,6 +57,7 @@ import {
 } from '../../engine/systems/toolMining';
 import { materialCount } from '../../engine/systems/forge';
 import { legendRows, legendCost } from '../../engine/systems/legendary';
+import { seasonRows, wearResist } from '../../engine/systems/toolSeason';
 import { LEGENDARY_BY_ID } from '../../engine/content/legendaryParts';
 import { climbPreview, refineryUnlocked } from '../../engine/systems/refinery';
 import { ROMAN, shellOrdinal } from '../../engine/content/drillAlloys';
@@ -80,7 +81,8 @@ import {
   socketOverflow, socketRow, socketRunePairs, socketRuneTriples,
   type SocketFill, type SocketKind,
 } from '../../engine/systems/toolSockets';
-import { RARITIES, isSocketedRelic, wakingStep } from '../../engine/systems/relics';
+import { RARITIES, isSocketedRelic, wakingStep, effectiveAffixes, AFFIXES } from '../../engine/systems/relics';
+import { sequencePairs, sequenceTriples } from '../../engine/content/shell4/runes';
 import { powerLive, powerOf } from '../../engine/systems/relicPowers';
 import { RUNES, RUNE_GLYPHS, type RuneId } from '../../engine/content/shell4/runes';
 import { GEMS, gemDef } from '../../engine/materials';
@@ -1546,6 +1548,7 @@ function TheStation({ state }: { state: GameState }) {
             <ClassCard state={state} />
             <BalanceCard state={state} tool={built} />
             <InstabilityCard state={state} />
+            <SeasonCard state={state} />
             <LevelCard state={state} tool={built} />
             <AtTheFace state={state} tool={built} />
             <Durability state={state} tool={built} />
@@ -1599,9 +1602,37 @@ function Legends({ state }: { state: GameState }) {
 
   return (
     <div data-testid="legends">
-      <div className="mb-1.5 text-[10px] leading-snug italic text-cave-500">
-        Seven parts nobody poured. What you earn is the pattern — the stone stays
-        yours, and can be poured again deeper.
+      {/*
+        THE PANEL EXPLAINED NOTHING. It opened on "4 of 7", a row reading "A edge,
+        somewhere · Fell a Floor Warden", and a button marked Re-pour — three
+        pieces of jargon and no sentence saying what any of it was for. Every one
+        of those is answered here, in the order a player meets them.
+      */}
+      <div className="mb-1.5 rounded border border-cave-800 p-1.5 text-[10px] leading-snug text-cave-400">
+        <div className="mb-0.5 text-[9px] uppercase tracking-widest text-[#e0b054]">
+          What a legendary part is
+        </div>
+        A part you cannot pour. Seven exist, one for each slot of an ordinary
+        tool, and each is <span className="text-cave-200">about half again as strong</span> as
+        the luckiest part you could ever cast in the same stone — because it comes
+        out at a purity the world never rolls, carrying a masterwork you do not
+        get to choose. It slots into the normal seven-part tool; nothing about
+        building changes.
+        <div className="mt-1 text-[9px] uppercase tracking-widest text-[#e0b054]">
+          How you get one
+        </div>
+        You do not buy them. Each is attached to a deed — reach a depth, fell a
+        Floor Warden (the boss standing at a shell&rsquo;s floor), open enough ore,
+        survive enough Collapses. Do the deed and the part arrives on your rack
+        within the minute, already poured in the best stone your Hold is holding.
+        <div className="mt-1 text-[9px] uppercase tracking-widest text-[#e0b054]">
+          What re-pour does
+        </div>
+        What you earned is the PATTERN, not the lump. A legend poured in Loam
+        stone is still a Loam part, and an ordinary Ferrite one will beat it —
+        so <span className="text-cave-200">re-pour</span> casts the same legend
+        again in any stone you hold, for the ordinary cost of that pour. It is the
+        same part, moved up; you never own two, and you never lose it.
       </div>
       <div className="flex flex-col gap-1">
         {rows.map((r) => {
@@ -1623,8 +1654,11 @@ function Legends({ state }: { state: GameState }) {
                 </span>
               </div>
               {!r.earned && (
-                <div className="text-[10px] italic text-cave-500" data-testid={`legend-req-${r.def.id}`}>
-                  {r.def.requirement}
+                <div className="text-[10px] leading-snug text-cave-500" data-testid={`legend-req-${r.def.id}`}>
+                  {/* THE DEED AS AN INSTRUCTION. "Fell a Floor Warden" is a
+                      noun phrase; "Go and do this" is a goal. */}
+                  <span className="text-cave-400">To earn it: </span>
+                  {r.def.requirement.toLowerCase()}.
                 </div>
               )}
               {r.earned && held && (
@@ -1698,8 +1732,20 @@ function Drawer({
 }: { label: string; testid: string; children: React.ReactNode; open?: boolean }) {
   return (
     <details className="rounded-lg border border-cave-800" data-testid={testid} open={open}>
+      {/*
+        THE HEADER STICKS TO THE TOP OF THE SCROLL.
+        A `<summary>` IS the collapse control, so making it sticky solves the
+        report exactly: scroll deep into a long open section and the thing you
+        need in order to close it is still under your thumb, showing which
+        section you are in. No new control, no state to keep in sync — the one
+        element that was already both the label and the toggle simply stops
+        scrolling away.
+
+        `z-20` clears the panel content; `bg-cave-950` is required, because a
+        transparent sticky header lets the text it is pinned over read through it.
+      */}
       <summary
-        className="cursor-pointer select-none px-2 py-1.5"
+        className="sticky top-0 z-20 cursor-pointer select-none rounded-t-lg bg-cave-950 px-2 py-1.5"
         style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}
       >
         {label}
@@ -2640,9 +2686,72 @@ function SynergyCard({ state }: { state: GameState }) {
  * — because "your abilities misfire 12% of the time" is only a decision if the
  * player can see the number and see which thing on the tool is buying it.
  */
+/**
+ * WHAT USE HAS DONE TO IT — per stat, at its own rate.
+ *
+ * The report: "growth is flat". It was; a tool three hundred hours old read
+ * identically to one built that morning. This is the readout for
+ * `systems/toolSeason.ts`, and it earns its space by showing the SHAPE rather
+ * than a single number: the edge going off, the handling coming in, and the
+ * durability arriving last and largest.
+ *
+ * Hidden entirely on a tool that has never swung, because a row of `+0.0%`
+ * would read as a broken feature rather than as an unwritten history.
+ */
+function SeasonCard({ state }: { state: GameState }) {
+  const rows = seasonRows(state).filter((r) => Math.abs(r.pct) >= 0.05);
+  const resist = wearResist(state);
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-2 rounded-md border border-cave-800 p-2" data-testid="tool-season">
+      <div className="flex items-baseline justify-between">
+        <span className="text-[10px] uppercase tracking-widest text-cave-500">Worn in</span>
+        <span className="tnum text-[9px] text-cave-500" data-testid="season-xp">
+          {fmt(state.casting.xp ?? 0)} cells · {state.casting.repairs ?? 0} mends
+        </span>
+      </div>
+      <div className="mt-0.5 text-[9px] leading-snug italic text-cave-600">
+        Every tool drifts the same way: the edge goes off and the handling comes in.
+        Each of these moves at its own rate and none of them is yield.
+      </div>
+      <div className="mt-1 space-y-0.5">
+        {rows.map((r) => (
+          <div key={r.stat} className="flex items-baseline justify-between gap-2 text-[9px]">
+            <span className="min-w-0 truncate text-cave-400">{STAT_LABEL[r.stat]}</span>
+            <span
+              className="tnum shrink-0"
+              style={{ color: r.pct >= 0 ? '#9ac07a' : '#c8a15a' }}
+              data-testid={`season-${r.stat}`}
+            >
+              {r.pct >= 0 ? '+' : ''}{r.pct.toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+      {resist > 0.001 && (
+        <div
+          className="mt-1 border-t border-cave-900 pt-1 text-[9px] leading-snug text-[#9ac07a]"
+          data-testid="season-resist"
+        >
+          And it has learned to take it: <span className="tnum">{Math.round(resist * 100)}%</span> slower
+          to wear than the same tool fresh. Work and mends both count, and both saturate.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InstabilityCard({ state }: { state: GameState }) {
   const i = toolInstability(state);
   if (i.raw <= 0) return null;
+  // STABILISERS THE PLAYER ACTUALLY KNOWS, named and priced. "Work a stabiliser
+  // in" is not actionable advice if you cannot tell which of your modifiers is
+  // one — derived from the library rather than restated in prose.
+  const steadiers = knownMods(state)
+    .filter((m) => (m.fx.stabilize ?? 0) > 0)
+    .sort((a, b) => (b.fx.stabilize ?? 0) - (a.fx.stabilize ?? 0)) as Array<
+      { name: string; fx: { stabilize: number } }
+    >;
   const frac = Math.min(1, i.net / 200);
   const hot = i.misfire > 0;
   return (
@@ -2663,18 +2772,51 @@ function InstabilityCard({ state }: { state: GameState }) {
           style={{ width: `${frac * 100}%`, background: hot ? '#c86a5a' : '#7f8f6a' }}
         />
       </div>
-      <div className="mt-0.5 text-[9px] leading-snug text-cave-600" data-testid="instability-from">
-        {i.from.length > 0
-          ? `Mostly ${i.from.slice(0, 3).map((f) => f.label).join(', ')}`
-          : 'Nothing much.'}
-        {i.steady > 0 ? ` · steadied by ${Math.round(i.steady)}` : ''}
+      {/*
+        WHAT IT DOES, WHAT IS DRIVING IT, AND HOW TO LOWER IT — the three things
+        the readout never said. It printed a number, a bar, and "Mostly X", and a
+        player reasonably concluded it was decoration.
+      */}
+      <div className="mt-1 text-[9px] leading-snug text-cave-300" data-testid="instability-what">
+        {hot
+          ? `About ${Math.round(i.misfire * 100)} swings in 100, an ability fires at the WRONG `
+            + 'cell or does not fire at all. Its charge is spent either way. It never costs you '
+            + 'dust, and the tool itself mines exactly as it did.'
+          : 'Nothing misfires. Below the line, this number does nothing at all — '
+            + 'it is headroom, not a penalty.'}
       </div>
-      {hot && (
-        <div className="mt-0.5 text-[9px] leading-snug text-[#c8a15a]">
-          It still mines exactly as it did. It is what it CARRIES that has started
-          going off in the wrong place. Work a stabiliser in, or take something off.
+
+      {/* THE LEDGER: what is spending the headroom, priced. */}
+      <div className="mt-1 border-t border-cave-900 pt-1" data-testid="instability-from">
+        <div className="flex items-baseline justify-between text-[9px]">
+          <span className="text-cave-500">Carrying</span>
+          <span className="tnum text-[#c8a15a]">+{Math.round(i.raw)}</span>
         </div>
-      )}
+        {i.from.slice(0, 4).map((f, n) => (
+          <div key={`${f.label}-${n}`} className="flex items-baseline justify-between text-[9px] text-cave-400">
+            <span className="min-w-0 truncate">· {f.label}</span>
+            <span className="tnum shrink-0">+{Math.round(f.n)}</span>
+          </div>
+        ))}
+        <div className="flex items-baseline justify-between text-[9px]">
+          <span className="text-cave-500">Steadied by</span>
+          <span className="tnum text-[#9ac07a]">−{Math.round(i.steady)}</span>
+        </div>
+        <div className="flex items-baseline justify-between text-[9px]">
+          <span className="text-cave-500">Free headroom</span>
+          <span className="tnum text-cave-300">{Math.round(i.floor)}</span>
+        </div>
+      </div>
+
+      {/* AND HOW TO ACT ON IT — named things, not "work a stabiliser in". */}
+      <div className="mt-1 text-[9px] leading-snug text-cave-500" data-testid="instability-how">
+        {hot ? 'To bring it down: ' : 'Headroom left. If you want more: '}
+        {steadiers.length > 0
+          ? `seat ${steadiers.slice(0, 3).map((m) => `${m.name} (−${m.fx.stabilize})`).join(', ')}`
+          : 'no stabilising modifier is known yet — forging turns them up'}
+        {'; grow a SUPPLE or STILLNESS boon on a living part; pour EXCELLENT or '}
+        {'TRUEBORN parts; or unseat the loudest thing above.'}
+      </div>
     </div>
   );
 }
@@ -2887,9 +3029,32 @@ function BalanceCard({ state, tool }: { state: GameState; tool: ToolStats }) {
             + `fast as you do, spends ${Math.round((1 - b.wear) * 100)}% less of itself doing it, and `
             + `builds what it carries ${(1 + b.charge).toFixed(1)}× as quickly.`}
       </div>
+      {/*
+        THE JOB, SAID FIRST. Balance was reported as an unexplained stat, and the
+        reason is that the readout led with mechanism (cells, splash, windup)
+        and never once said the sentence the mechanic is actually about: heavy is
+        for ORE, light is for ROCK. That is the decision; everything else is how.
+      */}
+      <div
+        className="mt-1 rounded border px-1.5 py-1 text-[9px] leading-snug"
+        style={{ borderColor: `${hex}55`, color: hex }}
+        data-testid="tool-balance-job"
+      >
+        {heavy
+          ? `BUILT FOR ORE. Big slow hits — it works a pocket ${b.oreRate.toFixed(2)}× as fast `
+            + 'as an even tool, and gives back the seconds at the rock face.'
+          : 'BUILT FOR ROCK. Fast light hits — it sweeps plain rock quicker and takes more '
+            + 'swings before it needs seeing to, and it is no better than bare balance in a pocket.'}
+      </div>
+      <div className="mt-0.5 text-[9px] leading-snug text-cave-500" data-testid="tool-balance-swap">
+        {heavy
+          ? 'Want the other half? Re-seat toward LIGHT stone — springy, hollow, light.'
+          : 'Want the other half? Re-seat toward HEAVY stone — dense, tough, earthfast.'}
+        {' Both converge on the same ceiling; they differ in WHERE they spend the time.'}
+      </div>
       <div className="mt-0.5 text-[9px] leading-snug text-cave-600" data-testid="tool-balance-from">
         {b.from.length > 0
-          ? `Mostly ${b.from.slice(0, 3).map((f) => f.trait).join(', ')} in the stone.`
+          ? `This one leans ${b.label} because of ${b.from.slice(0, 3).map((f) => f.trait).join(', ')} in the stone.`
           : ''}
       </div>
     </div>
@@ -2959,27 +3124,58 @@ function LivingCard({ tool }: { tool: ToolStats }) {
               </>
             )}
             {prog.ready && (
+              /*
+               * THE OFFER, NOT THE POOL — and each option priced.
+               *
+               * This mapped `GROWTH_BOONS`, the whole list, which is why every
+               * part offered the identical three: there were only three and
+               * nothing filtered them. `boonsFor` reads the part type AND the
+               * stone's traits, so a dense living core sees Thickening and a
+               * grip sees Grasping. Each button now prints the NUMBER it will
+               * move and the CELLS it will cost — the two facts you cannot
+               * choose without, and neither of which was on screen.
+               */
               <div className="mt-1 space-y-1" data-testid={`living-choice-${p.type}`}>
-                {GROWTH_BOONS.map((b) => (
-                  <button
-                    key={b.id}
-                    className="w-full rounded border border-cave-700 px-1.5 py-1 text-left hover:border-[#9ac07a]/70"
-                    data-testid={`living-take-${p.type}-${b.id}`}
-                    onClick={() => {
-                      const r = dispatch({
-                        type: 'matureLivingPart', partType: p.type, boon: b.id,
-                      });
-                      setNote(r.ok
-                        ? `The ${PART_DEFS[p.type as PartType].name} became ${b.name}.`
-                        : r.reason ?? null);
-                    }}
-                  >
-                    <span className="text-[9px] font-semibold uppercase tracking-wider text-[#9ac07a]">
-                      {b.name}
-                    </span>
-                    <span className="mt-0.5 block text-[9px] leading-snug text-cave-400">{b.effect}</span>
-                  </button>
-                ))}
+                {boonsFor(p).map((b) => {
+                  const cost = boonCost(p, b.id);
+                  const afford = (p.growth ?? 0) >= cost;
+                  return (
+                    <button
+                      key={b.id}
+                      className="w-full rounded border px-1.5 py-1 text-left hover:border-[#9ac07a]/70"
+                      style={{ borderColor: afford ? '#4c5a3a' : '#35302a', opacity: afford ? 1 : 0.6 }}
+                      data-testid={`living-take-${p.type}-${b.id}`}
+                      onClick={() => {
+                        const r = dispatch({
+                          type: 'matureLivingPart', partType: p.type, boon: b.id,
+                        });
+                        setNote(r.ok
+                          ? `The ${PART_DEFS[p.type as PartType].name} became ${b.name}.`
+                          : r.reason ?? null);
+                      }}
+                    >
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-[#9ac07a]">
+                          {b.name}
+                        </span>
+                        <span
+                          className="tnum shrink-0 text-[8px]"
+                          style={{ color: afford ? '#9ac07a' : '#8a7f70' }}
+                          data-testid={`living-cost-${p.type}-${b.id}`}
+                        >
+                          {fmt(cost)} cells{afford ? '' : ` · ${fmt(cost - (p.growth ?? 0))} short`}
+                        </span>
+                      </div>
+                      <span
+                        className="mt-0.5 block text-[9px] font-semibold text-cave-200"
+                        data-testid={`living-numbers-${p.type}-${b.id}`}
+                      >
+                        {boonNumbers(b.id)}
+                      </span>
+                      <span className="mt-0.5 block text-[9px] leading-snug text-cave-500">{b.effect}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -3016,6 +3212,39 @@ function LivingCard({ tool }: { tool: ToolStats }) {
  * pile — held relics, found runes, held gems — so an empty picker means an
  * empty pile and never a missing feature.
  */
+/** One candidate in a socket picker. Rows, not one-line labels — see below. */
+interface PickRow {
+  value: string;
+  name: string;
+  note: string;
+  /** What it DOES, already priced. The whole reason this type exists. */
+  effects: string[];
+  /** Held back visually — a dormant relic is worth less right now, not nothing. */
+  dim: boolean;
+}
+
+/**
+ * WHAT THIS RUNE WOULD SAY IF IT WENT IN THIS SLOT.
+ *
+ * Runes have no solo effect; the grammar is entirely adjacency. So the picker
+ * previews the row it WOULD make — the same `sequencePairs`/`sequenceTriples`
+ * the live readout uses, run against a hypothetical row. Unnamed pairs read
+ * back as their own key and are dropped, which is what stops this from becoming
+ * a printout of the codex (pillar 5).
+ */
+function runeWouldSay(
+  row: Array<SocketFill | null>, at: number, id: RuneId,
+): string[] {
+  const next = row.slice();
+  next[at] = { kind: 'rune', id };
+  const seq = next.map((f) => (f && f.kind === 'rune' ? f.id : null));
+  const named = (k: string): boolean => pairLabel(k) !== k;
+  const said = [...sequencePairs(seq), ...sequenceTriples(seq)].filter(named);
+  return said.length > 0
+    ? said.map(pairLabel)
+    : ['Nothing, beside these. Runes only speak to their neighbours.'];
+}
+
 function SocketsCard({
   state, tool, slot: slotProp, onSlot,
 }: {
@@ -3030,6 +3259,7 @@ function SocketsCard({
   const setSlot = onSlot ?? setOwnSlot;
   const [kind, setKind] = useState<SocketKind>('relic');
   const [why, setWhy] = useState<string | null>(null);
+  const [q, setQ] = useState('');
   const n = socketCount(tool);
   if (n <= 0) return null;
 
@@ -3042,24 +3272,82 @@ function SocketsCard({
   const at = Math.min(slot, n - 1);
   const held = row[at] ?? null;
 
-  // WHAT COULD GO IN — the real piles, never a catalogue of what exists.
-  const relicOpts = state.relics.held
+  /*
+   * WHAT COULD GO IN — and this is the fix for "Uncommon depth · Dormant, over
+   * and over".
+   *
+   * The picker used to be a `<Select>` of one-line labels built from a relic's
+   * NAME and its waking step, which is exactly the two facts that do not vary
+   * between forty relics. A player with a full belt was choosing blind.
+   *
+   * Every candidate is now a ROW that says what it DOES — its actual affixes at
+   * their real magnitudes, its rarity, its waking state — and the rows are
+   * searchable by effect, so "which of these gives me drill bite" is a question
+   * you can ask the box instead of one you have to answer by opening forty
+   * tooltips.
+   */
+  const relicOpts: PickRow[] = state.relics.held
     .filter((r) => !isSocketedRelic(state, r.uid))
-    .slice(0, 40)
-    .map((r) => ({
-      value: `relic:${r.uid}`,
-      label: `${relicName(r)} · ${wakingStep(r).name}`,
-    }));
-  const runeOpts = RUNES
+    .map((r) => {
+      const fx = Object.entries(effectiveAffixes(r))
+        .map(([k, mag]) => ({ label: AFFIXES[k]?.label ?? k, mag }))
+        .sort((a, b) => b.mag - a.mag);
+      const step = wakingStep(r);
+      return {
+        value: `relic:${r.uid}`,
+        name: relicName(r),
+        note: `${RARITIES[r.rarity]} · ${step.name}`,
+        // THE MAGNITUDES, NOT THE NAMES. "+5% Drill bite" is a decision;
+        // "hardDrill" is a database key with a costume on.
+        // ONE DECIMAL UNDER 10%. A low-rarity affix is genuinely worth 0.6%,
+        // and `toFixed(0)` printed that as "0% Cheaper descent" — which reads as
+        // a broken relic rather than a small one, and was the exact complaint
+        // this row set out to fix.
+        effects: fx.map((f) => {
+          const pct = f.mag * 100;
+          return `${pct > 0 ? '+' : ''}${Math.abs(pct) < 10 ? pct.toFixed(1) : pct.toFixed(0)}% ${f.label}`;
+        }),
+        dim: step.name.toLowerCase() === 'dormant',
+      };
+    })
+    .sort((a, b) => Number(a.dim) - Number(b.dim) || b.effects.length - a.effects.length);
+
+  const runeOpts: PickRow[] = RUNES
     .filter((id) => (state.runes.found[id] ?? 0) > 0)
     .map((id) => ({
       value: `rune:${id}`,
-      label: `${RUNE_GLYPHS[id]} ${runeName(id)} ×${state.runes.found[id]}`,
+      name: `${RUNE_GLYPHS[id]} ${runeName(id)}`,
+      note: `×${state.runes.found[id]}`,
+      /*
+       * A GLYPH IS NOT AN EFFECT — and a rune has no SOLO effect to print
+       * either: everything a rune does lives in its adjacency (`RUNE_PAIRS`,
+       * `RUNE_TRIPLES`). So the honest readout is not a static line, it is what
+       * THIS rune would say NEXT TO WHAT IS ALREADY IN THE ROW, previewed
+       * before you spend the slot.
+       *
+       * It names only pairs the grammar has a name for, which is also what
+       * keeps pillar 5: an unnamed pair reads back as its own key and is
+       * filtered out, so the picker can never become a list of the codex.
+       */
+      effects: runeWouldSay(row, at, id),
+      dim: false,
     }));
-  const gemOpts = GEMS
+
+  const gemOpts: PickRow[] = GEMS
     .filter((g) => (state.materials.gems[g.id] ?? 0) > 0)
-    .map((g) => ({ value: `gem:${g.id}`, label: `${g.name} — ${g.effectText}` }));
-  const opts = kind === 'relic' ? relicOpts : kind === 'rune' ? runeOpts : gemOpts;
+    .map((g) => ({
+      value: `gem:${g.id}`,
+      name: g.name,
+      note: `×${state.materials.gems[g.id]}`,
+      effects: [g.effectText],
+      dim: false,
+    }));
+
+  const all = kind === 'relic' ? relicOpts : kind === 'rune' ? runeOpts : gemOpts;
+  const needle = q.trim().toLowerCase();
+  const opts = needle
+    ? all.filter((o) => `${o.name} ${o.note} ${o.effects.join(' ')}`.toLowerCase().includes(needle))
+    : all;
 
   const put = (raw: string): void => {
     const cut = raw.indexOf(':');
@@ -3142,25 +3430,45 @@ function SocketsCard({
           </button>
         ))}
       </div>
-      <div className="mt-1">
+      {/* SEARCH BY EFFECT. Only once the pile is big enough to need it. */}
+      {all.length > 5 && (
+        <input
+          className="mt-1 w-full rounded border border-cave-800 bg-cave-950 px-1.5 py-0.5 text-[9px] text-cave-200"
+          placeholder={`Search ${all.length} by name or effect…`}
+          aria-label={`Search ${kind}s by effect`}
+          data-testid="socket-search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      )}
+      <div className="mt-1 max-h-40 overflow-y-auto" data-testid="socket-options">
         {opts.length === 0
           ? (
             <div className="text-[9px] italic text-cave-600" data-testid="socket-none">
-              {kind === 'relic'
-                ? 'You hold no free relics.'
-                : kind === 'rune' ? 'You have found no runes yet.' : 'You hold no gems.'}
+              {needle
+                ? `Nothing you hold does that.`
+                : kind === 'relic'
+                  ? 'You hold no free relics.'
+                  : kind === 'rune' ? 'You have found no runes yet.' : 'You hold no gems.'}
             </div>
           )
-          : (
-            <Select
-              value=""
-              onChange={put}
-              options={opts}
-              className="w-full"
-              placeholder={`Set into socket ${at + 1}…`}
-              ariaLabel={`Set into socket ${at + 1}`}
-            />
-          )}
+          : opts.slice(0, 40).map((o) => (
+            <button
+              key={o.value}
+              className="mb-0.5 block w-full rounded border border-cave-800 px-1.5 py-1 text-left"
+              style={{ opacity: o.dim ? 0.65 : 1 }}
+              data-testid={`socket-opt-${o.value}`}
+              onClick={() => put(o.value)}
+            >
+              <div className="flex items-baseline justify-between gap-1">
+                <span className="min-w-0 truncate text-[10px] text-cave-200">{o.name}</span>
+                <span className="shrink-0 text-[8px] uppercase tracking-wider text-cave-600">{o.note}</span>
+              </div>
+              <div className="text-[9px] leading-snug" style={{ color: o.effects.length ? '#9ac07a' : '#6a6055' }}>
+                {o.effects.length ? o.effects.join(' · ') : 'It does nothing you can name yet.'}
+              </div>
+            </button>
+          ))}
       </div>
       {why && (
         <div className="mt-1 text-[9px] leading-snug text-[#c46a5a]" data-testid="socket-why">

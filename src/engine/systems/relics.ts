@@ -176,7 +176,24 @@ export function mintRelic(state: GameState, sourceId: string, seed: number): Rel
     const roll = lift + (1 - lift) * rand01(seed * 31 + i * 17);
     // Magnitude scales with rarity and the roll; floor guarantees a minimum.
     const mag = def.per * (rarity + 1) * (0.5 + 0.5 * roll);
-    affixes[key] = Math.max(affixes[key] ?? 0, Math.round(mag * 1000) / 1000);
+    /*
+     * KEEP THE BIGGEST BY MAGNITUDE, NOT THE BIGGEST NUMBER.
+     *
+     * `Math.max(affixes[key] ?? 0, mag)` was here to keep the better roll when
+     * the same key comes up twice, and it silently destroyed every NEGATIVE
+     * affix in the game: `descendCost` (-0.02) and `shortStair` (-0.035) are
+     * cost REDUCTIONS, so `Math.max(0, negative)` is 0, and both have always
+     * minted at exactly zero and done nothing. Both sit in the `depth` pool —
+     * the one every relic from the shaft rolls out of.
+     *
+     * Same family as the `affixBucketBonus` bug (A.68, 44% of affixes inert),
+     * and found the same way: by making the panel print the real magnitude
+     * instead of a name, at which point a relic reading "0.0% Cheaper descent"
+     * is impossible to miss.
+     */
+    const rounded = Math.round(mag * 1000) / 1000;
+    const prev = affixes[key];
+    affixes[key] = prev === undefined || Math.abs(rounded) > Math.abs(prev) ? rounded : prev;
   }
   return {
     uid: state.relics.nextUid,

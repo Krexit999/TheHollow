@@ -608,7 +608,9 @@ export function growthForStage(stage: number): number {
   return Math.round(GROWTH_BASE * Math.pow(stage, GROWTH_EXP));
 }
 
-export type GrowthBoonId = 'reach' | 'mending' | 'supple';
+export type GrowthBoonId =
+  | 'reach' | 'mending' | 'supple'
+  | 'grasp' | 'quickening' | 'thickening' | 'seeking' | 'stillness';
 
 export interface GrowthBoonDef {
   id: GrowthBoonId;
@@ -616,37 +618,109 @@ export interface GrowthBoonDef {
   /** What it does, in the game's voice. */
   effect: string;
   line: string;
+  /**
+   * WHICH PARTS CAN GROW THIS. Empty = any. This is the first half of the fix
+   * for "every part offers the identical three": a Handle cannot sprout reach
+   * and a Head cannot learn grip, because those are not what those parts ARE.
+   */
+  parts?: PartType[];
+  /**
+   * A TRAIT THAT CALLS IT OUT. When the living part's stone pulls this way, the
+   * boon is offered ahead of the general pool — so what your Verdance stone IS
+   * decides what it can BECOME, which is the second half of the fix.
+   */
+  wants?: ForgeTraitId;
+  /**
+   * HOW MANY CELLS THIS ONE COSTS, relative to the stage's base. The third half:
+   * they were all the same rate. A cheap boon arrives in two thirds of the work;
+   * `thickening` takes half again as long as anything else on the table.
+   */
+  pace: number;
 }
 
 /**
- * THE THREE THINGS A LIVING PART CAN BECOME. Offered together, one taken — and
- * the same part can take the same one twice if that is the build you want.
+ * EIGHT THINGS A LIVING PART CAN BECOME — of which any one part will ever be
+ * offered three, chosen by what it IS and what it is MADE OF.
+ *
+ * The report was that every part offered the identical RUNNER / KNITTING /
+ * SUPPLE with no context. It did: the three were the entire list, the list was
+ * unfiltered, and nothing anywhere printed a number. All three are fixed here —
+ * the pool is wider than the offer, the offer is filtered by part type and by
+ * the stone's own traits, each carries its own `pace`, and every magnitude below
+ * is exported so the panel can print what it will actually do.
  */
 export const GROWTH_BOONS: GrowthBoonDef[] = [
   {
     id: 'reach', name: 'Runner',
     effect: 'It puts out a little further. One more cell to the swing, when there is room for one.',
     line: 'You did not shape this. It went where it wanted and you kept hold of it.',
+    parts: ['head', 'edge', 'core'], wants: 'hollow', pace: 1,
   },
   {
     id: 'mending', name: 'Knitting',
     effect: 'It closes its own wear over, slowly, while you are doing something else.',
     line: 'The crack you noticed last week is a seam now. Next week it will be nothing.',
+    wants: 'warm', pace: 1.2,
   },
   {
     id: 'supple', name: 'Supple',
     effect: 'It gives instead of arguing — steadier under load, and it spends less of itself working.',
     line: 'It bends about a degree further every month. It has never bent back.',
+    wants: 'tough', pace: 1,
+  },
+  {
+    id: 'grasp', name: 'Grasping',
+    effect: 'The handle closes on your hand. It lands where you meant it to.',
+    line: 'You have stopped noticing where you are holding it. That is the whole trick.',
+    parts: ['handle', 'grip', 'binding'], wants: 'trueseated', pace: 0.8,
+  },
+  {
+    id: 'quickening', name: 'Quickening',
+    effect: 'It comes back up on its own. The swing after the swing costs less.',
+    line: 'Something in it is impatient now. You have started swinging to keep up.',
+    parts: ['handle', 'core', 'binding'], wants: 'light', pace: 0.9,
+  },
+  {
+    id: 'thickening', name: 'Thickening',
+    effect: 'It lays down another ring. Far more of it to wear through — and slow to arrive.',
+    line: 'It is heavier than it was last season. You have not added anything to it.',
+    parts: ['core', 'handle', 'grip'], wants: 'dense', pace: 1.5,
+  },
+  {
+    id: 'seeking', name: 'Seeking',
+    effect: 'It finds the soft middle of a pocket. Ore opens quicker under it.',
+    line: 'It leans, very slightly, toward the parts of the rock that are hiding something.',
+    parts: ['edge', 'head'], wants: 'keen', pace: 1.1,
+  },
+  {
+    id: 'stillness', name: 'Stillness',
+    effect: 'It stops arguing with what it carries. Much steadier, and nothing else.',
+    line: 'Whatever is seated in it has gone quiet. You are not certain that is better.',
+    parts: ['sockets', 'binding', 'core'], wants: 'charged', pace: 0.9,
   },
 ];
 
 export const BOON_BY_ID = new Map(GROWTH_BOONS.map((b) => [b.id, b]));
+
+/** How many are on the table at one maturing. Three, as it always was. */
+export const BOONS_OFFERED = 3;
 
 /** What one taken boon is worth. Small, and stacking is capped by GROWTH_MAX. */
 export const BOON_REACH = 1;
 export const BOON_MEND = 0.003;
 export const BOON_STEADY = 14;
 export const BOON_WEAR = 0.88;
+/**
+ * THE FIVE NEW ONES. Every magnitude here is printed to the player by
+ * `boonNumbers`, which is the point — a choice you cannot price is not a
+ * choice. Each lands on a term the tool already had, inside the same clamps,
+ * and not one of them is yield.
+ */
+export const BOON_GRASP = 1.14;
+export const BOON_QUICKEN = 1.09;
+export const BOON_THICKEN = 1.18;
+export const BOON_SEEK = 1.12;
+export const BOON_STILL = 22;
 
 // ---------------------------------------------------------------------------
 // MASTERWORK — how well this particular pour came out

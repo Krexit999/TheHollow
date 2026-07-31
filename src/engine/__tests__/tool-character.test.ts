@@ -27,6 +27,7 @@ import {
 import {
   assembleTool, craftFold, growthFold, growthNeed, growthProgress, isLiving,
   makePart, NO_GROWTH, NO_CRAFT, type Part,
+  boonsFor, boonCost,
 } from '../systems/forgeParts';
 import { BASE_CAP, manualChip } from '../systems/face';
 import {
@@ -146,7 +147,9 @@ describe('only living stock keeps growing', () => {
     hold(LIVE[0]!.id);
     const r = matureLivingPart(s, ctx, 'head', 'reach');
     expect(r.ok).toBe(false);
-    expect(r.reason).toMatch(/more to do first/);
+    expect(r.reason).toMatch(/wants more/);
+    // ...and it names WHICH one and by how much, which the old message could not.
+    expect(r.reason).toMatch(/Runner/);
   });
 
   it('and refused on a part that is not alive at all', () => {
@@ -162,14 +165,22 @@ describe('only living stock keeps growing', () => {
     hold(LIVE[0]!.id);
     growLivingParts(s, ctx, growthForStage(1));
     const seen: GameEvent[] = [];
+    // TAKE SOMETHING THIS PART IS ACTUALLY OFFERED, and pay ITS pace — a Head
+    // is not offered every boon any more, and Knitting costs 1.2x the base.
+    const part = s.casting.tool[0]!;
+    const offer = boonsFor(part);
+    expect(offer).toHaveLength(3);
+    const take = offer[0]!.id;
+    part.growth = boonCost(part, take);
     const r = matureLivingPart(
-      s, { emit: (e) => { seen.push(e); }, dirty() {} }, 'head', 'mending',
+      s, { emit: (e) => { seen.push(e); }, dirty() {} }, 'head', take,
     );
     expect(r.ok).toBe(true);
-    expect(s.casting.tool[0]!.grown).toEqual(['mending']);
+    expect(s.casting.tool[0]!.grown).toEqual([take]);
     const ev = seen.find((e) => e.type === 'partMatured');
-    expect(ev && ev.type === 'partMatured' && ev.boon).toBe('mending');
-    expect(GROWTH_BOONS.length).toBe(3);
+    expect(ev && ev.type === 'partMatured' && ev.boon).toBe(take);
+    // The POOL is eight; the OFFER is three, and the offer is what a player faces.
+    expect(GROWTH_BOONS.length).toBeGreaterThan(3);
   });
 
   it('each boon does its own thing, and only its own thing', () => {

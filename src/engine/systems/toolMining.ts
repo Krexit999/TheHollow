@@ -51,6 +51,7 @@ import {
   type Balance, type ToolStats,
 } from './forgeParts';
 import { materialDef } from '../materials';
+import { seasoned, wearResist, WEAR_RESIST_MAX } from './toolSeason';
 import { currentTool } from './casting';
 /**
  * A DELIBERATE CYCLE, AND THE ONE PLACE THIS FILE ALLOWS ONE.
@@ -243,7 +244,13 @@ export function effectOf(
 export function toolEffect(state: GameState): ToolEffect {
   const tool = currentTool(state);
   if (!tool) return BARE_HANDS;
-  return effectOf(tool, isBroken(state, tool), toolLevel(state), modCache(state));
+  /**
+   * SEASONING LANDS HERE, BEFORE THE CLAMPS — which is the whole pillar-2
+   * argument for it. It scales `tool.stats`, so every term it touches still goes
+   * through MAX_EXTRA_CELLS, splash <= 1 and ORE_RATE_CAP exactly as the
+   * unseasoned tool's did. See `systems/toolSeason.ts`.
+   */
+  return effectOf(seasoned(state, tool), isBroken(state, tool), toolLevel(state), modCache(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -307,7 +314,13 @@ export function poolOf(tool: ToolStats): number {
   return tool.stats.durability;
 }
 
-export function wearPerUse(tool: ToolStats, level = 1, mod: ModCache = NO_MODS): number {
+export function wearPerUse(
+  tool: ToolStats, level = 1, mod: ModCache = NO_MODS,
+  /** 0..WEAR_RESIST_MAX from `systems/toolSeason.ts`. Defaulted so the pure
+   *  stat-shape question ("does a light build cost less per swing") can still
+   *  be asked without a GameState, which is how every test asks it. */
+  resist = 0,
+): number {
   // The shape's wear term lands here rather than on `usesOf`, because a shape
   // changes what a SWING costs, not how big the pool is.
   // A heavy swing costs more of the pool and a light one less — which is where
@@ -319,7 +332,12 @@ export function wearPerUse(tool: ToolStats, level = 1, mod: ModCache = NO_MODS):
   const exempt = craft.flawless.length / Math.max(1, tool.parts.length);
   return (poolOf(tool) / usesOf(tool, level, mod))
     * shapeFold(tool.parts).wear * balanceOf(tool.parts).wear
-    * growthFold(tool.parts).wear * (1 - Math.min(0.6, exempt));
+    * growthFold(tool.parts).wear * (1 - Math.min(0.6, exempt))
+    // AND THE MORE IT HAS WORKED AND BEEN MENDED, THE SLOWER IT GOES. Applied
+    // to the COST of a swing rather than to the size of the pool, so it shows up
+    // as "this lasts longer" without silently re-rating every durability readout
+    // the player has already learned. See `systems/toolSeason.ts`.
+    * (1 - Math.max(0, Math.min(WEAR_RESIST_MAX, resist)));
 }
 
 export function isBroken(state: GameState, tool: ToolStats): boolean {
@@ -333,7 +351,7 @@ export function wear01(state: GameState, tool: ToolStats): number {
 }
 
 export function usesLeft(state: GameState, tool: ToolStats): number {
-  const per = wearPerUse(tool, toolLevel(state), modCache(state));
+  const per = wearPerUse(tool, toolLevel(state), modCache(state), wearResist(state));
   return per <= 0 ? 0 : Math.max(0, Math.floor((poolOf(tool) - state.casting.wear) / per));
 }
 
@@ -618,6 +636,6 @@ export function spendToolUse(state: GameState, count = 1): void {
   if (state.casting.wear >= pool) return; // already at the floor; it cannot get worse
   state.casting.wear = Math.min(
     pool,
-    state.casting.wear + wearPerUse(tool, toolLevel(state), modCache(state)) * count,
+    state.casting.wear + wearPerUse(tool, toolLevel(state), modCache(state), wearResist(state)) * count,
   );
 }

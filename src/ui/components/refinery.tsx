@@ -16,7 +16,7 @@ import { BANDS, BAND_LABELS, materialDef, type PurityBand } from '../../engine/m
 import { materialCount, toolRecipeName, equippedTool } from '../../engine/systems/forge';
 import {
   refineryUnlocked, transmuteUnlocked, refinePreview, climbPreview, foundChains,
-  REFINE_RATIO, REFINERY_MASTERY,
+  REFINE_RATIO, REFINERY_MASTERY, benchReading, scentOf,
 } from '../../engine/systems/refinery';
 import { salvagePreview } from '../../engine/systems/salvage';
 import { TEMPERS, temperingUnlocked, temperCost, currentTemper } from '../../engine/systems/tempering';
@@ -174,10 +174,27 @@ export function RefineryPanel() {
               Two materials in. Something else out, if they have anything to say to each other.
               Order does not matter here — this is not the rune wall.
             </p>
+            {/*
+              THE SCENT. A stone the bench has smelled is marked in the picker
+              itself, so the narrowing happens where the choice is made rather
+              than after it. It says only WHETHER a stone reacts with anything —
+              never with what, so the pair is still yours to find.
+            */}
             <div className="mt-2 grid grid-cols-2 gap-2">
               {([['A', feedA, setFeedA], ['B', feedB, setFeedB]] as const).map(([label, val, set]) => (
                 <div key={label} className="rounded-md border border-cave-700 p-2">
-                  <div className="text-[9px] uppercase tracking-widest text-cave-500">Slot {label}</div>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[9px] uppercase tracking-widest text-cave-500">Slot {label}</span>
+                    {val && (
+                      <span
+                        className="text-[9px] uppercase tracking-wider"
+                        style={{ color: scentOf(val) === 'wanted' ? '#9ac07a' : '#8a7f70' }}
+                        data-testid={`bench-scent-${label}`}
+                      >
+                        {scentOf(val) === 'wanted' ? 'reacts' : 'inert'}
+                      </span>
+                    )}
+                  </div>
                   <Select
                     className="mt-1 w-full"
                     ariaLabel={`Refinery slot ${label}`}
@@ -185,14 +202,25 @@ export function RefineryPanel() {
                     onChange={(v) => set(v || null)}
                     options={[
                       { value: '', label: '— empty —' },
-                      ...held.map(({ id }) => ({
-                        value: id,
-                        label: `${materialDef(id).name} ×${materialCount(state as GameState, id)}`,
-                      })),
+                      ...held
+                        // Marked ones first: the whole point is that the list
+                        // stops being 158 equally-plausible stones.
+                        .slice()
+                        .sort((x, y) => Number(scentOf(y.id) === 'wanted') - Number(scentOf(x.id) === 'wanted'))
+                        .map(({ id }) => ({
+                          value: id,
+                          label: `${scentOf(id) === 'wanted' ? '◆ ' : ''}${materialDef(id).name} ×${materialCount(state as GameState, id)}`,
+                        })),
                     ]}
                   />
                 </div>
               ))}
+            </div>
+            <div
+              className="mt-1.5 text-[10px] leading-snug italic text-cave-400"
+              data-testid="bench-reading"
+            >
+              {benchReading(state as GameState, feedA, feedB).line}
             </div>
             <button
               className="btn btn-warm mt-2 w-full py-1.5 text-xs"
@@ -200,10 +228,12 @@ export function RefineryPanel() {
               onClick={() => {
                 const r = dispatch({ type: 'transmute', a: feedA!, b: feedB! });
                 if (!r.ok) { setResult(r.reason ?? 'Nothing happened.'); return; }
-                const d = r.data as { found: string | null; isNew?: boolean; out?: string };
+                const d = r.data as { found: string | null; isNew?: boolean; out?: string; line?: string };
                 setResult(d.found
                   ? `${d.isNew ? 'NEW — ' : ''}It came out as ${materialDef(d.out!).name}.`
-                  : 'Slag, and a smell. They had nothing to say to each other.');
+                  // A MISS THAT NARROWS. "Nothing happened" is what made this a
+                  // slot machine; the reading is repeated where it is read.
+                  : `Slag, and a smell. ${d.line ?? ''}`);
               }}
             >
               {feedA === feedB && feedA ? 'Two of the same thing is a pile' : 'Run it'}
