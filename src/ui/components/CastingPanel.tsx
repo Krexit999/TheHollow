@@ -24,24 +24,26 @@
  *  - THE RACK IS AN INVENTORY, NOT A CHECKLIST. A vertical list of every part
  *    you have ever poured stops being readable at about a dozen.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
-import { BANDS, bandOf, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import {
-  BOON_BY_ID, CRAFT_COLOR, CRAFT_LABEL, GROWTH_BOONS, GROWTH_MAX, LAYER_NAMES,
+  BANDS, materialDef, materialsOfShell, type PurityBand,
+} from '../../engine/materials';
+import {
+  BOON_BY_ID, CRAFT_COLOR, CRAFT_LABEL, GROWTH_BOONS, GROWTH_MAX, LAYER_MAX, LAYER_NAMES,
   MASTERWORK_BY_ID, PART_DEFS, PART_TYPES, STAT_LABEL, TOOL_STATS, defaultShape,
   shapeDef, shapesFor,
   type PartShape, type PartType,
 } from '../../engine/content/forgeParts';
 import {
-  balanceOf, craftFold, growthFold, growthProgress, isLiving, partMaterials,
+  balanceOf, craftFold, growthFold, growthProgress, isLiving,
   shapeFold, type ToolStats,
 } from '../../engine/systems/forgeParts';
 import { readBio } from '../../engine/systems/toolBio';
-import { allShells } from '../../engine/shells';
+import { allShells, currentShell } from '../../engine/shells';
 import {
-  MELT_BACK_SHARE, MELT_PER_UNIT, QUEUE_MAX, TUB_CAPACITY, FULL_SET_MELT,
+  MELT_BACK_SHARE, TUB_CAPACITY,
   benchComplete, benchPreview, canCast, crucibleFill, currentTool, frontCharge,
   castMelt, layerDraw, meltBackValue, queued, rackPart, tubHeld, unitsThatFit,
   type RackPart,
@@ -62,7 +64,7 @@ import {
 } from '../../engine/systems/toolAbilities';
 import { MOD_BY_ID, SYNERGY_BY_ID, abilityLevelOf } from '../../engine/content/toolMods';
 import {
-  MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modSlotsTotal,
+  INST_FLOOR, MOD_FEED_MAX, knownMods, modCache, modHint, modProgress, modSlotsTotal,
   modSlotsUsed, modStacks, synergyHints, toolInstability, whyDormant,
   type ModCache, type ToolModStack,
 } from '../../engine/systems/toolMods';
@@ -103,6 +105,972 @@ function heldMaterials(state: GameState): Array<{ id: string; count: number; ban
     .sort((a, b) => materialDef(a.id).name.localeCompare(materialDef(b.id).name));
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// THE STATION — the casting screen as a bench, not a stack of panels
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * WHY THIS REPLACED EIGHT STACKED CARDS.
+ *
+ * Everything from here to `CastingPanel` is PRESENTATION. Not one engine call
+ * changed: the same `benchPlace`, `castPart`, `buildTool`, `setSocket` and
+ * `repairTool` the old cards dispatched are dispatched here, off the same
+ * selectors. What changed is that the tool is now a THING IN THE MIDDLE with
+ * its parts in their real positions, and the numbers orbit it instead of
+ * queueing underneath it.
+ *
+ * PLAIN HTML/CSS, NO CANVAS — deliberately, and the reason is already on the
+ * record: A.50 threw out 1,447 lines of canvas relic art because procedural
+ * shapes at small sizes read as placeholder, and the ruling from it was "these
+ * screens are panels; rendered art is not retried here". A pick built out of
+ * positioned divs is not art, it is a DIAGRAM — it inherits the real material
+ * palettes, and it costs nothing to keep truthful.
+ *
+ * THE DIAGRAM SHOWS THE WORKING SET, which is the one thing the mockup could
+ * not decide and the engine can: for each of the seven positions it prefers the
+ * BENCH part (what you are assembling) and falls back to the part already in
+ * your tool. So the diagram IS your tool, and seating a replacement visibly
+ * puts it on before you commit — a bench part is outlined in gold until you
+ * Combine. That is why there is no separate seven-row bench list any more.
+ */
+
+/** The seven positions, as the mockup lays a pick out, in a 336x366 bench. */
+/** Who sits in front of whom. The shaft passes BEHIND the core and binding. */
+const PART_Z: Record<PartType, number> = {
+  handle: 1, core: 2, grip: 2, binding: 3, head: 4, edge: 5, sockets: 6,
+};
+
+const PART_BOX: Record<PartType, { l: number; t: number; w: number; h: number; clip?: string; rot?: number }> = {
+  head:    { l: 96,  t: 28,  w: 140, h: 64, clip: 'polygon(0% 56%, 22% 2%, 100% 0%, 100% 100%, 46% 96%)' },
+  edge:    { l: 88,  t: 70,  w: 96,  h: 14, clip: 'polygon(0% 50%, 12% 0%, 100% 10%, 94% 100%)', rot: 6 },
+  binding: { l: 148, t: 88,  w: 40,  h: 22 },
+  core:    { l: 138, t: 114, w: 60,  h: 58 },
+  handle:  { l: 158, t: 96,  w: 20,  h: 172 },
+  grip:    { l: 154, t: 262, w: 28,  h: 62 },
+  /** The Sockets part has no silhouette of its own — it IS the seats bored into
+   *  the tool, drawn below. This box is the collar they sit on. */
+  sockets: { l: 150, t: 176, w: 36,  h: 18 },
+};
+
+/** Where each part's label hangs, and the leader line that reaches it. */
+const PART_LABEL: Record<PartType, { side: 'l' | 'r'; t: number; line: { l: number; t: number; w: number } }> = {
+  head:    { side: 'l', t: 38,  line: { l: 68,  t: 52,  w: 30 } },
+  edge:    { side: 'l', t: 72,  line: { l: 60,  t: 86,  w: 30 } },
+  core:    { side: 'l', t: 126, line: { l: 68,  t: 140, w: 70 } },
+  binding: { side: 'r', t: 86,  line: { l: 188, t: 100, w: 80 } },
+  handle:  { side: 'r', t: 168, line: { l: 178, t: 182, w: 90 } },
+  sockets: { side: 'r', t: 212, line: { l: 178, t: 226, w: 90 } },
+  grip:    { side: 'r', t: 278, line: { l: 182, t: 292, w: 86 } },
+};
+
+/** Where the gem seats sit ON the tool, in row order. */
+const SOCKET_SPOTS = [
+  { l: 118, t: 46 }, { l: 200, t: 36 }, { l: 161, t: 132 },
+  { l: 161, t: 200 }, { l: 161, t: 286 },
+];
+
+/**
+ * A PART'S COLOURS COME FROM ITS REAL MATERIAL. The mockup hard-codes a hue per
+ * part; the game already ships `MaterialDef.palette` as [deep, mid, light] for
+ * every material, which is what the icon generator draws from. So a graveclay
+ * head and an alephite head are visibly different objects for free, and nothing
+ * here needs authoring per material.
+ */
+function partSkin(materialId: string): { deep: string; mid: string; light: string } {
+  const [deep, mid, light] = materialDef(materialId).palette;
+  return { deep, mid, light };
+}
+
+interface Seated { materialId: string; purity: number; onBench: boolean }
+
+/** The working set: the bench part if you have seated one, else what you carry. */
+function workingPart(state: GameState, t: PartType): Seated | null {
+  const benchId = state.casting.bench[t];
+  if (benchId !== undefined) {
+    const p = rackPart(state, benchId);
+    if (p) return { materialId: p.materialId, purity: p.purity, onBench: true };
+  }
+  const built = state.casting.tool.find((p) => p.type === t);
+  return built ? { materialId: built.materialId, purity: built.purity, onBench: false } : null;
+}
+
+function ToolDiagram({
+  state, onPart, onSocket,
+}: { state: GameState; onPart: (t: PartType) => void; onSocket: (i: number) => void }) {
+  const tool = currentTool(state);
+  const broken = tool ? isBroken(state, tool) : false;
+  const sockets = socketRow(state);
+  const nSock = socketCount(tool);
+  const worn = tool ? wornPart(tool) : null;
+
+  return (
+    <div className="relative mx-auto" style={{ width: 336, height: 366 }} data-testid="tool-diagram">
+      {PART_TYPES.map((t) => {
+        const box = PART_BOX[t];
+        const held = workingPart(state, t);
+        const base: React.CSSProperties = {
+          position: 'absolute',
+          left: box.l, top: box.t, width: box.w, height: box.h,
+          padding: 0, border: 'none', cursor: 'pointer',
+          zIndex: PART_Z[t],
+          ...(box.rot ? { transform: `rotate(${box.rot}deg)` } : {}),
+        };
+
+        if (!held) {
+          /** AN EMPTY SEAT IS DRAWN, not omitted — the mockup's dashed Binding.
+           *  A missing part has to be visible or "6 of 7" means nothing. */
+          return (
+            <button
+              key={t}
+              data-testid={`diagram-${t}`}
+              data-seated="0"
+              title={`${PART_DEFS[t].name} — empty. ${PART_DEFS[t].governs}`}
+              onClick={() => onPart(t)}
+              style={{
+                ...base,
+                zIndex: PART_Z[t] + 2,
+                border: '1px dashed rgba(224,176,84,0.45)',
+                borderRadius: 3,
+                background: 'rgba(224,176,84,0.03)',
+              }}
+            />
+          );
+        }
+
+        const skin = partSkin(held.materialId);
+        const isWorn = worn === t;
+        return (
+          <button
+            key={t}
+            data-testid={`diagram-${t}`}
+            data-seated="1"
+            data-material={held.materialId}
+            data-bench={held.onBench ? '1' : '0'}
+            title={`${PART_DEFS[t].name} — ${materialDef(held.materialId).name} ${held.purity}`
+              + (held.onBench ? ' · on the bench, not combined yet' : '')
+              + (isWorn ? ' · this is the worn one' : '')}
+            onClick={() => onPart(t)}
+            style={{
+              ...base,
+              ...(box.clip ? { clipPath: box.clip } : { borderRadius: t === 'core' ? 4 : 3 }),
+              background: t === 'grip'
+                ? `repeating-linear-gradient(38deg, rgba(0,0,0,0.28) 0 2px, transparent 2px 5px), `
+                  + `linear-gradient(90deg, ${skin.deep}, ${skin.mid} 50%, ${skin.light} 70%, ${skin.deep})`
+                : t === 'handle'
+                  ? `linear-gradient(90deg, ${skin.deep}, ${skin.mid} 42%, ${skin.light} 62%, ${skin.deep})`
+                  : `linear-gradient(150deg, ${skin.light}, ${skin.mid} 52%, ${skin.deep})`,
+              /** A BENCH PART GLOWS AND A BUILT ONE DOES NOT — the only way to
+               *  see that what you are looking at is not yet the tool you own. */
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 1px rgba(0,0,0,0.45)',
+              /** EVERY OUTLINE HERE IS A drop-shadow, and that is load-bearing:
+               *  a box-shadow is painted in the element BOX and `clip-path`
+               *  clips it away, so on the Head and the Edge — the two clipped
+               *  parts — a box-shadow renders nothing at all. Found when a Head
+               *  seated on the bench showed no gold. */
+              filter: [
+                // Gold FIRST for a bench part, so it sits against the shape
+                // rather than outside a black rim that has already eaten it.
+                held.onBench ? 'drop-shadow(0 0 1.5px #f5c05a) drop-shadow(0 0 6px rgba(224,176,84,0.95))' : '',
+                'drop-shadow(0 0 0.6px rgba(0,0,0,0.95))',
+                'drop-shadow(0 1px 1px rgba(0,0,0,0.55))',
+                !held.onBench && t === 'head' ? 'drop-shadow(0 0 5px rgba(224,176,84,0.20))' : '',
+                broken ? 'grayscale(0.55) brightness(0.72)' : '',
+              ].filter(Boolean).join(' '),
+              opacity: isWorn && !held.onBench ? 0.8 : 1,
+            }}
+          />
+        );
+      })}
+
+      {/* THE GEM SEATS, bored into the tool. A filled one carries its colour. */}
+      {Array.from({ length: Math.min(nSock, SOCKET_SPOTS.length) }).map((_, i) => {
+        const spot = SOCKET_SPOTS[i]!;
+        const fill = sockets[i] ?? null;
+        const tint = fill === null ? null
+          : fill.kind === 'gem' ? gemDef(fill.id).color
+            : fill.kind === 'relic' ? '#c9a7e0' : null;
+        return (
+          <button
+            key={i}
+            data-testid={`diagram-socket-${i}`}
+            data-filled={fill ? fill.kind : 'empty'}
+            title={fill ? fillLabel(state, fill) : `Socket ${i + 1} — empty`}
+            onClick={() => onSocket(i)}
+            style={{
+              position: 'absolute', left: spot.l, top: spot.t, width: 14, height: 14,
+              padding: 0, border: 'none', cursor: 'pointer', borderRadius: 9999, zIndex: 7,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, lineHeight: 1, fontWeight: 700, color: '#f5c05a',
+              background: tint ?? (fill ? '#151008' : 'rgba(10,9,8,0.9)'),
+              boxShadow: tint
+                ? `0 0 6px ${tint}bf, inset 0 0 0 1px rgba(0,0,0,0.5)`
+                : fill
+                  ? '0 0 5px rgba(224,176,84,0.5), inset 0 0 0 1px rgba(224,176,84,0.95)'
+                  : 'inset 0 0 0 1px rgba(138,127,112,0.5)',
+            }}
+          >
+            {fill?.kind === 'rune' ? RUNE_GLYPHS[fill.id] : ''}
+          </button>
+        );
+      })}
+
+      {/* CONDITION, on the tool itself rather than in a panel of its own */}
+      {tool && (
+        <div style={{ position: 'absolute', left: 108, top: 334, width: 120 }} data-testid="diagram-wear">
+          <div style={{
+            height: 5, width: '100%', overflow: 'hidden', borderRadius: 2,
+            background: '#0a0908', boxShadow: 'inset 0 0 0 1px rgba(138,127,112,0.28)',
+          }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.round((1 - wear01(state, tool)) * 100)}%`,
+              background: broken ? '#c46a5a' : '#e0b054',
+            }} />
+          </div>
+          <div
+            className="tnum"
+            style={{ marginTop: 3, textAlign: 'center', fontSize: 9, letterSpacing: '0.06em', color: '#8a7f70' }}
+          >
+            {broken ? 'broken · still swings' : `${fmt(usesLeft(state, tool))} left`}
+          </div>
+        </div>
+      )}
+
+      {/* LEADER LINES + LABELS — each part named by its material */}
+      {PART_TYPES.map((t) => {
+        const lab = PART_LABEL[t];
+        const held = workingPart(state, t);
+        const skin = held ? partSkin(held.materialId) : null;
+        return (
+          <div key={`lab-${t}`}>
+            <div style={{
+              position: 'absolute', left: lab.line.l, top: lab.line.t,
+              width: lab.line.w, height: 1, background: 'rgba(224,176,84,0.3)',
+            }} />
+            <div
+              style={{
+                position: 'absolute', top: lab.t, width: 66,
+                ...(lab.side === 'l' ? { left: 0, textAlign: 'right' as const } : { left: 270 }),
+              }}
+              data-testid={`diagram-label-${t}`}
+            >
+              <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#6a6055' }}>
+                {PART_DEFS[t].name}
+              </div>
+              <div style={{
+                fontSize: 10, lineHeight: 1.25,
+                color: held?.onBench ? '#f5c05a' : skin ? skin.light : '#8a7f70',
+                fontStyle: held ? undefined : 'italic',
+                fontWeight: held?.onBench ? 600 : undefined,
+              }}>
+                {held ? materialDef(held.materialId).name : 'empty'}
+              </div>
+              {held?.onBench && (
+                <div
+                  style={{ fontSize: 8, lineHeight: 1.1, letterSpacing: '0.1em', color: '#e0b054', whiteSpace: 'nowrap' }}
+                  data-testid={`diagram-bench-${t}`}
+                >
+                  ▸ bench
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE DIALS — the same numbers the old cards printed, arranged around the tool
+// ---------------------------------------------------------------------------
+
+/** The tool the dials describe: the bench preview while assembling, else yours. */
+function dialSubject(state: GameState): { tool: ToolStats | null; preview: boolean } {
+  const bench = benchPreview(state);
+  if (bench && PART_TYPES.some((t) => state.casting.bench[t] !== undefined)) {
+    return { tool: bench, preview: true };
+  }
+  return { tool: currentTool(state), preview: false };
+}
+
+function UpperDials({ state, tool }: { state: GameState; tool: ToolStats | null }) {
+  const coh = tool ? tool.coherence.factor : 1;
+  const pct = Math.round(coh * 100);
+  // Nothing disagrees with nothing, so an empty bench reads 1.00 in the engine.
+  // On a dial that is a lie; it has to say "no reading", not "perfect".
+  const measurable = !!tool && tool.parts.length >= 2;
+  const cls = toolClass(state);
+  const lvl = levelProgress(state);
+  const R = 20;
+  const C = 2 * Math.PI * R;
+
+  return (
+    <div className="flex items-start justify-between gap-2">
+      <div className="min-w-0 flex-1" data-testid="dial-coherence">
+        <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+          Coherence
+        </div>
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="tnum"
+            style={{
+              fontSize: 38, lineHeight: 1.05, fontWeight: 600,
+              color: coherenceColor(coh), textShadow: '0 1px 0 #000',
+            }}
+            data-testid="dial-coherence-pct"
+          >
+            {measurable ? `${pct}%` : '—'}
+          </span>
+          <span style={{ fontSize: 10, color: '#8a7f70' }} data-testid="dial-coherence-word">
+            {measurable ? coherenceWord(coh) : 'nothing seated'}
+          </span>
+        </div>
+        <div style={{
+          marginTop: 4, height: 4, borderRadius: 2, overflow: 'hidden',
+          background: '#0a0908', boxShadow: 'inset 0 0 0 1px rgba(138,127,112,0.25)',
+        }}>
+          <div style={{ height: '100%', width: measurable ? `${pct}%` : '0%', background: coherenceColor(coh) }} />
+        </div>
+      </div>
+
+      <div className="flex shrink-0 items-start gap-2">
+        <div style={{ textAlign: 'right' }} data-testid="dial-class">
+          <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+            Class
+          </div>
+          <div
+            style={{
+              fontSize: 12, fontWeight: 600,
+              color: cls.def ? `#${cls.def.color.toString(16).padStart(6, '0')}` : '#6a6055',
+            }}
+            data-testid="dial-class-name"
+          >
+            {cls.def ? cls.def.name : 'none'}
+          </div>
+          <div style={{ fontSize: 8, color: '#6a6055', maxWidth: 96 }}>
+            {cls.def
+              ? cls.tipped.slice(0, 2).map((x) => x.trait).join(' · ')
+              : cls.why ? 'scattered' : 'leans nowhere'}
+          </div>
+        </div>
+        <div className="relative shrink-0" data-testid="dial-level">
+          <svg viewBox="0 0 46 46" width={46} height={46} aria-hidden="true">
+            <circle cx="23" cy="23" r={R} fill="none" stroke="#241f1b" strokeWidth="3" />
+            <circle
+              cx="23" cy="23" r={R} fill="none" stroke="#e0b054" strokeWidth="3" strokeLinecap="round"
+              strokeDasharray={C} strokeDashoffset={C * (1 - lvl.frac)}
+              transform="rotate(-90 23 23)"
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="tnum" style={{ fontSize: 13, fontWeight: 600, lineHeight: 1, color: '#e0b054' }}>
+              {lvl.level}
+            </span>
+            <span style={{ fontSize: 7, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#6a6055' }}>
+              level
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LowerDials({ state, tool }: { state: GameState; tool: ToolStats | null }) {
+  const inst = toolInstability(state);
+  const bal = tool ? balanceOf(tool.parts) : null;
+  // The meter runs to the floor below which nothing ever goes wrong, so a
+  // needle sitting under it reads as headroom rather than as a small problem.
+  const instPct = Math.min(100, Math.round((inst.net / (INST_FLOOR * 2)) * 100));
+  const instColor = inst.net < INST_FLOOR ? '#9ac07a' : inst.misfire > 0.2 ? '#c46a5a' : '#e0b054';
+  const balLeft = bal ? Math.round(((bal.value + 1) / 2) * 100) : 50;
+
+  return (
+    <div className="mt-1.5 flex gap-2.5">
+      <div className="min-w-0 flex-1" data-testid="dial-instability">
+        <div className="flex items-baseline justify-between">
+          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#6a6055' }}>
+            Instability
+          </span>
+          <span className="tnum" style={{ fontSize: 10, color: instColor }} data-testid="dial-instability-n">
+            {Math.round(inst.net)}
+          </span>
+        </div>
+        <div style={{
+          marginTop: 3, height: 4, borderRadius: 2, overflow: 'hidden',
+          background: '#0a0908', boxShadow: 'inset 0 0 0 1px rgba(138,127,112,0.25)',
+        }}>
+          <div style={{ height: '100%', width: `${instPct}%`, background: instColor }} />
+        </div>
+        <div style={{ marginTop: 2, fontSize: 8, lineHeight: 1.3, color: '#6a6055' }}>
+          {inst.net < INST_FLOOR
+            ? 'steady — nothing misfires'
+            : `${Math.round(inst.misfire * 100)}% of firings go wrong`}
+        </div>
+      </div>
+
+      <div
+        className="min-w-0 flex-1 pl-2.5"
+        style={{ borderLeft: '1px solid rgba(138,127,112,0.18)' }}
+        data-testid="dial-balance"
+      >
+        <div className="flex items-baseline justify-between">
+          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#6a6055' }}>
+            Balance
+          </span>
+          <span style={{ fontSize: 10, color: '#b0a494' }} data-testid="dial-balance-label">
+            {bal ? bal.label : '—'}
+          </span>
+        </div>
+        <div className="relative" style={{ marginTop: 3, height: 4 }}>
+          <div style={{
+            position: 'absolute', inset: 0, borderRadius: 2,
+            background: 'linear-gradient(90deg,#5b7fa8,#35302a 50%,#c47a44)',
+            opacity: 0.55,
+          }} />
+          <div style={{
+            position: 'absolute', left: '50%', top: -2, width: 1, height: 8,
+            background: 'rgba(138,127,112,0.5)',
+          }} />
+          <div
+            style={{
+              position: 'absolute', left: `${balLeft}%`, top: -2, width: 8, height: 8,
+              marginLeft: -4, borderRadius: 9999, background: '#e0b054',
+              boxShadow: '0 0 4px rgba(224,176,84,0.8)',
+            }}
+            data-testid="dial-balance-marker"
+          />
+        </div>
+        <div className="flex justify-between" style={{ marginTop: 2, fontSize: 8, color: '#6a6055' }}>
+          <span>light</span><span>heavy</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE RACK — a shelf of cast parts you tap onto the tool
+// ---------------------------------------------------------------------------
+
+function RackShelf({
+  state, want, onWant,
+}: { state: GameState; want: PartType | null; onWant: (t: PartType | null) => void }) {
+  const [note, setNote] = useState<string | null>(null);
+  const all = state.casting.rack;
+  const shown = want ? all.filter((p) => p.type === want) : all;
+  const seatedIds = new Set(Object.values(state.casting.bench));
+
+  return (
+    <div className="mt-2 rounded-lg border border-cave-800 p-2" data-testid="rack-shelf">
+      <div className="flex items-baseline justify-between">
+        <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+          The rack
+        </span>
+        <span className="tnum" style={{ fontSize: 9, color: '#6a6055' }} data-testid="rack-count">
+          {all.length} cast{want ? ` · ${PART_DEFS[want].name} only` : ' · tap to seat'}
+        </span>
+      </div>
+
+      {want && (
+        <button
+          className="btn mt-1 w-full py-0.5 text-[9px]"
+          data-testid="rack-clear-filter"
+          onClick={() => onWant(null)}
+        >
+          Show everything
+        </button>
+      )}
+
+      {shown.length === 0 ? (
+        <div className="mt-1.5 text-[10px] italic text-cave-600" data-testid="rack-empty">
+          {want
+            ? `Nothing cast for the ${PART_DEFS[want].name.toLowerCase()} yet — pour one below.`
+            : 'Nothing on the rack. Melt a stone and pour a part.'}
+        </div>
+      ) : (
+        <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-1" data-testid="rack-strip">
+          {shown.slice(0, 40).map((p) => {
+            const skin = partSkin(p.materialId);
+            const onBench = seatedIds.has(p.id);
+            return (
+              <button
+                key={p.id}
+                data-testid={`rack-chip-${p.id}`}
+                data-part-type={p.type}
+                className="shrink-0 rounded-md border p-1 text-left"
+                style={{
+                  minWidth: 78,
+                  borderColor: onBench ? 'rgba(224,176,84,0.7)' : '#35302a',
+                  background: onBench ? 'rgba(224,176,84,0.06)' : 'transparent',
+                }}
+                title={onBench ? 'Already on the bench' : `Seat this ${PART_DEFS[p.type].name}`}
+                onClick={() => {
+                  const r = dispatch({ type: 'benchPlace', partId: p.id });
+                  setNote(r.ok ? null : (r.reason ?? null));
+                  if (r.ok) onWant(null);
+                }}
+              >
+                <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.14em', color: '#6a6055' }}>
+                  {PART_DEFS[p.type].name}
+                </div>
+                <div className="flex items-center gap-1">
+                  <span style={{
+                    width: 8, height: 8, borderRadius: 2, flexShrink: 0,
+                    background: `linear-gradient(135deg, ${skin.light}, ${skin.deep})`,
+                  }} />
+                  <span className="truncate" style={{ fontSize: 10, color: skin.light }}>
+                    {materialDef(p.materialId).name}
+                  </span>
+                </div>
+                <div className="tnum" style={{ fontSize: 8, color: '#6a6055' }}>
+                  {p.purity} · {shapeDef(p.shape, p.type).name}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {note && <div className="mt-1 text-[9px] text-[#c46a5a]" data-testid="rack-note-new">{note}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE CRUCIBLE + THE MOULDS — two compact columns, not two full panels
+// ---------------------------------------------------------------------------
+
+function SeatBar({
+  state, want, onWant,
+}: { state: GameState; want: PartType; onWant: (t: PartType | null) => void }) {
+  const held = workingPart(state, want);
+  const onBench = state.casting.bench[want] !== undefined;
+  return (
+    <div
+      className="mt-1.5 flex items-center gap-1.5 rounded-md border border-[rgba(224,176,84,0.4)] px-2 py-1"
+      data-testid="seat-bar"
+    >
+      <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#e0b054' }}>
+        {PART_DEFS[want].name}
+      </span>
+      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 10, color: '#b0a494' }}
+        data-testid="seat-bar-what">
+        {held
+          ? `${materialDef(held.materialId).name} ${held.purity}${onBench ? ' · on the bench' : ''}`
+          : PART_DEFS[want].governs}
+      </span>
+      {onBench && (
+        <button
+          className="btn shrink-0 px-1.5 py-0.5 text-[9px]"
+          data-testid="seat-bar-clear"
+          onClick={() => dispatch({ type: 'benchClear', partType: want })}
+        >
+          Take off
+        </button>
+      )}
+      <button
+        className="btn shrink-0 px-1.5 py-0.5 text-[9px]"
+        data-testid="seat-bar-done"
+        onClick={() => onWant(null)}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function CrucibleBar({ state, want }: { state: GameState; want: PartType | null }) {
+  const c = state.casting.crucible;
+  const fill = crucibleFill(c);
+  const front = frontCharge(c);
+  const q = queued(c);
+  const [target, setTarget] = useState<string>('');
+  const [part, setPart] = useState<PartType>('head');
+  const [shape, setShape] = useState<PartShape | null>(null);
+  const [layers, setLayers] = useState(1);
+  const [note, setNote] = useState<string | null>(null);
+
+  // The mould the rack filter is asking for wins, so tapping an empty seat on
+  // the tool lands you on the right mould without a second decision.
+  const chosenPart = want ?? part;
+  const shapes = shapesFor(chosenPart);
+  const chosenShape = shape && shapes.some((s) => s.id === shape) ? shape : defaultShape(chosenPart);
+  const cost = castMelt(chosenPart, chosenShape, layers);
+  const ok = canCast(c, chosenPart, chosenShape, layers);
+
+  const owned: Array<{ id: string; n: number }> = useMemo(() => {
+    const out: Array<{ id: string; n: number }> = [];
+    for (const shell of allShells()) {
+      for (const m of materialsOfShell(shell.id)) {
+        const n = materialCount(state, m.id);
+        if (n > 0) out.push({ id: m.id, n });
+      }
+    }
+    return out.sort((a, b) => b.n - a.n);
+  }, [state, state.materials.stacks]);
+
+  const pick = target || owned[0]?.id || '';
+
+  return (
+    <div className="mt-2 flex gap-2" data-testid="crucible-bar">
+      {/* THE TUB */}
+      <div className="min-w-0 flex-1 rounded-lg border border-cave-800 p-2">
+        <div className="flex items-baseline justify-between">
+          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+            Crucible
+          </span>
+          <span className="tnum" style={{ fontSize: 9, color: '#6a6055' }} data-testid="crucible-held">
+            {Math.round(tubHeld(c))}/{TUB_CAPACITY}
+          </span>
+        </div>
+        <div
+          style={{
+            marginTop: 4, height: 10, borderRadius: 3, overflow: 'hidden',
+            background: '#0a0908', boxShadow: 'inset 0 0 0 1px rgba(138,127,112,0.28)',
+            display: 'flex',
+          }}
+          data-testid="crucible-tub"
+        >
+          <div style={{
+            width: `${Math.round(fill.molten01 * 100)}%`,
+            background: 'linear-gradient(90deg,#8a3c12,#e0902e,#f5c05a)',
+          }} data-testid="crucible-molten" />
+          <div style={{
+            width: `${Math.round(fill.solid01 * 100)}%`,
+            background: 'linear-gradient(90deg,#4a4038,#6a6055)',
+          }} data-testid="crucible-solid" />
+        </div>
+        <div style={{ marginTop: 3, fontSize: 9, color: '#8a7f70' }} data-testid="crucible-front">
+          {front
+            ? `${materialDef(front.materialId).name} · ${Math.round(front.solid + front.molten)}`
+            : 'cold and empty'}
+          {q.length > 1 ? ` · ${q.length} queued` : ''}
+        </div>
+
+        <Select
+          value={pick}
+          onChange={setTarget}
+          options={owned.map((o) => ({
+            value: o.id, label: `${materialDef(o.id).name} · ${o.n} held`,
+          }))}
+          className="mt-1.5 w-full"
+          placeholder="Nothing in the Hold"
+          ariaLabel="Stone to melt"
+        />
+        <div className="mt-1 flex gap-1">
+          {[1, 5].map((n) => (
+            <button
+              key={n}
+              className="btn flex-1 py-0.5 text-[9px]"
+              data-testid={`melt-${n}`}
+              onClick={() => {
+                const r = dispatch({ type: 'chargeCrucible', materialId: pick, units: n });
+                setNote(r.ok ? null : (r.reason ?? null));
+              }}
+            >
+              ×{n}
+            </button>
+          ))}
+          <button
+            className="btn flex-1 py-0.5 text-[9px]"
+            data-testid="melt-fill"
+            onClick={() => {
+              const r = dispatch({ type: 'chargeCrucible', materialId: pick, units: unitsThatFit(c) });
+              setNote(r.ok ? null : (r.reason ?? null));
+            }}
+          >
+            Fill
+          </button>
+        </div>
+        {q.length > 1 && (
+          <div className="mt-1 flex flex-wrap gap-1" data-testid="crucible-queue">
+            {q.map((ch, i) => (
+              <button
+                key={`${ch.materialId}-${i}`}
+                className="rounded border px-1 py-0.5 text-[8px]"
+                style={{
+                  borderColor: i === 0 ? '#e0b054' : '#35302a',
+                  color: i === 0 ? '#e0b054' : '#8a7f70',
+                }}
+                data-testid={`queue-${i}`}
+                title={i === 0 ? 'Pours first' : 'Bring this one to the front'}
+                onClick={() => dispatch({ type: 'bringToFront', index: i })}
+              >
+                {materialDef(ch.materialId).name}
+              </button>
+            ))}
+          </div>
+        )}
+        {q.length > 0 && (
+          <button
+            className="btn mt-1 w-full py-0.5 text-[9px]"
+            data-testid="crucible-drain"
+            onClick={() => dispatch({ type: 'drainCrucible', index: 0 })}
+          >
+            Tip out the front stone
+          </button>
+        )}
+      </div>
+
+      {/* THE MOULDS */}
+      <div className="min-w-0 flex-1 rounded-lg border border-cave-800 p-2">
+        <div className="flex items-baseline justify-between">
+          <span style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}>
+            Moulds
+          </span>
+          <span className="tnum" style={{ fontSize: 9, color: ok ? '#6a6055' : '#c46a5a' }} data-testid="mould-cost">
+            {cost.toFixed(1)} melt
+          </span>
+        </div>
+
+        <div className="mt-1 grid grid-cols-4 gap-1" data-testid="mould-parts">
+          {PART_TYPES.map((t) => (
+            <button
+              key={t}
+              className="rounded border py-0.5 text-[8px] uppercase tracking-wider"
+              style={{
+                borderColor: t === chosenPart ? '#e0b054' : '#35302a',
+                color: t === chosenPart ? '#e0b054' : '#8a7f70',
+              }}
+              data-testid={`mould-part-${t}`}
+              onClick={() => { setPart(t); setShape(null); }}
+            >
+              {PART_DEFS[t].name.slice(0, 4)}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-1 flex flex-wrap gap-1" data-testid="mould-shapes">
+          {shapes.map((s) => (
+            <button
+              key={s.id}
+              className="rounded border px-1 py-0.5 text-[8px]"
+              style={{
+                borderColor: s.id === chosenShape ? '#e0b054' : '#35302a',
+                color: s.id === chosenShape ? '#e0b054' : '#8a7f70',
+              }}
+              data-testid={`mould-shape-${s.id}`}
+              title={s.blurb}
+              onClick={() => setShape(s.id)}
+            >
+              {s.name}
+            </button>
+          ))}
+        </div>
+
+        {layers > 1 && (
+          <div className="tnum mt-1 text-[8px] leading-snug text-cave-500" data-testid="mould-draw">
+            {layerDraw(chosenPart, chosenShape, layers).map((n, i) => {
+              const from = queued(c)[i];
+              return `${LAYER_NAMES[i] ?? `layer ${i + 1}`} ${n.toFixed(1)}`
+                + (from ? ` of ${materialDef(from.materialId).name}` : ' — nothing queued');
+            }).join(' · ')}
+          </div>
+        )}
+
+        {queued(c).length > 1 && (
+          <div className="mt-1 flex gap-1" data-testid="mould-layers">
+            {[1, 2, 3].slice(0, Math.min(LAYER_MAX, queued(c).length)).map((n) => (
+              <button
+                key={n}
+                className="flex-1 rounded border py-0.5 text-[8px]"
+                style={{
+                  borderColor: n === layers ? '#e0b054' : '#35302a',
+                  color: n === layers ? '#e0b054' : '#8a7f70',
+                }}
+                data-testid={`mould-layers-${n}`}
+                onClick={() => setLayers(n)}
+              >
+                {n === 1 ? 'solid' : `${n} layers`}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-1 text-[8px] leading-snug text-cave-500" data-testid="mould-blurb">
+          {shapeDef(chosenShape, chosenPart).blurb}
+        </div>
+
+        <button
+          className="btn btn-warm mt-1.5 w-full py-1 text-[10px]"
+          disabled={!ok}
+          data-testid="mould-pour"
+          onClick={() => {
+            const r = dispatch({
+              type: 'castPart', partType: chosenPart, shape: chosenShape, layers,
+            });
+            setNote(r.ok ? `Poured a ${shapeDef(chosenShape, chosenPart).name} ${PART_DEFS[chosenPart].name}.` : (r.reason ?? null));
+          }}
+        >
+          {ok ? `Pour ${shapeDef(chosenShape, chosenPart).name} ${PART_DEFS[chosenPart].name}` : 'Not enough melt'}
+        </button>
+        {note && <div className="mt-1 text-[9px] leading-snug text-cave-400" data-testid="mould-note">{note}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// THE STATION — the bench, and everything orbiting it
+// ---------------------------------------------------------------------------
+
+function TheStation({ state }: { state: GameState }) {
+  /** The mould/rack the player asked for by tapping a seat on the tool. */
+  const [want, setWant] = useState<PartType | null>(null);
+  /** Which socket the secondary detail is looking at. */
+  const [socketSlot, setSocketSlot] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
+
+  const { tool, preview } = dialSubject(state);
+  const built = currentTool(state);
+  const ready = benchComplete(state);
+  const seated = PART_TYPES.filter((t) => workingPart(state, t) !== null).length;
+  const onBench = PART_TYPES.filter((t) => state.casting.bench[t] !== undefined).length;
+  const shellNow = currentShell(state);
+
+  return (
+    <div data-testid="the-station">
+      {/* TOP RAIL */}
+      <div className="flex items-end justify-between gap-2 border-b border-[rgba(224,176,84,0.22)] px-1 pb-1.5">
+        <div>
+          <div style={{
+            fontSize: 15, fontWeight: 600, letterSpacing: '0.2em', color: '#e0b054',
+            textShadow: '0 1px 0 #000',
+          }}>
+            THE STATION
+          </div>
+          <div style={{ marginTop: 2, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#6a6055' }}
+            data-testid="station-sub">
+            built {fmt(state.casting.built)}× · {seated} of 7 seated
+            {onBench > 0 ? ` · ${onBench} on the bench` : ''}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.16em', color: '#6a6055' }}
+            data-testid="station-tier">
+            Tier {castingToolTier(state)}
+          </div>
+          <div className="tnum" style={{ fontSize: 11, color: '#b0a494' }}>
+            {shellNow.name.toLowerCase()} · {Math.round(state.depth)}m
+          </div>
+        </div>
+      </div>
+
+      {/* THE BENCH */}
+      <div
+        className="mt-2 rounded-xl p-2.5"
+        style={{
+          border: '1px solid #35302a',
+          backgroundImage: 'radial-gradient(ellipse 70% 46% at 50% 42%, rgba(245,158,11,0.075), transparent 66%),'
+            + 'repeating-linear-gradient(92deg, rgba(255,255,255,0.014) 0 2px, transparent 2px 7px),'
+            + 'linear-gradient(180deg,#17130f,#100d0b)',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.035),0 6px 20px rgba(0,0,0,0.5)',
+        }}
+        data-testid="the-bench"
+      >
+        <UpperDials state={state} tool={tool} />
+        <ToolDiagram
+          state={state}
+          onPart={(t) => setWant((cur) => (cur === t ? null : t))}
+          onSocket={(i) => setSocketSlot(i)}
+        />
+        <LowerDials state={state} tool={tool} />
+
+        {want && <SeatBar state={state} want={want} onWant={setWant} />}
+
+        {preview && (
+          <div style={{ marginTop: 4, fontSize: 9, textAlign: 'center', color: '#e0b054' }}
+            data-testid="bench-preview-note">
+            The gold parts are on the bench. These numbers are what it would become.
+          </div>
+        )}
+
+        {/* WHAT THE THREE ABILITY STONES LEAN TOWARD — hinted, never named. */}
+        <BenchLean state={state} />
+        {ready && tool && <WhatItWouldDo tool={tool} testid="bench-does" />}
+
+        {(ready || onBench > 0) && (
+          <button
+            className="btn btn-warm mt-1.5 w-full py-1.5 text-xs"
+            disabled={!ready}
+            data-testid="combine"
+            onClick={() => {
+              const r = dispatch({ type: 'buildTool' });
+              const d = r.data as { returned?: number } | undefined;
+              setNote(r.ok
+                ? d?.returned
+                  ? `Built. The old tool's ${d.returned} parts are back on the rack.`
+                  : 'Built. It is yours.'
+                : r.reason ?? null);
+            }}
+          >
+            {ready ? 'Combine them' : `Seven parts, one of each — ${seated} seated`}
+          </button>
+        )}
+        {note && (
+          <div className="mt-1 text-center text-[11px] text-cave-300" data-testid="build-note">{note}</div>
+        )}
+      </div>
+
+      <RackShelf state={state} want={want} onWant={setWant} />
+      <CrucibleBar state={state} want={want} />
+
+      {/* ── SECONDARY, tucked. Nothing lost; it is just not in the way. ── */}
+      <div className="mt-2 space-y-1.5" data-testid="station-secondary">
+        {built && <SocketsCard state={state} tool={built} slot={socketSlot} onSlot={setSocketSlot} />}
+        {built && <AbilitiesCard state={state} />}
+        <Drawer label="Modifiers" testid="drawer-mods">
+          <ModBench state={state} />
+          <SynergyCard state={state} />
+        </Drawer>
+        {built && (
+          <Drawer label="The tool in full" testid="drawer-tool">
+            <ShapeCard state={state} tool={built} />
+            <LivingCard tool={built} />
+            <CraftCard tool={built} />
+            <ClassCard state={state} />
+            <BalanceCard state={state} tool={built} />
+            <InstabilityCard state={state} />
+            <LevelCard state={state} tool={built} />
+            <AtTheFace state={state} tool={built} />
+            <Durability state={state} tool={built} />
+            <CoherenceReadout tool={built} testid="tool-coherence" />
+            <RawStats tool={built} testid="tool-stats" />
+            <BiographyCard state={state} />
+            <button
+              className="btn mt-1.5 w-full py-1 text-[11px]"
+              data-testid="breakdown"
+              onClick={() => dispatch({ type: 'breakDownTool' })}
+            >
+              Take it apart · every piece comes back
+            </button>
+          </Drawer>
+        )}
+        <Drawer label="The rack, in full" testid="drawer-rack">
+          <Rack state={state} />
+        </Drawer>
+      </div>
+    </div>
+  );
+}
+
+/** A tucked section. Closed by default — the bench is the screen, this is not. */
+function Drawer({
+  label, testid, children,
+}: { label: string; testid: string; children: React.ReactNode }) {
+  return (
+    <details className="rounded-lg border border-cave-800" data-testid={testid}>
+      <summary
+        className="cursor-pointer select-none px-2 py-1.5"
+        style={{ fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em', color: '#6a6055' }}
+      >
+        {label}
+      </summary>
+      <div className="px-2 pb-2">{children}</div>
+    </details>
+  );
+}
+
 export function CastingPanel() {
   const state = useLive();
   if (!state) return null;
@@ -114,15 +1082,7 @@ export function CastingPanel() {
       </div>
     );
   }
-  return (
-    <div className="space-y-2">
-      <YourTool state={state as GameState} />
-      <Crucible state={state as GameState} />
-      <Casts state={state as GameState} />
-      <Rack state={state as GameState} />
-      <Station state={state as GameState} />
-    </div>
-  );
+  return <TheStation state={state as GameState} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,336 +1124,6 @@ function Gauge(
         />
       </div>
       {note && <div className="mt-0.5 text-[10px] italic text-cave-500">{note}</div>}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 1 — THE CRUCIBLE
-// ---------------------------------------------------------------------------
-
-/** The melt wears the material's own three shades — the ore chunk, liquefied. */
-function moltenStyle(materialId: string): React.CSSProperties {
-  if (!materialId) return { background: '#241f1b' };
-  const p = materialDef(materialId).palette;
-  return {
-    backgroundImage:
-      `linear-gradient(100deg, ${p[0]} 0%, ${p[1]} 30%, ${p[2]} 48%, ${p[1]} 66%, ${p[0]} 100%)`,
-  };
-}
-
-function Crucible({ state }: { state: GameState }) {
-  const held = heldMaterials(state);
-  const c = state.casting.crucible;
-  const front = frontCharge(c);
-  const q = queued(c);
-  const [pick, setPick] = useState<string>('');
-  const [note, setNote] = useState<string | null>(null);
-  const fill = crucibleFill(c);
-  const fits = unitsThatFit(c);
-  // NO LOCK ANY MORE. The tub used to hold one stone and the picker was pinned
-  // to it; the queue is exactly the removal of that restriction.
-  const target = (pick || held[0]?.id) ?? '';
-  const haveTarget = target ? held.find((m) => m.id === target)?.count ?? 0 : 0;
-
-  const charge = (units: number): void => {
-    const r = dispatch({ type: 'chargeCrucible', materialId: target, units });
-    setNote(r.ok ? null : r.reason ?? 'It would not take.');
-  };
-
-  return (
-    <div className="panel p-3" data-testid="crucible">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#e0902a]">The crucible</span>
-        <span className="tnum text-[10px] text-cave-400" data-testid="melt-readout">
-          {fmt(Math.floor(front?.molten ?? 0))} / {TUB_CAPACITY} melt
-          {q.length > 1 && <span className="text-cave-600"> · {fmt(Math.floor(tubHeld(c)))} in the tub</span>}
-        </span>
-      </div>
-
-      {/* THE TUB. Two flat divs; the molten one wears the FRONT stone's own
-          colours, because the front stone is what the next pour comes out as. */}
-      <div className="mt-2 h-7 w-full overflow-hidden rounded-md border border-cave-700 bg-cave-950">
-        <div className="flex h-full w-full">
-          <div
-            className="melt-sheen h-full transition-[width] duration-200 ease-linear"
-            style={{ width: `${fill.molten01 * 100}%`, ...moltenStyle(front?.materialId ?? '') }}
-            data-testid="tub-molten"
-          />
-          <div
-            className="melt-solid h-full transition-[width] duration-200 ease-linear"
-            style={{ width: `${fill.solid01 * 100}%` }}
-            data-testid="tub-solid"
-          />
-        </div>
-      </div>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          {front ? (
-            <>
-              <MaterialIcon id={front.materialId} size={16} />
-              <span className="truncate text-[11px] text-cave-300">{materialDef(front.materialId).name}</span>
-              <span className="tnum shrink-0 text-[10px] text-cave-500">
-                {BAND_LABELS[bandOf(front.purity)]} · {Math.round(front.purity)}
-              </span>
-            </>
-          ) : (
-            <span className="text-[11px] italic text-cave-500">Cold and empty.</span>
-          )}
-        </div>
-        {front && front.solid > 0 ? (
-          <span className="shrink-0 text-[10px] uppercase tracking-wider text-cave-400" data-testid="melting">
-            melting · {fmt(Math.ceil(front.solid))}
-          </span>
-        ) : front ? (
-          <button
-            className="btn shrink-0 px-1.5 py-0.5 text-[10px]"
-            onClick={() => dispatch({ type: 'drainCrucible', index: 0 })}
-          >
-            Tip it out
-          </button>
-        ) : null}
-      </div>
-
-      {/* ── THE QUEUE ──────────────────────────────────────────────────────
-          Several stones sit in the tub at once. The FIRST is what pours; tap
-          any other and it comes forward, which is the whole verb. Chips rather
-          than a list, because the question here is "which is next" — a glance,
-          not a read — and the tub's colour answers it too. */}
-      {q.length > 0 && (
-        <div className="mt-2 border-t border-cave-800 pt-2" data-testid="queue">
-          <div className="flex items-baseline justify-between">
-            <span className="text-[9px] uppercase tracking-widest text-cave-500">
-              In the tub · {q.length}/{QUEUE_MAX}
-            </span>
-            {q.length > 1 && <span className="text-[9px] italic text-cave-600">tap one to pour it next</span>}
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {q.map((ch, i) => (
-              <button
-                key={ch.materialId}
-                className={`flex items-center gap-1 rounded border px-1.5 py-1 text-[10px] ${
-                  i === 0
-                    ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100'
-                    : 'border-cave-800 text-cave-400 hover:border-cave-600'
-                }`}
-                data-testid={`queue-${i}`}
-                title={`${materialDef(ch.materialId).name} · ${Math.floor(ch.molten)} melt ready`
-                  + (i === 0 ? ' · pouring next' : ' · tap to bring it forward')}
-                onClick={() => dispatch({ type: 'bringToFront', index: i })}
-              >
-                <MaterialIcon id={ch.materialId} size={14} />
-                <span className="max-w-[64px] truncate">{materialDef(ch.materialId).name}</span>
-                <span className="tnum text-cave-500">{Math.floor(ch.molten)}</span>
-                {i === 0 && <span className="text-[8px] uppercase tracking-wider text-[#e0902a]">next</span>}
-                {ch.solid > 0 && <span className="text-[8px] text-cave-600">…</span>}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mt-2 border-t border-cave-800 pt-2">
-        <Select
-          className="w-full"
-          ariaLabel="Material to melt"
-          value={target}
-          onChange={(v) => setPick(v)}
-          options={held.length === 0
-            ? [{ value: '', label: '— the Hold is empty —' }]
-            : held.map((m) => ({
-              value: m.id,
-              label: `${materialDef(m.id).name} ×${fmt(m.count)} · ${BAND_LABELS[m.band]}`,
-            }))}
-        />
-        <div className="mt-1.5 grid grid-cols-3 gap-1">
-          {([['×1', 1], ['×5', 5], ['Fill it', fits]] as Array<[string, number]>).map(([label, units]) => (
-            <button
-              key={label}
-              className="btn py-1 text-[11px]"
-              disabled={!target || haveTarget < 1 || fits < 1}
-              onClick={() => charge(units)}
-              data-testid={`charge-${label === 'Fill it' ? 'fill' : label.slice(1)}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="mt-1 tnum text-[10px] text-cave-500">
-          1 unit melts to {MELT_PER_UNIT} · room for {fits} more · a whole tool wants {FULL_SET_MELT}
-        </div>
-        {note && <div className="mt-1 text-[10px] text-[#d8a0a0]">{note}</div>}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 2 — THE MOULDS
-// ---------------------------------------------------------------------------
-
-/**
- * THE MOULDS — now two questions instead of one.
- *
- * It used to be seven buttons: pick a part, pour. A shape is a second axis and
- * it needs room to be read, so the pour is a two-step now — choose the PART,
- * then choose the MOULD, with the shape's blurb under it. That is more clicks
- * for a plain pour, and it buys the thing the phase exists for: you can see
- * what a Needle is before you commit stock to one.
- *
- * The blurb says what the shape IS; the effect line says what it does. Both are
- * shown up front — a cast shape is not a pillar-5 discovery, it is a decision,
- * and a decision you cannot read is a coin toss.
- */
-function Casts({ state }: { state: GameState }) {
-  const c = state.casting.crucible;
-  const [last, setLast] = useState<string | null>(null);
-  const [part, setPart] = useState<PartType>('head');
-  const [shapes, setShapes] = useState<Partial<Record<PartType, PartShape>>>({});
-  const [layers, setLayers] = useState(1);
-
-  const chosen = shapes[part] ?? defaultShape(part);
-  const options = shapesFor(part);
-  const cast = shapeDef(chosen, part);
-  const want = castMelt(part, chosen, layers);
-  const ok = canCast(c, part, chosen, layers);
-
-  return (
-    <div className="panel p-3" data-testid="casts">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#c9a86a]">The moulds</span>
-        <span className="tnum text-[10px] text-cave-400">{fmt(state.casting.cast)} poured</span>
-      </div>
-      <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-        Pick a part, pick the mould it goes in, and pour. Nothing here can be botched.
-      </p>
-
-      <div className="mt-2 grid grid-cols-2 gap-1">
-        {PART_TYPES.map((t) => {
-          const sel = t === part;
-          const s = shapes[t] ?? defaultShape(t);
-          return (
-            <button
-              key={t}
-              className={`flex items-baseline justify-between gap-1 rounded border px-2 py-1 text-[11px] ${
-                sel ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100' : 'border-cave-800 text-cave-400'
-              }`}
-              title={PART_DEFS[t].governs}
-              data-testid={`cast-part-${t}`}
-              onClick={() => setPart(t)}
-            >
-              <span>{PART_DEFS[t].name}</span>
-              <span className="tnum shrink-0 text-[9px] text-cave-500">
-                {shapesFor(t).length > 1 ? shapeDef(s, t).name : castMelt(t, s)}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── DAMASCUS. Only offered once there is more than one stone in the
-          heat, because that is literally the requirement — each layer draws
-          from its own charge, outer first. */}
-      {queued(c).length > 1 && (
-        <div className="mt-2 border-t border-cave-800 pt-1.5">
-          <div className="text-[9px] uppercase tracking-wider text-cave-600">
-            Layers — outer first, from the tub in order
-          </div>
-          <div className="mt-1 flex flex-wrap gap-1" data-testid="layer-picker">
-            {[1, 2, 3].map((n) => (
-              <button
-                key={n}
-                disabled={queued(c).length < n}
-                className={`rounded border px-1.5 py-0.5 text-[9px] ${
-                  n === layers
-                    ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100'
-                    : queued(c).length < n ? 'border-cave-900 text-cave-700' : 'border-cave-800 text-cave-400'
-                }`}
-                data-testid={`layers-${n}`}
-                onClick={() => setLayers(n)}
-              >
-                {n === 1 ? 'Solid' : `${n} layers`}
-              </button>
-            ))}
-          </div>
-          {layers > 1 && (
-            <div className="mt-1 space-y-0.5" data-testid="layer-plan">
-              {queued(c).slice(0, layers).map((ch, i) => (
-                <div key={ch.materialId} className="flex items-center gap-1 text-[9px]">
-                  <span className="w-12 shrink-0 uppercase tracking-wider text-cave-600">
-                    {/* THE LAST LAYER IS ALWAYS THE CORE, however many there
-                        are. Indexing LAYER_NAMES straight through called the
-                        second of two "middle", which is not a thing a
-                        two-layer part has. */}
-                    {i === layers - 1 ? 'core' : LAYER_NAMES[i]}
-                  </span>
-                  <MaterialIcon id={ch.materialId} size={12} />
-                  <span className="min-w-0 flex-1 truncate text-cave-300">
-                    {materialDef(ch.materialId).name}
-                  </span>
-                  <span className="tnum shrink-0 text-cave-500">
-                    {layerDraw(part, chosen, layers)[i]}
-                  </span>
-                </div>
-              ))}
-              <div className="text-[9px] leading-snug text-cave-600">
-                {layers === 2 ? 'It will be both at once' : 'It will be all three at once'} — a
-                tough outside over a keen core makes a part no single stone makes. Where a
-                stone sits decides how hard it pulls.
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="mt-2 border-t border-cave-800 pt-1.5">
-        <div className="text-[9px] uppercase tracking-wider text-cave-600">
-          {PART_DEFS[part].name} — the mould
-        </div>
-        <div className="mt-1 flex flex-wrap gap-1" data-testid="shape-picker">
-          {options.map((s) => (
-            <button
-              key={s.id}
-              className={`rounded border px-1.5 py-0.5 text-[9px] ${
-                s.id === chosen
-                  ? 'border-[#e0902a]/70 bg-cave-800/60 text-cave-100'
-                  : 'border-cave-800 text-cave-400'
-              }`}
-              data-testid={`shape-${s.id}`}
-              onClick={() => setShapes((m) => ({ ...m, [part]: s.id }))}
-            >
-              {s.name}
-              <span className="tnum ml-1 text-cave-600">{castMelt(part, s.id)}</span>
-            </button>
-          ))}
-        </div>
-        <div className="mt-1 text-[10px] italic leading-snug text-cave-400" data-testid="shape-blurb">
-          {cast.blurb}
-        </div>
-        <div className="mt-0.5 text-[10px] leading-snug text-cave-300" data-testid="shape-effect">
-          {cast.effect}
-        </div>
-      </div>
-
-      <button
-        className="btn btn-warm mt-2 w-full py-1.5 text-xs"
-        disabled={!ok}
-        data-testid="cast-pour"
-        onClick={() => {
-          // Read the stone BEFORE the pour: a charge that empties leaves the
-          // queue, so afterwards the front is already the next one.
-          const was = frontCharge(c)?.materialId;
-          const r = dispatch({ type: 'castPart', partType: part, shape: chosen, layers });
-          setLast(r.ok && was
-            ? `${cast.name} ${PART_DEFS[part].name} cast in ${materialDef(was).name}.`
-            : r.reason ?? null);
-        }}
-      >
-        {ok
-          ? `Pour — ${layers > 1 ? `${layers}-layer ` : ''}${cast.name} ${PART_DEFS[part].name} · ${want}`
-          : layers > 1 ? `${layers} stones, ${want} melt between them` : `Needs ${want} melt`}
-      </button>
-      {last && <div className="mt-1.5 text-center text-[11px] text-cave-300" data-testid="cast-note">{last}</div>}
     </div>
   );
 }
@@ -622,6 +1252,16 @@ function coherenceLine(t: ToolStats): string {
   return 'Seven strangers. They will never sit right, whatever they cost you.';
 }
 
+/** The one-word reading, for the big dial. `coherenceLine` says it in a
+ *  sentence; the station has room for a word. */
+function coherenceWord(f: number): string {
+  if (f >= 0.97) return 'a set';
+  if (f >= 0.88) return 'near enough';
+  if (f >= 0.65) return 'mixed';
+  if (f >= 0.45) return 'badly matched';
+  return 'strangers';
+}
+
 function coherenceColor(f: number): string {
   if (f >= 0.9) return '#9ab87a';
   if (f >= 0.65) return '#e0b054';
@@ -734,92 +1374,6 @@ function RawStats({ tool, testid }: { tool: ToolStats; testid: string }) {
         ))}
       </div>
     </details>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 5 — THE STATION
-// ---------------------------------------------------------------------------
-
-function Station({ state }: { state: GameState }) {
-  const preview = benchPreview(state);
-  const ready = benchComplete(state);
-  const [note, setNote] = useState<string | null>(null);
-
-  return (
-    <div className="panel p-3" data-testid="station">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#d4c9b8]">The tool station</span>
-        <span className="tnum text-[10px] text-cave-400">
-          {PART_TYPES.filter((t) => state.casting.bench[t] !== undefined).length}/7
-        </span>
-      </div>
-
-      <div className="mt-2 space-y-1">
-        {PART_TYPES.map((t: PartType) => {
-          const id = state.casting.bench[t];
-          const part = id === undefined ? undefined : rackPart(state, id);
-          return (
-            <div
-              key={t}
-              className={`flex items-center gap-2 rounded-md border p-1.5 ${part ? 'border-cave-700 bg-cave-850/40' : 'border-dashed border-cave-800'}`}
-              data-testid={`slot-${t}`}
-            >
-              <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-cave-500">
-                {PART_DEFS[t].name}
-              </span>
-              {part ? (
-                <>
-                  <MaterialIcon id={part.materialId} size={16} />
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-cave-300">
-                    {materialDef(part.materialId).name}
-                  </span>
-                  <span className="tnum shrink-0 text-[10px] text-cave-500">{part.purity}</span>
-                  <button
-                    className="btn shrink-0 px-1.5 py-0.5 text-[10px]"
-                    data-testid={`clear-${t}`}
-                    onClick={() => dispatch({ type: 'benchClear', partType: t })}
-                  >
-                    ✕
-                  </button>
-                </>
-              ) : (
-                <span className="flex-1 truncate text-[11px] italic text-cave-600">
-                  {PART_DEFS[t].governs}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {preview && (
-        <>
-          <CoherenceReadout tool={preview} testid="bench-coherence" />
-          <BenchLean state={state} />
-          {ready && <WhatItWouldDo tool={preview} testid="bench-does" />}
-          <RawStats tool={preview} testid="bench-stats" />
-        </>
-      )}
-
-      <button
-        className="btn btn-warm mt-2 w-full py-1.5 text-xs"
-        disabled={!ready}
-        data-testid="combine"
-        onClick={() => {
-          const r = dispatch({ type: 'buildTool' });
-          const d = r.data as { returned?: number } | undefined;
-          setNote(r.ok
-            ? d?.returned
-              ? `Built. The old tool's ${d.returned} parts are back on the rack.`
-              : 'Built. It is yours.'
-            : r.reason ?? null);
-        }}
-      >
-        {ready ? 'Combine them' : 'Seven parts, one of each'}
-      </button>
-      {note && <div className="mt-1 text-center text-[11px] text-cave-300" data-testid="build-note">{note}</div>}
-    </div>
   );
 }
 
@@ -1824,8 +2378,18 @@ function LivingCard({ tool }: { tool: ToolStats }) {
  * pile — held relics, found runes, held gems — so an empty picker means an
  * empty pile and never a missing feature.
  */
-function SocketsCard({ state, tool }: { state: GameState; tool: ToolStats }) {
-  const [slot, setSlot] = useState(0);
+function SocketsCard({
+  state, tool, slot: slotProp, onSlot,
+}: {
+  state: GameState; tool: ToolStats;
+  /** CONTROLLED BY THE DIAGRAM when the station drives it: tapping a gem seat
+   *  on the tool focuses that slot here, which is the whole reason the seats
+   *  are buttons. Falls back to its own state so the card still stands alone. */
+  slot?: number; onSlot?: (i: number) => void;
+}) {
+  const [ownSlot, setOwnSlot] = useState(0);
+  const slot = slotProp ?? ownSlot;
+  const setSlot = onSlot ?? setOwnSlot;
   const [kind, setKind] = useState<SocketKind>('relic');
   const [why, setWhy] = useState<string | null>(null);
   const n = socketCount(tool);
@@ -2150,67 +2714,6 @@ function ShapeCard({ state, tool }: { state: GameState; tool: ToolStats }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function YourTool({ state }: { state: GameState }) {
-  const tool = currentTool(state);
-  if (!tool) {
-    return (
-      <div className="panel p-3 text-center text-[11px] italic text-cave-500" data-testid="your-tool-empty">
-        You have not built one yet. Melt a stone, pour seven parts, and it is yours.
-      </div>
-    );
-  }
-  return (
-    <div className="panel p-3" data-testid="your-tool">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#e0b054]">Your tool</span>
-        <span className="tnum text-[10px] text-cave-400">built {fmt(state.casting.built)}×</span>
-      </div>
-      <div className="mt-1 flex flex-wrap gap-1">
-        {tool.parts.map((p) => {
-          // A LAYERED PART SAYS SO, outer first — otherwise the chip would name
-          // only the surface and a Damascus tool would look solid.
-          const mats = partMaterials(p);
-          return (
-            <span
-              key={p.type}
-              className={`rounded border px-1 py-0.5 text-[9px] ${
-                mats.length > 1 ? 'border-cave-600 text-cave-300' : 'border-cave-800 text-cave-400'
-              }`}
-              title={mats.length > 1
-                ? mats.map((m, i) => `${LAYER_NAMES[i]}: ${materialDef(m).name}`).join(' · ')
-                : undefined}
-            >
-              {PART_DEFS[p.type as PartType].name.slice(0, 4)} ·{' '}
-              {mats.map((m) => materialDef(m).name).join('/')}
-            </span>
-          );
-        })}
-      </div>
-      <ClassCard state={state} />
-      <ShapeCard state={state} tool={tool} />
-      <BalanceCard state={state} tool={tool} />
-      <LivingCard tool={tool} />
-      <CraftCard tool={tool} />
-      <SocketsCard state={state} tool={tool} />
-      <AbilitiesCard state={state} />
-      <ModBench state={state} />
-      <LevelCard state={state} tool={tool} />
-      <AtTheFace state={state} tool={tool} />
-      <Durability state={state} tool={tool} />
-      <CoherenceReadout tool={tool} testid="tool-coherence" />
-      <RawStats tool={tool} testid="tool-stats" />
-      <BiographyCard state={state} />
-      <button
-        className="btn mt-1.5 w-full py-1 text-[11px]"
-        data-testid="breakdown"
-        onClick={() => dispatch({ type: 'breakDownTool' })}
-      >
-        Take it apart · every piece comes back
-      </button>
     </div>
   );
 }
