@@ -22,6 +22,7 @@ import { salvagePreview } from '../../engine/systems/salvage';
 import { TEMPERS, temperingUnlocked, temperCost, currentTemper } from '../../engine/systems/tempering';
 import { BREW_BY_ID } from '../../engine/content/shell3/brews';
 import { dispatch, useGame } from '../store';
+import { ToolShelf } from './toolShelf';
 import { MaterialIcon } from './MaterialIcon';
 import { BUCKET_NAME } from './shared';
 import { Select } from './Select';
@@ -287,6 +288,14 @@ export function RefineryPanel() {
 
       {/* --- TEMPER ------------------------------------------------------ */}
       <TemperPanel />
+
+      {/*
+        THE TOOL SHELF (A.71) — folded in from the retired Forge tab. It sits
+        directly above the breaking bench on purpose: equipping, socketing and
+        salvaging a tool are the same handful of decisions, and they were in two
+        rooms.
+      */}
+      <ToolShelf />
 
       {/* --- SALVAGE ---------------------------------------------------- */}
       <SalvagePanel />

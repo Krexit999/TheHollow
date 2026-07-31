@@ -82,7 +82,7 @@ async function main(): Promise<void> {
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
         const r = w['__ui'].benchReading(s, ids[i], ids[j]);
-        if (r.read === 'reacts' || r.read === 'known') hits.push([ids[i], ids[j]]);
+        if (r.read === 'reacts' || r.read === 'known') hits.push([ids[i] as string, ids[j] as string]);
       }
     }
     return { pairs: (ids.length * (ids.length - 1)) / 2, hits };
@@ -137,7 +137,7 @@ async function main(): Promise<void> {
     return mm.materialDef(m!).name as string;
   }, [id]);
 
-  const [ra, rb] = hits[0] ?? ['', ''];
+  const [ra, rb] = (hits[0] ?? ['', '']) as [string, string];
   const an = await nameOf(ra); const bn = await nameOf(rb);
   await pick('A', an); await pick('B', bn);
   const good = await txt(page, '[data-testid="bench-reading"]');

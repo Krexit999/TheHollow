@@ -1,4 +1,11 @@
 /**
+ * THE TOOL SHELF AND THE ALLOY BENCH — what survived the Forge tab (A.71).
+ *
+ * Named for what it holds rather than for the room it used to be: the shelf of
+ * tools you already own (rendered by the Refinery) and the alloy bench that
+ * decides a drill ability (rendered by the Drills). The room itself is gone.
+ */
+/**
  * The Forge — tools I-III craftable in Shell I, IV-XV shown locked with the
  * reason visible: a preview of the whole game. One item, two stat blocks;
  * strike power is displayed but sleeps until combat arrives.
@@ -21,7 +28,6 @@ import { opinionRead } from '../../engine/systems/opinions';
 import { traitsOf, TRAITS, type TraitId } from '../../engine/traits';
 import { dispatch, useGame } from '../store';
 import { GemIcon, MaterialIcon } from './MaterialIcon';
-import { GearBench } from './combat';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV'];
 
@@ -30,7 +36,22 @@ const SHELL_NAMES: Record<string, string> = {
   cinder: 'CINDER', hollow: 'HOLLOW', aleph: 'ALEPH',
 };
 
-export function ForgePanel() {
+/**
+ * THE TOOL SHELF — the tools you already own, and what is set into them.
+ *
+ * This WAS the Forge tab (A.71 retired it). Once casting moved to its own
+ * station and the alloy bench moved to the Drills, the room was an archive of
+ * the legacy tool system plus one unrelated bench, and an archive does not need
+ * a door in the nav. So the shelf itself is a component now, rendered by the
+ * Refinery — which is already the room where tools are broken down, and now the
+ * one where they are equipped, socketed and salvaged too.
+ *
+ * NOTHING HERE WAS DROPPED. Every verb this room carried has a live site:
+ * `equipTool`, `discardTool`, `socketGem` and `bulkSalvage` below;
+ * `forgeDrillAlloy` in `AlloyBench` (Drills); gear in `GearBench` (its own
+ * room). The Workbench taught that lesson the hard way one phase ago.
+ */
+export function ToolShelf() {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
   const [socketPicker, setSocketPicker] = useState<{ toolId: number; slot: number } | null>(null);
@@ -207,12 +228,8 @@ export function ForgePanel() {
           );
         })}
       </div>
-      {/* TOOL CRAFTING IS GONE FROM THIS ROOM. The bench that composed
-          head/haft/binding, the fixed recipes and the locked-tier preview all
-          moved to the Casting Floor, which does the same job with seven parts
-          instead of three and does not need a second copy here. What is left is
-          what this room is now FOR: the tools you already own, their settings,
-          gear, and the drill alloys. */}
+      {/* Tools are POURED on the Casting Floor; these are the ones you already
+          hold from before it existed, and they still work. */}
       <div className="panel p-2.5 text-[11px] leading-snug text-cave-400" data-testid="crafting-moved">
         <span className="font-semibold uppercase tracking-wider text-[#c9a86a]">Tools are cast now.</span>{' '}
         The moulds and the tool station are on the <button
@@ -222,26 +239,9 @@ export function ForgePanel() {
       </div>
 
       {/*
-        THE WORKBENCH IS GONE (A.70). Its three launchers — Carving, Cutting,
-        Casting — were the old route to making a tool, and every one of them is
-        the Casting Floor's job now: the crucible pours the parts, the station
-        assembles them, and the notice above already points there. Two doors
-        onto the same room is worse than one, and this was the older and worse.
-
-        It was NOT purely redundant, and `reachability.test.ts` said so the
-        moment the file was deleted: it also carried rune PRACTICE and gem
-        FUSION, neither of which casting replaces. Those moved to the rune wall
-        and the Refinery's gem bench rather than dying with the room.
-      */}
-      {/* Gear — the second bench (Phase 5) */}
-      <GearBench />
-
-      {/*
-        THE ALLOY BENCH MOVED TO THE DRILLS (A.70). An alloy has never done
-        anything to a tool — it decides a DRILL's ability and is poured AT named
-        drills, and the bay's own "how do I get one" signpost had to send the
-        player to another room to find it. A bench whose only consumer is
-        another room belongs in that room. `DrillsPanel` renders it now.
+        GEAR AND THE ALLOY BENCH BOTH LEFT THIS COMPONENT (A.70/A.71). Gear is
+        armour and now has its own room; the alloy bench decides a DRILL's
+        ability and lives with the drills. What is left is the shelf itself.
       */}
     </div>
   );

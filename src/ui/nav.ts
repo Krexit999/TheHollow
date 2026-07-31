@@ -71,9 +71,14 @@ export const CLUSTERS: ClusterDef[] = [
     glyph: '▤',
     systems: [
       { id: 'hold', label: 'Materials', visible: (s) => s.materials.totalDrops > 0 },
-      { id: 'forge', label: 'Forge', visible: (s) => s.forge.built },
-      // THE NEW FORGE (step 2). Same building as the Forge, so the same gate —
-      // this is the bench that will eventually replace the one above it.
+      /*
+       * THE FORGE TAB IS RETIRED (A.71). Once casting moved to its own station
+       * and the alloy bench moved to the Drills, what was left was an archive of
+       * the legacy tool system plus the gear bench — and an archive does not
+       * need a door. The tool shelf folded into the Refinery (the room that
+       * already breaks tools down) and gear became its own room; nothing was
+       * dropped, which `reachability.test.ts` is the check on.
+       */
       { id: 'casting', label: 'Casting', visible: (s) => s.forge.built },
       { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
       { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
@@ -93,6 +98,9 @@ export const CLUSTERS: ClusterDef[] = [
     systems: [
       { id: 'guild', label: 'Guild', visible: (s) => s.guild.discovered },
       // B5: codex surfaces — read, not worked. Wells folded into Vents.
+      // GEAR (A.71): armour, out of the Forge. It belongs beside the Bestiary —
+      // the only reason to wear any of it is what is down there.
+      { id: 'gear', label: 'Gear', visible: (s) => s.combat.stats.encounters > 0 || s.materials.totalDrops >= 30 },
       { id: 'bestiary', label: 'Bestiary', visible: (s) => s.combat.seen.length > 0, codex: true },
       { id: 'warrens', label: 'Warrens', visible: (s) => s.maxDepthRecord >= 35 && (s.shell.breachCount >= 3 || Object.keys(s.warrens.cleared).length > 0 || !!s.warrens.active) },
       { id: 'observatory', label: 'Stars', visible: (s) => rec(s, 'glassmere', 20) },

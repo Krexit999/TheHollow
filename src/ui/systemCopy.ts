@@ -231,14 +231,15 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       return 'Assay the depth you are working to learn what falls there and double the finds for a while.';
     },
   },
-  forge: {
-    title: 'The Forge',
+  // 'forge' retired A.71. Its copy is not deleted so much as SPLIT: the tool
+  // half is the Refinery's business now and the gear half has its own room.
+  gear: {
+    title: 'Gear',
     purpose:
-      'Where ore becomes tools and gear. A better tool chips the harder rock the walls demand; gear has two faces, one for mining and one for the fights. Purity carries through — clean metal, keen edge.',
-    next: (s) => {
-      const wall = s.shell.current === 'loam' && s.depth >= 40;
-      return wall ? 'A hardness wall is near — forge the next tool tier before the rock refuses you.' : null;
-    },
+      'Armour, and the two faces it wears. One set is for the rock and one is for whatever is standing in front of it — and nothing down there cares which you happen to have on.',
+    next: (s) => (s.combat.stats.encounters > 0 && !Object.values(s.forge.gear).some(Boolean)
+      ? 'Something has already found you once. Put something on.'
+      : null),
   },
   casting: {
     title: 'The Casting Floor',

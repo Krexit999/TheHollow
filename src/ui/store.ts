@@ -23,9 +23,12 @@ export type TabId =
   | 'lattice' | 'crucible' | 'foundry' | 'greenhouse' | 'mycelium'
   | 'loom' | 'bench' | 'array' | 'chamber' | 'automation'
   // The Hold
-  | 'hold' | 'forge' | 'casting' | 'refinery' | 'runes' | 'brew' | 'relics' | 'museum'
+  // 'forge' RETIRED A.71 — the tool shelf folded into 'refinery', gear became
+  // its own room. Removed from the union rather than left dangling, so any
+  // straggler that still tries to navigate there is a compile error.
+  | 'hold' | 'casting' | 'refinery' | 'runes' | 'brew' | 'relics' | 'museum'
   // The World
-  | 'guild' | 'bestiary' | 'warrens' | 'observatory' | 'journal'
+  | 'guild' | 'gear' | 'bestiary' | 'warrens' | 'observatory' | 'journal'
   | 'wells' | 'expeditions'
   // Progress
   | 'delver' | 'collapse' | 'rewrite' | 'parallel' | 'spiral'

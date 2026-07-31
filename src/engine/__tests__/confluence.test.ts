@@ -160,7 +160,14 @@ describe('confluences are reachable', () => {
     //   - a short list of mechanics that are real but are not rooms
     const rooms = new Set(CLUSTERS.flatMap((c) => c.systems).map((s) => String(s.id)));
     const signatures = new Set(allShells().map((sh) => sh.signatureId).filter(Boolean) as string[]);
-    const mechanics = new Set(['gems', 'combat', 'weather']);
+    // 'forge' JOINED THIS LIST AT A.71, and it belongs here rather than in the
+    // room set: the Forge TAB was retired (its tool shelf folded into the
+    // Refinery, its gear bench became its own room), but the forged TOOL is
+    // still a real mechanic — `state.forge.tools`, its alloys and its runes —
+    // and that is what all five of these confluences actually read. Relabelling
+    // them to a room whose condition they do not check would have been the
+    // wrong repair: the name was never a room, it was a thing you own.
+    const mechanics = new Set(['gems', 'combat', 'weather', 'forge']);
     for (const c of CONFLUENCES) {
       for (const sys of c.systems) {
         expect(

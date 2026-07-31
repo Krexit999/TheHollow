@@ -629,6 +629,20 @@ function combatText(def: GearDef): string {
   return bits.join(' · ');
 }
 
+/**
+ * GEAR HAS ITS OWN ROOM NOW (A.71). It was a bench inside the Forge, which was
+ * never where it belonged — gear is armour, the only reason to wear any of it
+ * is what is down the hole, and it sits beside the Bestiary now for that reason.
+ * A wrapper rather than a rename so the bench stays usable anywhere.
+ */
+export function GearRoom() {
+  return (
+    <div className="space-y-2" data-testid="gear-room">
+      <GearBench />
+    </div>
+  );
+}
+
 export function GearBench() {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
@@ -641,7 +655,9 @@ export function GearBench() {
   return (
     <>
       <div className="flex items-baseline justify-between px-1 pt-1">
-        <span className="text-xs font-semibold uppercase tracking-wider text-cave-400">The other bench — gear</span>
+        {/* A.71: "the OTHER bench" was Forge-relative — there is no first bench
+            beside it any more, so it names itself. */}
+        <span className="text-xs font-semibold uppercase tracking-wider text-cave-400">What you can wear</span>
         <span className="tnum text-[10px] text-cave-400" title="One piece per slot: offhand, lantern, harness, boots.">
           {gearWornCount(state)}/{GEAR_SLOTS.length} slots worn
         </span>

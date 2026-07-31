@@ -8,14 +8,13 @@ import { DepthBar } from './components/DepthBar';
 import { DigPanel, KilnPanel, DrillsPanel } from './components/panels';
 import { LatticePanel } from './components/LatticePanel';
 import { HoldPanel } from './components/HoldPanel';
-import { ForgePanel } from './components/ForgePanel';
 import { CastingPanel } from './components/CastingPanel';
 import { RefineryPanel } from './components/refinery';
 import { CollapsePanel, DelverPanel } from './components/prestige';
 import { GridPanel, VaultPanel } from './components/meta';
 import { OfflineModal, Toasts } from './components/overlays';
 import { BreachOverlay, CruciblePanel, FoundryPanel } from './components/ferrite';
-import { BestiaryPanel, CombatOverlay, EncounterBanner } from './components/combat';
+import { BestiaryPanel, CombatOverlay, EncounterBanner, GearRoom } from './components/combat';
 import { GuildPanel } from './components/guild';
 import { JournalPanel } from './components/journal';
 import { BrewPanel, GreenhousePanel, GrowthChip, LoomPanel, MyceliumPanel, WeatherChip } from './components/verdance';
@@ -76,7 +75,7 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('array') && <EmberPanel />}
       {only('chamber') && <ChamberPanel />}
       {only('hold') && <HoldPanel />}
-      {only('forge') && <ForgePanel />}
+      {only('gear') && <GearRoom />}
       {only('casting') && <CastingPanel />}
       {only('refinery') && <RefineryPanel />}
       {only('runes') && <RunesPanel />}

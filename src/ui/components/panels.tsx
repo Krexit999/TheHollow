@@ -21,7 +21,7 @@ import {
 } from '../../engine/systems/drillAlloys';
 import { effectInHand, toolFits } from '../../engine/systems/toolAbilities';
 import { PRIZE_SOURCES } from '../../engine/systems/prizeDrills';
-import { AlloyBench } from './ForgePanel';
+import { AlloyBench } from './toolShelf';
 import { ROMAN as ROMAN_G } from '../../engine/content/drillAlloys';
 import { oreCount } from '../../engine/systems/ores';
 import { oreDef, oreOddsHint } from '../../engine/content/ores';
