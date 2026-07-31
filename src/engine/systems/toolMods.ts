@@ -688,8 +688,36 @@ export const INST_PER_SYNERGY = 12;
  * rather than only at the bottom.
  */
 export const INST_FLOOR_BASE = 6;
-/** Per modifier slot the tool has. Half a tool of ordinary work stays quiet. */
-export const INST_FLOOR_PER_SLOT = 1.6;
+/**
+ * PER MODIFIER SLOT THE TOOL HAS — sim-sized at A.68, was 1.6 by hand.
+ *
+ * `scripts/sim-forge-constants.ts` measured the thing the hand-sized value
+ * could not see: instability is really about DENSITY, and at 1.6 the floor did
+ * not keep up with what a big tool can hold. Measured `net` per slot:
+ *
+ *   a CHEAP fill runs   0.8 – 5.4 net/slot
+ *   a PACKED fill runs  10.0 – 13.7 net/slot
+ *
+ * Those separate cleanly, but a floor rising at only 1.6/slot sat under BOTH
+ * once the tool got big — so an Aleph tool filled with the CHEAPEST modifiers
+ * it could find read 26% misfire, against a packed one at 35%. The mechanic
+ * stopped distinguishing "I chased power" from "I filled the slots", which is
+ * the only thing it is for.
+ *
+ * At 5.0 the floor sits above every cheap fill and under every packed one:
+ *
+ *              cheap        packed
+ *   loam L40     0%           10%
+ *   verdance     0%           25%
+ *   cinder       0%           22%
+ *   aleph        1%           35%
+ *
+ * RAISING THIS IS STRICTLY A BUFF and that is why it was allowed under the
+ * no-nerf ruling this pass ran under: `misfire` is
+ * `max(0, min(cap, (net - floor) * rate))`, so a higher floor can only ever
+ * lower it. No existing build got worse; several got quieter.
+ */
+export const INST_FLOOR_PER_SLOT = 5.0;
 
 /**
  * POWER COSTS MORE THAN ITS SIZE — the other half of giving this teeth.

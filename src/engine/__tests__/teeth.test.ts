@@ -219,3 +219,71 @@ describe('instability is the price of power', () => {
     expect(shaky.oreRate).toBe(calm.oreRate);
   });
 });
+
+// ---------------------------------------------------------------------------
+// THE SIM-SIZED FLOOR (A.68)
+// ---------------------------------------------------------------------------
+
+describe('the instability floor separates packed from merely full', () => {
+  /**
+   * WHAT `sim-forge-constants.ts` MEASURED AND THIS PINS.
+   *
+   * Instability is a DENSITY claim — "you packed this tool with the strongest
+   * things it can hold" — so the floor has to sit above what a cheap fill
+   * produces per slot and under what a packed one does. At the hand-sized 1.6
+   * it sat under both once the tool got big: an Aleph tool filled with the
+   * CHEAPEST modifiers available read 26% misfire against a packed one at 35%,
+   * and the mechanic stopped distinguishing the two things it exists to tell
+   * apart. Sized to 5.0 against the measured spread.
+   */
+  function fill(mat: string, level: number, how: 'cheap' | 'packed'): number {
+    hold(mat, level);
+    const s = st();
+    const budget = modSlotsTotal(s);
+    const pool = [...TOOL_MODS]
+      .filter((m) => !m.classOnly)
+      .sort((a, b) => (how === 'packed' ? b.cost - a.cost : a.cost - b.cost));
+    const mods: Array<{ id: string; n: number; xp: number }> = [];
+    let used = 0;
+    for (const m of pool) {
+      while (used + m.cost <= budget && (mods.find((x) => x.id === m.id)?.n ?? 0) < m.maxStacks) {
+        const at = mods.find((x) => x.id === m.id);
+        if (at) at.n += 1;
+        else mods.push({ id: m.id, n: 1, xp: modXpForLevel(MOD_LEVEL_MAX) });
+        used += m.cost;
+      }
+    }
+    s.casting.mods = mods;
+    s.casting.knownMods = mods.map((m) => m.id);
+    return toolInstability(s).misfire;
+  }
+
+  it('a CHEAP fill stays quiet at every depth, however big the tool', () => {
+    for (const [sh, level] of [[0, 40], [2, 60], [4, 80], [6, 120]] as Array<[number, number]>) {
+      const mat = materialsOfShell(allShells()[sh]!.id)[0]!.id;
+      const m = fill(mat, level, 'cheap');
+      expect(m, `${allShells()[sh]!.id} L${level} cheap misfires at ${(m * 100).toFixed(0)}%`)
+        .toBeLessThanOrEqual(0.05);
+    }
+  });
+
+  it('and a PACKED fill costs something real, and more of it deeper', () => {
+    const packed = ([[0, 40], [2, 60], [6, 120]] as Array<[number, number]>).map(([sh, level]) => {
+      const mat = materialsOfShell(allShells()[sh]!.id)[0]!.id;
+      return fill(mat, level, 'packed');
+    });
+    for (const m of packed) expect(m).toBeGreaterThan(0.05);
+    // The deepest packed build is the worst one — the cost tracks the power.
+    expect(packed[packed.length - 1]).toBeGreaterThan(packed[0]!);
+  });
+
+  it('and the two are always distinguishable — the whole point', () => {
+    for (const [sh, level] of [[0, 40], [2, 60], [4, 80], [6, 120]] as Array<[number, number]>) {
+      const mat = materialsOfShell(allShells()[sh]!.id)[0]!.id;
+      const cheap = fill(mat, level, 'cheap');
+      const packed = fill(mat, level, 'packed');
+      expect(packed - cheap, `${allShells()[sh]!.id} L${level} cannot tell them apart`)
+        .toBeGreaterThan(0.05);
+    }
+  });
+});

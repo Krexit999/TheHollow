@@ -296,6 +296,26 @@ describe('a synergy is found by arranging, never listed', () => {
 // 3 — INSTABILITY
 // ---------------------------------------------------------------------------
 
+/**
+ * A TOOL WHOSE BUDGET MATCHES WHAT THESE TESTS SEAT.
+ *
+ * `ROOMY` is level 2001, which buys **201 modifier slots** — six times what
+ * the deepest reachable tool in the game has (an Aleph L120 tool has 33,
+ * measured in `sim-forge-constants.ts`). It exists so a fixture can seat
+ * things without the budget refusing them, and that was harmless while the
+ * instability floor was a fixed number.
+ *
+ * It is not harmless now. A.68 made the floor scale with the budget, because
+ * instability is really about DENSITY — "you packed this tool with the
+ * strongest things it can hold". Forty-four slots of modifiers on a 201-slot
+ * tool is a mostly EMPTY tool, and the floor correctly says so. The mechanic
+ * is right and the fixture was unrealistic.
+ *
+ * PACKED is a level whose budget (41) is just under what these blocks seat
+ * (44), which is what "packed" means.
+ */
+const PACKED = 200;
+
 describe('instability is what makes OP an engineering problem', () => {
   it('a bare tool is perfectly steady, and never misfires', () => {
     const s = st();
@@ -312,6 +332,7 @@ describe('instability is what makes OP an engineering problem', () => {
   });
 
   it('stacking powerful things drives it up', () => {
+    hold('marl', PACKED);
     const s = st();
     const low = toolInstability(s).raw;
     for (const m of ['farreach', 'voidbite', 'widerblast2', 'overgrade', 'firstform']) {
@@ -345,13 +366,23 @@ describe('instability is what makes OP an engineering problem', () => {
      * FELL had nothing to fall from. Pack it properly and the assertion means
      * what it always meant.
      */
+    hold('marl', PACKED);
     const s = st();
-    for (const m of ['farreach', 'voidbite', 'widerblast2', 'detonation', 'firstform']) {
+    for (const m of ['farreach', 'voidbite', 'widerblast2', 'detonation']) {
       seat(m, 2, MOD_LEVEL_MAX);
     }
     const before = toolInstability(s);
     expect(before.misfire, 'the fixture is no longer an OP build').toBeGreaterThan(0);
     const reach = modCache(s, 0).cells;
+    /**
+     * THE STABILISER HAS TO FIT, which is the whole trade and which the first
+     * version of this fixture quietly broke: it packed all five capstones into
+     * a 41-slot budget and then added The Anchor on top, so the anchor went
+     * DORMANT and contributed no `stabilize` at all — `after.steady` came back
+     * exactly equal to `before.steady`. Seating a stabiliser you have no room
+     * for is not the counter-move, it is a no-op, and the test was measuring
+     * that. Four capstones instead of five leaves the room the anchor needs.
+     */
     seat('theanchor', 2, MOD_LEVEL_MAX);
     const after = toolInstability(s);
     expect(after.steady).toBeGreaterThan(before.steady);
@@ -411,6 +442,7 @@ describe('a misfire is only ever worse', () => {
   }
 
   function unstable(): GameState {
+    hold('marl', PACKED);
     const s = st();
     for (const m of ['farreach', 'voidbite', 'widerblast2', 'overgrade', 'firstform']) {
       seat(m, 2, MOD_LEVEL_MAX);
