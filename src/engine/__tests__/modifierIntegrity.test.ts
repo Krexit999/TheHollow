@@ -28,7 +28,6 @@ import {
 import { createEngine } from '../index';
 import type { GameState } from '../types';
 import { AFFIXES } from '../systems/relics';
-import { CASES } from '../systems/museum';
 import { GEMS } from '../materials';
 
 ensureContentLoaded();
@@ -55,7 +54,7 @@ describe('1. an invalid bucket name cannot be registered', () => {
     // ALL_BUCKETS is `satisfies readonly Bucket[]`, so the compiler already
     // rejects a name that is not in the union. This checks the other
     // direction: nothing in the union is missing from the runtime list.
-    expect(ALL_BUCKETS.length).toBe(19);
+    expect(ALL_BUCKETS.length).toBe(16);
     expect(new Set(ALL_BUCKETS).size).toBe(ALL_BUCKETS.length);
     for (const b of ALL_BUCKETS) expect(isBucket(b)).toBe(true);
   });
@@ -146,12 +145,6 @@ describe('4. the content definitions that caused this are audited', () => {
   it('every relic affix names a real bucket', () => {
     for (const [key, def] of Object.entries(AFFIXES)) {
       expect(isBucket(def.bucket), `affix '${key}' → '${def.bucket}'`).toBe(true);
-    }
-  });
-
-  it('every museum case names a real bucket', () => {
-    for (const c of CASES) {
-      expect(isBucket(c.bucket), `case '${c.id}' → '${c.bucket}'`).toBe(true);
     }
   });
 

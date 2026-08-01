@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 46;
+export const SAVE_VERSION = 47;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -1076,6 +1076,23 @@ export const MIGRATIONS: Record<number, Migration> = {
     const casting = state['casting'] as Record<string, unknown> | undefined;
     if (casting && casting['sockets'] === undefined) casting['sockets'] = [];
     return { ...p, version: 45, state };
+  },
+
+  /**
+   * v47 — THE SPEED-RUN CUT. combat, guild, museum, expeditions, workbench,
+   * lattice, and crucible are gone from the engine; a save that still carries
+   * them is carrying dead weight, not a feature. Strip the keys outright — the
+   * default-state builders never write them again, so nothing downstream reads
+   * them either.
+   */
+  46: (p) => {
+    const state = { ...(p.state as Record<string, unknown>) };
+    for (const dead of ['combat', 'guild', 'museum', 'expeditions', 'workbench', 'lattice', 'crucible']) {
+      delete state[dead];
+    }
+    const forge = state['forge'] as Record<string, unknown> | undefined;
+    if (forge) delete forge['gear'];
+    return { ...p, version: 47, state };
   },
 };
 

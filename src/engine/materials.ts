@@ -452,7 +452,7 @@ export const GEMS: GemDef[] = [
     flavor: 'A coal that never went out, cut and polished. The Kiln loves it.',
   },
   {
-    id: 'voidopal', name: 'Voidopal', color: '#5c5080', bucket: 'motifGain', value: 1.3,
+    id: 'voidopal', name: 'Voidopal', color: '#5c5080', bucket: 'dropRate', value: 1.3,
     combat: { hp: 6 }, combatText: '+6 HP',    effectText: '+30% Motifs while socketed', shellId: 'ferrite',
     flavor: 'Looking into it feels like being looked out of.',
   },

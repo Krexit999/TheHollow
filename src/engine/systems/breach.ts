@@ -20,7 +20,6 @@ import { echoesForCores } from '../prestigeMath';
 import { currentShell, nextShell } from '../shells';
 import { runFaceReset } from '../signatures';
 import { applyFieldSize, cellCap, dpsMax } from './face';
-import { lawFlag } from '../laws';
 import { logScar, resetShaftRun, surfaceCaches } from './shaftSys';
 import { addToolMark } from './heirloom';
 import { faceWhole } from './absence';
@@ -30,15 +29,14 @@ import { clearOres } from './ores';
 import { START_H, START_W } from '../state';
 
 /** Upgrades that are cross-shell infrastructure and survive the fall. */
-const SURVIVES_BREACH = new Set(['latticeUncover', 'chisels', 'forgeBuild']);
+const SURVIVES_BREACH = new Set(['forgeBuild']);
 
 export function canBreach(state: GameState): boolean {
   return (
     state.depth >= currentShell(state).floorDepth &&
     nextShell(state) !== null &&
-    // The one exception to optionality: the Floor Warden bars the way —
-    // unless THE OPEN DOOR (law) is written; they keep their treasure.
-    (state.combat.wardens.includes(currentShell(state).id) || lawFlag(state, 'wardenOptional')) &&
+    // Combat is gone (A.7x) — the Floor Warden gate went with it, a wall
+    // with no door dropped rather than left standing.
     // THE KEYSTONE (Part B): the floor must be shored — by the shell's own
     // system, or the Guild's slow haul. No def, no gate (stubs III–VII).
     keystoneSatisfied(state) &&
@@ -58,9 +56,6 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
     // read as "Reach the floor first" while standing ON the floor.)
     const shell = currentShell(state);
     const atFloor = state.depth >= shell.floorDepth;
-    if (atFloor && !state.combat.wardens.includes(shell.id) && !lawFlag(state, 'wardenOptional')) {
-      return { ok: false, reason: 'The Warden holds the floor.' };
-    }
     if (atFloor && !keystoneSatisfied(state)) {
       return { ok: false, reason: 'The floor is open but unshored — set the keystone first.' };
     }

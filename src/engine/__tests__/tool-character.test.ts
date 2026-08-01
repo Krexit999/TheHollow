@@ -614,7 +614,7 @@ describe('the pillars survive the character layer', () => {
 
 describe('the save', () => {
   it('adds no growth, tier or history to anybody', () => {
-    expect(SAVE_VERSION).toBe(46);
+    expect(SAVE_VERSION).toBe(47);
     const out = runMigrations({
       version: 43,
       state: {

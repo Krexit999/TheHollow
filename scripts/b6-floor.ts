@@ -21,10 +21,8 @@ const raw = readFileSync(file, 'utf8');
 type Strip = (s: GameState) => void;
 // Only the systems WITHOUT a consumed output — everything else clears the
 // floor structurally (its output is demanded somewhere).
-const STRIPS: Record<string, Strip> = {
-  museumCases: (s) => { s.museum.completed = []; },
-  titlesEquip: (s) => { s.guild.titles.equipped = null; },
-};
+// (museumCases and titlesEquip were the only entries; both cut with museum/guild.)
+const STRIPS: Record<string, Strip> = {};
 
 function chipFullest(engine: Engine, n: number): void {
   const s = engine.getState();

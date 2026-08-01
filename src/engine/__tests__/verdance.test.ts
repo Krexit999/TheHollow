@@ -4,8 +4,6 @@ import type { Engine, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import { getCurrency } from '../resources';
 import { CAPTURE, GROW_DELAY_SEC, HARVEST_BONUS, feralCellCount, vineStage } from '../systems/growth';
-import { AUTO_SKILL, resolveFight } from '../combat/combat';
-import { wardenOf } from '../combat/species';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
 import { cellCap, cellRegen } from '../systems/face';
@@ -20,7 +18,6 @@ function verdant(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const { engine, s, mods } = fresh();
   s.shell.current = 'verdance';
   s.collapse.count = 1;
-  s.guild.discovered = true;
   s.depth = 30;
   return { engine, s, mods };
 }
@@ -94,30 +91,6 @@ describe('growth: not acting is a strategy', () => {
     s.growth.stage[3] = 2;
     engine.tick(10);
     expect(s.face.cells[3]).toBeGreaterThanOrEqual(cap * 0.99); // untouched
-  });
-});
-
-describe('old plenty: patience under abundance', () => {
-  it('falls to pure auto with a period kit; a ferrite kit bounces off', () => {
-    const { s, mods } = verdant();
-    s.forge.tools.push({
-      id: 11, recipeId: 'wildstarFalx', name: 'Wildstar Falx', tier: 9,
-      purity: 70, chipPower: 10, strikePower: 100, sockets: ['bloodgarnet', 'cinderquartz', null], alloys: [null, null],
-    });
-    s.forge.equipped = s.forge.tools.length - 1;
-    s.forge.gear.offhand = { defId: 'plentyshell', purity: 60 };
-    s.forge.gear.harness = { defId: 'canopyweave', purity: 60 };
-    s.delver.skills['twoHandedSwing'] = 5;
-    s.delver.skills['deepGrip'] = 3;
-    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
-    mods.invalidate();
-    const plenty = wardenOf('verdance')!;
-    expect(resolveFight(s, mods, plenty, AUTO_SKILL).win).toBe(true);
-    // Impatience feeds it: lower dodge (auto) faces more effective hp than optimal.
-    s.forge.tools[s.forge.tools.length - 1]!.tier = 6;
-    s.forge.tools[s.forge.tools.length - 1]!.strikePower = 30;
-    mods.invalidate();
-    expect(resolveFight(s, mods, plenty, AUTO_SKILL).win).toBe(false);
   });
 });
 

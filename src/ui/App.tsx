@@ -6,17 +6,13 @@ import { FaceCanvas } from './components/FaceCanvas';
 import { ShaftCanvas } from './shaft/ShaftCanvas';
 import { DepthBar } from './components/DepthBar';
 import { DigPanel, KilnPanel, DrillsPanel } from './components/panels';
-import { LatticePanel } from './components/LatticePanel';
 import { HoldPanel } from './components/HoldPanel';
 import { CastingPanel } from './components/CastingPanel';
 import { RefineryPanel } from './components/refinery';
 import { CollapsePanel, DelverPanel } from './components/prestige';
 import { GridPanel, VaultPanel } from './components/meta';
 import { OfflineModal, Toasts } from './components/overlays';
-import { BreachOverlay, CruciblePanel } from './components/ferrite';
-import { BestiaryPanel, CombatOverlay, EncounterBanner, GearRoom } from './components/combat';
-import { GuildPanel } from './components/guild';
-import { JournalPanel } from './components/journal';
+import { BreachOverlay } from './components/ferrite';
 import { GrowthChip } from './components/verdance';
 import { RunesPanel } from './components/glassmere';
 import { FloodModal, OverpressureOverlay, VentsPanel } from './components/cinder';
@@ -26,7 +22,7 @@ import { DisclosureGate } from './components/DisclosureGate';
 import { SystemHeader } from './components/SystemHeader';
 import { PanelErrorBoundary } from './components/ErrorBoundary';
 import { SYSTEM_COPY } from './systemCopy';
-import { SpiralPanel, AutomationPanel, RelicsPanel, MuseumPanel, ExpeditionsPanel } from './components/longtail';
+import { SpiralPanel, RelicsPanel } from './components/longtail';
 import { Compendium, CompendiumButton } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 
@@ -47,9 +43,8 @@ function roomLabel(tab: TabId): string {
   return SYSTEM_COPY[tab]?.title ?? 'This screen';
 }
 
-function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGame.getState>['state'] }) {
+function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getState>['state'] }) {
   const only = (id: TabId) => tab === id;
-  const show = (id: TabId) => (tab === id ? '' : 'hidden');
   return (
     <>
       {only('dig') && <DigPanel />}
@@ -58,16 +53,10 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('drills') && <DrillsPanel />}
       {only('vents') && <VentsPanel />}
       {only('hollow') && <HollowPanel />}
-      <div className={show('lattice')}>{state?.lattice.unlocked && <LatticePanel active={tab === 'lattice'} />}</div>
-      {only('crucible') && (state?.shell.breachCount ?? 0) >= 1 && <CruciblePanel />}
       {only('hold') && <HoldPanel />}
-      {only('gear') && <GearRoom />}
       {only('casting') && <CastingPanel />}
       {only('refinery') && <RefineryPanel />}
       {only('runes') && <RunesPanel />}
-      {only('guild') && <GuildPanel />}
-      {only('bestiary') && <BestiaryPanel />}
-      {only('journal') && <JournalPanel />}
       {only('delver') && <DelverPanel />}
       {only('collapse') && <CollapsePanel />}
       {only('rewrite') && <RewritePanel />}
@@ -75,10 +64,7 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {only('grid') && <GridPanel />}
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
-      {only('automation') && <AutomationPanel />}
       {only('relics') && <RelicsPanel />}
-      {only('museum') && <MuseumPanel />}
-      {only('expeditions') && <ExpeditionsPanel />}
     </>
   );
 }
@@ -233,7 +219,6 @@ export function App() {
                   itself sits outside, protected by the root AppErrorBoundary. */}
               <PanelErrorBoundary label="Face overlays" fallback={null}>
                 <GrowthChip />
-                <EncounterBanner />
                 <OverpressureOverlay />
               </PanelErrorBoundary>
             </div>
@@ -296,7 +281,6 @@ export function App() {
       <UndoToast />
       <RunSummaryModal />
       <SpendConfirmModal />
-      <CombatOverlay />
       <BreachOverlay />
       <FloodModal />
     </div>

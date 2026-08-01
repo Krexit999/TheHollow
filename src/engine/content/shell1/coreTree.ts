@@ -120,7 +120,7 @@ export const CORE_NODES: CoreNodeDef[] = [
   },
   {
     id: 'secondWind', name: 'Second Wind', maxLevel: 10, tranche: 2,
-    description: (l) => `What the deep took, the deep returns. Strike power ×1.08 per level (now ×${Math.pow(1.08, l).toFixed(2)}).`,
+    description: (l) => `What the deep took, the deep returns. Dust ×1.08 per level (now ×${Math.pow(1.08, l).toFixed(2)}).`,
   },
 ];
 
@@ -196,7 +196,7 @@ export function registerCoreTreeModifiers(): void {
     value: (s) => Math.pow(1.08, coreNodeLevel(s, 'farsight')),
   });
   registerModifier({
-    id: 'core.secondWind', label: 'Second Wind (Core)', bucket: 'strikePower',
+    id: 'core.secondWind', label: 'Second Wind (Core)', bucket: 'dustYield',
     value: (s) => Math.pow(1.08, coreNodeLevel(s, 'secondWind')),
   });
   // resonantCore is consumed by the collapse payout directly.

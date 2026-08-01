@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt, fmtDuration, currentShell } from '../../engine';
 import { ACHIEVEMENTS } from '../../engine/content/shell1/achievements';
-import { CHORD_BY_ID, PROGRESSION_BY_ID } from '../../engine/content/shell1/latticeChords';
 import { gemDef, materialDef } from '../../engine/materials';
 import { ABILITY_BY_ID } from '../../engine/content/drillAlloys';
-import { speciesDef } from '../../engine/combat/species';
-import { gearDef } from '../../engine/combat/gear';
-import { npcDef, REP_TIER_NAMES } from '../../engine/guild/npcs';
-import { fragmentDef } from '../../engine/guild/sable';
-import { titleDef } from '../../engine/guild/titles';
 import { RUNE_NAMES, RUNE_PAIRS } from '../../engine/content/shell4/runes';
-import { AXIOM_BY_ID } from '../../engine/content/shell7/axioms';
 import { RARITY_COLOR } from './HoldPanel';
 import { dispatch, useGame } from '../store';
 
@@ -31,19 +24,10 @@ export function OfflineModal() {
   const threads: string[] = [];
   if (state.delver.skillPoints > 0)
     threads.push(`${state.delver.skillPoints} skill point${state.delver.skillPoints === 1 ? '' : 's'} unspent`);
-  if (state.expeditions.ready.length > 0)
-    threads.push(`${state.expeditions.ready.length} expedition${state.expeditions.ready.length === 1 ? '' : 's'} back, unclaimed`);
-  if (state.expeditions.active.length > 0)
-    threads.push(`${state.expeditions.active.length} expedition${state.expeditions.active.length === 1 ? '' : 's'} still out`);
-  if (state.spiral.activeChallenge) threads.push('a challenge run underway');
   const curing = state.shaft.caches.filter((c) => c.material !== null).length;
   if (curing > 0) threads.push(`${curing} cache${curing === 1 ? '' : 's'} curing in the shaft`);
-  if (state.lattice.unlocked && Object.keys(state.lattice.cells).length > 0)
-    threads.push('the Lattice board mid-arrangement');
   if (state.shell.current === 'hollow' && state.hollow.rebuilt.length > 0)
     threads.push(`reconstruction underway — ${state.hollow.rebuilt.length}/${state.face.cells.length} cells`);
-  else if (state.depth >= shell.floorDepth && shell.floorDepth > 0 && !state.combat.wardens.includes(shell.id))
-    threads.push('at the floor, the warden still to fell');
   const shownThreads = threads.slice(0, 4);
 
   return (
@@ -80,13 +64,6 @@ export function OfflineModal() {
               value={`+${fmt(o.xp)}`}
               color="#fbbf24"
             />
-          )}
-          {o.motifs.gt(0.05) && <Row label="The Lattice gathered Motifs" value={`+${fmt(o.motifs)}`} color="#9fd8c0" />}
-          {o.passiveRanks > 0 && (
-            <Row label="Lattice Passive Rank" value={`+${o.passiveRanks}`} color="#9fd8c0" />
-          )}
-          {o.scrip > 0 && (
-            <Row label="Sef hawked the surplus" value={`+${o.scrip} Scrip`} color="#c9a86a" />
           )}
           {o.dust.lte(0) && o.brick.lte(0) && (
             <div className="text-xs italic text-cave-400">
@@ -152,22 +129,6 @@ export function Toasts() {
         if (ev.auto) {
           fresh.push({ key: entry.seq, title: 'Auto-collapse', body: `Depth ${ev.depth} · +${fmt(ev.cores)} Cores.`, color: '#8be9fd' });
         }
-      } else if (ev.type === 'journalReveal') {
-        // B5: the read incentive, announced. A hint names the meeting, never
-        // the condition; a cure names the stone and what patience makes of it.
-        if (ev.kind === 'confluenceHint') {
-          fresh.push({ key: entry.seq, title: 'A note in her margins', body: `Something happens where ${ev.a} meets ${ev.b}. She never wrote what.`, color: '#c8b48a' });
-        } else {
-          fresh.push({ key: entry.seq, title: 'A recipe of patience', body: `${materialDef(ev.a).name}, cached in the deep, becomes ${materialDef(ev.b).name}. The shaft Codex holds the how.`, color: '#c8b48a' });
-        }
-      } else if (ev.type === 'chordDiscovered') {
-        const def = CHORD_BY_ID[ev.id];
-        if (def) fresh.push({ key: entry.seq, title: `Chord discovered: ${def.name}`, body: def.flavor, color: '#9fd8c0' });
-      } else if (ev.type === 'progressionDiscovered') {
-        const def = PROGRESSION_BY_ID[ev.id];
-        if (def) fresh.push({ key: entry.seq, title: `A Progression: ${def.name}`, body: def.flavor, color: '#e4d69c' });
-      } else if (ev.type === 'latticeRing') {
-        fresh.push({ key: entry.seq, title: 'The board widens.', body: 'Another ring of sockets, older than the last.', color: '#9fd8c0' });
       } else if (ev.type === 'materialFound') {
         // Only a material you have NEVER held announces itself — a discovery is
         // worth a word, the hundredth of the same stone is not. Every find after
@@ -193,103 +154,8 @@ export function Toasts() {
           body: `Tier ${'I'.repeat(Math.min(3, ev.tier))} · ${ev.purity}% purity. It goes straight to your hand.`,
           color: '#d4a86a',
         });
-      } else if (ev.type === 'combatEnd') {
-        const sp = speciesDef(ev.speciesId);
-        if (ev.result === 'win' && ev.auto) {
-          fresh.push({
-            key: entry.seq,
-            title: `${sp.name} put down`,
-            body: `The crew handled it${ev.drops.length > 0 ? ` — ${ev.drops.map((d) => materialDef(d.materialId).name).join(', ')} recovered` : ''}.`,
-            color: '#9fd8c0',
-          });
-        } else if (ev.result === 'loss') {
-          fresh.push({
-            key: entry.seq,
-            title: `Driven back by the ${sp.name}`,
-            body: 'A tenth of the bank scattered in the retreat. Nothing else was lost.',
-            color: '#e07a5f',
-          });
-        } else if (ev.result === 'fled') {
-          fresh.push({
-            key: entry.seq,
-            title: 'You slipped away.',
-            body: 'It cost a twentieth of the bank. It usually does.',
-            color: '#8a7f70',
-          });
-        }
-      } else if (ev.type === 'wardenFelled') {
-        const sp = speciesDef(ev.speciesId);
-        fresh.push({
-          key: entry.seq,
-          title: `THE FLOOR OPENS — ${sp.name} is felled`,
-          body: 'The way down is no longer guarded. The Breach will take you when you are ready.',
-          color: '#8be9fd',
-        });
-      } else if (ev.type === 'gearForged') {
-        const def = gearDef(ev.gearId);
-        fresh.push({
-          key: entry.seq,
-          title: `Fitted: ${def.name} (${ev.purity}%)`,
-          body: def.flavor,
-          color: '#d4a86a',
-        });
-      } else if (ev.type === 'guildOpened') {
-        fresh.push({
-          key: entry.seq,
-          title: 'THE STAIR IS OPEN',
-          body: 'Lamplight above the winch-house — voices, stew, other people. The Guild has been waiting.',
-          color: '#e0b054',
-        });
-      } else if (ev.type === 'npcsArrived') {
-        if (ev.gate !== 'open') {
-          fresh.push({
-            key: entry.seq,
-            title: 'New faces at the Lamphouse',
-            body: `${ev.count} more came up the road. The hall is louder tonight.`,
-            color: '#e0b054',
-          });
-        }
-      } else if (ev.type === 'fragmentFound') {
-        const f = fragmentDef(ev.id);
-        fresh.push({
-          key: entry.seq,
-          title: `A page in the rock — p.${f.page}`,
-          body: f.legibility === 'ciphered' ? 'Her hand, but in cipher. Old Quill will want to see this.' : 'Sable\'s hand. The Journal keeps it; read it when you like.',
-          color: '#c9a86a',
-        });
-      } else if (ev.type === 'fragmentTranslated') {
-        const f = fragmentDef(ev.id);
-        fresh.push({ key: entry.seq, title: `Quill reads p.${f.page}`, body: `"${f.heading}" — it waits in the Journal.`, color: '#c9a86a' });
-      } else if (ev.type === 'contractDone') {
-        fresh.push({
-          key: entry.seq,
-          title: 'Contract honored',
-          body: `${npcDef(ev.npcId).name} pays ${ev.scrip} Scrip. The board turns.`,
-          color: '#c9a86a',
-        });
-      } else if (ev.type === 'questAdvanced') {
-        fresh.push({
-          key: entry.seq,
-          title: `${npcDef(ev.npcId).name} nods`,
-          body: 'Their asking moves forward. See them at the hall.',
-          color: '#e0b054',
-        });
-      } else if (ev.type === 'repTier') {
-        fresh.push({
-          key: entry.seq,
-          title: `${REP_TIER_NAMES[ev.tier]} to ${npcDef(ev.npcId).name}`,
-          body: ev.tier >= 3 ? 'They would take a wall down for you.' : 'The hall remembers who shows up.',
-          color: '#e0b054',
-        });
-      } else if (ev.type === 'titleEarned') {
-        const t = titleDef(ev.id);
-        fresh.push({ key: entry.seq, title: `A name earned: ${t.name}`, body: `${t.flavor} (${t.effect} — see Sal's book.)`, color: '#e0b054' });
-      } else if (ev.type === 'hired') {
-        fresh.push({ key: entry.seq, title: `${npcDef(ev.npcId).name} signs on`, body: 'A berth filled in the crew loft.', color: '#c9a86a' });
       } else if (ev.type === 'temporalFound') {
         fresh.push({ key: entry.seq, title: `A slow carving completes: ${ev.name}`, body: 'Runes cut into the same tool across long stretches finally spoke together. The slowest thing you can find, and now it is yours.', color: '#c8a35a' });
-      } else if (ev.type === 'gemFused') {
-        fresh.push({ key: entry.seq, title: 'Duplicates fused', body: 'Two of the same gem went into a cleaner cut for the type — never worse than before.', color: '#9ab8d0' });
       } else if (ev.type === 'bulkSalvaged') {
         fresh.push({ key: entry.seq, title: `${ev.count} tools broken down`, body: `The dead inventory became ${ev.units} units of material for the next thing you make.`, color: '#c98e4a' });
       } else if (ev.type === 'drillAlloyFound') {
@@ -325,12 +191,6 @@ export function Toasts() {
         });
       } else if (ev.type === 'purged') {
         fresh.push({ key: entry.seq, title: 'Emergency purge', body: `A quarter of the Slag, spent as steam. Heat at ${ev.heat.toFixed(0)}.`, color: '#e0955c' });
-      } else if (ev.type === 'crewRecalled') {
-        fresh.push({ key: entry.seq, title: 'Crew recalled', body: 'Everyone off the floor. Nothing works, nobody dies. They restation under 70 heat.', color: '#c9a86a' });
-      } else if (ev.type === 'crewRestationed') {
-        fresh.push({ key: entry.seq, title: 'The crew files back down', body: 'The shaft cooled; the berths refill on their own.', color: '#c9a86a' });
-      } else if (ev.type === 'hirelingLost') {
-        fresh.push({ key: entry.seq, title: `${npcDef(ev.npcId).name} is gone`, body: 'The flood took the longest-serving hand still on the floor. The hall will hold a wake.', color: '#e07a6a' });
       } else if (ev.type === 'silenceHarvest') {
         fresh.push({ key: entry.seq, title: 'You listened', body: `${ev.stacks.toFixed(0)} stacks of quiet, farmed into ${fmt(ev.voidGained)} Void.`, color: '#b8b0e0' });
       } else if (ev.type === 'cellRebuilt') {
@@ -340,10 +200,7 @@ export function Toasts() {
       } else if (ev.type === 'coreTouched') {
         fresh.push({ key: entry.seq, title: 'The Core', body: 'A desk. A chair. A pen, offered. Recursion waits at the Rewrite.', color: '#e8d88c' });
       } else if (ev.type === 'recursion') {
-        fresh.push({ key: entry.seq, title: `Recursion ${ev.count}`, body: `The world begins again, and you do not. +${ev.axiomsGained} Axiom${ev.axiomsGained === 1 ? '' : 's'} to rewrite it with.`, color: '#f0e6a8' });
-      } else if (ev.type === 'axiomBought') {
-        const a = AXIOM_BY_ID.get(ev.id);
-        fresh.push({ key: entry.seq, title: `Written: ${a?.name ?? ev.id}`, body: ev.heresy ? 'A deliberate heresy. The face will announce it.' : (a?.felt ?? 'A rule, rewritten. Permanently.'), color: ev.heresy ? '#e07a6a' : '#f0e6a8' });
+        fresh.push({ key: entry.seq, title: `Recursion ${ev.count}`, body: `The world begins again, and you do not. +${ev.axiomsGained} Axiom${ev.axiomsGained === 1 ? '' : 's'} banked.`, color: '#f0e6a8' });
       }
     }
     if (fresh.length > 0) {

@@ -26,11 +26,9 @@
 import { Decimal } from '../decimal';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { currentShell } from '../shells';
-import { getCurrency, spendCurrency, addCurrency } from '../resources';
+import { getCurrency, spendCurrency } from '../resources';
 import { materialCount, consumeMaterial, addMaterial } from './forge';
 import { cureFor, HOUR_MS } from './curing';
-import { EXCAVATION_BY_ID } from '../content/excavations';
-import { grantRelic } from './relics';
 
 export type ScarKind = 'flood' | 'warden' | 'breach' | 'well' | 'station';
 
@@ -213,7 +211,7 @@ export function logScar(state: GameState, _ctx: EngineCtx, kind: ScarKind, depth
   const scars = state.shaft.scars;
   // Dedup: one mark of a kind per (shell, depth) — the wall does not repeat itself.
   if (scars.some((s) => s.shell === shell && s.depth === depth && s.kind === kind)) return;
-  scars.push({ shell, depth, kind, atMs: state.guild?.clockMs ?? 0 });
+  scars.push({ shell, depth, kind, atMs: state.stats.playTimeSec * 1000 });
   if (scars.length > SCAR_CAP) scars.splice(0, scars.length - SCAR_CAP);
 }
 
@@ -282,7 +280,7 @@ export function depositCache(state: GameState, ctx: EngineCtx, index: number, ma
   cache.material = materialId;
   cache.qty = n;
   cache.purity = purity;
-  cache.startedMs = state.guild?.clockMs ?? 0;
+  cache.startedMs = state.stats.playTimeSec * 1000;
   ctx.dirty();
   ctx.emit({ type: 'cacheDeposited', materialId, qty: n });
   return { ok: true, data: { materialId, qty: n } };
@@ -293,7 +291,7 @@ export function cacheProgress(state: GameState, cache: CacheSlot): number {
   if (!cache.material) return 0;
   const recipe = cureFor(cache.material);
   if (!recipe) return 1;
-  const elapsed = (state.guild?.clockMs ?? 0) - cache.startedMs;
+  const elapsed = state.stats.playTimeSec * 1000 - cache.startedMs;
   return Math.max(0, Math.min(1, elapsed / (recipe.hours * HOUR_MS)));
 }
 
@@ -374,47 +372,4 @@ export function installLift(state: GameState, ctx: EngineCtx): ActionResult {
   return { ok: true };
 }
 
-// ---------------------------------------------------------------------------
-// EXCAVATION — clearing a thing too big to chip, a shift per visit
-// ---------------------------------------------------------------------------
-
-export function digShifts(state: GameState, id: string): number {
-  return state.shaft.digs[id] ?? 0;
-}
-export function excavationDone(state: GameState, id: string): boolean {
-  const site = EXCAVATION_BY_ID.get(id);
-  return !!site && digShifts(state, id) >= site.stages.length;
-}
-
-/**
- * Work one shift at the excavation you are standing on. A shift reveals the next
- * stage; the last reveals what it IS and yields a one-time keepsake. You get ONE
- * shift per stop — moving away and back (the Shaft's own verb) frees the next,
- * which is what makes a big dig a thing you finish across many visits.
- */
-export function workExcavation(state: GameState, ctx: EngineCtx, id: string): ActionResult {
-  const site = EXCAVATION_BY_ID.get(id);
-  if (!site) return { ok: false, reason: 'Nothing to dig there.' };
-  if (state.shell.current !== site.shell || state.depth !== site.depth) {
-    return { ok: false, reason: 'You have to be standing on it to work it.' };
-  }
-  if (excavationDone(state, id)) return { ok: false, reason: 'This one is fully uncovered.' };
-  if (state.shaft.lastDigDepth === state.depth) {
-    return { ok: false, reason: 'You have done a shift here. Move off it and come back for the next.' };
-  }
-
-  const shift = digShifts(state, id) + 1;
-  state.shaft.digs[id] = shift;
-  state.shaft.lastDigDepth = state.depth;
-  const done = shift >= site.stages.length;
-
-  if (done && site.find) {
-    // A one-time keepsake — never an income. Granted once, on the last shift.
-    if (site.find.scrip) addCurrency(state, 'scrip', new Decimal(site.find.scrip));
-    if (site.find.renown) addCurrency(state, 'renown', new Decimal(site.find.renown));
-    if (site.find.relic) grantRelic(state, ctx, 'excavation');
-  }
-  ctx.dirty();
-  ctx.emit({ type: done ? 'digComplete' : 'digShift', id, name: site.name, shift });
-  return { ok: true, data: { id, shift, done, reveal: site.stages[shift - 1] } };
-}
+// Excavations removed A.7x (content/excavations.ts cut).

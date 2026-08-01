@@ -24,8 +24,7 @@ import { Application, Container, Graphics, Sprite, Texture, RenderTexture } from
 import { guardPixiRender, lastRenderFailed } from '../pixiGuard';
 import type { Engine } from '../../engine';
 import { currentShell } from '../../engine/shells';
-import { railDepth, digShifts, cacheReady } from '../../engine/systems/shaftSys';
-import { excavationsOfShell } from '../../engine/content/excavations';
+import { railDepth, cacheReady } from '../../engine/systems/shaftSys';
 import { WALL_BY_SHELL } from '../../engine/content/shellWalls';
 import { equippedTool } from '../../engine/systems/forge';
 import { SHAFT_THEMES, type ShaftTheme, shaftGrammar, channelStops, rockBands, lerp } from './shaftThemes';
@@ -37,7 +36,6 @@ export type ShaftMarker =
   | { kind: 'cache'; depth: number }
   | { kind: 'wall'; depth: number; tier: number }
   | { kind: 'unmineable'; depth: number }
-  | { kind: 'dig'; depth: number; id: string }
   | { kind: 'floor'; depth: number }
   | { kind: 'you'; depth: number };
 
@@ -45,7 +43,7 @@ export interface ShaftScrollInfo { top: number; bottom: number; ppd: number; }
 
 interface DynSig {
   shell: string; record: number; reached: number; rail: number; floor: number;
-  toolTier: number; scars: string; caches: string; digs: string;
+  toolTier: number; scars: string; caches: string;
 }
 
 const DUST_MAX = 180;
@@ -710,7 +708,6 @@ export class ShaftView {
       floor: shell.floorDepth, toolTier: equippedTool(s).tier,
       scars: s.shaft.scars.filter((x) => x.shell === shell.id).map((x) => `${x.depth}${x.kind}`).join(','),
       caches: s.shaft.caches.filter((x) => x.shell === shell.id).map((c) => `${c.depth}${c.material ? (cacheReady(s, c) ? 'R' : 'C') : 'E'}`).join(','),
-      digs: excavationsOfShell(shell.id).map((e) => `${e.id}:${digShifts(s, e.id)}`).join(','),
     };
     if (this.dynSig && JSON.stringify(this.dynSig) === JSON.stringify(sig)) return;
     this.dynSig = sig;
@@ -756,16 +753,6 @@ export class ShaftView {
       this.addMarker({ kind: 'unmineable', depth: wallDef.depth }, this.centerX, wallDef.depth, () => {
         const g = new Graphics();
         g.rect(-this.ppd * 0.9, -6, this.ppd * 1.8, 12).fill({ color: 0x2a2740, alpha: 0.9 }).stroke({ width: 1, color: 0xcfc6e0, alpha: 0.4 });
-        return g;
-      });
-    }
-    for (const e of excavationsOfShell(shell.id)) {
-      if (e.depth > revealed) continue;
-      const frac = digShifts(s, e.id) / e.stages.length;
-      this.addMarker({ kind: 'dig', depth: e.depth, id: e.id }, this.edgeCX(1), e.depth, () => {
-        const g = new Graphics();
-        g.arc(0, 0, 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.12, frac)).stroke({ width: 2.2, color: 0xe8c878, alpha: 0.7 });
-        g.circle(0, 0, 2).fill({ color: 0xe8c878, alpha: 0.8 });
         return g;
       });
     }

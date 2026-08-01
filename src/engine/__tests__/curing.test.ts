@@ -22,7 +22,6 @@ import {
 import { CURE_RECIPES, cureFor, HOUR_MS } from '../systems/curing';
 import { doCollapse } from '../systems/collapseSys';
 import { handleAction } from '../actions';
-import { tickExpeditions, claimExpedition } from '../systems/museum';
 import { currentShell } from '../shells';
 import { D } from '../decimal';
 
@@ -38,7 +37,7 @@ function atDepth(depth = 30, cores = 200): GameState {
   s.depthRecords['loam'] = depth;
   s.maxDepthRecord = depth;
   s.currencies['core'] = D(cores);
-  s.guild.clockMs = 0;
+  s.stats.playTimeSec = 0;
   return s;
 }
 
@@ -50,7 +49,7 @@ describe('RULE 1 — curing converts, never produces', () => {
     const idx = s.shaft.caches.length - 1;
     depositCache(s, ctx, idx, 'ochre', 20);
     expect(materialCount(s, 'ochre')).toBe(0); // moved out of the Hold
-    s.guild.clockMs = cureFor('ochre')!.hours * HOUR_MS; // wait it out
+    s.stats.playTimeSec = (cureFor('ochre')!.hours * HOUR_MS) / 1000; // wait it out
     const r = collectCache(s, ctx, idx);
     expect((r.data as { cured: boolean }).cured).toBe(true);
     expect(materialCount(s, 'rustochre')).toBe(20); // N in, N out — never more
@@ -67,7 +66,7 @@ describe('RULE 1 — curing converts, never produces', () => {
       const idx = s.shaft.caches.length - 1;
       const dep = depositCache(s, ctx, idx, r.from, 10);
       expect(dep.ok, `${r.id} deposit`).toBe(true);
-      s.guild.clockMs += r.hours * HOUR_MS;
+      s.stats.playTimeSec += (r.hours * HOUR_MS) / 1000;
       collectCache(s, ctx, idx);
       expect(materialCount(s, r.to), `${r.id} count`).toBe(10);
     }
@@ -80,7 +79,7 @@ describe('RULE 2 — nothing missable, nothing spoils', () => {
     addMaterial(s, 'ochre', 55, 12);
     installCache(s, ctx);
     depositCache(s, ctx, 0, 'ochre', 12);
-    s.guild.clockMs = HOUR_MS; // 1h — not enough (ochre needs 3h)
+    s.stats.playTimeSec = HOUR_MS / 1000; // 1h — not enough (ochre needs 3h)
     expect(cacheReady(s, s.shaft.caches[0]!)).toBe(false);
     const r = collectCache(s, ctx, 0);
     expect((r.data as { cured: boolean }).cured).toBe(false);
@@ -91,12 +90,12 @@ describe('RULE 2 — nothing missable, nothing spoils', () => {
   it('a cure left far past ready is identical to one left just ready', () => {
     const week = atDepth(30); addMaterial(week, 'ochre', 60, 5); installCache(week, ctx);
     depositCache(week, ctx, 0, 'ochre', 5);
-    week.guild.clockMs = cureFor('ochre')!.hours * HOUR_MS; // exactly ready
+    week.stats.playTimeSec = (cureFor('ochre')!.hours * HOUR_MS) / 1000; // exactly ready
     collectCache(week, ctx, 0);
 
     const year = atDepth(30); addMaterial(year, 'ochre', 60, 5); installCache(year, ctx);
     depositCache(year, ctx, 0, 'ochre', 5);
-    year.guild.clockMs = 365 * 24 * HOUR_MS; // a year
+    year.stats.playTimeSec = (365 * 24 * HOUR_MS) / 1000; // a year
     collectCache(year, ctx, 0);
 
     expect(materialCount(year, 'rustochre')).toBe(materialCount(week, 'rustochre'));
@@ -110,7 +109,7 @@ describe('RULE 3 — discovery, then a Codex', () => {
     addMaterial(s, 'ochre', 60, 3);
     installCache(s, ctx);
     depositCache(s, ctx, 0, 'ochre', 3);
-    s.guild.clockMs = cureFor('ochre')!.hours * HOUR_MS;
+    s.stats.playTimeSec = (cureFor('ochre')!.hours * HOUR_MS) / 1000;
     expect(s.shaft.curesFound).not.toContain('cureOchre');
     collectCache(s, ctx, 0);
     expect(s.shaft.curesFound).toContain('cureOchre');
@@ -150,7 +149,7 @@ describe('RULE 4 — caches survive Collapse, surface on Breach', () => {
     addMaterial(s, 'ochre', 60, 8);
     installCache(s, ctx);
     depositCache(s, ctx, 0, 'ochre', 8);
-    s.guild.clockMs = cureFor('ochre')!.hours * HOUR_MS; // finished
+    s.stats.playTimeSec = (cureFor('ochre')!.hours * HOUR_MS) / 1000; // finished
     surfaceCaches(s, ctx, 'loam');
     expect(cachesOf(s, 'loam').length).toBe(0);
     expect(materialCount(s, 'rustochre')).toBe(8); // came up cured
@@ -164,7 +163,7 @@ describe('RULE 6 — none of this mints currency', () => {
     addMaterial(s, 'ochre', 60, 5);
     installCache(s, ctx);
     depositCache(s, ctx, 0, 'ochre', 5);
-    s.guild.clockMs = cureFor('ochre')!.hours * HOUR_MS;
+    s.stats.playTimeSec = (cureFor('ochre')!.hours * HOUR_MS) / 1000;
     collectCache(s, ctx, 0);
     expect((s.currencies['dust'] ?? D(0)).eq(chip)).toBe(true); // no income appeared
   });
@@ -176,55 +175,6 @@ describe('RULE 6 — none of this mints currency', () => {
     depositCache(s, ctx, 0, 'ochre', CACHE_CAP + 40);
     expect(s.shaft.caches[0]!.qty).toBe(CACHE_CAP); // capped
     expect(materialCount(s, 'ochre')).toBe(40); // the overflow stayed in the Hold
-  });
-});
-
-describe('EXPEDITIONS FROM DEPTH (Phase 5) — deeper start, deeper world', () => {
-  const send = (s: GameState, crewId: string, routeId: string, fromDepth?: number) =>
-    handleAction(s, { type: 'sendExpedition', crewId, routeId, fromDepth }, { mods, ctx, replaceState: () => {} });
-
-  function withCrew(): GameState {
-    const s = atDepth(60);
-    s.guild.discovered = true;
-    s.guild.hirelings['pell'] = { level: 4, xp: 400, status: 'well', hiredAtMs: 0 } as never;
-    return s;
-  }
-
-  it('a crew departs the column only from a cache you have sunk', () => {
-    const s = withCrew();
-    expect(send(s, 'pell', 'shortWalk', 50).ok).toBe(false); // no cache at 50
-    installCache(s, ctx); // cache at 60
-    expect(send(s, 'pell', 'shortWalk', 60).ok).toBe(true);
-    expect(s.expeditions.active[0]!.fromDepth).toBe(60);
-  });
-
-  it('departure depth carries through to the returned haul, and reaches the DEEPEST left-behind shell', () => {
-    const s = withCrew();
-    // Stand in Verdance with Loam AND Ferrite closed behind — two worlds to reach.
-    s.shell.current = 'verdance';
-    s.depth = 290; s.shaft.reached = 290;
-    s.depthRecords = { loam: 150, ferrite: 250, verdance: 290 };
-    s.shaft.caches = [{ shell: 'verdance', depth: 290, material: null, qty: 0, purity: 0, startedMs: 0 }];
-    expect(send(s, 'pell', 'shortWalk', 290).ok).toBe(true);
-    s.guild.clockMs += 10 * 60_000; // let the short walk finish
-    tickExpeditions(s);
-    expect(s.expeditions.ready[0]!.fromDepth).toBe(290);
-    // A floor departure (reach = 1) reaches the DEEPEST world left behind: Ferrite,
-    // not the shallower Loam — deterministic regardless of the run's seed.
-    const r = claimExpedition(s, ctx, 'pell');
-    expect((r.data as { from: string }).from).toBe('Ferrite');
-  });
-
-  it('a surface send is NOT forced to the deepest world (reach 0 keeps the seed spread)', () => {
-    const s = withCrew();
-    s.shell.current = 'verdance';
-    s.depthRecords = { loam: 150, ferrite: 250, verdance: 290 };
-    // seed 0 → base index 0 → Loam (the shallower), proving depth changed the pick.
-    expect(send(s, 'pell', 'shortWalk', 0).ok).toBe(true);
-    s.guild.clockMs += 10 * 60_000;
-    tickExpeditions(s);
-    const r = claimExpedition(s, ctx, 'pell');
-    expect((r.data as { from: string }).from).toBe('Loam');
   });
 });
 

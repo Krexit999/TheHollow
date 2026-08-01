@@ -104,7 +104,6 @@ describe('the economy half — the pile is the resource', () => {
 
     const big = put(s, { rarity: 0 }), lift = put(s, { rarity: 4 });
     s.relics.shards = 9999;
-    s.museum.completed = ['a', 'b', 'c', 'd', 'e'];
     const gated = fuseRelics(s, big.uid, lift.uid);
     expect(gated.ok).toBe(false);
     expect(gated.reason).toMatch(/Cores/);
@@ -418,7 +417,6 @@ describe('powers — the half of a relic that is not a percentage', () => {
     const powered = put(s, { rarity: 3, power: 'glassLung' });
     s.relics.shards = 10_000;
     s.currencies['core'] = D(10_000);
-    s.museum.completed = ['a', 'b', 'c', 'd', 'e'];
     expect(fuseRelics(s, bare.uid, powered.uid).ok).toBe(true);
     expect(powerOf(s.relics.held[0]!)?.id).toBe('glassLung');
 

@@ -25,11 +25,11 @@ const fresh = () => {
 };
 
 // A confluence with a condition we can arrange cheaply from a fresh state:
-// Provided For needs three museum cases and five expeditions and nothing else.
-const HOARD = 'providedFor';
+// Nothing Wasted needs 3 salvaged tools and 2 refinery finds and nothing else.
+const HOARD = 'nothingWasted';
 function makeHoardLive(s: GameState): void {
-  s.museum.completed = ['a', 'b', 'c'];
-  s.expeditions.completed = 5;
+  s.forge.salvaged = 3;
+  s.refinery.found = ['a', 'b'];
 }
 
 describe('attention slots — buying', () => {
@@ -116,7 +116,7 @@ describe('the amplifier', () => {
     engine.dispatch({ type: 'confluenceBuyRank', slot: 0 });
     expect(confluenceBonus(s, def.bucket)).toBeCloseTo(def.bonus * 3, 10);
     // a dwelt confluence whose condition LAPSES pays nothing at all
-    s.museum.completed = [];
+    s.forge.salvaged = 0;
     expect(confluenceBonus(s, def.bucket)).toBe(0);
   });
 
@@ -124,13 +124,13 @@ describe('the amplifier', () => {
     const { engine, s } = fresh();
     s.shell.breachCount = 2;
     s.currencies['echo'] = D(100);
-    s.confluences.found.push(HOARD, 'temperedGrammar');
+    s.confluences.found.push(HOARD, 'quietedMetal');
     engine.dispatch({ type: 'confluenceBuySlot' });
     engine.dispatch({ type: 'confluenceSetSlot', slot: 0, id: HOARD });
     engine.dispatch({ type: 'confluenceBuyRank', slot: 0 });
     engine.dispatch({ type: 'confluenceSetSlot', slot: 0, id: null });
-    engine.dispatch({ type: 'confluenceSetSlot', slot: 0, id: 'temperedGrammar' });
-    expect(confluenceAmp(s, 'temperedGrammar')).toBe(2.5);
+    engine.dispatch({ type: 'confluenceSetSlot', slot: 0, id: 'quietedMetal' });
+    expect(confluenceAmp(s, 'quietedMetal')).toBe(2.5);
   });
 });
 

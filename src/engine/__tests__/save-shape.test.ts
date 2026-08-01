@@ -28,9 +28,6 @@ function damagedSave(): string {
   const st = payload.state;
   delete st.face.recentChips;      // P-Face era
   delete st.qol.pins;              // P21 era
-  delete st.qol.blueprints;
-  delete st.guild.sable.found;     // guild era
-  delete st.combat.seen;           // combat era
   delete st.runes.pairsSeen;       // glassmere era
   delete st.shaft.caches;          // column era
   delete st.seenSystems;           // P11 era
@@ -50,9 +47,6 @@ describe('hydrate fills every missing slice from the default shape', () => {
     // Every deleted slice is back, at the correct empty shape.
     expect(Array.isArray(s.face.recentChips)).toBe(true);
     expect(Array.isArray(s.qol.pins)).toBe(true);
-    expect(Array.isArray(s.qol.latticeLayouts)).toBe(true);
-    expect(Array.isArray(s.guild.sable.found)).toBe(true);
-    expect(Array.isArray(s.combat.seen)).toBe(true);
     expect(Array.isArray(s.runes.pairsSeen)).toBe(true);
     expect(Array.isArray(s.shaft.caches)).toBe(true);
     expect(Array.isArray(s.seenSystems)).toBe(true);
@@ -84,10 +78,10 @@ describe('hydrate fills every missing slice from the default shape', () => {
 
   it('replaces a non-array where an array belongs, and fills missing records', () => {
     const a = initialState(0) as unknown as Record<string, any>;
-    a.combat.seen = null;
+    a.qol.pins = null;
     delete a.materials.gems;
     ensureStateShape(a, initialState(0));
-    expect(Array.isArray(a.combat.seen)).toBe(true);
+    expect(Array.isArray(a.qol.pins)).toBe(true);
     expect(typeof a.materials.gems).toBe('object');
   });
 });

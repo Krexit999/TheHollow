@@ -12,8 +12,6 @@ import {
   MAX_PIPES, OVERPRESSURE_SEC, VENT_OUTLETS, VENT_SHAFT_CELL,
   VENT_W, VENT_H, heatCeiling, holdLine, networkCapacity, nextPipeCost, ventRate, yieldMult,
 } from '../../engine/systems/pressure';
-import { floodCasualty } from '../../engine/systems/pressure';
-import { npcDef } from '../../engine/guild/npcs';
 import { dispatch, useGame } from '../store';
 import { Amount } from './shared';
 
@@ -35,8 +33,6 @@ export function PressureCard() {
   const line = holdLine(state as GameState);
   const ceiling = heatCeiling(state as GameState, native);
   const mult = yieldMult(state as GameState, native ? 1 : 0.4);
-  const crew = Object.entries(state.guild.hirelings).filter(([, h]) => h.status === 'well');
-  const casualty = native ? floodCasualty(state as GameState) : null;
 
   return (
     <div className="panel p-3" style={p.heat >= 85 ? { borderColor: heatColor(p.heat) } : undefined}>
@@ -76,22 +72,6 @@ export function PressureCard() {
           </button>
         </div>
       )}
-      {native && crew.length > 0 && (
-        <div className="mt-1.5 flex items-center justify-between border-t border-cave-800 pt-1.5 text-[10px]">
-          <span className={state.guild.crewRecalled ? 'text-cave-400' : p.heat >= 85 ? 'text-[#f07038]' : 'text-cave-400'}>
-            {state.guild.crewRecalled
-              ? 'Crew recalled — safe, idle, restation under 70 heat'
-              : p.heat >= 85 && casualty
-                ? `${npcDef(casualty).name} would not outrun a flood`
-                : `${crew.length} crew on the floor`}
-          </span>
-          {!state.guild.crewRecalled && (
-            <button className="btn px-2 py-0.5 text-[10px]" onClick={() => dispatch({ type: 'recallCrew' })}>
-              Recall crew
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -105,7 +85,6 @@ export function OverpressureOverlay() {
   useGame((s) => s.rev);
   if (!state || state.pressure.overpressureAtSec === null) return null;
   const left = Math.max(0, OVERPRESSURE_SEC - (state.stats.playTimeSec - state.pressure.overpressureAtSec));
-  const casualty = floodCasualty(state as GameState);
   return (
     <div className="pointer-events-auto absolute inset-x-0 top-10 z-30 mx-auto w-full max-w-md px-3">
       <div className="rounded-lg border-2 border-[#ff4a2a] bg-[#1a0b07]/95 p-3 text-center shadow-2xl">
@@ -113,7 +92,6 @@ export function OverpressureOverlay() {
         <div className="tnum mt-0.5 text-2xl font-bold text-[#ffb36a]">{Math.ceil(left)}s</div>
         <div className="mt-1 text-[11px] leading-snug text-[#e8b8a0]">
           The shaft floods when this reaches zero — the run, not your things.
-          {casualty ? ` ${npcDef(casualty).name} is still down here.` : ''}
         </div>
         <div className="mt-2 flex gap-1.5">
           <button className="btn btn-warm flex-1 py-1.5 text-xs" onClick={() => dispatch({ type: 'emergencyPurge' })}>
@@ -122,11 +100,6 @@ export function OverpressureOverlay() {
           {state.pressure.choke && (
             <button className="btn flex-1 py-1.5 text-xs" onClick={() => dispatch({ type: 'setChoke', on: false })}>
               Open the vents
-            </button>
-          )}
-          {casualty && (
-            <button className="btn px-2 py-1.5 text-xs" onClick={() => dispatch({ type: 'recallCrew' })}>
-              Recall crew
             </button>
           )}
         </div>
@@ -138,21 +111,15 @@ export function OverpressureOverlay() {
 export function FloodModal() {
   const state = useGame((s) => s.state);
   const rev = useGame((s) => s.rev);
-  const [flood, setFlood] = useState<{ depth: number; lost: string | null } | null>(null);
+  const [flood, setFlood] = useState<{ depth: number } | null>(null);
   const lastSeq = useRef(-1);
-  const pendingLost = useRef<string | null>(null);
   useEffect(() => {
     if (!state) return;
     for (const entry of state.feed) {
       if (entry.seq <= lastSeq.current) continue;
       lastSeq.current = entry.seq;
       const ev = entry.event;
-      // The casualty is announced first; the flood card collects it.
-      if (ev.type === 'hirelingLost') pendingLost.current = ev.npcId;
-      if (ev.type === 'flood') {
-        setFlood({ depth: ev.depth, lost: pendingLost.current });
-        pendingLost.current = null;
-      }
+      if (ev.type === 'flood') setFlood({ depth: ev.depth });
     }
   }, [rev, state]);
   if (!flood) return null;
@@ -164,11 +131,6 @@ export function FloodModal() {
           The run ends at depth {flood.depth}, paying nothing. Your records, tools, materials,
           boards, and standing all survive — the mountain took the descent, not your life's work.
         </div>
-        {flood.lost && (
-          <div className="mt-2 rounded-md border border-[#7c3020] p-2 text-xs text-[#e8b8a0]">
-            {npcDef(flood.lost).name} did not come back up. The Lamphouse will keep the berth dark.
-          </div>
-        )}
         <div className="mt-3 text-[10px] italic text-cave-400">
           It flooded because the vents were held shut through the whole countdown. It will only ever happen that way.
         </div>

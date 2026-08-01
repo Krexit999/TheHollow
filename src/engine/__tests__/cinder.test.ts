@@ -10,11 +10,9 @@ import { ModifierCache } from '../modifiers';
 import { D } from '../decimal';
 import { getCurrency } from '../resources';
 import {
-  emergencyPurge, floodCasualty, floodRun, holdLine, layPipe, networkCapacity,
+  emergencyPurge, floodRun, holdLine, layPipe, networkCapacity,
   setChoke, ventRate, yieldMult, VENT_SHAFT_CELL, VENT_W,
 } from '../systems/pressure';
-import { AUTO_SKILL, resolveFight } from '../combat/combat';
-import { rollSpecies, speciesOfShell, wardenOf } from '../combat/species';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
 
@@ -50,7 +48,6 @@ function cindery(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const { engine, s, mods } = fresh();
   s.shell.current = 'cinder';
   s.shell.breachCount = 4;
-  s.guild.discovered = true;
   s.collapse.count = 1;
   s.depth = 60;
   s.depthRecords['cinder'] = 60;
@@ -152,19 +149,6 @@ describe('pressure: the four laws', () => {
     expect(s.materials.gems['cinderquartz']).toBe(2);
   });
 
-  it('the casualty is deterministic: longest-serving, named in advance, spared by recall', () => {
-    const { s, mods } = cindery();
-    s.guild.hirelings['pell'] = { level: 2, xp: 500, status: 'well', hiredAtMs: 0 };
-    s.guild.hirelings['sef'] = { level: 1, xp: 200, status: 'well', hiredAtMs: 9999 };
-    expect(floodCasualty(s)).toBe('pell'); // the eldest hand, knowable BEFORE
-    s.guild.crewRecalled = true;
-    expect(floodCasualty(s)).toBe(null); // recall always saves everyone
-    s.guild.crewRecalled = false;
-    floodRun(s, mods, ctx as never);
-    expect(s.guild.hirelings['pell']!.status).toBe('fallen');
-    expect(s.guild.hirelings['sef']!.status).toBe('well'); // exactly one
-  });
-
   it('carried down, heat matters but cannot flood', () => {
     const { engine, s } = fresh();
     s.shell.current = 'glassmere';
@@ -196,58 +180,15 @@ describe('pressure: the four laws', () => {
   });
 });
 
-describe('the cinder bestiary: heat is the ecology', () => {
-  it('fifteen species; the hot ones do not exist below their heat', () => {
-    expect(speciesOfShell('cinder')).toHaveLength(15);
-    for (let i = 0; i < 300; i++) {
-      const sp = rollSpecies('cinder', 250, Math.random, 14, 0, 0);
-      expect(sp && (sp.id === 'magmalurk' || sp.id === 'moltenchoir')).toBeFalsy();
-    }
-    let hotSeen = false;
-    for (let i = 0; i < 300 && !hotSeen; i++) {
-      const sp = rollSpecies('cinder', 250, Math.random, 14, 0, 80);
-      if (sp?.id === 'magmalurk') hotSeen = true;
-    }
-    expect(hotSeen).toBe(true);
-  });
-
-  it('THE SMOLDER: your heat is her strength — the same kit wins cool and loses greedy', () => {
-    const { s, mods } = cindery();
-    const warden = wardenOf('cinder')!;
-    expect(warden.wrathful).toBe(true);
-    s.forge.tools.push({
-      id: 31, recipeId: 'cinderMaul', name: 'Cinder Maul', tier: 15,
-      purity: 70, chipPower: 60, strikePower: 950, sockets: ['bloodgarnet', 'cinderquartz', null, null], alloys: [null, null],
-    });
-    s.forge.equipped = s.forge.tools.length - 1;
-    s.forge.gear.offhand = { defId: 'slagward', purity: 60 };
-    s.forge.gear.harness = { defId: 'emberweave', purity: 60 };
-    s.delver.skills['twoHandedSwing'] = 5;
-    s.delver.skills['deepGrip'] = 3;
-    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
-    s.pressure.heat = 15; // restraint: vent before the stair
-    mods.invalidate();
-    expect(resolveFight(s, mods, warden, AUTO_SKILL).win).toBe(true);
-    s.pressure.heat = 95; // greed: she burns exactly as hot as you do
-    mods.invalidate();
-    expect(resolveFight(s, mods, warden, AUTO_SKILL).win).toBe(false);
-  });
-});
-
 describe('save v9', () => {
-  it('migrates v8 saves with the burnt shell asleep and the crew timestamped', () => {
+  it('migrates v8 saves with the burnt shell asleep', () => {
     const { s } = fresh();
-    s.guild.hirelings['pell'] = { level: 1, xp: 100, status: 'well' };
     const raw = JSON.parse(serialize(s, 0)) as { state: Record<string, unknown> };
     delete raw.state['pressure'];
-    delete (raw.state['guild'] as Record<string, unknown>)['crewRecalled'];
     const migrated = runMigrations({ version: 8, savedAt: 0, state: raw.state } as never);
     expect(migrated.version).toBe(SAVE_VERSION);
     const st = migrated.state as Record<string, Record<string, unknown>>;
     expect(st['pressure']!['heat']).toBe(0);
     expect((st['pressure']!['pipes'] as number[]).length).toBe(35);
-    expect((st['guild'] as Record<string, unknown>)['crewRecalled']).toBe(false);
-    const crew = (st['guild'] as Record<string, Record<string, Record<string, unknown>>>)['hirelings']!;
-    expect(crew['pell']!['hiredAtMs']).toBe(0);
   });
 });

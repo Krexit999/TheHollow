@@ -35,17 +35,12 @@ import { checkPrizeDrills } from './systems/prizeDrills';
 import { checkLegendaryParts } from './systems/legendary';
 import { tickOres } from './systems/ores';
 import { tickAssay } from './systems/drops';
-import { tickCombat } from './combat/combat';
-import { tickGuild } from './guild/guild';
-import { tickExpeditions, noteMuseum } from './systems/museum';
 import { noticeConfluences } from './systems/confluence';
 import { tickAutoRefine } from './systems/refinery';
 import { tickCasting } from './systems/casting';
 import { tickToolMods } from './systems/toolMods';
 import { tickBio } from './systems/toolBio';
 import { doCollapse } from './systems/collapseSys';
-import { automationRate } from './content/shell7/gridModules';
-import { tickParallelShells, checkChallengeGoal } from './systems/spiral';
 import { lawFlag } from './laws';
 import { addCurrency } from './resources';
 import { runFaceTick } from './signatures';
@@ -67,30 +62,28 @@ export const SIM_STEP = 0.1; // 100ms fixed timestep (locked)
  */
 const UNDO_WINDOW_MS = 12_000;
 const UNDOABLE = new Set<string>([
-  'buyUpgrade', 'upgradeDrill', 'buyLatticeRing', 'placeMotif', 'upgradeMotif',
-  'craftTool', 'craftFromParts', 'beginCraft', 'delegateCraft', 'craftGear',
+  'buyUpgrade', 'upgradeDrill',
+  'craftTool', 'craftFromParts', 'beginCraft', 'delegateCraft',
   'crackGeode', 'buyResonantMemory', 'confluenceBuySlot', 'confluenceBuyRank',
-  'buyMagnet', 'pourAlloy', 'castBinding', 'socketAlloy', 'socketGem',
-  'buyStock', 'hire', 'buyMirror',
+  'buyMagnet', 'socketGem',
+  'buyMirror',
   'inscribe', 'refine', 'transmute', 'salvageTool',
-  'temperTool', 'rebuildCell', 'buyAxiom', 'buyGridSlot', 'buyLicence',
-  'placeModule', 'fuseRelics', 'donateRelic', 'donateItem', 'buyCoreNode', 'buySkillNode',
-  'extendRail', 'installCache', 'depositCache', 'installLift', 'workExcavation',
-  'sendExpedition', 'caravanTrade', 'spendCharter', 'discardTool', 'sellMaterial', 'respecSkills',
+  'temperTool', 'rebuildCell', 'buyGridSlot', 'buyLicence',
+  'fuseRelics', 'buyCoreNode', 'buySkillNode',
+  'extendRail', 'installCache', 'depositCache', 'installLift',
+  'discardTool', 'respecSkills',
 ]);
 const UNDO_CLEARS = new Set<string>([
-  'collapse', 'breach', 'recurse', 'spiral', 'startChallenge', 'abandonChallenge', 'hardReset',
+  'collapse', 'breach', 'recurse', 'spiral', 'hardReset',
 ]);
 const UNDO_LABELS: Record<string, string> = {
-  buyUpgrade: 'the purchase', upgradeDrill: 'the drill', buyLatticeRing: 'the ring',
+  buyUpgrade: 'the purchase', upgradeDrill: 'the drill',
   craftTool: 'the forge', craftFromParts: 'the forge', beginCraft: 'the craft',
-  craftGear: 'the gear', pourAlloy: 'the pour', fuseRelics: 'the fusion', refine: 'the refine',
+  fuseRelics: 'the fusion', refine: 'the refine',
   transmute: 'the transmute', salvageTool: 'the salvage', temperTool: 'the temper',
   installCache: 'the cache', depositCache: 'the deposit', extendRail: 'the rail',
   installLift: 'the lift', buyCoreNode: 'the Core node', buySkillNode: 'the skill',
-  donateRelic: 'the donation', donateItem: 'the donation',
-  sellMaterial: 'the sale', sendExpedition: 'the expedition',
-  buyStock: 'the buy', hire: 'the hire', workExcavation: 'the dig', inscribe: 'the carving',
+  inscribe: 'the carving',
 };
 function undoLabel(type: string): string { return UNDO_LABELS[type] ?? 'that'; }
 
@@ -166,19 +159,9 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     // THE BIOGRAPHY'S CLOCK — hours held, and where it has been.
     tickBio(state, dt);
     tickAssay(state, mods, ctx);
-    tickCombat(state, mods, ctx);
-    tickGuild(state, mods, ctx, dt);
-    // Expeditions resolve off the GAME CLOCK (advanced by tickGuild), so this
-    // one call covers online play, a shut tab and the offline reconciliation
-    // alike — and a crew's haul waits in `ready` forever once it lands.
-    tickExpeditions(state);
     // Confluences: notice anything newly true across two systems and write it
     // down. Runs on the 1Hz block below, not every frame — the conditions are
     // cheap but there is no reason to ask 12 times a second.
-    // Worlds that run without you (Spiral). Abstracted: each carries its own
-    // ceiling and is capped by automationRate, which never exceeds a good
-    // idle player — so hands keep their edge.
-    tickParallelShells(state, mods, dt);
     verdAcc += dt;
     if (verdAcc >= 1) {
       noticeConfluences(state, ctx);
@@ -189,11 +172,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
         tickAutoRefine(state, ctx);
         refineAcc = 0;
       }
-      // Auto-collapse (Phase 21): part of the automation suite, so it is gated on
-      // the Grid running — and paced by it, since reaching the threshold depth is
-      // itself Grid-paced. It only automates the tap a player would make anyway.
+      // Auto-collapse (Phase 21): a standing rule set by the player (the
+      // Grid it used to be gated on is gone with gridModules.ts).
       const acd = state.qol.autoCollapseDepth;
-      if (acd != null && state.depth >= acd && automationRate(state.spiral?.grid ?? {}) > 0) {
+      if (acd != null && state.depth >= acd) {
         doCollapse(state, mods, ctx, true);
       }
       // TWIN DESCENT (Axiom): the shell you left keeps producing at the
@@ -208,11 +190,6 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     // THE SETTLING: the shaft banks quiet while no hand is on the face. Reads
     // the manual-chip counter, so it needs no hook in the chip path.
     tickSettle(state, dt);
-    // A challenge ends the moment its goal is true. This call site did not
-    // exist until Phase 13: every challenge could be STARTED and none could be
-    // WON, so no Grid module could ever unlock and the whole automation half of
-    // the Spiral was dead content behind a passing test suite.
-    checkChallengeGoal(state, ctx, (next) => { state = next; });
     achTimer += dt;
     if (achTimer >= 1 || achCheckDue) {
       achTimer = 0;
@@ -222,10 +199,6 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // construction (wearing one is the whole requirement — pillar 1).
       tickRelics(state, ctx, 1);
       noteResonances(state, ctx);
-      // A.49: the halls fill from what you OWN, so nothing dispatches when a
-      // case completes or a set forms — the beat has to notice. Two array
-      // scans over ~20 cases and ~8 sets, once a second.
-      noteMuseum(state, ctx);
       // THE SET cools and CINDERHOLD burns on the same one-second beat.
       tickAlloys(state, mods, ctx, 1);
       // ORES form on the slow beat too — a trickle, a cap, and a floor that

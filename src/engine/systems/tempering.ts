@@ -91,7 +91,7 @@ export const TEMPERS: TemperDef[] = [
     flavor: 'Cooled in nothing at all, which took some arranging. It is very slightly lighter than it should be.',
     when: 'While you carry Absence, or stand in the Hollow or Aleph.',
     active: (s) => wearing(s, 'absence') || inShell(s, 'hollow', 'aleph'),
-    bucket: 'motifGain', bonus: 0.3, idle: 0.05,
+    bucket: 'dropRate', bonus: 0.3, idle: 0.05,
   },
   {
     id: 'lumen', name: 'Lumen-quenched', medium: 'lumenshard', mediumCost: 3,

@@ -29,7 +29,6 @@ import type { ActionResult, EngineCtx, GameState, ToolInstance } from '../types'
 import { initialState } from '../state';
 import { getTotal } from '../resources';
 import { lawFlag } from '../laws';
-import { AXIOM_BY_ID } from '../content/shell7/axioms';
 import { purityMult } from './forge';
 
 export const CORE_DEPTH = 40; // Aleph is short: the Core sits at 40.
@@ -90,20 +89,9 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
   next.maxDepthRecord = state.maxDepthRecord;
   next.delver = state.delver;
   next.achievements = state.achievements;
-  next.guild = state.guild;
-  next.guild.contracts = next.guild.contracts ?? state.guild.contracts;
-  state.guild.contracts.board = state.guild.contracts.board.map(() => null); // the board turns
-  next.guild.crewRecalled = false;
   next.stats = state.stats; // lifetime stats and clocks are biography, not run state
   next.totals = state.totals; // lifetime totals feed formulas and quests
   // Codices — knowledge survives; boards reset below by omission.
-  next.combat.seen = state.combat.seen;
-  next.combat.kills = state.combat.kills;
-  next.combat.stats = state.combat.stats;
-  next.lattice.discovered = state.lattice.discovered;
-  next.lattice.discoveredProgressions = state.lattice.discoveredProgressions;
-  next.crucible.discovered = state.crucible.discovered;
-  next.crucible.ranks = state.crucible.ranks;
   next.runes = state.runes;
   // Meta currencies ride; everything else washes. Resonance rides too (Part B
   // export spine): every Axiom is written IN it, and what you banked listening
@@ -132,10 +120,6 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
     next.drills.bayBuilt = true;
     next.forge.built = true;
   }
-  if (lawFlag(next, 'guildRemembers')) {
-    next.guild.discovered = true;
-    next.guild.gatesSeen = ['open', 'stalls', 'crews', 'ferrite'];
-  }
 
   replaceState(next);
   ctx.dirty();
@@ -143,29 +127,8 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
   return { ok: true, data: { count: next.recursion.count, axiomsGained: gained } };
 }
 
-/** Resonance per Axiom written (Part B export spine): the Hollow's export is
- *  the ink of the Rewrite. Resonance survives Recursion (it rides with the
- *  meta currencies), so the toll sequences writing after listening — it can
- *  never wall it off. Serra bottles it too, once the Hollow is behind you. */
-export const AXIOM_RESONANCE = 25;
-
-export function buyAxiom(state: GameState, ctx: EngineCtx, id: string): ActionResult {
-  const def = AXIOM_BY_ID.get(id);
-  if (!def) return { ok: false, reason: 'No such law' };
-  if (state.recursion.axioms.includes(id)) return { ok: false, reason: 'Already written' };
-  const held = state.currencies['axiom'] ?? D(0);
-  if (held.lt(1)) return { ok: false, reason: 'One Axiom, and you have none to spend' };
-  const res = state.currencies['resonance'] ?? D(0);
-  if (res.lt(AXIOM_RESONANCE)) {
-    return { ok: false, reason: `A law is written in ${AXIOM_RESONANCE} Resonance — listen in the Hollow, or buy it bottled from Serra` };
-  }
-  state.currencies['axiom'] = held.sub(1);
-  state.currencies['resonance'] = res.sub(AXIOM_RESONANCE);
-  state.recursion.axioms.push(id);
-  ctx.dirty();
-  ctx.emit({ type: 'axiomBought', id, heresy: def.heresy === true });
-  return { ok: true };
-}
+// A.7x: Axioms (the content that buyAxiom wrote) are gone. Recursion's own
+// ledger (count, carry-forward) stands untouched.
 
 export function defaultRecursionState(): GameState['recursion'] {
   return { count: 0, axioms: [], axiomsEarned: 0, leftBehind: null };

@@ -17,12 +17,11 @@ import { materialDef } from '../../engine/materials';
 import { materialCount } from '../../engine/systems/forge';
 import {
   cachesOf, cacheInstallCost, cacheProgress, cacheReady, hasLift, railDepth, railExtendCost,
-  digShifts, excavationDone, MAX_CACHES_PER_SHELL, CACHE_CAP, LIFT_CORE_COST, RAIL_DISCOUNT,
+  MAX_CACHES_PER_SHELL, CACHE_CAP, LIFT_CORE_COST, RAIL_DISCOUNT,
   descendMultiplier,
 } from '../../engine/systems/shaftSys';
 import { settleRelief } from '../../engine/systems/settle';
 import { cureFor, CURE_RECIPES } from '../../engine/systems/curing';
-import { EXCAVATION_BY_ID } from '../../engine/content/excavations';
 import { WALL_BY_SHELL, wallReading } from '../../engine/content/shellWalls';
 import { getCurrency } from '../../engine/resources';
 import { requiredTier, equippedTool } from '../../engine/systems/forge';
@@ -438,7 +437,6 @@ function ActionRow({ label, sub, cost, enabled, onClick }: {
 function MarkerDetail({ state, marker }: { state: GameState; marker: ShaftMarker }) {
   if (marker.kind === 'cache') return <CacheDetail state={state} depth={marker.depth} />;
   if (marker.kind === 'unmineable') return <UnmineableDetail state={state} />;
-  if (marker.kind === 'dig') return <DigDetail state={state} id={marker.id} />;
   if (marker.kind === 'wall') return <WallDetail tier={marker.tier} depth={marker.depth} state={state} />;
   if (marker.kind === 'floor') return <FloorDetail depth={marker.depth} />;
   return null;
@@ -542,37 +540,7 @@ function UnmineableDetail({ state }: { state: GameState }) {
   );
 }
 
-function DigDetail({ state, id }: { state: GameState; id: string }) {
-  const site = EXCAVATION_BY_ID.get(id);
-  if (!site) return null;
-  const shifts = digShifts(state, id);
-  const done = excavationDone(state, id);
-  const onSite = state.depth === site.depth && state.shell.current === site.shell;
-  const workedHere = state.shaft.lastDigDepth === site.depth;
-  const revealed = site.stages.slice(0, shifts);
-  return (
-    <div>
-      <div className="mb-1 flex items-baseline justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[#e8c878]">{done ? site.name : 'Something is buried here'}</span>
-        <span className="tnum text-[10px] text-cave-500">{shifts}/{site.stages.length} · depth {site.depth}</span>
-      </div>
-      {revealed.length === 0
-        ? <p className="text-[11px] italic text-cave-400">Too big to chip out. Clear around it — a shift at a time, coming back as you pass.</p>
-        : revealed.map((line, i) => <p key={i} className={`mb-1 text-[11px] leading-snug ${i === revealed.length - 1 ? 'text-cave-100' : 'text-cave-400'}`}>{line}</p>)}
-      {!done && (
-        <button
-          className={`btn mt-1 min-h-[44px] w-full text-xs ${onSite && !workedHere ? 'btn-warm' : ''}`}
-          disabled={!onSite || workedHere}
-          title={!onSite ? 'Travel here to work it' : workedHere ? 'Move off it and come back for the next shift' : undefined}
-          onClick={() => dispatch({ type: 'workExcavation', id })}
-        >
-          {!onSite ? `Travel to depth ${site.depth} to dig` : workedHere ? 'Come back for the next shift' : 'Clear a shift'}
-        </button>
-      )}
-      {done && <div className="mt-1 text-[10px] italic text-[#b8a06a]">Fully uncovered. It is not going anywhere.</div>}
-    </div>
-  );
-}
+// DigDetail (excavation sites) removed A.7x — content/excavations.ts is gone.
 
 function WallDetail({ tier, depth, state }: { tier: number; depth: number; state: GameState }) {
   const passed = equippedTool(state).tier >= tier;

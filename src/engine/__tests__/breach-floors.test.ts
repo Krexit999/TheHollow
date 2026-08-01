@@ -39,7 +39,6 @@ function onFloorOf(s: GameState, shellId: string): void {
   s.depth = def.floorDepth;
   s.depthRecords[shellId] = def.floorDepth;
   s.maxDepthRecord = def.floorDepth;
-  s.combat.wardens.push(shellId); // the Warden has fallen
   if (keystoneFor(shellId)) s.keystones.placed.push(shellId); // the floor is shored
 }
 

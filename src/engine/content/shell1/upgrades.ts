@@ -8,7 +8,6 @@ import { registerModifier } from '../../modifiers';
 import { registerUpgrade, stat, upgradeLevel } from '../../upgrades';
 import type { GameState } from '../../types';
 import { newDrill, defaultDrillName, MAX_DRILLS } from '../../systems/drills';
-import { UNCOVER_MOTIF_GRANT } from './latticeSystem';
 
 const hasKiln = (s: GameState) => s.kiln.built;
 const hasBay = (s: GameState) => s.drills.bayBuilt;
@@ -177,23 +176,6 @@ export function registerShell1Upgrades(): void {
     },
   });
   registerUpgrade({
-    id: 'latticeUncover',
-    name: 'Clear the Rubble',
-    currency: 'CONV',
-    baseCost: D(25),
-    ratio: 1,
-    maxLevel: 1,
-    resetsOnCollapse: false,
-    // The first Collapse breaks through into something older.
-    visible: (s) => s.collapse.count >= 1 && !s.lattice.unlocked,
-    description: () =>
-      'The collapse broke through into something older. Carved. Geometric. Waiting. Shore it up and see.',
-    onPurchase: (s) => {
-      s.lattice.unlocked = true;
-      s.currencies['motif'] = (s.currencies['motif'] ?? D(0)).add(UNCOVER_MOTIF_GRANT);
-    },
-  });
-  registerUpgrade({
     id: 'forgeBuild',
     name: 'Raise the Forge',
     currency: 'CONV',
@@ -208,18 +190,6 @@ export function registerShell1Upgrades(): void {
     onPurchase: (s) => {
       s.forge.built = true;
     },
-  });
-  registerUpgrade({
-    id: 'chisels',
-    name: 'Finer Chisels',
-    currency: 'CONV',
-    baseCost: D(30),
-    ratio: 1.75,
-    maxLevel: 3,
-    resetsOnCollapse: false,
-    visible: (s) => s.lattice.unlocked,
-    description: (l) =>
-      `Cut Motifs of rank ${3 + l > 5 ? 5 : 3 + l}. The Lattice accepts finer work only from finer tools (now up to rank ${2 + l}).`,
   });
   registerUpgrade({
     id: 'drillCount',

@@ -10,21 +10,14 @@
  * migration so no standing infrastructure is confiscated.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { createEngine } from '../index';
 import type { Engine, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
-import { D } from '../decimal';
-import { addCurrency, getCurrency } from '../resources';
 import { addMaterial, materialCount } from '../systems/forge';
 import { materialDef, workedMaterials, rollDrop, crackGeodeRolls } from '../materials';
 import { traitsOf } from '../traits';
 import { SHELL_EXPORTS } from '../content/exports';
-import { CHAINS, transmute, transmuteUnlocked } from '../systems/refinery';
-import { pourAlloy, crucibleUnlocked } from '../content/shell2/crucibleSystem';
-import { AXIOM_RESONANCE } from '../systems/recursionSys';
-import { stockFor, buyStock } from '../guild/guild';
+import { CHAINS, transmute } from '../systems/refinery';
 
 function fresh(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const engine = createEngine({ nowMs: 0 });
@@ -75,15 +68,6 @@ describe('the registry: one export per shell, made never dug', () => {
       }
     }
   });
-
-  it('no back door: expedition hauls filter the worked set (the leak the sim caught)', () => {
-    // Found live: the 12h sim showed 9 Kilnflux and 12 Fibercloth with ZERO
-    // firings/weaves — Museum expeditions drew from an unfiltered shell pool
-    // and had quietly minted worked materials since P16. The pool now honors
-    // the same law as rollDrop, materialsOfShell, and the stalls.
-    const museum = readFileSync(join(process.cwd(), 'src', 'engine', 'systems', 'museum.ts'), 'utf8');
-    expect(museum).toMatch(/m\.shellId === from\.id && !m\.worked/);
-  });
 });
 
 describe('Loam → Ferrite: Kilnflux fires every pour', () => {
@@ -101,72 +85,4 @@ describe('Loam → Ferrite: Kilnflux fires every pour', () => {
     expect(materialCount(s, 'kilnflux')).toBe(6);
   });
 
-  it('a pour is blocked dry once transmutation is open, and burns flux hit or miss', () => {
-    const { s, mods } = fresh();
-    s.shell.breachCount = 1;
-    s.depthRecords['ferrite'] = 300;
-    expect(crucibleUnlocked(s)).toBe(true);
-    expect(transmuteUnlocked(s)).toBe(true);
-    addMaterial(s, 'ironbloom', 60, 3);
-    for (const m of ['ingot', 'flux', 'scale', 'lodestone', 'rime']) addCurrency(s, m, D(10000));
-    const dry = pourAlloy(s, mods, ctx, [2, 1, 0, 0, 0], 'ironbloom');
-    expect(dry.ok).toBe(false);
-    expect(dry.reason).toMatch(/Kilnflux/);
-    addMaterial(s, 'kilnflux', 70, 2);
-    const wet = pourAlloy(s, mods, ctx, [2, 1, 0, 0, 0], 'ironbloom');
-    expect(wet.ok).toBe(true);
-    expect(materialCount(s, 'kilnflux')).toBe(1); // burned, hit or miss
-  });
-
-  it('THE CURRICULUM LAW BY CONSTRUCTION: no flux toll before the flux bench', () => {
-    // Below transmute mastery the Crucible pours dry — the bill starts exactly
-    // when the player can pay it. A softlock window cannot exist.
-    const { s, mods } = fresh();
-    s.shell.breachCount = 1;
-    s.depthRecords['ferrite'] = 45; // crucible open (mastery 2-5), transmute NOT
-    expect(crucibleUnlocked(s)).toBe(true);
-    expect(transmuteUnlocked(s)).toBe(false);
-    addMaterial(s, 'ironbloom', 60, 1);
-    for (const m of ['ingot', 'flux', 'scale', 'lodestone', 'rime']) addCurrency(s, m, D(10000));
-    expect(pourAlloy(s, mods, ctx, [2, 1, 0, 0, 0], 'ironbloom').ok).toBe(true);
-  });
-});
-
-describe('Hollow → Aleph: a law is written in Resonance', () => {
-  it('buyAxiom demands the ink', () => {
-    const { engine, s } = fresh();
-    addCurrency(s, 'axiom', D(3));
-    const dry = engine.dispatch({ type: 'buyAxiom', id: 'firstWord' });
-    expect(dry.ok).toBe(false);
-    expect(dry.reason).toMatch(/Resonance/);
-    addCurrency(s, 'resonance', D(AXIOM_RESONANCE));
-    expect(engine.dispatch({ type: 'buyAxiom', id: 'firstWord' }).ok).toBe(true);
-    expect(getCurrency(s, 'resonance').toNumber()).toBe(0);
-  });
-});
-
-describe("Serra's export shelf: the road runs up as well as down", () => {
-  it('stocks exactly the left-behind shells, deterministically, and sells into the Hold', () => {
-    const { s, mods } = fresh();
-    s.guild.discovered = true;
-    s.shell.breachCount = 1; // standing in Ferrite: loam is behind you
-    let shelf = stockFor(s, 'serra');
-    expect(shelf.some((slot) => slot.id === 'kilnflux')).toBe(true);
-    expect(shelf.some((slot) => slot.id === 'resonance')).toBe(false); // Aleph not reached yet
-
-    s.shell.breachCount = 6; // Aleph: she bottles the Hollow itself
-    shelf = stockFor(s, 'serra');
-    expect(shelf.some((slot) => slot.id === 'kilnflux')).toBe(true);
-    expect(shelf.some((slot) => slot.id === 'resonance')).toBe(true);
-
-    // Buying works through the normal stall machinery.
-    addCurrency(s, 'scrip', D(10000));
-    const idx = shelf.findIndex((slot) => slot.id === 'kilnflux');
-    expect(buyStock(s, mods, ctx, 'serra', idx).ok).toBe(true);
-    expect(materialCount(s, 'kilnflux')).toBe(1);
-    const rIdx = shelf.findIndex((slot) => slot.id === 'resonance');
-    const before = getCurrency(s, 'resonance').toNumber();
-    expect(buyStock(s, mods, ctx, 'serra', rIdx).ok).toBe(true);
-    expect(getCurrency(s, 'resonance').toNumber()).toBe(before + 25);
-  });
 });

@@ -180,8 +180,8 @@ export function registerShell2Upgrades(): void {
     maxLevel: 6,
     resetsOnCollapse: false,
     materialCosts: [{ id: 'rimeiron', count: 4 }],
-    visible: (s) => inFerriteEra(s) && held(s, 'rimeiron') && s.combat.seen.length >= 1,
-    description: (l) => `Hardened for what bites back. Strike power +5% per pick (now +${5 * l}%).`,
+    visible: (s) => inFerriteEra(s) && held(s, 'rimeiron'),
+    description: (l) => `Hardened for what bites back. Dust +5% per pick (now +${5 * l}%).`,
   });
   reg({
     id: 'filingsJournal',
@@ -217,7 +217,7 @@ export function registerShell2UpgradeModifiers(): void {
     { id: 'bloomJacks', bucket: 'brickYield', per: 0.08, label: 'Bloom Jacks' },
     { id: 'ironBlades', bucket: 'dustYield', per: 0.05, label: 'Ironbloom Blades' },
     { id: 'galvanicBed', bucket: 'regen', per: 0.04, label: 'Galvanic Bed' },
-    { id: 'quenchedPicks', bucket: 'strikePower', per: 0.05, label: 'Quenched Picks' },
+    { id: 'quenchedPicks', bucket: 'dustYield', per: 0.05, label: 'Quenched Picks' },
     { id: 'filingsJournal', bucket: 'xpGain', per: 0.06, label: 'Filings Journal' },
     { id: 'loderails', bucket: 'assaySpeed', per: 0.12, label: 'Loderails' },
   ];

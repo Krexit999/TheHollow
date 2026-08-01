@@ -25,7 +25,6 @@ import { drillThroughput } from './drills';
 import { KILN_DUST_PER_BRICK, kilnRate } from './kiln';
 import { grantXP } from './xp';
 import { chipCurrencyId, convCurrencyId } from '../shells';
-import { offlineHawkerScrip } from '../guild/hirelings';
 import { lawNum, sealed } from '../laws';
 import { settleOffline } from './settle';
 
@@ -124,20 +123,12 @@ export function applyOfflineProgress(
 
   if (xp.gt(0)) grantXP(state, mods, ctx, xp);
 
-  // --- 4. Craft-systems accrue (passive rank, Motif trickle, the Press). --
-  const motifsBefore = getCurrency(state, 'motif');
-  const ranksBefore = state.lattice.passiveRank;
+  // --- 4. Craft-systems accrue. --------------------------------------------
   for (const cs of allCraftSystems()) {
     if (cs.unlocked(state)) cs.offlineTick(state, mods, ctx, seconds, eff);
   }
 
   state.stats.playTimeSec += seconds * eff;
-
-  // --- 5. The Guild clock keeps time while you're away (stock windows and
-  //        caravan drift move on — opportunity, never decay), and the hawker
-  //        keeps selling surplus at his usual cadence. -----------------------
-  state.guild.clockMs += seconds * 1000;
-  const scrip = offlineHawkerScrip(state, mods, seconds * eff);
 
   const summary: OfflineSummary = {
     seconds,
@@ -147,9 +138,6 @@ export function applyOfflineProgress(
     xp,
     levelsGained: state.delver.level - levelBefore,
     chargeFilled,
-    motifs: getCurrency(state, 'motif').sub(motifsBefore),
-    passiveRanks: state.lattice.passiveRank - ranksBefore,
-    scrip,
   };
   return summary;
 }

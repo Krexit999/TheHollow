@@ -29,7 +29,7 @@ export const RUNE_GLYPHS: Record<RuneId, string> = {
 
 /** Ordered pairs: LEFT feeds RIGHT. Order is the grammar. */
 export const RUNE_PAIRS: Record<string, { bucket: Bucket; value: number; name: string }> = {
-  'kel|thur': { bucket: 'strikePower', value: 1.05, name: 'The Weighted Edge' },
+  'kel|thur': { bucket: 'drillPower', value: 1.05, name: 'The Weighted Edge' },
   'thur|kel': { bucket: 'dustYield', value: 1.04, name: 'The Sharpened Load' },
   'ash|mol': { bucket: 'regen', value: 1.04, name: 'The Warm Root' },
   'mol|ash': { bucket: 'kilnRate', value: 1.05, name: 'The Fed Fire' },
@@ -39,13 +39,13 @@ export const RUNE_PAIRS: Record<string, { bucket: Bucket; value: number; name: s
   'nix|ur': { bucket: 'descendCost', value: 0.98, name: 'The Hollow Step' },
   'mol|kel': { bucket: 'chainPower', value: 1.05, name: 'The Rooted Chain' },
   'thur|ash': { bucket: 'brickYield', value: 1.05, name: 'The Heavy Ember' },
-  'sen|kel': { bucket: 'strikePower', value: 1.03, name: 'The Aimed Edge' },
-  'vey|mol': { bucket: 'motifGain', value: 1.05, name: 'The Hidden Garden' },
+  'sen|kel': { bucket: 'dustYield', value: 1.03, name: 'The Aimed Edge' },
+  'vey|mol': { bucket: 'dropRate', value: 1.05, name: 'The Hidden Garden' },
   'ur|thur': { bucket: 'cap', value: 1.04, name: 'The Deep Weight' },
   'ash|sen': { bucket: 'assaySpeed', value: 1.2, name: 'The Bright Eye' },
   // Phase 10 — ten more orderings speak (the endgame gear loop's widest
   // axis; 24 of 56 now harmonic, 9 dissonant, 23 still silent for later).
-  'kel|ur': { bucket: 'strikePower', value: 1.04, name: 'The Deep Edge' },
+  'kel|ur': { bucket: 'dustYield', value: 1.04, name: 'The Deep Edge' },
   'ur|kel': { bucket: 'descendCost', value: 0.98, name: 'The Cutting Fall' },
   'sen|nix': { bucket: 'dropRate', value: 1.04, name: 'The Eye of Nothing' },
   'nix|sen': { bucket: 'xpGain', value: 1.05, name: 'The Lesson of Absence' },
@@ -53,7 +53,7 @@ export const RUNE_PAIRS: Record<string, { bucket: Bucket; value: number; name: s
   'mol|thur': { bucket: 'regen', value: 1.05, name: 'The Weighted Root' },
   'vey|ash': { bucket: 'kilnRate', value: 1.05, name: 'The Veiled Flame' },
   'ash|kel': { bucket: 'chainPower', value: 1.04, name: 'The Ember Chain' },
-  'sen|ur': { bucket: 'motifGain', value: 1.05, name: 'The Deep Sight' },
+  'sen|ur': { bucket: 'assaySpeed', value: 1.05, name: 'The Deep Sight' },
   'nix|vey': { bucket: 'offlineEffAdd', value: 0.01, name: 'The Hidden Nothing' },
 
   // --- Phase 14: the grammar finishes speaking -----------------------------
@@ -77,7 +77,7 @@ export const RUNE_PAIRS: Record<string, { bucket: Bucket; value: number; name: s
   'ash|ash': { bucket: 'kilnRate', value: 1.06, name: 'Fire Feeding Fire' },
   'vey|thur': { bucket: 'dropRate', value: 1.04, name: 'The Weighted Veil' },
   'vey|ur': { bucket: 'offlineEffAdd', value: 0.01, name: 'The Veil Over the Deep' },
-  'vey|nix': { bucket: 'motifGain', value: 1.04, name: 'The Veil of Nothing' },
+  'vey|nix': { bucket: 'dropRate', value: 1.04, name: 'The Veil of Nothing' },
   'mol|vey': { bucket: 'regen', value: 1.04, name: 'The Hidden Root' },
   'mol|ur': { bucket: 'regen', value: 1.06, name: 'The Root That Reaches' },
   'mol|nix': { bucket: 'cap', value: 1.04, name: 'The Root in Absence' },
@@ -88,12 +88,12 @@ export const RUNE_PAIRS: Record<string, { bucket: Bucket; value: number; name: s
   'sen|sen': { bucket: 'assaySpeed', value: 1.25, name: 'Eye Meeting Eye' },
   'ur|vey': { bucket: 'offlineEffAdd', value: 0.01, name: 'The Deep Veil' },
   'ur|mol': { bucket: 'cap', value: 1.05, name: 'The Deep Root' },
-  'ur|sen': { bucket: 'motifGain', value: 1.06, name: 'The Deep Regard' },
+  'ur|sen': { bucket: 'dropRate', value: 1.06, name: 'The Deep Regard' },
   'ur|ur': { bucket: 'descendCost', value: 0.97, name: 'Deep Beneath Deep' },
-  'nix|kel': { bucket: 'strikePower', value: 1.05, name: 'The Nothing That Cuts' },
+  'nix|kel': { bucket: 'dustYield', value: 1.05, name: 'The Nothing That Cuts' },
   'nix|ash': { bucket: 'brickYield', value: 1.03, name: 'The Cold Forge' },
   'nix|mol': { bucket: 'regen', value: 1.03, name: 'The Root of Nothing' },
-  'kel|kel': { bucket: 'strikePower', value: 1.06, name: 'Edge Against Edge' },
+  'kel|kel': { bucket: 'dustYield', value: 1.06, name: 'Edge Against Edge' },
   // (nix|nix and vey|vey stay DISSONANT — a rune doubled on itself is the one
   // shape the grammar refuses, and those two were always the refusal.)
 };
@@ -126,13 +126,13 @@ export function runeSlots(state: GameState, target: string): number {
  * long enough to hold three in a row. Discovered by carving, never listed (pillar 5).
  */
 export const RUNE_TRIPLES: Record<string, { bucket: Bucket; value: number; name: string }> = {
-  'kel|thur|kel': { bucket: 'strikePower', value: 1.08, name: 'The Balanced Blade' },
+  'kel|thur|kel': { bucket: 'dustYield', value: 1.08, name: 'The Balanced Blade' },
   'mol|ash|mol': { bucket: 'regen', value: 1.08, name: 'The Tended Hearth' },
   'sen|vey|sen': { bucket: 'dropRate', value: 1.08, name: 'The Watching Dark' },
   'ur|thur|ur': { bucket: 'cap', value: 1.09, name: 'The Deepest Weight' },
   'ash|kel|ash': { bucket: 'kilnRate', value: 1.08, name: 'The Struck Forge' },
   'nix|ur|nix': { bucket: 'descendCost', value: 0.96, name: 'The Long Fall' },
-  'kel|kel|kel': { bucket: 'strikePower', value: 1.1, name: 'Three Edges' },
+  'kel|kel|kel': { bucket: 'dustYield', value: 1.1, name: 'Three Edges' },
   'mol|mol|mol': { bucket: 'regen', value: 1.09, name: 'The Deep Garden' },
 };
 
@@ -321,7 +321,7 @@ const CARVE_TRAIL_MAX = 40;
 export const TEMPORAL_COMBOS: Array<{ id: string; name: string; runes: RuneId[]; bucket: Bucket; value: number; note: string }> = [
   { id: 'slowdawn', name: 'The Slow Dawn', runes: ['mol', 'ash', 'sen'], bucket: 'dropRate', value: 1.08, note: 'Root, then ember, then the eye — carved a session apart each. Only patience reads it.' },
   { id: 'longfall', name: 'The Long Descent', runes: ['ur', 'nix', 'thur'], bucket: 'descendCost', value: 0.94, note: 'The deep, the nothing, the weight — in that order, unhurried. The shaft opens.' },
-  { id: 'temper', name: 'The Tempered Year', runes: ['kel', 'thur', 'kel'], bucket: 'strikePower', value: 1.09, note: 'Edge, weight, edge — worked slowly into the same tool over a long while.' },
+  { id: 'temper', name: 'The Tempered Year', runes: ['kel', 'thur', 'kel'], bucket: 'dustYield', value: 1.09, note: 'Edge, weight, edge — worked slowly into the same tool over a long while.' },
 ];
 
 /** Append a carved lead-rune to the trail (with the play-second), then look for a

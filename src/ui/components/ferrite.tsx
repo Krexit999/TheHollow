@@ -1,7 +1,7 @@
 /**
- * Phase 4 UI: the Breach (the game's biggest beat — staged, not a dialog),
- * the Alloy Crucible, and the Magnet Array purchase card. The Foundry left
- * with foundry.ts (A.72).
+ * Phase 4 UI: the Breach (the game's biggest beat — staged, not a dialog)
+ * and the Magnet Array purchase card. The Foundry left with foundry.ts
+ * (A.72); the Alloy Crucible left with crucibleSystem.ts (A.7x).
  */
 import { useEffect, useState } from 'react';
 import {
@@ -18,31 +18,16 @@ import { CARRY_BASE } from '../../engine/signatures';
 import { keystoneFor, keystoneIdlePrice, keystonePlaced, keystoneSatisfied } from '../../engine/systems/keystones';
 import { faceWhole } from '../../engine/systems/absence';
 import { chipCurrencyId } from '../../engine/shells';
+import { materialDef } from '../../engine/materials';
 import type { GameState } from '../../engine';
-import { materialsOfShell } from '../../engine/materials';
-import { materialCount, equippedTool, alloySlotsUsable } from '../../engine/systems/forge';
-import { transmuteUnlocked } from '../../engine/systems/refinery';
 import {
   buyMagnet as _bm, // typing anchor
   magnetArrayUnlocked,
   magnetCost,
   MAGNET_MASTERY,
 } from '../../engine/systems/polarity';
-import { METALS, alloyDef } from '../../engine/content/shell2/alloys';
-import {
-  alloyLivePct,
-  castBindingCosts,
-  castingForAlloy,
-  crucibleSystem,
-  crucibleUnlocked,
-  CRUCIBLE_MASTERY,
-  POUR_UNIT,
-} from '../../engine/content/shell2/crucibleSystem';
-import { CASTING_BIND_TIER, materialDef } from '../../engine/materials';
 import { dispatch, useGame } from '../store';
-import { usePersisted } from '../usePersisted';
 import { Amount, HoldButton } from './shared';
-import { MaterialIcon } from './MaterialIcon';
 
 void _bm;
 
@@ -100,7 +85,6 @@ function breachBlockerLabel(state: GameState, ready: boolean): string {
   if (ready) return 'HOLD — AND LET GO OF EVERYTHING';
   const shell = currentShell(state);
   if (state.depth < shell.floorDepth) return 'Reach the floor first';
-  if (!state.combat.wardens.includes(shell.id)) return 'The Warden holds the floor';
   if (!keystoneSatisfied(state)) return 'The floor is open but unshored';
   if (shell.id === 'hollow' && !faceWhole(state)) {
     return `The face is not whole — ${state.hollow.rebuilt.length}/${state.face.cells.length} cells`;
@@ -297,240 +281,5 @@ export function MagnetCard() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// The Alloy Crucible
-// ---------------------------------------------------------------------------
 
-const METAL_COLORS = ['#9fb3c8', '#7fd4e0', '#8a97a8', '#7c8ede', '#cfeef7'];
-
-/** A saved set of dials — five metal counts plus the catalyst. */
-interface Mix { amounts: number[]; catalystId: string | null }
-
-export function CruciblePanel() {
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  const [amounts, setAmounts] = useState<number[]>([2, 1, 0, 0, 0]);
-  const [catalyst, setCatalyst] = useState<string | null>(null);
-  const [lastResult, setLastResult] = useState<string | null>(null);
-  // Bench convenience, not game state — see usePersisted's header.
-  const [lastMix, setLastMix] = usePersisted<Mix | null>('crucible.last', null);
-  const [mixes, setMixes] = usePersisted<Array<Mix | null>>('crucible.mixes', [null, null, null]);
-  if (!state) return null;
-
-  if (!crucibleUnlocked(state)) {
-    return (
-      <div className="panel p-4 text-center text-xs italic text-cave-400">
-        A crucible of black iron, found in the rubble of the fall. It wants Ferrite Mastery{' '}
-        {CRUCIBLE_MASTERY} (depth record {CRUCIBLE_MASTERY * 10}) before it will hold a pour.
-      </div>
-    );
-  }
-
-  const catalysts = materialsOfShell('ferrite').filter((m) => materialCount(state, m.id) > 0);
-  const chosen = catalyst && catalysts.some((c) => c.id === catalyst) ? catalyst : catalysts[0]?.id ?? null;
-  const canPour = chosen !== null && amounts.reduce((a, b) => a + b, 0) >= 2;
-  const codex = crucibleSystem.codex(state);
-  const tool = equippedTool(state);
-  const slotsUsable = alloySlotsUsable(state);
-
-  return (
-    <div className="space-y-2">
-      {/* The pour */}
-      <div className="panel space-y-2 p-3">
-        <div className="text-[10px] uppercase tracking-widest text-cave-300">
-          The Pour — {state.crucible.pours} poured, {state.crucible.fails} slag
-        </div>
-        {transmuteUnlocked(state) && (
-          <div className="text-[10px] leading-snug text-cave-400">
-            Every pour burns <span className="text-[#cbb072]">1 Kilnflux</span>{' '}
-            <span className="tnum">(held {materialCount(state, 'kilnflux')})</span> — Loam's export.
-            Fire it at the Refinery (The Kiln Firing) or buy it from Serra.
-          </div>
-        )}
-        {METALS.map((metal, i) => (
-          <div key={metal} className="flex items-center gap-2">
-            <span className="w-20 text-xs capitalize" style={{ color: METAL_COLORS[i] }}>
-              {metal}
-            </span>
-            <button
-              className="btn btn-cell h-6 w-6 p-0 text-sm leading-none"
-              disabled={(amounts[i] ?? 0) <= 0}
-              onClick={() => setAmounts((a) => a.map((v, j) => (j === i ? v - 1 : v)))}
-            >
-              −
-            </button>
-            <span className="tnum w-6 text-center text-sm text-cave-200">{amounts[i]}</span>
-            <button
-              className="btn btn-cell h-6 w-6 p-0 text-sm leading-none"
-              disabled={(amounts[i] ?? 0) >= 6}
-              onClick={() => setAmounts((a) => a.map((v, j) => (j === i ? v + 1 : v)))}
-            >
-              +
-            </button>
-            <span className="tnum ml-auto text-[10px] text-cave-400">
-              {(amounts[i] ?? 0) > 0 ? `${(amounts[i] ?? 0) * POUR_UNIT} ` : ''}
-              {(amounts[i] ?? 0) > 0 && (
-                <span style={{ color: METAL_COLORS[i] }}>
-                  / {fmt(getCurrency(state, metal))}
-                </span>
-              )}
-            </span>
-          </div>
-        ))}
-        <div className="flex items-center gap-2 border-t border-cave-800 pt-2">
-          <span className="text-xs text-cave-400">Catalyst</span>
-          <div className="flex flex-1 flex-wrap gap-1">
-            {catalysts.length === 0 && (
-              <span className="text-[10px] italic text-cave-400">No Ferrite ore held — chip some first.</span>
-            )}
-            {catalysts.map((m) => (
-              <button
-                key={m.id}
-                title={`${m.name} ×${materialCount(state, m.id)}`}
-                className={`rounded border p-0.5 ${chosen === m.id ? 'border-[#9fc4dd]' : 'border-transparent opacity-60 hover:opacity-100'}`}
-                onClick={() => setCatalyst(m.id)}
-              >
-                <MaterialIcon id={m.id} size={22} />
-              </button>
-            ))}
-          </div>
-        </div>
-        {/* THE BENCH. Sixty alloys behind five dials means a lot of pours, and
-            every one used to start by re-dialling the last mix from memory.
-            None of this hints at an answer — it only replays what you already
-            chose, which is the difference between ergonomics and a solution. */}
-        <div className="flex flex-wrap items-center gap-1 border-t border-cave-800 pt-2">
-          <button
-            className="btn px-2 py-0.5 text-[10px]"
-            disabled={!lastMix}
-            title={lastMix ? 'Set the dials back to your last pour' : 'Nothing poured yet'}
-            onClick={() => { if (lastMix) { setAmounts(lastMix.amounts); setCatalyst(lastMix.catalystId); } }}
-          >
-            ↺ Repeat last
-          </button>
-          <button
-            className="btn px-2 py-0.5 text-[10px]"
-            disabled={amounts.every((v) => v === 0)}
-            onClick={() => setAmounts([0, 0, 0, 0, 0])}
-          >
-            Clear
-          </button>
-          <span className="ml-auto text-[9px] uppercase tracking-widest text-cave-500">Mixes</span>
-          {[0, 1, 2].map((slot) => {
-            const saved = mixes[slot];
-            return (
-              <span key={slot} className="flex items-center">
-                <button
-                  className={`btn px-1.5 py-0.5 text-[10px] tnum ${saved ? '' : 'opacity-60'}`}
-                  title={saved ? 'Load this mix' : 'Save the current dials here'}
-                  onClick={() => {
-                    if (saved) { setAmounts(saved.amounts); setCatalyst(saved.catalystId); }
-                    else setMixes(mixes.map((m, i) => (i === slot ? { amounts, catalystId: chosen } : m)));
-                  }}
-                >
-                  {saved ? saved.amounts.join('·') : 'save'}
-                </button>
-                {saved && (
-                  <button
-                    className="px-0.5 text-[10px] leading-none text-cave-600 hover:text-cave-300"
-                    aria-label={`Forget mix ${slot + 1}`}
-                    onClick={() => setMixes(mixes.map((m, i) => (i === slot ? null : m)))}
-                  >
-                    ×
-                  </button>
-                )}
-              </span>
-            );
-          })}
-        </div>
-        <button
-          className="btn btn-warm w-full py-2 text-sm"
-          disabled={!canPour}
-          onClick={() => {
-            const result = dispatch({ type: 'pourAlloy', amounts, catalystId: chosen! });
-            if (result.ok) {
-              const data = result.data as { result: string };
-              setLastResult(data.result === 'slag' ? 'slag' : data.result);
-              setLastMix({ amounts: [...amounts], catalystId: chosen });
-            } else {
-              setLastResult(`refused:${result.reason ?? 'The crucible refuses'}`);
-            }
-          }}
-        >
-          Pour
-        </button>
-        {lastResult && (
-          <div className={`text-center text-xs ${lastResult === 'slag' ? 'text-cave-400' : lastResult.startsWith('refused:') ? 'text-[#d4a86a]' : 'text-[#9fc4dd]'}`}>
-            {lastResult === 'slag'
-              ? 'Slag. Half the metals drained off; the catalyst survived.'
-              : lastResult.startsWith('refused:')
-                ? lastResult.slice('refused:'.length)
-                : `It poured true: ${alloyDef(lastResult).name}.`}
-          </div>
-        )}
-        {state.crucible.lastHint && (
-          <div className="border-t border-cave-800 pt-1.5 text-[11px] italic text-cave-300">
-            “{state.crucible.lastHint}”
-          </div>
-        )}
-      </div>
-
-      {/* A.72: the export it fed (Lodeframe -> Greenhouse/Loom) is cut; the
-          Crucible no longer names a downstream consumer. */}
-
-      {/* Codex — discovered alloys, bindable */}
-      <div className="panel p-3">
-        <div className="flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-cave-300">Alloy Codex</span>
-          <span className="tnum text-[10px] text-cave-400">{codex.length} / 60</span>
-        </div>
-        {codex.length === 0 && (
-          <p className="mt-1 text-[11px] italic text-cave-400">Nothing has poured true yet. The ratios are out there.</p>
-        )}
-        <div className="mt-1.5 space-y-1.5">
-          {codex.map((entry) => {
-            const openSlot = tool.alloys.findIndex((a) => a === null);
-            const bound = tool.alloys.includes(entry.id);
-            return (
-              <div key={entry.id} className={`border-l-2 pl-2 ${entry.active ? 'border-[#9fc4dd]' : 'border-cave-700'}`}>
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-xs font-semibold text-cave-200">{entry.name}</span>
-                  <span className="flex shrink-0 items-baseline gap-1.5">
-                    {slotsUsable && !bound && openSlot >= 0 && (
-                      <button
-                        className="btn px-1.5 py-0 text-[10px]"
-                        onClick={() => dispatch({ type: 'socketAlloy', toolId: tool.id, slot: openSlot, alloyId: entry.id })}
-                      >
-                        Bind · {fmt(alloyLivePct(state, entry.id))}%
-                      </button>
-                    )}
-                    {bound && <span className="text-[9px] uppercase tracking-wider text-[#9fc4dd]">bound</span>}
-                    {/* B4: the pattern made stock — its own ratio again buys a
-                        casting that BINDS a Tier X+ tool (held count shown). */}
-                    <button
-                      className="btn px-1.5 py-0 text-[10px]"
-                      disabled={!castBindingCosts(entry.id).every((c) => getCurrency(state, c.metal).gte(c.amount))}
-                      title={`${materialDef(castingForAlloy(entry.id)).name} — a Tier ${CASTING_BIND_TIER}+ binding part. Costs ${castBindingCosts(entry.id).map((c) => `${c.amount} ${c.metal}`).join(' + ')}.`}
-                      onClick={() => dispatch({ type: 'castBinding', alloyId: entry.id })}
-                    >
-                      Cast · {materialDef(castingForAlloy(entry.id)).name.split(' ')[0]}
-                      <span className="tnum ml-1 text-cave-500">×{materialCount(state, castingForAlloy(entry.id))}</span>
-                    </button>
-                  </span>
-                </div>
-                <div className="text-[10px] italic text-cave-400">{entry.flavor}</div>
-                <div className="text-[10px] text-cave-300">{entry.effect}</div>
-              </div>
-            );
-          })}
-        </div>
-        {!slotsUsable && codex.length > 0 && (
-          <p className="mt-2 text-[10px] italic text-cave-400">
-            Binding alloys into tools answers to Ferrite Mastery 6 (tier IV+ tools carry the slots).
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
+// The Alloy Crucible left with crucibleSystem.ts (A.7x).

@@ -6,31 +6,22 @@
 import { D, Decimal } from './decimal';
 import type { ModifierCache } from './modifiers';
 import { addCurrency, allCurrencies, getCurrency, spendCurrency } from './resources';
-import { doSpiral, gridSlotCost, licenceCost, startChallenge, abandonChallenge } from './systems/spiral';
-import { GRID_CELLS } from './content/shell7/gridModules';
+import { doSpiral, gridSlotCost, licenceCost } from './systems/spiral';
 import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from './systems/relics';
-import { claimExpedition, ROUTE_BY_ID, routeDurationMs } from './systems/museum';
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
 import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
-  installLift, hasLift, railDepth, workExcavation,
+  installLift, hasLift, railDepth,
 } from './systems/shaftSys';
 import { doCollapse } from './systems/collapseSys';
 import { applyOfflineProgress } from './systems/offline';
 import { coreNodeAvailable, coreNodeCost, coreNodeDef, coreNodeLevel } from './content/shell1/coreTree';
 import { skillNodeDef, skillRank, spentSkillPoints, skillNodeUnlocked } from './content/shell1/skillTree';
-import {
-  buyLatticeRing,
-  placeMotif,
-  removeMotif,
-  upgradeMotif,
-} from './content/shell1/latticeSystem';
-import { hexKey, parseKey } from './systems/lattice/hex';
 import { allCraftSystems } from './craft';
-import { craftTool, craftFromParts, discardTool, socketAlloy, socketGem, consumeMaterial, materialCount, addMaterial } from './systems/forge';
+import { craftTool, craftFromParts, discardTool, socketGem, consumeMaterial, materialCount, addMaterial } from './systems/forge';
 import { setSocket, type SocketFill } from './systems/toolSockets';
 import { forgeDrillAlloy, clearDrillAlloy, fireNow } from './systems/drillAlloys';
 import { digComplete, openOre, workOre } from './systems/ores';
@@ -40,23 +31,8 @@ import { crackGeode, startAssay } from './systems/drops';
 import { buyResonantMemory, doBreach } from './systems/breach';
 import { buyConfluenceSlot, buyConfluenceRank, setConfluenceSlot } from './systems/confluence';
 import { buyMagnet, toggleMagnet } from './systems/polarity';
-import { castBinding, pourAlloy } from './content/shell2/crucibleSystem';
-import {
-  autoResolvePending,
-  combatTurn,
-  fightWarden,
-  fleePending,
-  startFight,
-} from './combat/combat';
-import { craftGear, unequipGear } from './combat/gear';
-import { buyStock, presentIds, sellMaterial, spendCharter } from './guild/guild';
-import { acceptContract, completeContract, rerollContract } from './guild/contracts';
-import { hire, HIRELING_DEFS } from './guild/hirelings';
-import { markFragmentRead, translateFragment, FRAGMENTS } from './guild/sable';
 import { useTechnique } from './techniques';
 import { placeKeystone } from './systems/keystones';
-import { equipTitle } from './guild/titles';
-import { caravanTrade } from './guild/caravan';
 import { setMirror } from './systems/refraction';
 import { inscribe } from './content/shell4/runes';
 import { RUNES } from './content/shell4/runes';
@@ -76,16 +52,12 @@ import { noteToolClass } from './systems/toolClass';
 import { startBio } from './systems/toolBio';
 import { applyToolMod, stripToolMod } from './systems/toolMods';
 import { salvageTool, bulkSalvage } from './systems/salvage';
-// The staged craft verbs retired with the Workbench (A.70); `fuseGems` did not
-// — it moved to the Refinery's gem bench.
-import { fuseGems } from './systems/workbenchActs';
 import { practiceRunes } from './content/shell4/runes';
 import { temperTool } from './systems/tempering';
 import type { PurityBand } from './materials';
 import { materialDef, MATERIALS, GEMS } from './materials';
 import { listen, rebuildCell } from './systems/absence';
-import { buyAxiom, doRecursion } from './systems/recursionSys';
-import { wardenOf, SPECIES } from './combat/species';
+import { doRecursion } from './systems/recursionSys';
 import { lawFlag, sealed } from './laws';
 import { allShells, convCurrencyId, resolveCurrencyId } from './shells';
 import { MAX_DRILLS, newDrill, defaultDrillName } from './systems/drills';
@@ -296,8 +268,6 @@ export function handleAction(
       return collectCache(state, ctx, action.index);
     case 'installLift':
       return installLift(state, ctx);
-    case 'workExcavation':
-      return workExcavation(state, ctx, action.id);
 
     case 'rideLift': {
       // The lift rides the RAIL and no further: it descends through cleared/
@@ -322,24 +292,6 @@ export function handleAction(
         return { ok: false, reason: 'This world does not fall. You go on from where you are.' };
       }
       return doCollapse(state, mods, ctx, false, action.fall ?? 'clean');
-
-    case 'placeMotif':
-      return placeMotif(state, mods, ctx, action.q, action.r, action.shape, action.rank);
-
-    case 'removeMotif':
-      return removeMotif(state, ctx, action.q, action.r);
-
-    case 'upgradeMotif':
-      return upgradeMotif(state, ctx, action.q, action.r);
-
-    case 'buyLatticeRing':
-      return buyLatticeRing(state, ctx);
-
-    case 'setLatticePress': {
-      if (!state.lattice.doors.press) return { ok: false, reason: 'The Press is not yet found' };
-      state.lattice.pressOn = action.on;
-      return { ok: true };
-    }
 
     case 'equipTool': {
       const idx = state.forge.tools.findIndex((t) => t.id === action.toolId);
@@ -398,80 +350,6 @@ export function handleAction(
     case 'placeKeystone':
       return placeKeystone(state, ctx, action.leg);
 
-    case 'pourAlloy':
-      return pourAlloy(state, mods, ctx, action.amounts, action.catalystId);
-
-    case 'socketAlloy':
-      return socketAlloy(state, ctx, action.toolId, action.slot, action.alloyId);
-
-    case 'castBinding':
-      return castBinding(state, ctx, action.alloyId);
-
-    case 'combatEngage': {
-      const pending = state.combat.pending;
-      if (!pending) return { ok: false, reason: 'Nothing stirring' };
-      return startFight(state, ctx, pending.speciesId);
-    }
-
-    case 'combatAuto':
-      return autoResolvePending(state, mods, ctx);
-
-    case 'combatFlee':
-      // THE LOUD DARK (challenge): nothing lets you past.
-      if (sealed(state, 'sealFlee')) {
-        return { ok: false, reason: 'It is between you and the stair. There is no slipping away.' };
-      }
-      return fleePending(state, ctx);
-
-    case 'combatTurn':
-      return combatTurn(state, mods, ctx, { move: action.move, act: action.act, timing: action.timing });
-
-    case 'fightWarden':
-      return fightWarden(state, mods, ctx, action.auto);
-
-    case 'setAutoResolve':
-      state.combat.autoResolve = action.on;
-      return { ok: true };
-
-    case 'craftGear':
-      return craftGear(state, mods, ctx, action.gearId);
-
-    case 'unequipGear':
-      return unequipGear(state, ctx, action.slot);
-
-    case 'buyStock':
-      return buyStock(state, mods, ctx, action.npcId, action.slot, action.stance);
-
-    case 'sellMaterial':
-      return sellMaterial(state, mods, ctx, action.materialId, action.count);
-
-    case 'acceptContract':
-      return acceptContract(state, action.slot);
-
-    case 'completeContract':
-      return completeContract(state, mods, ctx, action.slot, presentIds(state));
-
-    case 'rerollContract':
-      return rerollContract(state, action.slot, presentIds(state));
-
-    case 'hire':
-      return hire(state, ctx, action.npcId);
-
-    case 'translateFragment':
-      return translateFragment(state, ctx, action.fragmentId);
-
-    case 'markFragmentRead':
-      return markFragmentRead(state, ctx, action.fragmentId);
-
-    case 'equipTitle':
-      return equipTitle(state, ctx, action.titleId);
-
-    case 'caravanTrade':
-      return caravanTrade(state, mods, ctx, action.route, action.amount);
-
-    case 'spendCharter':
-      return spendCharter(state, ctx, action.sink);
-
     case 'setBeamRow': {
       state.refraction.entryRow = Math.max(0, Math.min(state.face.h - 1, action.row));
       state.refraction.pathDirty = true;
@@ -506,12 +384,6 @@ export function handleAction(
 
     case 'layPipe':
       return layPipe(state, action.cell);
-
-    case 'recallCrew': {
-      state.guild.crewRecalled = true;
-      ctx.emit({ type: 'crewRecalled' });
-      return { ok: true };
-    }
 
     case 'refine':
       return refine(state, ctx, action.materialId, action.band as PurityBand);
@@ -603,8 +475,6 @@ export function handleAction(
       return salvageTool(state, ctx, action.toolId, action.extract);
     case 'bulkSalvage':
       return bulkSalvage(state, ctx, action.toolIds, action.extract);
-    case 'fuseGems':
-      return fuseGems(state, ctx, action.gemId);
     case 'practiceRunes':
       return practiceRunes(state, ctx, action.sequence);
 
@@ -625,10 +495,7 @@ export function handleAction(
     case 'touchCore': {
       if (state.shell.current !== 'aleph') return { ok: false, reason: 'The Core is at the bottom of everything, not here' };
       if (state.depth < 40) return { ok: false, reason: 'Deeper. It is always deeper' };
-      const finalWarden = wardenOf('aleph');
-      if (finalWarden && !state.combat.wardens.includes('aleph') && !lawFlag(state, 'wardenOptional')) {
-        return { ok: false, reason: 'Something is standing between you and the first rock. It has been waiting the whole time' };
-      }
+      // Combat is gone (A.7x) — the final Warden gate went with it.
       state.aleph.coreTouched = true;
       ctx.emit({ type: 'coreTouched' });
       return { ok: true };
@@ -636,9 +503,6 @@ export function handleAction(
 
     case 'recurse':
       return doRecursion(state, ctx, deps.replaceState);
-
-    case 'buyAxiom':
-      return buyAxiom(state, ctx, action.id);
 
     // --- Phase 12: the long tail ------------------------------------------
     case 'spiral':
@@ -660,61 +524,6 @@ export function handleAction(
       if (held.lt(cost)) return { ok: false, reason: `${cost} Spiral for the next licence` };
       spendCurrency(state, 'spiral', D(cost));
       state.spiral.licences += 1;
-      ctx.dirty();
-      return { ok: true };
-    }
-
-    case 'placeModule': {
-      if (!state.spiral.modules.includes(action.id)) return { ok: false, reason: 'That module is not unlocked' };
-      if (action.cell < 0 || action.cell >= GRID_CELLS) return { ok: false, reason: 'No such cell' };
-      const used = Object.keys(state.spiral.grid).length;
-      if (state.spiral.grid[action.cell] === undefined && used >= state.spiral.slots) {
-        return { ok: false, reason: 'No free slot — buy one with Spiral' };
-      }
-      for (const [cell, id] of Object.entries(state.spiral.grid)) {
-        if (id === action.id && Number(cell) !== action.cell) delete state.spiral.grid[Number(cell)];
-      }
-      state.spiral.grid[action.cell] = action.id;
-      ctx.dirty();
-      ctx.emit({ type: 'modulePlaced', id: action.id, cell: action.cell });
-      return { ok: true };
-    }
-
-    case 'clearModule': {
-      delete state.spiral.grid[action.cell];
-      ctx.dirty();
-      return { ok: true };
-    }
-
-    case 'startChallenge':
-      return startChallenge(state, ctx, action.id, deps.replaceState);
-
-    case 'abandonChallenge':
-      return abandonChallenge(state, ctx, deps.replaceState);
-
-    case 'licenseShell': {
-      if (state.spiral.shells.length >= state.spiral.licences) {
-        return { ok: false, reason: 'No licence free — buy one with Spiral' };
-      }
-      if (state.spiral.shells.some((s) => s.shellId === action.shellId)) {
-        return { ok: false, reason: 'That world already runs' };
-      }
-      state.spiral.shells.push({ shellId: action.shellId, depth: 0, policy: null, runSec: 0, collapses: 0 });
-      ctx.dirty();
-      ctx.emit({ type: 'shellLicensed', shellId: action.shellId });
-      return { ok: true };
-    }
-
-    case 'setShellPolicy': {
-      const sh = state.spiral.shells.find((s) => s.shellId === action.shellId);
-      if (!sh) return { ok: false, reason: 'That world does not run' };
-      sh.policy = action.policy;
-      ctx.dirty();
-      return { ok: true };
-    }
-
-    case 'takeInHand': {
-      state.spiral.inHand = action.shellId;
       ctx.dirty();
       return { ok: true };
     }
@@ -763,32 +572,6 @@ export function handleAction(
       if (r.ok) ctx.dirty();
       return r;
     }
-
-    case 'sendExpedition': {
-      const route = ROUTE_BY_ID.get(action.routeId);
-      if (!route) return { ok: false, reason: 'No such route' };
-      if (state.expeditions.active.some((e) => e.crewId === action.crewId)) {
-        return { ok: false, reason: 'That crew is already out' };
-      }
-      // A crew can set off from an installed point on the column — a cache — not
-      // only the surface. A deeper start reaches a deeper world (see museum.ts).
-      const fromDepth = action.fromDepth ?? 0;
-      if (fromDepth > 0 && !state.shaft.caches.some((c) => c.shell === state.shell.current && c.depth === fromDepth)) {
-        return { ok: false, reason: 'A crew departs the column only from a cache you have sunk.' };
-      }
-      state.expeditions.active.push({
-        crewId: action.crewId,
-        routeId: action.routeId,
-        startedMs: state.guild.clockMs,
-        durationMs: routeDurationMs(state, action.crewId, route),
-        fromDepth,
-      });
-      ctx.dirty();
-      return { ok: true };
-    }
-
-    case 'claimExpedition':
-      return claimExpedition(state, ctx, action.crewId);
 
     case 'setKilnReverse': {
       if (!lawFlag(state, 'kilnReverse')) return { ok: false, reason: 'The Kiln only runs one way. So far' };
@@ -928,8 +711,6 @@ export function handleAction(
         // The structures, which are flags rather than records.
         state.kiln.built = true;
         state.forge.built = true;
-        state.lattice.unlocked = true;
-        state.guild.discovered = true;
         state.drills.bayBuilt = true;
         if (state.drills.units.length === 0) state.drills.units.push(newDrill(defaultDrillName(0)));
         // Rooms that open on a COUNTER rather than a flag. Each is nudged to
@@ -951,11 +732,11 @@ export function handleAction(
           def.onPurchase?.(state, 1);
         }
         /**
-         * THE FOUR COLLECTION-GATED ROOMS. Runes, Bestiary, Journal and
-         * Expeditions do not open on a structure or a depth — they open on
-         * HAVING FOUND SOMETHING, so setting a flag does nothing and the first
-         * pass of this left them shut (caught by the driver counting rooms,
-         * which is why it counts rooms rather than trusting the list).
+         * COLLECTION-GATED ROOMS. Runes does not open on a structure or a
+         * depth — it opens on HAVING FOUND SOMETHING, so setting a flag does
+         * nothing and the first pass of this left it shut (caught by the
+         * driver counting rooms, which is why it counts rooms rather than
+         * trusting the list).
          *
          * Each is seeded with ONE real entry taken from its own registry, never
          * a fabricated id: a panel that renders a record with no definition
@@ -963,21 +744,6 @@ export function handleAction(
          */
         if (!Object.values(state.runes.found).some((n) => n > 0)) {
           for (const r of RUNES) state.runes.found[r] = Math.max(1, state.runes.found[r] ?? 0);
-        }
-        if (state.combat.seen.length === 0) {
-          for (const sp of SPECIES) if (!state.combat.seen.includes(sp.id)) state.combat.seen.push(sp.id);
-        }
-        if (state.guild.sable.found.length === 0) {
-          for (const f of FRAGMENTS) if (!state.guild.sable.found.includes(f.id)) state.guild.sable.found.push(f.id);
-        }
-        if (Object.keys(state.guild.hirelings).length === 0) {
-          // Berths first, or the crew loft refuses the hire it is being handed.
-          state.guild.berths = Math.max(state.guild.berths, 4);
-          for (const h of HIRELING_DEFS.slice(0, 2)) {
-            state.guild.hirelings[h.npcId] = {
-              level: 0, xp: 0, status: 'well', hiredAtMs: state.guild.clockMs,
-            };
-          }
         }
         ctx.dirty();
         return { ok: true };
@@ -997,55 +763,6 @@ export function handleAction(
 
     case 'setConfirmSpendFrac': {
       state.qol.confirmSpendFrac = Math.max(0, Math.min(1, action.frac));
-      return { ok: true };
-    }
-
-    case 'saveLatticeLayout': {
-      const lat = state.lattice;
-      if (!lat.unlocked) return { ok: false, reason: 'The Lattice is still buried' };
-      const motifs = Object.entries(lat.cells).map(([key, m]) => {
-        const { q, r } = parseKey(key);
-        return { q, r, shape: m.shape, rank: m.rank };
-      });
-      if (motifs.length === 0) return { ok: false, reason: 'The board is empty — nothing to remember' };
-      const id = nextQolId(state.qol.latticeLayouts, 'll');
-      state.qol.latticeLayouts.push({
-        id,
-        name: action.name.trim() || `Layout ${state.qol.latticeLayouts.length + 1}`,
-        motifs,
-      });
-      return { ok: true, data: { id } };
-    }
-
-    case 'restoreLatticeLayout': {
-      const layout = state.qol.latticeLayouts.find((l) => l.id === action.id);
-      if (!layout) return { ok: false, reason: 'No such layout' };
-      const lat = state.lattice;
-      if (!lat.unlocked) return { ok: false, reason: 'The Lattice is still buried' };
-      // Fill empty sockets only; leave anything already placed alone. Placement
-      // pays the ordinary Motif cost through the normal path, so no free boards.
-      let placed = 0;
-      for (const m of layout.motifs) {
-        if (lat.cells[hexKey(m.q, m.r)]) continue;
-        const res = placeMotif(state, mods, ctx, m.q, m.r, m.shape, m.rank);
-        if (res.ok) placed++;
-        else if (res.reason?.includes('Motif')) break; // out of currency — stop here
-      }
-      return placed > 0
-        ? { ok: true, data: { placed } }
-        : { ok: false, reason: 'Nothing to place — the board is already set, or not enough Motifs' };
-    }
-
-    case 'deleteLatticeLayout': {
-      state.qol.latticeLayouts = state.qol.latticeLayouts.filter((l) => l.id !== action.id);
-      return { ok: true };
-    }
-
-    case 'toggleChordLock': {
-      const locked = state.qol.lockedChords;
-      const idx = locked.indexOf(action.id);
-      if (idx >= 0) locked.splice(idx, 1);
-      else locked.push(action.id);
       return { ok: true };
     }
 
@@ -1121,16 +838,6 @@ export function handleAction(
       return { ok: true };
     }
   }
-}
-
-/** Deterministic, collision-free id for a saved-item list: prefix + (max+1). */
-function nextQolId(items: { id: string }[], prefix: string): string {
-  let max = 0;
-  for (const it of items) {
-    const n = parseInt(it.id.slice(prefix.length), 10);
-    if (Number.isFinite(n) && n > max) max = n;
-  }
-  return `${prefix}${max + 1}`;
 }
 
 export { MAX_DRILLS };

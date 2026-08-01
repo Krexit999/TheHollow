@@ -465,17 +465,6 @@ describe('tempering is a CONDITION, not a third stat source', () => {
     expect(cold).toBeGreaterThan(0); // idles, never dead
   });
 
-  it('Lumen and Frost are genuine inverses — never both holding', () => {
-    const { s } = fresh();
-    s.guild.discovered = true;
-    const lumen = TEMPERS.find((t) => t.id === 'lumen')!;
-    const frost = TEMPERS.find((t) => t.id === 'frost')!;
-    for (let seg = 0; seg < 30; seg++) {
-      s.guild.clockMs = seg * 50 * 60_000;
-      expect(lumen.active(s) && frost.active(s), `both held at segment ${seg}`).toBe(false);
-    }
-  });
-
   it('re-tempering is CHEAPER than the first quench', () => {
     const { s } = fresh();
     openTrough(s);

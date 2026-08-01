@@ -13,7 +13,6 @@ import { exportSave, importSave } from '../../engine/save/exportSave';
 import { serialize } from '../../engine/save/codec';
 import { dispatch, useGame } from '../store';
 import { HoldButton } from './shared';
-import { AutoResolveRow } from './combat';
 import { ComfortSettings } from './qol';
 
 // ---------------------------------------------------------------------------
@@ -143,7 +142,6 @@ export function VaultPanel() {
 
   return (
     <div className="space-y-2">
-      <AutoResolveRow />
       <ComfortSettings />
       <div className="panel space-y-2 p-3">
         <div className="flex items-center justify-between text-xs text-cave-400">

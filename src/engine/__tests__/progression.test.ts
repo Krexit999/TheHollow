@@ -107,7 +107,6 @@ describe('keystones — the breach gate', () => {
   const atFloor = () => {
     const { engine, s } = fresh();
     s.depth = 150;
-    s.combat.wardens.push('loam');
     return { engine, s };
   };
 
@@ -148,7 +147,6 @@ describe('keystones — the breach gate', () => {
     // floor and the stub guarantee holds.
     s.shell.current = 'verdance';
     s.depth = 290;
-    s.combat.wardens.push('verdance');
     expect(canBreach(s)).toBe(true);
   });
 
@@ -157,7 +155,6 @@ describe('keystones — the breach gate', () => {
     s.shell.current = 'ferrite';
     s.shell.breachCount = 1;
     s.depth = 250;
-    s.combat.wardens.push('ferrite');
     expect(canBreach(s)).toBe(false);
     addMaterial(s, 'steelcasting', 70, 1);
     s.currencies['scale'] = D(50);

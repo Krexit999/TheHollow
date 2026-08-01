@@ -20,7 +20,6 @@
 import type { GameState } from '../../engine';
 import { allCurrencies } from '../../engine/resources';
 import { MATERIALS, type MaterialDef } from '../../engine/materials';
-import { SPECIES } from '../../engine/combat/species';
 import { allShells } from '../../engine/shells';
 import { CLUSTERS } from '../nav';
 import { systemCopy } from '../systemCopy';
@@ -191,34 +190,7 @@ function currencyEntries(): CompendiumEntry[] {
   }));
 }
 
-// ---------------------------------------------------------------------------
-// The Deepwrought — ONLY what the player has already met
-// ---------------------------------------------------------------------------
-
-function speciesEntries(): CompendiumEntry[] {
-  return SPECIES.map((sp) => ({
-    id: `species:${sp.id}`,
-    kind: 'species' as const,
-    title: sp.name,
-    summary: `${shellName(sp.shellId)} · threat ${sp.tier}`,
-    keywords: [sp.id, sp.name, sp.shellId, 'species', 'deepwrought', 'monster', 'combat'],
-    group: shellName(sp.shellId),
-    body: {
-      paragraphs: [
-        sp.flavor ?? 'Something that lives down here.',
-        'What it drops and how it fights are recorded in the Bestiary as you learn them — kill one three times and the book gives up its tell.',
-      ],
-      facts: [
-        ['Shell', shellName(sp.shellId)],
-        ['Threat tier', String(sp.tier)],
-      ],
-    },
-    // The Bestiary earns its notes; the Compendium reads from it and never
-    // spoils a thing you have not met.
-    gate: (s: GameState) => s.combat.seen.includes(sp.id),
-    gateNote: 'You have not met this one. The Bestiary fills in as you do.',
-  }));
-}
+// The Deepwrought (species) compendium entries removed A.7x — combat/* cut.
 
 // ---------------------------------------------------------------------------
 // Conceptual pages — hand-authored, in pages.ts
@@ -317,7 +289,6 @@ export function allEntries(): CompendiumEntry[] {
     ...systemEntries(),
     ...materialEntries(),
     ...currencyEntries(),
-    ...speciesEntries(),
   ];
   return cache;
 }

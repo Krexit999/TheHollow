@@ -82,7 +82,9 @@ export const LEGENDARY_BOOST_MAX = 1.6;
 const deepest = (s: GameState, shell: string): number => s.depthRecords?.[shell] ?? 0;
 const achievementCount = (s: GameState): number =>
   Object.keys(s.achievements?.unlocked ?? {}).length;
-const wardensFelled = (s: GameState): number => s.combat?.wardens?.length ?? 0;
+// Combat is gone (A.7x); every past Breach implied a floor was overcome, so
+// breachCount is the surviving proxy for wardens felled.
+const wardensFelled = (s: GameState): number => s.shell?.breachCount ?? 0;
 
 /**
  * SEVEN, one per part type, so a fully legendary tool is a real long-game goal

@@ -48,7 +48,6 @@ import { allUpgrades, stat } from '../upgrades';
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { applyFieldSize, cellCap } from './face';
 import { runFaceReset } from '../signatures';
-import { harmHireling } from '../guild/hirelings';
 import { chipCurrencyId, currentShell } from '../shells';
 import { lawFlag, sealed, challengeNum } from '../laws';
 import { masteryLevel } from './mastery';
@@ -304,19 +303,9 @@ function tickPressure(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt:
 // The flood — a Collapse that pays nothing
 // ---------------------------------------------------------------------------
 
-/** Deterministic casualty: the longest-serving hireling still in the smoke. */
-export function floodCasualty(state: GameState): string | null {
-  if (state.guild.crewRecalled) return null;
-  const staffed = Object.entries(state.guild.hirelings)
-    .filter(([, h]) => h.status === 'well')
-    .sort((a, b) => (a[1].hiredAtMs ?? 0) - (b[1].hiredAtMs ?? 0));
-  return staffed.length > 0 ? staffed[0]![0] : null;
-}
-
 export function floodRun(state: GameState, mods: ModifierCache, ctx: EngineCtx): void {
   const p = state.pressure;
   const depthLost = state.depth;
-  const casualty = floodCasualty(state);
   // The column remembers where the water took you — a scar on the shaft wall.
   logScar(state, ctx, 'flood', depthLost);
 
@@ -338,11 +327,6 @@ export function floodRun(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   p.overpressureAtSec = null;
   p.choke = false;
   p.floods += 1;
-
-  if (casualty) {
-    harmHireling(state, casualty, true);
-    ctx.emit({ type: 'hirelingLost', npcId: casualty });
-  }
 
   ctx.dirty();
   applyFieldSize(state, mods);

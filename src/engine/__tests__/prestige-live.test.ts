@@ -49,7 +49,6 @@ describe('the prestige ladder pays what the formula says — through dispatch', 
     // Stand on the floor with every gate open: warden felled, keystone set.
     s.depth = 150;
     s.maxDepthRecord = 150;
-    s.combat.wardens.push('loam');
     s.keystones.placed.push('loam');
     s.shell.coresEarnedThisBreach = D(800);
     const expected = echoesForCores(D(800)).toNumber();

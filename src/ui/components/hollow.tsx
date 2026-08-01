@@ -10,8 +10,7 @@ import { D } from '../../engine/decimal';
 import {
   HOLLOW_FLOOR, faceWhole, rebuildCost, silenceRatePerMin, voidRate,
 } from '../../engine/systems/absence';
-import { AXIOMS } from '../../engine/content/shell7/axioms';
-import { axiomsFromEchoes, canRecurse, AXIOM_RESONANCE } from '../../engine/systems/recursionSys';
+import { axiomsFromEchoes, canRecurse } from '../../engine/systems/recursionSys';
 import { materialCount } from '../../engine/systems/forge';
 import { dispatch, useGame } from '../store';
 import { Amount } from './shared';
@@ -125,8 +124,6 @@ export function RewritePanel() {
   const state = useGame((s) => s.state);
   useGame((s) => s.rev);
   if (!state) return null;
-  const owned = state.recursion.axioms;
-  const held = getCurrency(state, 'axiom');
   const atCore = state.shell.current === 'aleph';
   const nextAxioms = axiomsFromEchoes((state.totals['echo'] ?? D(0)).toNumber());
   const pending = Math.max(0, nextAxioms - state.recursion.axiomsEarned);
@@ -139,7 +136,7 @@ export function RewritePanel() {
           {!state.aleph.coreTouched ? (
             <>
               <div className="mt-1 text-[10px] leading-snug text-cave-300">
-                A desk, a chair, a pen. Reach depth 40 and fell the Author, then touch the Core.
+                A desk, a chair, a pen. Reach depth 40 and touch the Core.
               </div>
               <button
                 className="btn btn-warm mt-2 w-full py-1.5 text-sm"
@@ -154,7 +151,7 @@ export function RewritePanel() {
               <div className="mt-1 text-[10px] leading-snug text-cave-300">
                 The world will reset — shells, Echoes, materials, all of it. You keep your records,
                 your Codex, your name, and your tools (blunted to heirlooms). And you keep{' '}
-                <span className="text-[#e8d88c]">{pending} Axiom{pending === 1 ? '' : 's'}</span> to rewrite the next world with.
+                <span className="text-[#e8d88c]">{pending} Axiom{pending === 1 ? '' : 's'}</span> banked for whatever writes on them next.
               </div>
               <button
                 className="btn btn-warm mt-2 w-full py-2 text-sm"
@@ -170,41 +167,13 @@ export function RewritePanel() {
 
       <div className="panel p-3">
         <div className="flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#e8d88c]">Written</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-[#e8d88c]">Recursion</span>
           <span className="tnum text-[10px] text-cave-400">
-            Axioms <Amount value={held} color="#f0e6a8" /> · {owned.length} written · recursions {state.recursion.count}
+            recursions {state.recursion.count} · axioms earned {state.recursion.axiomsEarned}
           </span>
         </div>
         <div className="mt-1 text-[10px] italic leading-snug text-cave-400">
-          Each Axiom rewrites a rule, permanently, across every future world. You will finish
-          the game owning a handful — scarcity is the point. Sable wrote one each time she sat here.
-        </div>
-        <div className="mt-2 space-y-1">
-          {AXIOMS.map((a) => {
-            const have = owned.includes(a.id);
-            return (
-              <div key={a.id} className={`rounded-md border p-2 ${have ? 'border-[#8a7838]/60 bg-[#1a1710]' : 'border-cave-700'}`}>
-                <div className="flex items-baseline justify-between">
-                  <span className={`text-[11px] font-semibold ${a.heresy ? 'text-[#e07a6a]' : 'text-cave-200'}`}>
-                    {a.name}{a.heresy ? ' — heresy' : ''}
-                  </span>
-                  {have ? (
-                    <span className="text-[9px] text-[#e8d88c]">written</span>
-                  ) : (
-                    <button
-                      className="btn px-2 py-0.5 text-[9px]"
-                      disabled={held.lt(1) || getCurrency(state, 'resonance').lt(AXIOM_RESONANCE)}
-                      title="A law is written in Resonance — the Hollow's export. It survives Recursion; listen before you leave, or buy it bottled from Serra."
-                      onClick={() => dispatch({ type: 'buyAxiom', id: a.id })}
-                    >
-                      write · 1 Axiom + {AXIOM_RESONANCE} Res
-                    </button>
-                  )}
-                </div>
-                <div className="text-[9px] leading-snug text-cave-400">{a.felt}</div>
-              </div>
-            );
-          })}
+          Writing a law with them is gone with axioms.ts (A.7x) — the count still banks.
         </div>
       </div>
     </div>
@@ -289,7 +258,6 @@ export function ParallelView() {
         {SHELL_CARDS.map((c) => {
           const rec = state.depthRecords[c.id] ?? 0;
           const reached = rec > 0 || state.shell.current === c.id;
-          const felled = state.combat.wardens.includes(c.id);
           const held = getCurrency(state, c.chip);
           const here = state.shell.current === c.id;
           return (
@@ -311,8 +279,8 @@ export function ParallelView() {
                 <div className="mt-1 h-1 overflow-hidden rounded-full bg-black/40">
                   <div className="h-full rounded-full" style={{ width: `${Math.min(100, (rec / c.floor) * 100)}%`, background: c.color, opacity: 0.7 }} />
                 </div>
-                <div className="mt-1 text-[8px] uppercase tracking-wider" style={{ color: felled ? c.color : '#6a6258' }}>
-                  {felled ? 'warden felled' : reached ? 'delved' : 'unreached'}
+                <div className="mt-1 text-[8px] uppercase tracking-wider" style={{ color: reached ? c.color : '#6a6258' }}>
+                  {reached ? 'delved' : 'unreached'}
                 </div>
               </div>
             </div>

@@ -49,16 +49,6 @@ export const CLUSTERS: ClusterDef[] = [
     ],
   },
   {
-    id: 'craft',
-    label: 'The Craft',
-    glyph: '⚒',
-    systems: [
-      { id: 'lattice', label: 'Lattice', visible: (s) => s.lattice.unlocked },
-      { id: 'crucible', label: 'Crucible', visible: (s) => s.shell.breachCount >= 1 },
-      { id: 'automation', label: 'Automation', visible: (s) => s.spiral.count >= 1 },
-    ],
-  },
-  {
     id: 'hold',
     label: 'The Hold',
     glyph: '▤',
@@ -76,26 +66,6 @@ export const CLUSTERS: ClusterDef[] = [
       { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
       { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
       { id: 'relics', label: 'Relics', visible: (s) => s.relics.found > 0 },
-      // A.47 UNFOLDED: Museum split back into its own room. It became a real
-      // arrange-and-discover screen (exhibits, identify, curated halls) rather
-      // than a sidecar to Relics, and stacking two full panels under one
-      // header buried the exhibits below a long relic list.
-      { id: 'museum', label: 'Museum', visible: (s) => s.relics.found > 0 || s.museum.completed.length > 0 },
-    ],
-  },
-  {
-    id: 'world',
-    label: 'The World',
-    glyph: '◍',
-    systems: [
-      { id: 'guild', label: 'Guild', visible: (s) => s.guild.discovered },
-      // B5: codex surfaces — read, not worked. Wells folded into Vents.
-      // GEAR (A.71): armour, out of the Forge. It belongs beside the Bestiary —
-      // the only reason to wear any of it is what is down there.
-      { id: 'gear', label: 'Gear', visible: (s) => s.combat.stats.encounters > 0 || s.materials.totalDrops >= 30 },
-      { id: 'bestiary', label: 'Bestiary', visible: (s) => s.combat.seen.length > 0, codex: true },
-      { id: 'journal', label: 'Journal', visible: (s) => s.guild.sable.found.length > 0, codex: true },
-      { id: 'expeditions', label: 'Expeditions', visible: (s) => Object.keys(s.guild.hirelings).length > 0 },
     ],
   },
   {
@@ -105,7 +75,6 @@ export const CLUSTERS: ClusterDef[] = [
     systems: [
       { id: 'delver', label: 'Delver', visible: always },
       { id: 'collapse', label: 'Collapse', visible: (s) => s.maxDepthRecord >= 15 || s.collapse.count > 0 },
-      { id: 'rewrite', label: 'Rewrite', visible: (s) => s.shell.breachCount >= 6 || s.recursion.count >= 1 || s.recursion.axioms.length > 0 },
       { id: 'parallel', label: 'All Worlds', visible: (s) => s.recursion.count >= 1 || s.shell.current === 'aleph', codex: true },
       { id: 'spiral', label: 'The Spiral', visible: (s) => s.recursion.count >= 1 },
       { id: 'grid', label: 'Achievements', visible: always },

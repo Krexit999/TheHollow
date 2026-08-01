@@ -20,7 +20,6 @@ import { convCurrencyId, currentShell, maxToolTier } from '../shells';
 import { masteryLevel } from './mastery';
 import { sealed } from '../laws';
 import { computePartStats, headTierCap, type PartSlot } from './toolParts';
-import { gemCutMult } from './workbench';
 
 const GEM_LOOKUP: Record<string, { bucket: Bucket; value: number }> = Object.fromEntries(
   GEMS.map((g) => [g.id, { bucket: g.bucket, value: g.value }]),
@@ -595,30 +594,9 @@ export function discardTool(state: GameState, ctx: EngineCtx, toolId: number): A
   return { ok: true };
 }
 
-/** Bind a discovered alloy into an alloy slot (Ferrite Mastery 6). */
-export function socketAlloy(
-  state: GameState,
-  ctx: EngineCtx,
-  toolId: number,
-  slot: number,
-  alloyId: string,
-): ActionResult {
-  if (!alloySlotsUsable(state)) {
-    return { ok: false, reason: 'Alloy work answers to Ferrite Mastery 6' };
-  }
-  const tool = state.forge.tools.find((t) => t.id === toolId);
-  if (!tool) return { ok: false, reason: 'No such tool' };
-  if (slot < 0 || slot >= tool.alloys.length) return { ok: false, reason: 'No alloy slot there' };
-  if (tool.alloys[slot]) return { ok: false, reason: 'The slot is already bound' };
-  if (!state.crucible.discovered.includes(alloyId)) {
-    return { ok: false, reason: 'The Crucible has not poured that' };
-  }
-  // A discovered alloy is a pattern, not a consumable — binding it to a
-  // second tool is allowed; its rank/purity live in the Crucible record.
-  tool.alloys[slot] = alloyId;
-  ctx.dirty();
-  return { ok: true };
-}
+// socketAlloy (binding a Crucible-discovered alloy) removed A.7x —
+// crucibleSystem.ts is gone. `tool.alloys` stays on old saves, harmlessly
+// unfillable on new tools.
 
 // ---------------------------------------------------------------------------
 // Modifiers — the equipped tool and its gems, by name, in the pipeline.
@@ -632,7 +610,7 @@ export function registerForgeModifiers(): void {
     value: (s) => equippedTool(s).chipPower,
   });
   // One modifier per gem definition; value depends on socketed state.
-  for (const bucket of ['dustYield', 'kilnRate', 'motifGain', 'drillSpeed', 'xpGain'] as const) {
+  for (const bucket of ['dustYield', 'kilnRate', 'dropRate', 'drillSpeed', 'xpGain'] as const) {
     registerModifier({
       id: `gem.${bucket}`,
       label: 'Socketed gems',
@@ -643,8 +621,9 @@ export function registerForgeModifiers(): void {
           if (!gemId) continue;
           const def = GEM_LOOKUP[gemId];
           if (def && def.bucket === bucket) {
-            const cut = gemCutMult(s.workbench.gemCuts[gemId], 'mine');
-            v *= 1 + (def.value - 1) * cut;
+            // The Workbench is gone (A.7x) — nothing can cut a gem any more,
+            // so a socketed gem always applies at its base value.
+            v *= def.value;
           }
         }
         return v;
@@ -660,37 +639,15 @@ export function registerForgeModifiers(): void {
       for (const gemId of equippedTool(s).sockets) {
         if (!gemId) continue;
         const def = GEM_LOOKUP[gemId];
-        if (def && def.bucket === 'offlineEffAdd') v += def.value * gemCutMult(s.workbench.gemCuts[gemId], 'mine');
+        if (def && def.bucket === 'offlineEffAdd') v += def.value;
       }
       return v;
     },
   });
-  // Every gem has a combat face (Phase 5): strike multipliers stack here;
-  // HP faces are summed by playerMaxHp directly.
-  registerModifier({
-    id: 'gem.strikePower',
-    label: 'Socketed gems (edge)',
-    bucket: 'strikePower',
-    value: (s) => {
-      let v = 1;
-      for (const gemId of equippedTool(s).sockets) {
-        if (!gemId) continue;
-        const strike = GEMS.find((g) => g.id === gemId)?.combat.strikeMult;
-        if (strike) v *= 1 + (strike - 1) * gemCutMult(s.workbench.gemCuts[gemId], 'fight');
-      }
-      return v;
-    },
-  });
-}
-
-/** Gem HP faces on the equipped tool (combat reads this). */
-export function gemHpBonus(state: GameState): number {
-  let hp = 0;
-  for (const gemId of equippedTool(state).sockets) {
-    if (!gemId) continue;
-    hp += GEMS.find((g) => g.id === gemId)?.combat.hp ?? 0;
-  }
-  return hp;
+  // Combat is gone (A.7x). Every gem's combat face (strike/HP) fed only
+  // combat.ts, which is deleted — the modifier that stacked strike
+  // multipliers into a bucket, and gemHpBonus() that summed HP for it, went
+  // with it rather than being left registering into the wrong bucket.
 }
 
 // ---------------------------------------------------------------------------

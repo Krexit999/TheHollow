@@ -16,12 +16,9 @@ import { registerShell2Upgrades, registerShell2UpgradeModifiers } from './shell2
 import { registerShellContent, registerFerriteCurrencies, registerVerdanceCurrencies, registerGlassmereShell, registerCinderShell, registerHollowShell, registerAlephShell } from './shells';
 import { registerPressure } from '../systems/pressure';
 import { registerAbsence } from '../systems/absence';
-import { registerAxioms } from './shell7/axioms';
-import { clearLaws, registerChallengeLaws } from '../laws';
-import { CHALLENGES } from './shell7/challenges';
+import { clearLaws } from '../laws';
 import { registerRelicModifiers } from '../systems/relics';
 import { registerSocketModifiers } from '../systems/toolSockets';
-import { registerMuseumModifiers } from '../systems/museum';
 import { registerConfluenceModifiers } from '../systems/confluence';
 import { registerChains } from './shell2/chains';
 import { registerTemperModifiers } from '../systems/tempering';
@@ -33,21 +30,15 @@ import { registerShell1Upgrades, registerShell1UpgradeModifiers } from './shell1
 import { registerCoreTreeModifiers } from './shell1/coreTree';
 import { registerSkillModifiers } from './shell1/skillTree';
 import { registerAchievementModifiers } from './shell1/achievements';
-import { registerLattice } from './shell1/latticeSystem';
 import { registerForgeModifiers } from '../systems/forge';
 import { registerPolarity } from '../systems/polarity';
 import { registerSeepage } from '../systems/face';
 import { registerAffinity } from '../systems/affinity';
 import { opinionMult } from '../systems/opinions';
 import { registerHeirloomModifier } from '../systems/heirloom';
-import { registerGearModifiers } from '../combat/gear';
-import { registerCrucible } from './shell2/crucibleSystem';
 import { registerCurrency } from '../resources';
-import { registerGuildModifiers } from '../guild/guild';
-import { registerHirelingModifiers } from '../guild/hirelings';
-import { registerTitleModifiers } from '../guild/titles';
 
-/** Phase 12: the Spiral's currency, and the challenges' law seals. */
+/** Phase 12: the Spiral's currency. */
 function registerSpiralContent(): void {
   registerCurrency({
     id: 'spiral', name: 'Spiral', tier: 'reset', color: '#c9b8f0',
@@ -55,9 +46,6 @@ function registerSpiralContent(): void {
       'What a wound world pays out. It buys capacity — grid slots, licences for worlds to run beside yours — and nothing else. There is never much of it.',
     resetsOnCollapse: false,
   });
-  for (const c of CHALLENGES) {
-    if (c.laws) registerChallengeLaws(c.id, c.laws);
-  }
 }
 
 function registerGuildCurrencies(): void {
@@ -91,18 +79,12 @@ export function ensureContentLoaded(): void {
   registerCoreTreeModifiers();
   registerSkillModifiers();
   registerAchievementModifiers();
-  registerLattice();
   registerForgeModifiers();
   registerAffinity(opinionMult); // the equipped tool's affinity, bent by its opinions
   registerHeirloomModifier();
   registerSeepage();
   registerPolarity();
-  registerCrucible();
-  registerGearModifiers();
   registerGuildCurrencies();
-  registerGuildModifiers();
-  registerHirelingModifiers();
-  registerTitleModifiers();
   registerVerdanceCurrencies();
   registerGlassmereShell();
   registerGrowth();
@@ -114,11 +96,9 @@ export function ensureContentLoaded(): void {
   registerHollowShell();
   registerAlephShell();
   registerAbsence();
-  registerAxioms();
   registerSpiralContent();
   registerRelicModifiers();
   registerSocketModifiers();
-  registerMuseumModifiers();
   registerConfluenceModifiers();
   registerChains();
   registerTemperModifiers();

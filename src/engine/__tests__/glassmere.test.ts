@@ -6,8 +6,6 @@ import { D } from '../decimal';
 import { addCurrency, getCurrency } from '../resources';
 import { traceBeam, setMirror, splitUnlocked } from '../systems/refraction';
 import { DISSONANT, RUNE_PAIRS, inscribe, sequencePairs } from '../content/shell4/runes';
-import { AUTO_SKILL, resolveFight } from '../combat/combat';
-import { speciesOfShell, wardenOf } from '../combat/species';
 import { cellCap } from '../systems/face';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
@@ -23,7 +21,6 @@ function glassy(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const { engine, s, mods } = fresh();
   s.shell.current = 'glassmere';
   s.shell.breachCount = 3;
-  s.guild.discovered = true;
   s.collapse.count = 1;
   s.depth = 40;
   s.depthRecords['glassmere'] = 60;
@@ -98,37 +95,11 @@ describe('runes: a positional grammar with soft stakes', () => {
     const bad = inscribe(s, ctx, 'offhand', ['kel', 'vey', null]);
     expect((bad.data as { dissonant: boolean }).dissonant).toBe(true);
     expect(s.runes.fouled['offhand']).toBe(true);
-    expect(s.forge.gear).toBeDefined(); // nothing destroyed, ever
     // Re-prep costs silica.
     expect(inscribe(s, ctx, 'offhand', ['thur', 'kel', null]).ok).toBe(false);
     addCurrency(s, 'silica', D(100));
     expect(inscribe(s, ctx, 'offhand', ['thur', 'kel', null]).ok).toBe(true);
     for (const p of DISSONANT) expect(RUNE_PAIRS[p]).toBeUndefined();
-  });
-});
-
-describe('the unblinking: sight is the whole fight', () => {
-  it('blind auto bounces; reveal gear restores the reading; a period kit fells it', () => {
-    const { s, mods } = glassy();
-    expect(speciesOfShell('glassmere')).toHaveLength(15);
-    const warden = wardenOf('glassmere')!;
-    s.forge.tools.push({
-      id: 21, recipeId: 'meridianEdge', name: 'Meridian Edge', tier: 12,
-      purity: 70, chipPower: 21.5, strikePower: 300, sockets: ['bloodgarnet', 'cinderquartz', null, null], alloys: [null, null],
-    });
-    s.forge.equipped = s.forge.tools.length - 1;
-    s.forge.gear.offhand = { defId: 'frostward', purity: 60 };
-    s.forge.gear.harness = { defId: 'prismweave', purity: 60 };
-    s.delver.skills['twoHandedSwing'] = 5;
-    s.delver.skills['deepGrip'] = 3;
-    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
-    mods.invalidate();
-    // No reveal: it winds up unseen and the kit loses.
-    expect(resolveFight(s, mods, warden, AUTO_SKILL).win).toBe(false);
-    // Look before acting: reveal gear turns the same fight.
-    s.forge.gear.lantern = { defId: 'unblinkingMonocle', purity: 60 };
-    mods.invalidate();
-    expect(resolveFight(s, mods, warden, AUTO_SKILL).win).toBe(true);
   });
 });
 

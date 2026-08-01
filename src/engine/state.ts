@@ -8,12 +8,8 @@ import { initialBalances } from './resources';
 import type { GameState } from './types';
 import { defaultQolState } from './types';
 import { BASE_CAP } from './systems/face';
-import { defaultLatticeState } from './content/shell1/latticeSystem';
 import { starterTool } from './systems/forge';
 import { defaultPolarityState } from './systems/polarity';
-import { defaultCrucibleState } from './content/shell2/crucibleSystem';
-import { defaultCombatState } from './combat/combat';
-import { defaultGuildState } from './guild/guild';
 import { defaultGrowthState } from './systems/growth';
 import { defaultRefractionState } from './systems/refraction';
 import { defaultRunesState } from './content/shell4/runes';
@@ -26,10 +22,8 @@ import { defaultConfluenceState } from './systems/confluence';
 import { defaultTechniquesState } from './techniques';
 import { defaultKeystonesState } from './systems/keystones';
 import { defaultRefineryState } from './systems/refinery';
-import { defaultWorkbenchState } from './systems/workbench';
 import { defaultCastingState } from './systems/casting';
 import { defaultShaftState } from './systems/shaftSys';
-import { defaultMuseumState, defaultExpeditionsState } from './systems/museum';
 
 export function defaultShellState(): GameState['shell'] {
   return {
@@ -55,7 +49,6 @@ export function defaultForgeState(): GameState['forge'] {
     equipped: 0,
     equippedAt: 0,
     nextId: 1,
-    gear: { offhand: null, lantern: null, harness: null, boots: null },
   };
 }
 
@@ -92,9 +85,6 @@ export function initialState(nowMs: number): GameState {
     depthRecords: {},
     shell: defaultShellState(),
     polarity: defaultPolarityState(),
-    crucible: defaultCrucibleState(),
-    combat: defaultCombatState(),
-    guild: defaultGuildState(nowMs),
     growth: defaultGrowthState(),
     refraction: defaultRefractionState(),
     runes: defaultRunesState(),
@@ -104,14 +94,11 @@ export function initialState(nowMs: number): GameState {
     recursion: defaultRecursionState(),
     spiral: defaultSpiralState(),
     relics: defaultRelicsState(),
-    museum: defaultMuseumState(),
     confluences: defaultConfluenceState(),
     figures: { found: [] },
     refinery: defaultRefineryState(),
-    workbench: defaultWorkbenchState(),
     casting: defaultCastingState(),
     shaft: defaultShaftState(),
-    expeditions: defaultExpeditionsState(),
     qol: defaultQolState(),
     collapse: { count: 0, nodes: {}, lastRun: null, runStartAt: 0, traces: [] },
     delver: { xp: D(0), level: 1, skillPoints: 1, skills: {} },
@@ -131,7 +118,6 @@ export function initialState(nowMs: number): GameState {
       toolsForged: 0,
       longestOfflineSec: 0,
     },
-    lattice: defaultLatticeState(),
     materials: defaultMaterialsState(),
     forge: defaultForgeState(),
     assay: defaultAssayState(),

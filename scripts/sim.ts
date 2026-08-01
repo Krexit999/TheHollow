@@ -19,39 +19,23 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { createEngine, fmt, type Decimal, type Engine, type GameState, type MotifShape } from '../src/engine';
+import { createEngine, fmt, type Decimal, type Engine, type GameState } from '../src/engine';
 import { D } from '../src/engine/decimal';
 import { CORE_NODES, coreNodeCost, coreNodeLevel } from '../src/engine/content/shell1/coreTree';
 import { currentDescendCost, effectiveDescendCost } from '../src/engine/systems/depthSys';
 import { coresForDepth, echoesForCores, axiomsForEchoes } from '../src/engine/prestigeMath';
 import { ModifierCache } from '../src/engine/modifiers';
 import { allUpgrades, upgradeLevel, nextCost } from '../src/engine/upgrades';
-import { boardCells, hexKey, inBoard, isSealed, LINE_AXES, neighborsOf, type Axial } from '../src/engine/systems/lattice/hex';
-import { boardResonance } from '../src/engine/systems/lattice/latticeCore';
-import { ringCost, MAX_RINGS } from '../src/engine/content/shell1/latticeSystem';
 import { addMaterial, equippedTool, materialCount, requiredTier, TOOL_RECIPES } from '../src/engine/systems/forge';
-import { materialDef } from '../src/engine/materials';
 import { assayUnlocked } from '../src/engine/systems/drops';
 import { currentShell, chipCurrencyId, convCurrencyId } from '../src/engine/shells';
 import { keystoneFor, keystoneIdlePrice, keystonePlaced } from '../src/engine/systems/keystones';
 import { canBreach } from '../src/engine/systems/breach';
 import { magnetArrayUnlocked } from '../src/engine/systems/polarity';
-import { castingForAlloy, crucibleUnlocked } from '../src/engine/content/shell2/crucibleSystem';
-import { matchAlloy } from '../src/engine/content/shell2/alloys';
-import { GEAR_DEFS } from '../src/engine/combat/gear';
-import { COMPETENT_SKILL, resolveFight } from '../src/engine/combat/combat';
 import { canSpiral } from '../src/engine/systems/spiral';
-import { speciesDef, SPECIES } from '../src/engine/combat/species';
-import { rollSpecies } from '../src/engine/combat/species';
-import { contractProgress, contractSatisfied } from '../src/engine/guild/contracts';
-import { translationFee, FRAGMENTS } from '../src/engine/guild/sable';
-import { CARAVAN_ROUTES, drift } from '../src/engine/guild/caravan';
-import { TITLE_BY_ID } from '../src/engine/guild/titles';
-import { hiredCount } from '../src/engine/guild/hirelings';
 import { dpsMax, cellRegen, cellCap } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
-import { stockFor } from '../src/engine/guild/guild';
 import {
   activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceSlotCap,
 } from '../src/engine/systems/confluence';
@@ -62,7 +46,6 @@ import { BAY_DEPTH_UNLOCK } from '../src/engine/content/shell1/upgrades';
 interface Args {
   hours: number;
   policy: 'active' | 'idle' | 'balanced';
-  combat: 'auto' | 'competent' | 'optimal';
   growth: 'clear' | 'cultivate';
   logMin: number;
   out: string | null;
@@ -109,10 +92,6 @@ function parseArgs(): Args {
   if (!['active', 'idle', 'balanced'].includes(policy)) {
     throw new Error(`Unknown policy: ${policy}`);
   }
-  const combat = (get('combat') ?? 'competent') as Args['combat'];
-  if (!['auto', 'competent', 'optimal'].includes(combat)) {
-    throw new Error(`Unknown combat policy: ${combat}`);
-  }
   const growth = (get('growth') ?? 'clear') as 'clear' | 'cultivate';
   const heat = (get('heat') ?? 'balanced') as 'safe' | 'balanced' | 'greedy';
   if (!['safe', 'balanced', 'greedy'].includes(heat)) {
@@ -121,7 +100,6 @@ function parseArgs(): Args {
   return {
     hours: Number(get('hours') ?? 2),
     policy,
-    combat,
     growth,
     heat,
     logMin: Number(get('log') ?? 1),
@@ -138,13 +116,6 @@ function parseArgs(): Args {
     bay: get('bay') !== undefined ? Number(get('bay')) : null,
   };
 }
-
-// ---------------------------------------------------------------------------
-// Combat play — a little turn AI at two skill levels (auto uses the engine's
-// own resolver via setAutoResolve/combatAuto).
-// ---------------------------------------------------------------------------
-
-let combatPolicy: Args['combat'] = 'competent';
 
 // ---------------------------------------------------------------------------
 // THE INCOME INSTRUMENT (A.44 A0) — what a frontier minute is actually short of
@@ -178,158 +149,11 @@ let measuredIncomeRate = 0;
 /** Per-source income attribution, `--income` only. */
 const incomeLedger: Record<string, number> = {};
 
-function fightManually(engine: Engine, s: GameState): void {
-  const optimal = combatPolicy === 'optimal';
-  let guardCt = 400;
-  while (s.combat.active && guardCt-- > 0) {
-    const fight = s.combat.active;
-    const tg = fight.telegraph;
-    let move: -1 | 0 | 1 = 0;
-    let act: 'strike' | 'guard' = 'strike';
-    const answers = Math.random() < (optimal ? 0.97 : 0.85);
-    if (tg && tg.windup === 0 && answers) {
-      // Score every step: safety beats flanking beats standing still.
-      let bestScore = -Infinity;
-      let safeExists = false;
-      for (const m of [-1, 0, 1] as const) {
-        const lane = Math.max(0, Math.min(4, fight.playerLane + m));
-        const safe = !tg.lanes.includes(lane);
-        const flank = Math.abs(lane - fight.enemyLane) === 1 ? 1 : 0;
-        const score = (safe ? 10 : 0) + flank + (m === 0 ? 0.1 : 0);
-        if (safe) safeExists = true;
-        if (score > bestScore) {
-          bestScore = score;
-          move = m;
-        }
-      }
-      // Sweeps/crosses/all-buts can't be sidestepped in one beat: BRACE.
-      if (!safeExists) act = 'guard';
-    } else if (!tg || tg.windup > 0) {
-      // Free beat (charge winding up, or between telegraphs): work the flank.
-      const d = fight.enemyLane - fight.playerLane;
-      move = d > 1 ? 1 : d < -1 ? -1 : Math.abs(d) === 1 ? 0 : fight.playerLane > 0 ? -1 : 1;
-    }
-    const timing = optimal ? 1.5 : Math.random() < 0.6 ? 1.5 : 1;
-    engine.dispatch({ type: 'combatTurn', move, act, timing });
-  }
-}
-
-function combatPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
-  // Encounters: auto policy lets the engine resolve; manual policies engage.
-  if (s.combat.pending && combatPolicy !== 'auto') {
-    // A competent player draws the fighting iron before sizing the fight up,
-    // and slips away from a hopeless one (5% toll) rather than donating 10%.
-    const sp = speciesDef(s.combat.pending.speciesId);
-    const chipper = s.forge.tools.reduce((a, b) => (b.chipPower > a.chipPower ? b : a));
-    const striker = s.forge.tools.reduce((a, b) => (b.strikePower > a.strikePower ? b : a));
-    engine.dispatch({ type: 'equipTool', toolId: striker.id });
-    mods.invalidate();
-    spawnMix.total += 1;
-    if (!resolveFight(s, mods, sp, COMPETENT_SKILL).win) {
-      engine.dispatch({ type: 'combatFlee' });
-    } else {
-      spawnMix.engageable += 1;
-      engine.dispatch({ type: 'combatEngage' });
-      fightManually(engine, s);
-    }
-    engine.dispatch({ type: 'equipTool', toolId: chipper.id });
-    mods.invalidate();
-  }
-  // The Warden, at the floor: always attempted on AUTO in the sim — the
-  // worst case, which the spec requires to work with appropriate gear.
-  const shell = currentShell(s);
-  if (
-    s.depth >= shell.floorDepth &&
-    !s.combat.wardens.includes(shell.id) &&
-    s.stats.playTimeSec - lastWardenTry > 120
-  ) {
-    lastWardenTry = s.stats.playTimeSec;
-    // Bring a WEAPON to a warden: forge the strike-heavy pattern first.
-    const weapon =
-      shell.id === 'hollow' || shell.id === 'aleph' ? 'cinderMaul' // ladder ends at XV
-      : shell.id === 'cinder' ? 'cinderMaul'
-      : shell.id === 'glassmere' ? 'meridianEdge'
-      : shell.id === 'verdance' ? 'wildstarFalx'
-      : shell.id === 'ferrite' ? 'stormcaller' : 'wardenbreaker';
-    // The Unblinking demands SIGHT: craft and wear a reveal lantern first
-    // (the Phase-8 run lost 1,314 blind attempts for want of this line).
-    if (shell.id === 'glassmere' && !s.forge.gear.lantern) {
-      for (const lantern of ['unblinkingMonocle', 'orchardkeepersHood', 'verdantLoop']) {
-        if (engine.dispatch({ type: 'craftGear', gearId: lantern }).ok) break;
-      }
-    }
-    // The Smolder demands RESTRAINT: vent to the safe line before her stair.
-    if (shell.id === 'cinder' && s.pressure.heat > 35) {
-      engine.dispatch({ type: 'setChoke', on: false });
-      if (s.pressure.heat > 45) engine.dispatch({ type: 'emergencyPurge' });
-    }
-    // The Unattended demands its OPPOSITE: presence grows it — put the reveal
-    // lantern AWAY (the Quiet Shroud reveals nothing, on purpose).
-    if (shell.id === 'hollow') {
-      if (engine.dispatch({ type: 'craftGear', gearId: 'quietshroud' }).ok) void 0;
-      else s.forge.gear.lantern = null; // fight it half-blind, honestly
-    }
-    engine.dispatch({ type: 'craftTool', recipeId: weapon }); // no-op if short
-    // Equip the hardest striker for the fight.
-    const striker = s.forge.tools.reduce((a, b) => (b.strikePower > a.strikePower ? b : a));
-    engine.dispatch({ type: 'equipTool', toolId: striker.id });
-    // THE FINAL TWO WARDENS are boss fights, not floor guards: a player who
-    // reached the Core is a skilled endgame hand, not an idler. Fight them
-    // through the REAL turn engine (the spec: "treat it as such"). Everyone
-    // else stays on the worst-case AUTO floor guarantee.
-    const boss = shell.id === 'hollow' || shell.id === 'aleph';
-    const result = engine.dispatch({ type: 'fightWarden', auto: !boss });
-    if (boss && s.combat.active) fightManually(engine, s);
-    const felled = s.combat.wardens.includes(shell.id);
-    if (result.ok && felled) log(`*** WARDEN FELLED (${boss ? 'manual' : 'auto'}): ${shell.id} ***`);
-    else if (result.ok && s.stats.playTimeSec - lastWardenWhine > 1800) {
-      lastWardenWhine = s.stats.playTimeSec;
-      const craft = engine.dispatch({ type: 'craftTool', recipeId: weapon });
-      const t = equippedTool(s);
-      log(
-        `warden attempt failed (auto) at ${shell.id} — tool ${t.name} T${t.tier} strike ${t.strikePower} | ` +
-          `${weapon}: ${craft.ok ? 'crafted!' : craft.reason} | gear ${[s.forge.gear.offhand?.defId, s.forge.gear.harness?.defId].join('/')} | ` +
-          `swing ${s.delver.skills['twoHandedSwing'] ?? 0} grip ${s.delver.skills['deepGrip'] ?? 0}`,
-      );
-    }
-    // Back to the best chipper for the mining between attempts.
-    const chipper = s.forge.tools.reduce((a, b) => (b.chipPower > a.chipPower ? b : a));
-    engine.dispatch({ type: 'equipTool', toolId: chipper.id });
-  }
-}
-let lastWardenWhine = -1e9;
-let lastWardenTry = -1e9;
-/** Step-Zero metric: what share of spawns are winnable at COMPETENT.
- * Live counts are chaotic (spawn timing dominates), so the reported number
- * comes from CONTROLLED sampling: every 30 sim-minutes, draw 200 spawns at
- * the current depth with the striker in hand and resolve them. */
-const spawnMix = { total: 0, engageable: 0, sampled: 0, sampledWins: 0 };
-
-function sampleSpawnMix(engine: Engine, s: GameState): void {
-  if (s.depth < 5 || s.forge.tools.length === 0) return;
-  const prevEquipped = s.forge.equipped;
-  const striker = s.forge.tools.reduce((a, b) => (b.strikePower > a.strikePower ? b : a));
-  s.forge.equipped = s.forge.tools.findIndex((t) => t.id === striker.id);
-  mods.invalidate();
-  const shellId = currentShell(s).id;
-  for (let i = 0; i < 200; i++) {
-    const sp = rollSpecies(shellId, s.depth, Math.random, striker.tier);
-    if (!sp) continue;
-    spawnMix.sampled += 1;
-    if (resolveFight(s, mods, sp, COMPETENT_SKILL).win) spawnMix.sampledWins += 1;
-  }
-  s.forge.equipped = prevEquipped;
-  mods.invalidate();
-  void engine;
-}
-
 // ---------------------------------------------------------------------------
-// Guild play — take every job (they're generated to stack with the dig),
-// hire the crew, read the pages, ride the road when the drift favors it.
+// Pillar-2 idle-charge audit accumulators (shared across all shells).
 // ---------------------------------------------------------------------------
 
-const GUILD_HIRE_ORDER = ['sef', 'tally', 'pell', 'fenn', 'grist', 'brakka', 'hob', 'moth', 'ruta', 'jib'];
-const guildMetrics = { contractsDone: 0, contractScrip: 0, trades: 0, pillar2Max: 0, pillar2Samples: 0, pillar2Over: 0, pillar2Straddled: 0, rerolls: 0 };
+const p2Metrics = { pillar2Max: 0, pillar2Samples: 0, pillar2Over: 0, pillar2Straddled: 0 };
 
 /**
  * RETURN-TO-PEAK (pillar 6: back to the prior peak in ≤20–25% of the original
@@ -511,10 +335,6 @@ function noteRtpTick(shell: string, record: number, depth: number, sec: number):
 function rtpUnresolved(): string[] {
   return Object.entries(rtp.pending).filter(([, p]) => p).map(([l]) => l);
 }
-let lastCaravanAt = -1e9;
-/** Per-slot stall watch: reroll a job that hasn't moved in 40 minutes. */
-const contractWatch = new Map<number, { have: number; sinceSec: number }>();
-
 // ---------------------------------------------------------------------------
 // Verdance play — the garden, the threads, the still, the network.
 // ---------------------------------------------------------------------------
@@ -637,10 +457,6 @@ function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
     }
   }
 
-  // Crew safety: a competent player recalls at the red line, always.
-  if (p.heat >= 90 && !s.guild.crewRecalled && Object.keys(s.guild.hirelings).length > 0) {
-    engine.dispatch({ type: 'recallCrew' });
-  }
   void log;
 }
 
@@ -651,7 +467,7 @@ function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
 
 const p10Metrics = {
   silenceHarvests: 0, cellsRebuilt: 0, recursions: 0,
-  axiomsBought: [] as string[], coreTouches: 0,
+  coreTouches: 0,
 };
 
 function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
@@ -712,15 +528,6 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
         // re-rate exists to unlock were never once exercised.
         const now = engine.getState() as GameState;
         log(`*** RECURSION ${d.count} | +${d.axiomsGained} Axioms (banked ${fmt(now.currencies['axiom'] ?? 0)}) ***`);
-        // Write an Axiom if any are banked (a veteran's opening move).
-        const wishlist = ['firstWord', 'earlyDoor', 'twoHands', 'unemptying', 'insomniac', 'heresy'];
-        for (const id of wishlist) {
-          if (!now.recursion.axioms.includes(id) && engine.dispatch({ type: 'buyAxiom', id }).ok) {
-            p10Metrics.axiomsBought.push(id);
-            log(`  wrote Axiom: ${id}`);
-            break;
-          }
-        }
       }
     }
     // THE SPIRAL — rung four, and the sim has never once dispatched it (A.44).
@@ -745,95 +552,6 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
         }
         const after = engine.getState() as GameState;
         if (after.spiral.slots > 0) log(`  grid slots ${after.spiral.slots}`);
-      }
-    }
-  }
-}
-
-function guildPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
-  if (!s.guild.discovered) return;
-
-  // The board: accept everything, turn in anything finished, and forget a
-  // job that hasn't moved in 40 minutes (the player owns the tempo).
-  for (let i = 0; i < s.guild.contracts.slots; i++) {
-    const c = s.guild.contracts.board[i];
-    if (!c) continue;
-    if (!c.accepted) {
-      engine.dispatch({ type: 'acceptContract', slot: i });
-      continue;
-    }
-    if (contractSatisfied(s, c)) {
-      const r = engine.dispatch({ type: 'completeContract', slot: i });
-      if (r.ok) {
-        contractWatch.delete(i);
-        const scrip = (r.data as { scrip: number }).scrip;
-        guildMetrics.contractsDone += 1;
-        guildMetrics.contractScrip += scrip;
-        if (guildMetrics.contractsDone <= 3 || guildMetrics.contractsDone % 20 === 0) {
-          log(`contract #${guildMetrics.contractsDone}: "${c.desc}" (+${scrip} scrip)`);
-        }
-      }
-      continue;
-    }
-    const { have } = contractProgress(s, c);
-    const watch = contractWatch.get(i);
-    if (!watch || watch.have !== have) {
-      contractWatch.set(i, { have, sinceSec: s.stats.playTimeSec });
-    } else if (s.stats.playTimeSec - watch.sinceSec > 2400) {
-      if (engine.dispatch({ type: 'rerollContract', slot: i }).ok) {
-        guildMetrics.rerolls += 1;
-        contractWatch.delete(i);
-      }
-    }
-  }
-
-  // The crew, one signing per pass; charters go to berths first, then pegs.
-  for (const id of GUILD_HIRE_ORDER) {
-    if (s.guild.hirelings[id]) continue;
-    if (engine.dispatch({ type: 'hire', npcId: id }).ok) log(`hired ${id} (crew ${hiredCount(s)}/${s.guild.berths})`);
-    break;
-  }
-  if ((s.currencies['charter']?.toNumber() ?? 0) >= 1) {
-    const sink = (s.guild.charterSpent['berth'] ?? 0) < 3 ? 'berth' : 'boardSlot';
-    if (engine.dispatch({ type: 'spendCharter', sink }).ok) log(`charter spent on ${sink}`);
-  }
-
-  // The archive: read what's found; pay Quill when flush.
-  for (const id of s.guild.sable.found) {
-    if (!s.guild.sable.read.includes(id) && s.guild.sable.translated.includes(id)) {
-      engine.dispatch({ type: 'markFragmentRead', fragmentId: id });
-    }
-  }
-  for (const id of s.guild.sable.found) {
-    if (s.guild.sable.translated.includes(id)) continue;
-    if ((s.currencies['scrip']?.toNumber() ?? 0) < translationFee(s, id) + 80) break;
-    if (engine.dispatch({ type: 'translateFragment', fragmentId: id }).ok) {
-      engine.dispatch({ type: 'markFragmentRead', fragmentId: id });
-      log(`quill translated ${id}`);
-    }
-  }
-
-  // A name of your own: the best chip-yield title on the shelf.
-  if (s.guild.titles.earned.length > 0) {
-    const best = s.guild.titles.earned
-      .map((id) => TITLE_BY_ID.get(id)!)
-      .sort((a, b) => (b.bucket === 'dustYield' ? b.value : 0) - (a.bucket === 'dustYield' ? a.value : 0))[0]!;
-    if (s.guild.titles.equipped !== best.id) engine.dispatch({ type: 'equipTitle', titleId: best.id });
-  }
-
-  // The road: sell byproduct crates when the drift is high, and swap a slice
-  // of conv stock back to chip when the return leg pays.
-  if (s.shell.breachCount >= 1 && s.stats.playTimeSec - lastCaravanAt > 1500) {
-    for (const route of CARAVAN_ROUTES) {
-      if (route.flatScripPer !== undefined) {
-        if (drift(s, route) < 1.05) continue;
-      } else if (route.id !== 'conv-chip' || drift(s, route) < 1.08) {
-        continue; // conversions only on a favorable return leg
-      }
-      if (engine.dispatch({ type: 'caravanTrade', route: route.id, amount: 0.2 }).ok) {
-        lastCaravanAt = s.stats.playTimeSec;
-        guildMetrics.trades += 1;
-        break;
       }
     }
   }
@@ -953,28 +671,6 @@ function forgePlay(engine: Engine, s: GameState, log: (msg: string) => void): bo
   while (s.materials.geodes > 0) {
     if (!engine.dispatch({ type: 'crackGeode' }).ok) break;
   }
-  // Gear: craft the best AFFORDABLE piece per slot from ANY shell, highest
-  // tier first. (The macro pass made shell arcs fast enough that current-
-  // shell combat drops lag a shell behind — insisting on local gear starved
-  // the kit and left the Unblinking unfaceable for 44 hours. A human wears
-  // what the bank can pay for, wherever it was tanned.) Reveal lanterns get
-  // priority within the slot — sight is a capability, not a stat.
-  const bySlot = new Map<string, typeof GEAR_DEFS>();
-  for (const def of [...GEAR_DEFS].sort((a, b) => (b.tier + (b.combat.reveal ? 0.5 : 0)) - (a.tier + (a.combat.reveal ? 0.5 : 0)))) {
-    if (!bySlot.has(def.slot)) bySlot.set(def.slot, []);
-    bySlot.get(def.slot)!.push(def);
-  }
-  for (const [slot, defs] of bySlot) {
-    const worn = s.forge.gear[slot as 'offhand'];
-    for (const def of defs) {
-      const wornDef = worn ? GEAR_DEFS.find((g) => g.id === worn.defId) : null;
-      if (wornDef && wornDef.tier >= def.tier) break; // already better
-      if (engine.dispatch({ type: 'craftGear', gearId: def.id }).ok) {
-        log(`geared: ${def.id} (T${def.tier})`);
-        break;
-      }
-    }
-  }
   // Socket any gem into any open socket of the equipped tool.
   const tool = equippedTool(s);
   const openSlot = tool.sockets.findIndex((g) => g === null);
@@ -994,18 +690,7 @@ function forgePlay(engine: Engine, s: GameState, log: (msg: string) => void): bo
 
 let lastCraftWhine = -1e9;
 
-/** Known-good pours the sim attempts when metals allow (economy check, not
- * discovery play — a human hunts; the sim audits). */
-const POUR_PLAN: Array<{ amounts: number[]; log: string }> = [
-  { amounts: [2, 1, 0, 0, 0], log: 'Greysteel' },
-  { amounts: [3, 1, 0, 0, 0], log: 'Bloom Steel' },
-  { amounts: [1, 0, 0, 2, 0], log: 'Poleiron' },
-  { amounts: [1, 1, 0, 3, 0], log: 'Veinmetal' },
-  { amounts: [3, 1, 2, 0, 0], log: 'Marrowsteel' },
-  { amounts: [2, 1, 1, 1, 1], log: "Sable's Steel" },
-];
-
-/** Ferrite-era play: magnets, pours, foundry, resonant memory. */
+/** Ferrite-era play: magnets, resonant memory. */
 // ---------------------------------------------------------------------------
 // THE EXPORT SPINE (Part B) — a competent player provisions the shell below
 // before leaving, and lets Serra fill the gaps. This block is the sim-side
@@ -1013,7 +698,7 @@ const POUR_PLAN: Array<{ amounts: number[]; log: string }> = [
 // the policies here, or the run stalls and the harness shows it.
 // ---------------------------------------------------------------------------
 
-const spineMetrics = { fluxFired: 0, serraBuys: 0 };
+const spineMetrics = { fluxFired: 0 };
 
 function provisionSpine(engine: Engine, s: GameState, log: (msg: string) => void): void {
   const shell = currentShell(s).id;
@@ -1031,20 +716,6 @@ function provisionSpine(engine: Engine, s: GameState, log: (msg: string) => void
       }
     }
   }
-
-  // ANYWHERE — Serra hauls what the stair left short (the designed fallback,
-  // and buying from her here is what verifies it).
-  const wants: string[] = [];
-  if (shell === 'ferrite' && transmuteUnlocked(s) && materialCount(s, 'kilnflux') < 1) wants.push('kilnflux');
-  if (wants.length > 0 && (s.currencies['scrip']?.toNumber() ?? 0) > 120) {
-    const shelf = stockFor(s, 'serra');
-    for (const want of wants) {
-      const idx = shelf.findIndex((slot) => slot.id === want);
-      if (idx >= 0 && engine.dispatch({ type: 'buyStock', npcId: 'serra', slot: idx }).ok) {
-        spineMetrics.serraBuys += 1;
-      }
-    }
-  }
 }
 
 function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
@@ -1054,39 +725,6 @@ function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): 
     if (engine.dispatch({ type: 'buyMagnet' }).ok) log(`magnet ${s.polarity.magnetCount} rigged`);
     for (let c = 0; c < s.polarity.magnetCount; c++) {
       if ((s.polarity.magnets[c] ?? 0) !== 1) engine.dispatch({ type: 'toggleMagnet', col: c });
-    }
-  }
-  // Crucible: pour the next planned alloy when metals + a catalyst exist.
-  if (crucibleUnlocked(s)) {
-    const catalyst = Object.keys(s.materials.stacks).find(
-      (id) => materialDef(id).shellId === 'ferrite' && materialCount(s, id) > 0,
-    );
-    if (catalyst) {
-      const next = POUR_PLAN.find((p) => {
-        const match = matchAlloy(p.amounts);
-        return match !== null && !s.crucible.discovered.includes(match.id);
-      });
-      if (next) {
-        const affordable = next.amounts.every(
-          (n, i) => n === 0 || s.currencies[['ingot', 'flux', 'scale', 'lodestone', 'rime'][i]!]!.gte(n * 20 * 3),
-        );
-        if (affordable) {
-          const result = engine.dispatch({ type: 'pourAlloy', amounts: next.amounts, catalystId: catalyst });
-          if (result.ok && (result.data as { result: string }).result !== 'slag') log(`poured ${next.log}`);
-        }
-      }
-    }
-  }
-  // THE KEYSTONE's craft leg (Part B): in Ferrite, cast the anchor's
-  // steelcasting from the first ingot-dominant alloy discovered.
-  if (
-    currentShell(s).id === 'ferrite' &&
-    keystoneFor('ferrite') && !keystonePlaced(s, 'ferrite') &&
-    materialCount(s, 'steelcasting') === 0
-  ) {
-    const steelAlloy = s.crucible.discovered.find((id) => castingForAlloy(id) === 'steelcasting');
-    if (steelAlloy && engine.dispatch({ type: 'castBinding', alloyId: steelAlloy }).ok) {
-      log('cast a steelcasting for the anchor');
     }
   }
   // THE ATTENDED MARGIN (B3): the best Echo deals on the board, so a
@@ -1139,175 +777,13 @@ function attendConfluences(engine: Engine, s: GameState, log: (msg: string) => v
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lattice play: a queue of "projects" a curious player would try — build a
-// clear line, attach a context motif, upgrade one member to break uniformity.
-// ---------------------------------------------------------------------------
-
-interface LatticeProject {
-  shape: MotifShape;
-  /** Motif to place beside the line's middle after it forms. */
-  attach?: MotifShape;
-  /** Upgrade one line member afterward (uniform -> mixed variant). */
-  upgradeAfter?: boolean;
-  /** Stone rank (door hunts need rank 3 — combined rank 9 opens seals). */
-  rank?: number;
-}
-
-const LATTICE_PROJECTS: LatticeProject[] = [
-  { shape: 'triangle', upgradeAfter: true }, // isolated uniform + mixed
-  { shape: 'triangle', attach: 'triangle' }, // -> supported
-  { shape: 'square', upgradeAfter: true },
-  { shape: 'square', attach: 'square', upgradeAfter: true }, // supported.mixed = The Press
-  { shape: 'circle', attach: 'square', upgradeAfter: true }, // flowing -> The Grammar
-  { shape: 'hex' }, // isolated uniform = The Keystone (discovery only at rank 1)
-  { shape: 'hex', attach: 'circle', upgradeAfter: true }, // flowing pair
-  { shape: 'circle', upgradeAfter: true },
-  { shape: 'triangle', attach: 'circle' }, // opposed
-  { shape: 'square', attach: 'hex' }, // opposed
-  // Door hunts — heavy stones to break the rank-9 seals (needs Chisels).
-  { shape: 'hex', rank: 3 }, // Keystone opens
-  { shape: 'circle', attach: 'square', upgradeAfter: true, rank: 3 }, // Grammar opens
-  { shape: 'square', attach: 'square', upgradeAfter: true, rank: 3 }, // Press opens
-];
-
-interface LatticePlan {
-  project: number;
-  stage: 'line' | 'attach' | 'upgrade';
-  line: Axial[];
-  placedInLine: number;
-  /** No clear line fits AND a ring is actually buyable — hoard Brick for it. */
-  blockedForSpace: boolean;
-  /** Cells placed per finished project — oldest gets recycled when cramped. */
-  history: Axial[][];
-  current: Axial[];
-}
-
-const plan: LatticePlan = {
-  project: 0,
-  stage: 'line',
-  line: [],
-  placedInLine: 0,
-  blockedForSpace: false,
-  history: [],
-  current: [],
-};
-
-/** A 3-cell line whose cells and entire neighbourhood are empty (and none
- * of it the sealed Navel). */
-function findClearLine(s: GameState): Axial[] | null {
-  const lat = s.lattice;
-  for (const start of boardCells(lat.rings)) {
-    for (const axis of LINE_AXES) {
-      const cells = [0, 1, 2].map((i) => ({ q: start.q + axis.q * i, r: start.r + axis.r * i }));
-      if (!cells.every((c) => inBoard(c.q, c.r, lat.rings) && !isSealed(c.q, c.r) && !lat.cells[hexKey(c.q, c.r)])) continue;
-      const lineKeys = new Set(cells.map((c) => hexKey(c.q, c.r)));
-      const clear = cells.every((c) =>
-        neighborsOf(c.q, c.r).every((n) => lineKeys.has(hexKey(n.q, n.r)) || !lat.cells[hexKey(n.q, n.r)]),
-      );
-      if (clear) return cells;
-    }
-  }
-  return null;
-}
-
-function latticePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
-  const lat = s.lattice;
-  if (!lat.unlocked) return;
-
-  // Rings the moment they're affordable — permanent beats temporary.
-  if (lat.rings < MAX_RINGS && (lat.rings < MAX_RINGS - 1 || lat.doors.ring4)) {
-    if (s.currencies['brick']!.gte(ringCost(lat.rings).mul(1.15))) {
-      if (engine.dispatch({ type: 'buyLatticeRing' }).ok) log(`lattice ring -> ${lat.rings}`);
-    }
-  }
-  if (lat.doors.press && !lat.pressOn) engine.dispatch({ type: 'setLatticePress', on: true });
-
-  const project = LATTICE_PROJECTS[plan.project];
-  if (!project) return;
-
-  if (plan.stage === 'line') {
-    if (plan.line.length === 0) {
-      const line = findClearLine(s);
-      if (!line) {
-        // Cramped. Recycle the oldest finished experiment (discoveries are
-        // permanent; the 60% refund is the cost of the hunt) — else hoard
-        // Brick for the next ring, if one can actually be bought.
-        const canBuyRing = lat.rings < MAX_RINGS - 1 || (lat.rings < MAX_RINGS && lat.doors.ring4);
-        if (plan.history.length > 1) {
-          const old = plan.history.shift()!;
-          for (const c of old) engine.dispatch({ type: 'removeMotif', q: c.q, r: c.r });
-          log('lattice: recycled an old experiment for space');
-        }
-        plan.blockedForSpace = canBuyRing;
-        return;
-      }
-      plan.blockedForSpace = false;
-      plan.line = line;
-      plan.placedInLine = 0;
-    }
-    const target = plan.line[plan.placedInLine];
-    if (!target) return;
-    if (engine.dispatch({ type: 'placeMotif', q: target.q, r: target.r, shape: project.shape, rank: project.rank ?? 1 }).ok) {
-      plan.current.push(target);
-      plan.placedInLine++;
-      if (plan.placedInLine >= 3) {
-        plan.stage = project.attach ? 'attach' : project.upgradeAfter ? 'upgrade' : 'line';
-        if (plan.stage === 'line') advanceProject(log, s);
-      }
-    }
-    return;
-  }
-
-  if (plan.stage === 'attach') {
-    const mid = plan.line[1]!;
-    const lineKeys = new Set(plan.line.map((c) => hexKey(c.q, c.r)));
-    const spot = neighborsOf(mid.q, mid.r).find(
-      (n) =>
-        inBoard(n.q, n.r, lat.rings) &&
-        !isSealed(n.q, n.r) &&
-        !lineKeys.has(hexKey(n.q, n.r)) &&
-        !lat.cells[hexKey(n.q, n.r)],
-    );
-    if (!spot) {
-      plan.stage = 'upgrade';
-      return;
-    }
-    if (engine.dispatch({ type: 'placeMotif', q: spot.q, r: spot.r, shape: project.attach!, rank: project.rank ?? 1 }).ok) {
-      plan.current.push(spot);
-      plan.stage = project.upgradeAfter ? 'upgrade' : 'line';
-      if (plan.stage === 'line') advanceProject(log, s);
-    }
-    return;
-  }
-
-  // upgrade: break uniformity on the line's first cell.
-  const first = plan.line[0]!;
-  if (engine.dispatch({ type: 'upgradeMotif', q: first.q, r: first.r }).ok) {
-    advanceProject(log, s);
-    plan.stage = 'line';
-  }
-}
-
-function advanceProject(log: (msg: string) => void, s: GameState): void {
-  plan.project++;
-  plan.line = [];
-  plan.placedInLine = 0;
-  plan.history.push(plan.current);
-  plan.current = [];
-  log(
-    `lattice project ${plan.project} done — ${s.lattice.discovered.length} chords, ` +
-      `${s.lattice.discoveredProgressions.length} progressions known`,
-  );
-}
-
 /** Greedy shopping trip — mirrors how a competent player spends. */
 function shop(engine: Engine, log: (msg: string) => void): void {
   const s = engine.getState() as GameState;
   mods.invalidate();
 
   // Structures first — they are the unlocks.
-  for (const id of ['kilnBuild', 'bayBuild', 'latticeUncover', 'forgeBuild']) {
+  for (const id of ['kilnBuild', 'bayBuild', 'forgeBuild']) {
     const def = allUpgrades().find((u) => u.id === id)!;
     if (upgradeLevel(s, id) === 0 && (!def.visible || def.visible(s))) {
       if (engine.dispatch({ type: 'buyUpgrade', id }).ok) log(`built ${id}`);
@@ -1375,21 +851,17 @@ function shop(engine: Engine, log: (msg: string) => void): void {
 
   // The Forge outranks everything when a wall is in the way — hoard for it.
   const wallBlocked = forgePlay(engine, s, log);
-  combatPlay(engine, s, log);
-  latticePlay(engine, s, log);
   provisionSpine(engine, s, log);
   ferritePlay(engine, s, log);
-  guildPlay(engine, s, log);
   verdancePlay(engine, s, wallBlocked);
   glassmerePlay(engine, s, log);
   cinderPlay(engine, s, log);
   hollowPlay(engine, s, log);
-  if (!plan.blockedForSpace && !wallBlocked) {
+  if (!wallBlocked) {
     buyIfUnder('expand', brick, 0.5);
     buyIfUnder('bellows', brick, 0.35);
     buyIfUnder('firebrick', brick, 0.35);
     buyIfUnder('drillCount', brick, 0.5);
-    buyIfUnder('chisels', brick, 0.5); // door hunts need rank-3 stones
   }
 
   // Cheapest drill upgrade, if it's pocket change (keep a conv buffer).
@@ -1677,7 +1149,7 @@ function main(): void {
   };
 
   const rows: string[] = [
-    'min,dust,total_dust,brick,cores,depth,max_depth,collapses,level,skill_pts,drills,kiln_heat,motifs,chords,progs,passive_rank,resonance,drops,geodes_cracked,tools,tool_tier',
+    'min,dust,total_dust,brick,cores,depth,max_depth,collapses,level,skill_pts,drills,kiln_heat,drops,geodes_cracked,tools,tool_tier',
   ];
   const snapshot = () => {
     const s = engine.getState();
@@ -1695,11 +1167,6 @@ function main(): void {
         s.delver.skillPoints,
         s.drills.units.length,
         s.kiln.heat.toFixed(2),
-        s.currencies['motif']!.toFixed(1),
-        s.lattice.discovered.length,
-        s.lattice.discoveredProgressions.length,
-        s.lattice.passiveRank,
-        boardResonance(s.lattice).toFixed(1),
         s.materials.totalDrops,
         s.materials.geodesCracked,
         s.stats.toolsForged,
@@ -1724,9 +1191,6 @@ function main(): void {
       chipPower: 2.1, strikePower: 7.8, sockets: [null, null], alloys: [],
     });
     s.forge.equipped = s.forge.tools.length - 1;
-    s.forge.gear.offhand = { defId: 'marlshield', purity: 55 };
-    s.forge.gear.harness = { defId: 'rootweave', purity: 55 };
-    s.forge.gear.lantern = { defId: 'gravelight', purity: 55 };
     s.delver.skills['twoHandedSwing'] = 2;
     s.delver.skills['deepGrip'] = 1;
     engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 50000 });
@@ -1751,14 +1215,12 @@ function main(): void {
     s.shell.current = 'verdance';
     s.shell.breachCount = 2;
     s.shell.signatures = ['seepage', 'polarity'];
-    s.combat.wardens.push('loam', 'ferrite');
     s.depthRecords['loam'] = 150;
     s.depthRecords['ferrite'] = 250;
     s.depthRecords['verdance'] = 60;
     s.depth = 60;
     s.maxDepthRecord = 60;
     s.collapse.count = 30;
-    s.guild.discovered = true;
     s.forge.built = true;
     s.kiln.built = true;
     s.forge.tools.push({
@@ -1766,9 +1228,6 @@ function main(): void {
       chipPower: 5.5, strikePower: 45, sockets: ['bloodgarnet', null, null], alloys: [null, null],
     });
     s.forge.equipped = s.forge.tools.length - 1;
-    s.forge.gear.offhand = { defId: 'plentyshell', purity: 60 };
-    s.forge.gear.harness = { defId: 'canopyweave', purity: 60 };
-    s.forge.gear.lantern = { defId: 'stormglassLantern', purity: 60 };
     s.delver.skills['twoHandedSwing'] = 5;
     s.delver.skills['deepGrip'] = 3;
     for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
@@ -1794,7 +1253,6 @@ function main(): void {
     s.shell.current = 'cinder';
     s.shell.breachCount = 4;
     s.shell.signatures = ['seepage', 'polarity', 'growth', 'refraction'];
-    s.combat.wardens.push('loam', 'ferrite', 'verdance', 'glassmere');
     s.depthRecords['loam'] = 150;
     s.depthRecords['ferrite'] = 250;
     s.depthRecords['verdance'] = 290;
@@ -1803,7 +1261,6 @@ function main(): void {
     s.depth = 70;
     s.maxDepthRecord = 70;
     s.collapse.count = 60;
-    s.guild.discovered = true;
     s.forge.built = true;
     s.kiln.built = true;
     s.drills.bayBuilt = true;
@@ -1813,9 +1270,6 @@ function main(): void {
       chipPower: 34, strikePower: 420, sockets: ['cinderquartz', null, null], alloys: [null, null],
     });
     s.forge.equipped = s.forge.tools.length - 1;
-    s.forge.gear.offhand = { defId: 'slagward', purity: 60 };
-    s.forge.gear.harness = { defId: 'emberweave', purity: 60 };
-    s.forge.gear.lantern = { defId: 'unblinkingMonocle', purity: 60 };
     s.delver.skills['twoHandedSwing'] = 5;
     s.delver.skills['deepGrip'] = 3;
     for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
@@ -1842,7 +1296,6 @@ function main(): void {
     s.shell.breachCount = 5;
     s.shell.signatures = ['seepage', 'polarity', 'growth', 'refraction', 'pressure'];
     s.shell.resonantMemory = minimal ? 0 : 8;
-    s.combat.wardens.push('loam', 'ferrite', 'verdance', 'glassmere', 'cinder');
     s.depthRecords['loam'] = 150;
     s.depthRecords['ferrite'] = 250;
     s.depthRecords['verdance'] = 290;
@@ -1852,7 +1305,6 @@ function main(): void {
     s.depth = 5;
     s.maxDepthRecord = minimal ? 150 : 470;
     s.collapse.count = minimal ? 20 : 120;
-    s.guild.discovered = true;
     s.forge.built = true;
     s.kiln.built = true;
     s.polarity.bestChain = minimal ? 4 : 12;
@@ -1876,14 +1328,12 @@ function main(): void {
     s.shell.current = 'aleph';
     s.shell.breachCount = 6;
     s.shell.signatures = ['seepage', 'polarity', 'growth', 'refraction', 'pressure', 'absence'];
-    s.combat.wardens.push('loam', 'ferrite', 'verdance', 'glassmere', 'cinder', 'hollow');
     for (const [sh, d] of [['loam', 150], ['ferrite', 250], ['verdance', 290], ['glassmere', 380], ['cinder', 470], ['hollow', 560]] as const) {
       s.depthRecords[sh] = d;
     }
     s.depth = 38;
     s.maxDepthRecord = 560;
     s.collapse.count = 150;
-    s.guild.discovered = true;
     s.forge.built = true;
     s.kiln.built = true;
     // WHAT A FIRST RECURSION ACTUALLY PAYS, NOT WHAT IT NEEDED (A.44).
@@ -1900,12 +1350,8 @@ function main(): void {
       purity: 88, chipPower: 66, strikePower: 1500, sockets: ['bloodgarnet', 'cinderquartz'], alloys: ['greysteel'],
     });
     s.forge.equipped = s.forge.tools.length - 1;
-    // The endgame kit a Core-reaching player has assembled: best gear, maxed
-    // combat skills, warren uniques unlocked, a lived-in achievement grid.
-    s.forge.gear.offhand = { defId: 'authorsRule', purity: 70 };
-    s.forge.gear.harness = { defId: 'emberweave', purity: 70 };
-    s.forge.gear.lantern = { defId: 'unblinkingMonocle', purity: 70 };
-    s.forge.gear.boots = { defId: 'stokersGauntlet', purity: 70 };
+    // The endgame kit a Core-reaching player has assembled: best tool, maxed
+    // skills, warren uniques unlocked, a lived-in achievement grid.
     s.delver.skills['twoHandedSwing'] = 5;
     s.delver.skills['deepGrip'] = 5;
     s.delver.skills['heavyHands'] = 3;
@@ -1925,11 +1371,6 @@ function main(): void {
     // runs ~1/sec) do the unlocking for real reasons. A stipulated biography is
     // honest; stipulating the REWARD while the game's own evaluator disagrees
     // is how the echo=120 injection hid the ladder starvation.
-    s.combat.stats.wins = 600;
-    s.combat.stats.perfects = 250;
-    s.combat.stats.losses = 40;
-    s.combat.seen = SPECIES.map((sp) => sp.id);
-    for (const sp of SPECIES) s.combat.kills[sp.id] = 5;
     s.materials.geodesCracked = 400;
     s.materials.totalDrops = 20000;
     s.stats.toolsForged = 30;
@@ -1971,14 +1412,10 @@ function main(): void {
   if (args.bay !== null && Number.isFinite(args.bay)) BAY_DEPTH_UNLOCK.depth = args.bay;
 
   const started = Date.now();
-  combatPolicy = args.combat;
   growthPolicy = args.growth;
   heatStance = args.heat;
-  if (args.combat === 'auto' || args.policy === 'idle') {
-    engine.dispatch({ type: 'setAutoResolve', on: true });
-  }
   snapshot();
-  const beats = { tLoamFloor: 0, tBreach: 0, tFerrite150: 0, tGuild: 0, tBreach2: 0, tVerd150: 0, tBreach3: 0, tGlass150: 0, tBreach4: 0, tCinder150: 0, tBreach5: 0, tBreach6: 0, tRecursion1: 0, tFaceWhole: 0 };
+  const beats = { tLoamFloor: 0, tBreach: 0, tFerrite150: 0, tBreach2: 0, tVerd150: 0, tBreach3: 0, tGlass150: 0, tBreach4: 0, tCinder150: 0, tBreach5: 0, tBreach6: 0, tRecursion1: 0, tFaceWhole: 0 };
   // Pillar-2 audit: sampled chip income vs the W·H·regen·Y ceiling over
   // windows with NO manual chips — stored-charge harvesting rides above by
   // design; sustained idle production must not.
@@ -2115,7 +1552,6 @@ function main(): void {
     if (!beats.tLoamFloor && (s.depthRecords['loam'] ?? 0) >= 150) beats.tLoamFloor = sec;
     if (!beats.tBreach && s.shell.breachCount > 0) beats.tBreach = sec;
     if (!beats.tFerrite150 && (s.depthRecords['ferrite'] ?? 0) >= 150) beats.tFerrite150 = sec;
-    if (!beats.tGuild && s.guild.discovered) beats.tGuild = sec;
     // Hourly diagnosis: where does the time go? Income vs the descend curve,
     // and whether the Collapse ladder (core tree) has saturated.
     if (sec % 3600 === 0 && !args.quiet) {
@@ -2192,7 +1628,6 @@ function main(): void {
     if (!beats.tBreach6 && s.shell.breachCount >= 6) beats.tBreach6 = sec;
     if (!beats.tFaceWhole && s.shell.current === 'hollow' && s.hollow.rebuilt.length >= s.face.cells.length) beats.tFaceWhole = sec;
     if (!beats.tRecursion1 && s.recursion.count >= 1) beats.tRecursion1 = sec;
-    if (sec % 1800 === 0) sampleSpawnMix(engine, s as GameState);
     // Pillar-2: integrate the ceiling every second (depth and buckets move —
     // collapses inside a window must not fake a violation), then compare
     // earned vs ∫ceiling over untouched 10-min windows.
@@ -2254,11 +1689,11 @@ function main(): void {
       const straddled = s.collapse.count !== p2PrevCollapses;
       if (untouched && !straddled && p2PrevChip === chipId && p2PrevTotal > 0 && ceilingWindow > 0) {
         const ratio = (total - p2PrevTotal) / (ceilingWindow + drained);
-        guildMetrics.pillar2Max = Math.max(guildMetrics.pillar2Max, ratio);
-        if (ratio > 1) guildMetrics.pillar2Over += 1;
-        guildMetrics.pillar2Samples += 1;
+        p2Metrics.pillar2Max = Math.max(p2Metrics.pillar2Max, ratio);
+        if (ratio > 1) p2Metrics.pillar2Over += 1;
+        p2Metrics.pillar2Samples += 1;
       } else if (untouched && straddled) {
-        guildMetrics.pillar2Straddled += 1;
+        p2Metrics.pillar2Straddled += 1;
       }
       p2PrevTotal = total;
       p2PrevChip = chipId;
@@ -2345,12 +1780,6 @@ function main(): void {
       `cores ${fmt(s.currencies['core']!)} | depth ${s.depth} (max ${s.maxDepthRecord}) | ` +
       `collapses ${s.collapse.count} | delver L${s.delver.level} | drills ${s.drills.units.length}`,
   );
-  console.error(
-    `lattice: ${s.lattice.discovered.length}/40 chords | ` +
-      `${s.lattice.discoveredProgressions.length}/8 progressions | rings ${s.lattice.rings} | ` +
-      `passive rank ${s.lattice.passiveRank} | resonance ${boardResonance(s.lattice).toFixed(1)} | ` +
-      `doors: ${Object.entries(s.lattice.doors).filter(([, v]) => v).map(([k]) => k).join(', ') || 'none'}`,
-  );
   const gemCount = Object.values(s.materials.gems).reduce((a, b) => a + b, 0);
   console.error(
     // Commons accounting (A.41 ledger thread): drops IN versus stone still
@@ -2363,34 +1792,14 @@ function main(): void {
   console.error(
     `shell: ${s.shell.current} | breaches ${s.shell.breachCount} | echoes ${fmt(s.currencies['echo'] ?? 0)} | ` +
       `best chain ${s.polarity.bestChain} | magnets ${s.polarity.magnetCount} | ` +
-      `alloys ${s.crucible.discovered.length}/60 | ` +
       `loam record ${s.depthRecords['loam'] ?? 0} | ferrite record ${s.depthRecords['ferrite'] ?? 0}`,
   );
-  const cs = s.combat.stats;
   console.error(
-    `combat[${args.combat}]: encounters ${cs.encounters} (${(cs.interruptions / args.hours).toFixed(1)}/hr) | ` +
-      `wins ${cs.wins} (auto ${cs.autoWins}) | losses ${cs.losses} | flees ${cs.flees} | ` +
-      `species seen ${s.combat.seen.length}/32 | wardens: ${s.combat.wardens.join(', ') || 'none'}` +
-      (spawnMix.sampled > 0
-        ? ` | engageable mix ${((100 * spawnMix.sampledWins) / spawnMix.sampled).toFixed(0)}% sampled` +
-          ` (live ${spawnMix.total > 0 ? ((100 * spawnMix.engageable) / spawnMix.total).toFixed(0) : '—'}%, target 60-70)`
-        : ''),
-  );
-  const sefXp = s.guild.hirelings['sef']?.xp ?? 0;
-  console.error(
-    `guild: opened ${beats.tGuild ? (beats.tGuild / 60).toFixed(1) + 'm' : '—'} | ` +
-      `contracts ${guildMetrics.contractsDone} (${(guildMetrics.contractsDone / args.hours).toFixed(1)}/hr, ${guildMetrics.contractScrip} scrip) | ` +
-      `renown ${fmt(s.totals['renown'] ?? 0)} | scrip ${fmt(s.currencies['scrip'] ?? 0)}/${fmt(s.totals['scrip'] ?? 0)} total | ` +
-      `crew ${Object.keys(s.guild.hirelings).length}/${s.guild.berths} [${Object.keys(s.guild.hirelings).join(',') || '—'}] | ` +
-      `hawker passes ~${Math.round(sefXp / 6)} | pages ${s.guild.sable.found.length}/${FRAGMENTS.length} ` +
-      `(${s.guild.sable.translated.length} legible) | titles ${s.guild.titles.earned.length} ` +
-      `(wearing ${s.guild.titles.equipped ?? 'none'}) | road trades ${guildMetrics.trades} | ` +
-      `quests ${Object.values(s.guild.npcs).reduce((a, n) => a + n.questStep, 0)} steps | rerolls ${guildMetrics.rerolls} | ` +
-      (guildMetrics.pillar2Samples > 0
-        ? `PILLAR 2 idle CHARGE harvested / (regen + storage drained): max ${(guildMetrics.pillar2Max * 100).toFixed(0)}%, ` +
-          `${guildMetrics.pillar2Over}/${guildMetrics.pillar2Samples} windows >100% ` +
-          `(${guildMetrics.pillar2Straddled} skipped: straddled a Collapse and cannot be read)`
-        : 'PILLAR 2: no untouched windows this policy — see the idle run'),
+    p2Metrics.pillar2Samples > 0
+      ? `PILLAR 2 idle CHARGE harvested / (regen + storage drained): max ${(p2Metrics.pillar2Max * 100).toFixed(0)}%, ` +
+        `${p2Metrics.pillar2Over}/${p2Metrics.pillar2Samples} windows >100% ` +
+        `(${p2Metrics.pillar2Straddled} skipped: straddled a Collapse and cannot be read)`
+      : 'PILLAR 2: no untouched windows this policy — see the idle run',
   );
   console.error(
     `verdance[${args.growth}]: spore ${fmt(s.totals['spore'] ?? 0)} total | sap ${fmt(s.totals['sap'] ?? 0)} | ` +
@@ -2420,8 +1829,7 @@ function main(): void {
     `cinder[${heatStance}]: slag ${fmt(s.totals['slag'] ?? 0)} total | heat now ${s.pressure.heat.toFixed(0)} ` +
       `(avg ${avgHeat.toFixed(0)}, peak ${s.pressure.peakHeat.toFixed(0)}) | FLOODS ${s.pressure.floods} | ` +
       `overpressures ${s.pressure.overpressures} (purges ${cinderMetrics.purges}) | ` +
-      `pipes ${s.pressure.pipes.filter((p: number) => p > 0).length} (vented ${fmt(s.pressure.ventedTotal)}) | ` +
-      `crew ${s.guild.crewRecalled ? 'RECALLED' : 'stationed'}, fallen ${Object.values(s.guild.hirelings).filter((h) => h.status === 'fallen').length}`,
+      `pipes ${s.pressure.pipes.filter((p: number) => p > 0).length} (vented ${fmt(s.pressure.ventedTotal)})`,
   );
   console.error(
     `hollow/aleph: void ${fmt(s.totals['void'] ?? 0)} total | silence now ${s.hollow.silence.toFixed(0)} ` +
@@ -2450,7 +1858,6 @@ function main(): void {
   );
   console.error(
     `export spine: kiln firings ${spineMetrics.fluxFired} | ` +
-      `serra fallback buys ${spineMetrics.serraBuys} | ` +
       `held: flux ${materialCount(s, 'kilnflux')}`,
   );
   if (args.income) {

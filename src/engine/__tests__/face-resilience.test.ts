@@ -94,14 +94,12 @@ describe('the A.38-addendum lifecycle: one live renderer, guarded renders, recyc
   it('every Pixi view guards renderer.render (poisoned frame = skipped frame)', () => {
     expect(read('ui/face/FaceView.ts')).toMatch(/guardPixiRender\(this\.app, 'face'\)/);
     expect(read('ui/shaft/ShaftView.ts')).toMatch(/guardPixiRender\(this\.app, 'shaft'\)/);
-    expect(read('ui/lattice/LatticeView.ts')).toMatch(/guardPixiRender\(this\.app, 'lattice'\)/);
   });
 
   it('the Face sleeps while the Shaft owns the hero (no interleaved rendering)', () => {
     expect(read('ui/face/FaceView.ts')).toMatch(/setActive\(active: boolean\)/);
     expect(read('ui/components/FaceCanvas.tsx')).toMatch(/setActive\(active\)/);
     expect(read('ui/App.tsx')).toMatch(/<FaceCanvas active=\{!onShaft\}/);
-    expect(read('ui/App.tsx')).toMatch(/<LatticePanel active=\{tab === 'lattice'\}/);
   });
 
   it('the Shaft defers layout (and its RT churn) while hidden', () => {

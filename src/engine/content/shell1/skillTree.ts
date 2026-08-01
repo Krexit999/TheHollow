@@ -98,7 +98,7 @@ export const SKILL_NODES: SkillNodeDef[] = [
     name: 'Two-Handed Swing',
     maxRank: 5,
     costPerRank: 1,
-    description: (r) => `The pick is a weapon; it always was. +10% strike power per rank (now +${10 * r}%).`,
+    description: (r) => `The pick is a weapon; it always was. +10% Dust per rank (now +${10 * r}%).`,
   },
   {
     id: 'deepGrip',
@@ -192,7 +192,7 @@ const DEEP_NODES: SkillNodeDef[] = [
   // --- Glassmere (breach 3) ---
   { id: 'ruinousArc', branch: 'extraction', row: 6, unlockBreach: 3, maxRank: 5, costPerRank: 1,
     name: 'Ruinous Arc',
-    description: (r) => `The pick's whole arc is a threat. +8% strike power per rank (now +${8 * r}%).` },
+    description: (r) => `The pick's whole arc is a threat. +8% Dust per rank (now +${8 * r}%).` },
   { id: 'secondFurnace', branch: 'industry', row: 4, unlockBreach: 3, maxRank: 5, costPerRank: 1,
     name: 'Second Furnace',
     description: (r) => `A second throat on the fire. +10% Kiln intake per rank (now +${10 * r}%).` },
@@ -290,7 +290,7 @@ export function registerSkillModifiers(): void {
   registerModifier({
     id: 'skill.twoHandedSwing',
     label: 'Two-Handed Swing (Skill)',
-    bucket: 'strikePower',
+    bucket: 'dustYield',
     value: (s) => 1 + 0.1 * skillRank(s, 'twoHandedSwing'),
   });
   // heavyHands is consumed directly by manualChip; assayersHunch by the
@@ -302,10 +302,10 @@ export function registerSkillModifiers(): void {
     { id: 'surplusDoctrine', bucket: 'brickYield', per: 0.08 },
     { id: 'beltDiscipline', bucket: 'drillSpeed', per: 0.06 },
     { id: 'borrowedLight', bucket: 'xpGain', per: 0.08 },
-    { id: 'ruinousArc', bucket: 'strikePower', per: 0.08 },
+    { id: 'ruinousArc', bucket: 'dustYield', per: 0.08 },
     { id: 'secondFurnace', bucket: 'kilnRate', per: 0.1 },
     { id: 'foremansEye', bucket: 'drillPower', per: 0.05 },
-    { id: 'countingTheDark', bucket: 'motifGain', per: 0.06 },
+    { id: 'countingTheDark', bucket: 'dropRate', per: 0.06 },
     { id: 'theLongPick', bucket: 'dustYield', per: 0.06 },
     { id: 'closedLoop', bucket: 'regen', per: 0.06 },
     { id: 'theGreatEngine', bucket: 'cap', per: 0.04 },

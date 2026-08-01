@@ -96,11 +96,11 @@ export const AFFIXES: Record<string, RelicAffixDef> = {
   brickYield: { bucket: 'brickYield', label: 'Converter output', per: 0.04 },
   // Outside the income path entirely.
   dropRate: { bucket: 'dropRate', label: 'Find rate', per: 0.06 },
-  scripGain: { bucket: 'scripGain', label: 'Scrip', per: 0.07 },
+  scripGain: { bucket: 'dropRate', label: 'Scrip', per: 0.07 },
   xpGain: { bucket: 'xpGain', label: 'Delver XP', per: 0.06 },
   assaySpeed: { bucket: 'assaySpeed', label: 'Survey speed', per: 0.1 },
-  motifGain: { bucket: 'motifGain', label: 'Motifs', per: 0.06 },
-  strikePower: { bucket: 'strikePower', label: 'Strike', per: 0.06 },
+  motifGain: { bucket: 'dropRate', label: 'Motifs', per: 0.06 },
+  strikePower: { bucket: 'dustYield', label: 'Strike', per: 0.06 },
   chainPower: { bucket: 'chainPower', label: 'Chain', per: 0.05 },
   descendCost: { bucket: 'descendCost', label: 'Cheaper descent', per: -0.02 },
   offlineEff: { bucket: 'offlineEffAdd', label: 'Offline', per: 0.008 },
@@ -115,11 +115,11 @@ export const AFFIXES: Record<string, RelicAffixDef> = {
   quickDrill: { bucket: 'drillSpeed', label: 'Quick bay', per: 0.08 },
   bankedHeat: { bucket: 'kilnHeatRamp', label: 'Banked heat', per: 0.11 },
   fatSeam: { bucket: 'dropRate', label: 'Fat seam', per: 0.1 },
-  keenEdge: { bucket: 'strikePower', label: 'Keen edge', per: 0.1 },
+  keenEdge: { bucket: 'dustYield', label: 'Keen edge', per: 0.1 },
   longChain: { bucket: 'chainPower', label: 'Long chain', per: 0.08 },
-  richLedger: { bucket: 'scripGain', label: 'Rich ledger', per: 0.11 },
+  richLedger: { bucket: 'dropRate', label: 'Rich ledger', per: 0.11 },
   fastStudy: { bucket: 'xpGain', label: 'Fast study', per: 0.1 },
-  brightMotif: { bucket: 'motifGain', label: 'Bright motif', per: 0.09 },
+  brightMotif: { bucket: 'dropRate', label: 'Bright motif', per: 0.09 },
   shortStair: { bucket: 'descendCost', label: 'Short stair', per: -0.035 },
 };
 
@@ -310,11 +310,15 @@ export function addRelic(state: GameState, relic: RelicInstance): RelicInstance 
  * (the raw fallback: fusion itself always works), and a rarity is never lost.
  * Index = the rarity the keeper would RISE TO (0 Common .. 4 Mythic).
  */
-export const MUSEUM_FUSION_NEED = [0, 0, 1, 3, 5] as const;
+export const MUSEUM_FUSION_NEED = [0, 0, 0, 0, 0] as const;
 
-/** Cases needed to fuse a keeper UP to `rarity`, and how many stand complete. */
-export function fusionGate(state: GameState, rarity: number): { need: number; have: number } {
-  return { need: MUSEUM_FUSION_NEED[rarity] ?? 0, have: state.museum.completed.length };
+/**
+ * The Museum is gone (A.7x) — the curation-teaches-fusion premise went with
+ * it, a wall with no door dropped rather than left standing. Rarity rises
+ * are never gated now; the shape (need/have) stays so callers don't change.
+ */
+export function fusionGate(_state: GameState, _rarity: number): { need: number; have: number } {
+  return { need: 0, have: 0 };
 }
 
 /**

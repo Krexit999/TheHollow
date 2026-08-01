@@ -1,15 +1,15 @@
 /**
  * COMPENDIUM COVERAGE, in the spirit of copy-coverage.ts.
  *
- * Every registered material, currency, system and species must have an entry,
- * and no entry may point at something the registries do not contain. The wiki
- * is generated from the source of truth, so a gap here means either the
+ * Every registered material, currency and system must have an entry, and no
+ * entry may point at something the registries do not contain. The wiki is
+ * generated from the source of truth, so a gap here means either the
  * generator missed a registry or a registry grew a member the generator does
  * not understand — both silent, both the kind of drift this exists to stop.
  *
  * It also enforces the PILLAR 5 rule mechanically: no entry may contain the
- * literal answers to a discovery system. If a Chord name, an alloy id or a
- * rune ordering ever leaks into the wiki text, this fails.
+ * literal answers to a discovery system. If a rune ordering, a transmute
+ * chain or a trait pairing ever leaks into the wiki text, this fails.
  *
  * Usage: npx tsx scripts/compendium-coverage.ts
  */
@@ -18,15 +18,12 @@ ensureContentLoaded();
 
 import { allEntries } from '../src/ui/compendium/data';
 import { MATERIALS } from '../src/engine/materials';
-import { SPECIES } from '../src/engine/combat/species';
 import { allCurrencies } from '../src/engine/resources';
 import { CLUSTERS } from '../src/ui/nav';
-import { CHORD_DEFS } from '../src/engine/content/shell1/latticeChords';
 import { RUNE_PAIRS } from '../src/engine/content/shell4/runes';
 import { CHAINS } from '../src/engine/systems/refinery';
 import { materialDef } from '../src/engine/materials';
 import { TRAIT_PAIRS } from '../src/engine/traits';
-import { CAST_RECIPES } from '../src/engine/systems/workbenchActs';
 import { CURE_RECIPES } from '../src/engine/systems/curing';
 
 const entries = allEntries();
@@ -39,18 +36,15 @@ const systems = CLUSTERS.flatMap((c) => c.systems);
 for (const s of systems) if (!ids.has(`system:${s.id}`)) fail(`system '${s.id}' has no Compendium entry`);
 for (const m of MATERIALS) if (!ids.has(`material:${m.id}`)) fail(`material '${m.id}' has no Compendium entry`);
 for (const c of allCurrencies()) if (!ids.has(`currency:${c.id}`)) fail(`currency '${c.id}' has no Compendium entry`);
-for (const sp of SPECIES) if (!ids.has(`species:${sp.id}`)) fail(`species '${sp.id}' has no Compendium entry`);
 
 // --- no orphans ------------------------------------------------------------
 const matIds = new Set(MATERIALS.map((m) => m.id));
 const curIds = new Set(allCurrencies().map((c) => c.id));
-const spIds = new Set(SPECIES.map((s) => s.id));
 const sysIds = new Set<string>(systems.map((s) => String(s.id)));
 for (const e of entries) {
   const [kind, rest] = e.id.split(':') as [string, string];
   if (kind === 'material' && !matIds.has(rest)) fail(`entry '${e.id}' has no such material`);
   if (kind === 'currency' && !curIds.has(rest)) fail(`entry '${e.id}' has no such currency`);
-  if (kind === 'species' && !spIds.has(rest)) fail(`entry '${e.id}' has no such species`);
   if (kind === 'system' && !sysIds.has(rest)) fail(`entry '${e.id}' has no such system`);
   if (!e.title || !e.summary) fail(`entry '${e.id}' is missing a title or summary`);
   if (e.body.paragraphs.length === 0) fail(`entry '${e.id}' has no body`);
@@ -89,10 +83,6 @@ const saysWord = (phrase: string): boolean =>
 const COLLISIONS = new Set([
   'the grammar',  // Chord vs. the runes page teaching that order is grammar
 ]);
-
-const chordHits = CHORD_DEFS
-  .map((ch) => ch.name)
-  .filter((name) => !COLLISIONS.has(name.toLowerCase()) && saysWord(name));
 
 const runeHits = Object.keys(RUNE_PAIRS).filter((key) => {
   const [a, b] = key.split('|');
@@ -149,32 +139,6 @@ const traitComboHits = TRAIT_PAIRS
   .map((p) => `${p.a}+${p.b}`);
 
 /**
- * Phase 18: CASTING is the fourth discovery system — a mix of material traits
- * pours a specific rune, and which mix pours which rune is the thing you find.
- * Two ways it could leak, both guarded: the recipe's discovered NAME appearing
- * anywhere, and a recipe's two input TRAITS being named together in concept
- * prose (which would be spelling out the mapping). Same shape as the trait-pair
- * guard above, scoped to authored prose for the same reason.
- */
-const castNameHits = CAST_RECIPES
-  .map((r) => r.name)
-  .filter((name) => !COLLISIONS.has(name.toLowerCase()) && saysWord(name));
-
-const castComboHits = CAST_RECIPES
-  .filter((r) => {
-    // Its needs are trait ids; naming any two of them in one sentence is a hint.
-    for (let i = 0; i < r.needs.length; i++) {
-      for (let j = i + 1; j < r.needs.length; j++) {
-        const a = r.needs[i]!.toLowerCase();
-        const b = r.needs[j]!.toLowerCase();
-        if (new RegExp(`\\b${a}\\b[^.]{0,30}\\b${b}\\b|\\b${b}\\b[^.]{0,30}\\b${a}\\b`).test(conceptCorpus)) return true;
-      }
-    }
-    return false;
-  })
-  .map((r) => r.id);
-
-/**
  * Phase 19: CURING is the fifth discovery system — which stone turns into which,
  * given time at depth, is found not listed. The result is a `worked` material
  * whose own entry is sealed until you make it; the leak this guards is a CONCEPT
@@ -191,14 +155,11 @@ const cureComboHits = CURE_RECIPES
   .map((r) => r.id);
 
 const leaks = [
-  ...chordHits.map((c) => `chord "${c}"`),
   ...runeHits.map((r) => `rune ordering ${r}`),
   ...chainHits.map((c) => `transmute chain "${c}"`),
   ...pairHits.map((c) => `chain PAIR for '${c}'`),
   ...traitPairHits.map((c) => `trait pair "${c}"`),
   ...traitComboHits.map((c) => `trait combo ${c} named together`),
-  ...castNameHits.map((c) => `cast recipe "${c}"`),
-  ...castComboHits.map((c) => `cast trait mapping for '${c}' spelled out`),
   ...cureComboHits.map((c) => `cure pairing for '${c}' spelled out`),
 ];
 if (leaks.length > 0) {
@@ -214,7 +175,6 @@ console.log('COMPENDIUM COVERAGE');
 console.log(`  systems    ${byKind['system'] ?? 0} / ${systems.length}`);
 console.log(`  materials  ${byKind['material'] ?? 0} / ${MATERIALS.length}`);
 console.log(`  currencies ${byKind['currency'] ?? 0} / ${allCurrencies().length}`);
-console.log(`  species    ${byKind['species'] ?? 0} / ${SPECIES.length}`);
 console.log(`  concepts   ${byKind['concept'] ?? 0} (hand-authored)`);
 console.log(`  TOTAL      ${entries.length} entries`);
 console.log(failures === 0 ? '\nno gaps, no orphans, no spoilers ✓' : `\n${failures} PROBLEMS`);

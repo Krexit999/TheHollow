@@ -28,7 +28,6 @@ import {
   runeSlots, sequenceTriples, RUNE_TRIPLES, practiceRunes, TEMPORAL_COMBOS,
   TEMPORAL_MIN_GAP, logCarve, defaultRunesState,
 } from '../content/shell4/runes';
-import { fuseGems, fuseGemsPreview } from '../systems/workbenchActs';
 import { bulkSalvage } from '../systems/salvage';
 import { starterTool } from '../systems/forge';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
@@ -190,31 +189,6 @@ describe('heirloom — a storied tool is a touch luckier, capped, in dropRate', 
     expect(tool.history).not.toContain('geodes');
     logToolDeed(state, 'geodes', 1);
     expect(tool.history).toContain('geodes');
-  });
-});
-
-describe('gem fusion — non-destructive, spends duplicates, never falls', () => {
-  it('two duplicates raise the cut quality and never lower it', () => {
-    const { s } = fresh();
-    const state = s();
-    const gemId = 'bloodgarnet';
-    state.materials.gems[gemId] = 5;
-    expect(fuseGemsPreview(state, gemId)).not.toBeNull();
-    const r = fuseGems(state, nullCtx, gemId);
-    expect(r.ok).toBe(true);
-    const q1 = state.workbench.gemCuts[gemId]!.quality;
-    expect(q1).toBeGreaterThan(0);
-    expect(state.materials.gems[gemId]).toBe(3); // 2 spent
-    fuseGems(state, nullCtx, gemId);
-    expect(state.workbench.gemCuts[gemId]!.quality).toBeGreaterThanOrEqual(q1);
-  });
-
-  it('a single gem cannot be fused (needs a duplicate)', () => {
-    const { s } = fresh();
-    const state = s();
-    state.materials.gems['bloodgarnet'] = 1;
-    expect(fuseGemsPreview(state, 'bloodgarnet')).toBeNull();
-    expect(fuseGems(state, nullCtx, 'bloodgarnet').ok).toBe(false);
   });
 });
 

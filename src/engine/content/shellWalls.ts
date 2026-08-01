@@ -18,7 +18,6 @@
  * Headless: pure data + a reader that folds current state into the lines to show.
  */
 import type { GameState } from '../types';
-import { AXIOMS } from './shell7/axioms';
 
 export interface ShellWall {
   shell: string;
@@ -91,10 +90,8 @@ export function wallReading(state: GameState, shellId: string): WallReading | nu
   const marks: string[] = [];
   for (let i = 0; i < reveal; i++) marks.push(SABLE_MARKS[(i + rot) % SABLE_MARKS.length]!);
 
-  // Every Axiom you have written has reached even here — the only thing that
-  // ever changes the wall.
-  const nameOf = (id: string) => AXIOMS.find((a) => a.id === id)?.name ?? id;
-  const law = axioms.map((id) => `${nameOf(id)} — a law you wrote, and it reached this deep.`);
+  // Axioms are gone (A.7x); the wall never changes now — `axioms` stays empty.
+  const law: string[] = axioms.map((id) => `${id} — a law you wrote, and it reached this deep.`);
 
   return { name: wall.name, depth: wall.depth, mirror, marks, law };
 }

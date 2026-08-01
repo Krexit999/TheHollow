@@ -44,7 +44,6 @@ describe('save round-trip', () => {
     const s = populatedState();
     s.offline = {
       seconds: 1, efficiency: 0.55, dust: D(1), brick: D(0), xp: D(0), levelsGained: 0, chargeFilled: 0,
-      motifs: D(0), passiveRanks: 0, scrip: 0,
     };
     expect(deserialize(serialize(s, 0)).offline).toBeNull();
   });

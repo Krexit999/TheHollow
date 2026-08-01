@@ -168,9 +168,6 @@ export function ToolShelf() {
                         <div key={slot} className="flex items-center gap-1.5 text-[9px] text-cave-400">
                           <GemIcon id={gemId} size={10} />
                           <span className="text-[#9fd8c0]">{gemDef(gemId).effectText}</span>
-                          {state.workbench.gemCuts[gemId] && (
-                            <span className="text-lamp-400" title="A learned cut sharpens this gem's effect">✦</span>
-                          )}
                         </div>
                       ) : null)}
                       <div className="text-[8px] italic text-cave-600">Live while this tool is in hand — folded into the totals above.</div>
@@ -196,30 +193,22 @@ export function ToolShelf() {
                     <div className="text-[10px] italic text-cave-400">No gems held. The deep ones live in geodes.</div>
                   ) : (
                     <div className="flex flex-col gap-1">
-                      {gemsHeld.map((g) => {
-                        const cut = state.workbench.gemCuts[g.id];
-                        return (
-                          <button
-                            key={g.id}
-                            className="btn flex items-center gap-2 px-2 py-1 text-left text-[10px]"
-                            onClick={() => {
-                              dispatch({ type: 'socketGem', toolId: tool.id, slot: socketPicker.slot, gemId: g.id });
-                              setSocketPicker(null);
-                            }}
-                          >
-                            <GemIcon id={g.id} size={16} />
-                            <span className="min-w-0 flex-1">
-                              <span className="text-cave-200">{g.name}</span>
-                              <span className="block text-[9px] leading-tight text-[#9fd8c0]">{g.effectText}</span>
-                            </span>
-                            {cut && (
-                              <span className="shrink-0 text-[8px] uppercase tracking-wide text-lamp-400" title={`Cut ${cut.lean}-lean, quality ${Math.round(cut.quality * 100)}% — its effect is sharpened`}>
-                                cut ✦
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                      {gemsHeld.map((g) => (
+                        <button
+                          key={g.id}
+                          className="btn flex items-center gap-2 px-2 py-1 text-left text-[10px]"
+                          onClick={() => {
+                            dispatch({ type: 'socketGem', toolId: tool.id, slot: socketPicker.slot, gemId: g.id });
+                            setSocketPicker(null);
+                          }}
+                        >
+                          <GemIcon id={g.id} size={16} />
+                          <span className="min-w-0 flex-1">
+                            <span className="text-cave-200">{g.name}</span>
+                            <span className="block text-[9px] leading-tight text-[#9fd8c0]">{g.effectText}</span>
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>

@@ -307,16 +307,13 @@ describe('the assay table', () => {
     expect(s.assay.boostChips).toBeGreaterThan(0);
   });
 
-  it('ranks and the Old Seal chord speed surveys up', () => {
+  it('ranks speed surveys up', () => {
     const { s } = fresh();
     const mods = { get: (st: GameState, b: string) => computeBucket(st, b as never) } as never;
     s.delver.skills['assayersHunch'] = 1;
     const base = assayDuration(s, mods);
     s.delver.skills['assayersHunch'] = 3;
     expect(assayDuration(s, mods)).toBeCloseTo(base / 2);
-    // Old Seal: hex.isolated.mixed, sum 4 -> +4% assay speed.
-    s.lattice.activeChords = [{ id: 'hex.isolated.mixed', cells: [], sumRanks: 4, seq: 0 }];
-    expect(assayDuration(s, mods)).toBeLessThan(base / 2);
     void startAssay;
   });
 });

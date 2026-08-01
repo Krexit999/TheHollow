@@ -114,18 +114,14 @@ describe('every content-granting function is called', () => {
    * happened to relics, the Museum, challenges and expeditions.
    */
   const GRANTERS: Array<[string, string]> = [
-    // (mintRelic/addRelic are internal to relics.ts — grantRelic and
-    // maybeDropRelic are the public entries, and those are what must be called.)
-    ['grantRelic', 'engine/systems/relics.ts'],
+    // (mintRelic/addRelic are internal to relics.ts. grantRelic was the
+    // UNCONDITIONAL public entry — excavations and expeditions both called it
+    // and both are cut (A.7x); relics are still fully reachable through
+    // maybeDropRelic's chance-based drop in systems/drops.ts, so that is the
+    // one this list still requires.)
     ['maybeDropRelic', 'engine/systems/relics.ts'],
-    ['checkChallengeGoal', 'engine/systems/spiral.ts'],
-    ['tickParallelShells', 'engine/systems/spiral.ts'],
-    ['tickExpeditions', 'engine/systems/museum.ts'],
-    ['claimExpedition', 'engine/systems/museum.ts'],
     ['registerRelicModifiers', 'engine/systems/relics.ts'],
-    ['registerMuseumModifiers', 'engine/systems/museum.ts'],
     ['doSpiral', 'engine/systems/spiral.ts'],
-    ['startChallenge', 'engine/systems/spiral.ts'],
     ['fuseRelics', 'engine/systems/relics.ts'],
     ['equipRelic', 'engine/systems/relics.ts'],
   ];
@@ -149,7 +145,7 @@ describe('every nav system can actually become visible', () => {
     // The specific trap: Relics gate on `relics.found > 0`, which stayed 0
     // forever because nothing called addRelic. Assert the counters that gate
     // rooms are written somewhere outside their own declaration.
-    const gateCounters = ['relics.found', 'museum.completed', 'spiral.count', 'expeditions.completed'];
+    const gateCounters = ['relics.found', 'spiral.count'];
     for (const counter of gateCounters) {
       const [slice, field] = counter.split('.') as [string, string];
       // Three write shapes count: direct mutation, a push, and the

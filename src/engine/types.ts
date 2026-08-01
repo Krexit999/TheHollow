@@ -83,72 +83,8 @@ export interface PolarityState {
   magnetCount: number;
 }
 
-export interface CrucibleState {
-  discovered: string[];
-  /** Fuse-upward rank per alloy (1-5). */
-  ranks: Record<string, number>;
-  /** Best catalyst purity per alloy — drives the slotted effect. */
-  purities: Record<string, number>;
-  pours: number;
-  fails: number;
-  passiveRank: number;
-  passiveProgressSec: number;
-  lastHint: string | null;
-}
-
-
-// ---------------------------------------------------------------------------
-// Combat (Phase 5)
-// ---------------------------------------------------------------------------
-
-export interface GearInstance {
-  defId: string;
-  purity: number;
-}
-
-export interface ActiveFight {
-  speciesId: string;
-  enemyHp: number;
-  enemyMaxHp: number;
-  playerHp: number;
-  playerLane: number;
-  enemyLane: number;
-  turn: number;
-  phase: number;
-  /** Current pole (ferrite species); 0 = unpoled. */
-  pole: 1 | -1 | 0;
-  /** The Tapmother's guard cycle. */
-  guardUp: boolean;
-  /** Old Plenty's offering: lanes currently full of fruit (abundance). */
-  fruitLanes: number[];
-  telegraph: { kind: string; lanes: number[]; power: number; windup: number } | null;
-  /** One further ahead — revealed by lanterns. */
-  nextTelegraph: { kind: string; lanes: number[]; power: number; windup: number } | null;
-}
-
-export interface CombatState {
-  /** Resolve encounters silently with the player's stats (the idle path). */
-  autoResolve: boolean;
-  pending: { speciesId: string; expiresAtSec: number } | null;
-  active: ActiveFight | null;
-  kills: Record<string, number>;
-  /** Species ever encountered — the bestiary shows these and only these. */
-  seen: string[];
-  /** Shell ids whose Floor Warden has fallen — gates the Breach. */
-  wardens: string[];
-  /** Attempts per warden (titles read this — The Unbroken is first-try). */
-  wardenAttempts: Record<string, number>;
-  stats: {
-    encounters: number;
-    interruptions: number;
-    wins: number;
-    losses: number;
-    autoWins: number;
-    flees: number;
-    perfects: number;
-    lastSpawnAtSec: number;
-  };
-}
+// Crucible removed A.7x (crucibleSystem.ts + shell2/alloys.ts cut).
+// Combat removed A.7x (combat/* cut).
 
 export interface MaterialsState {
   /** materialId -> band -> stack. Possessions: survive Collapse. */
@@ -175,13 +111,6 @@ export interface ForgeState {
    *  short settling-in period (v22). */
   equippedAt?: number;
   nextId: number;
-  /** Worn gear — every piece has a mining face AND a combat face. */
-  gear: {
-    offhand: GearInstance | null;
-    lantern: GearInstance | null;
-    harness: GearInstance | null;
-    boots: GearInstance | null;
-  };
 }
 
 export interface AssayState {
@@ -258,52 +187,7 @@ export interface DrillState {
   oreProgress?: number;
 }
 
-// ---------------------------------------------------------------------------
-// The Lattice (Shell I craft-system)
-// ---------------------------------------------------------------------------
-
-export type MotifShape = 'circle' | 'square' | 'triangle' | 'hex';
-
-export interface MotifPlacement {
-  shape: MotifShape;
-  rank: number; // 1-5
-  /** Placement index — Progressions are read in placement order. */
-  seq: number;
-}
-
-export interface ActiveChord {
-  /** Chord id: `${shape}.${context}.${uniform|mixed}` */
-  id: string;
-  /** The three cell keys forming the line. */
-  cells: string[];
-  sumRanks: number;
-  /** Order stamp: the seq of the line's last-placed motif. */
-  seq: number;
-}
-
-export interface LatticeState {
-  unlocked: boolean;
-  /** Board radius in rings: 1 (7 hexes) .. 4 (61 hexes). */
-  rings: number;
-  /** Placements keyed by axial "q,r". */
-  cells: Record<string, MotifPlacement>;
-  placeSeq: number;
-  /** Passive Rank — accrues with time, online or off. */
-  passiveRank: number;
-  passiveProgressSec: number;
-  /** Discovered chord ids — the Codex shows these and ONLY these. */
-  discovered: string[];
-  discoveredProgressions: string[];
-  /** Currently-formed chords/progressions (recomputed on board change). */
-  activeChords: ActiveChord[];
-  activeProgressions: string[];
-  /** Permanent doors opened by discovery (survive breaking the chord). */
-  doors: { ring4: boolean; progressions: boolean; press: boolean };
-  pressOn: boolean;
-  pressProgress: number;
-  /** Watermark of stats.totalChargeChipped already converted to Motifs. */
-  chargeSeen: Decimal;
-}
+// The Lattice removed A.7x (lattice/* cut).
 
 // ---------------------------------------------------------------------------
 // Game state
@@ -317,10 +201,6 @@ export interface OfflineSummary {
   xp: Decimal;
   levelsGained: number;
   chargeFilled: number;
-  motifs: Decimal;
-  passiveRanks: number;
-  /** The hawker's overnight sales (Phase 6). */
-  scrip: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -558,28 +438,7 @@ export interface RelicsState {
   };
 }
 
-export interface MuseumState {
-  /**
-   * Halls that have EVER been full. Monotonic on purpose (A.49): completion is
-   * read from what you own, and ownership can fall — scrap a relic, sell a gem
-   * — so recomputing it would claw back a permanent bonus and could slam the
-   * fusion gate shut mid-fuse. Once a hall has been full, it has been full.
-   */
-  completed: string[];
-  /** Named sets the collection has actually formed. Discovery, never a list
-   *  (pillar 5) — nothing here is shown before it happens once. */
-  exhibitsFound: string[];
-}
-
-export interface ExpeditionsState {
-  /** Running expeditions; resolve on the GAME CLOCK and wait forever.
-   *  `fromDepth` (Phase 19) is the installed point on the column they set off
-   *  from — 0 or absent is the surface. Deeper start, deeper world reached. */
-  active: Array<{ crewId: string; routeId: string; startedMs: number; durationMs: number; fromDepth?: number }>;
-  /** Resolved and unclaimed — nothing is ever missed. */
-  ready: Array<{ crewId: string; routeId: string; seed: number; fromDepth?: number }>;
-  completed: number;
-}
+// Museum and Expeditions removed A.7x (museum.ts cut).
 
 export interface RecursionState {
   count: number;
@@ -591,77 +450,7 @@ export interface RecursionState {
   leftBehind: { chipCurrencyId: string; ratePerSec: Decimal } | null;
 }
 
-// ---------------------------------------------------------------------------
-// The Guild (Phase 6)
-// ---------------------------------------------------------------------------
-
-export type ContractKind =
-  | 'deliver' // bring N of a material (consumed at turn-in)
-  | 'cull' // fell N of a species
-  | 'depth' // push past a depth without collapsing
-  | 'forge' // forge a tool of tier N
-  | 'pour' // pour alloys true
-  | 'chain' // ride a polarity chain to N
-  | 'geode' // crack geodes
-  | 'assay'; // complete surveys
-
-export interface Contract {
-  id: number;
-  npcId: string;
-  kind: ContractKind;
-  desc: string;
-  /** deliver */
-  materialId?: string;
-  /** deliver / cull / pour / geode / assay counts; depth / chain / forge targets */
-  target: number;
-  /** cull */
-  speciesId?: string;
-  /** progress baseline snapshotted at accept (kills, pours, collapse count...) */
-  base: number;
-  accepted: boolean;
-  scrip: number;
-  renown: number;
-}
-
-export interface HirelingState {
-  level: number;
-  xp: number;
-  /** The Cinder interface — live since Phase 9: a completed flood with crew
-   * still stationed fells the longest-serving hand, deterministically. */
-  status: 'well' | 'hurt' | 'fallen';
-  /** Hire time (game clock) — the flood casualty is the LONGEST-serving. */
-  hiredAtMs?: number;
-}
-
-export interface GuildState {
-  discovered: boolean;
-  /** Persistent game clock (played + away), ms. Schedules, stock windows and
-   * caravan drift read THIS — deterministic, sim-testable, no login logic. */
-  clockMs: number;
-  /** Arrival gates already announced (open/stalls/crews/ferrite). */
-  gatesSeen: string[];
-  npcs: Record<string, { rep: number; met: boolean; questStep: number }>;
-  /** Vess's ledger. She remembers. */
-  vess: { trust: number; grudge: number; deals: number };
-  contracts: { board: (Contract | null)[]; slots: number; completed: number; seq: number };
-  hirelings: Record<string, HirelingState>;
-  /** Crew berths — how many hirelings can work at once. */
-  berths: number;
-  caravan: { trades: number };
-  titles: { earned: string[]; equipped: string | null };
-  sable: { found: string[]; translated: string[]; read: string[] };
-  /** Charter spends, by sink id. */
-  charterSpent: Record<string, number>;
-  /** Guild-lock recipe ids opened by questlines. */
-  unlockedGear: string[];
-  /** Per-window stall purchases (resets when the stock window turns). */
-  stock: { window: number; bought: Record<string, number> };
-  /** Hireling action clocks, keyed by npc id (game-clock ms). */
-  timers: Record<string, number>;
-  /** Cinder: crew pulled off the floor (no casualty possible, bonuses pause).
-   * Auto-restations when the shaft cools under 70. */
-  crewRecalled: boolean;
-}
+// The Guild removed A.7x (guild/* cut).
 
 /** One Echo-bought attention slot (B3). Holds a FOUND confluence id or sits
  *  empty; `rank` (0..2) deepens the amplifier and belongs to the slot itself. */
@@ -789,9 +578,6 @@ export interface GameState {
 
   shell: ShellState;
   polarity: PolarityState;
-  crucible: CrucibleState;
-  combat: CombatState;
-  guild: GuildState;
   /** GROWTH (Verdance signature) — vines over the face. Owned slice. */
   growth: {
     stage: number[];
@@ -811,7 +597,6 @@ export interface GameState {
   /** The long tail (Phase 12). */
   spiral: SpiralState;
   relics: RelicsState;
-  museum: MuseumState;
   /** Cross-system confluences the player has FOUND (v13). A record of play.
    *  B3 (Interlock): `slots` is THE ATTENDED MARGIN — Echo-bought attention.
    *  Each slot holds one FOUND confluence and amplifies it ×(2 + 0.5·rank),
@@ -823,8 +608,6 @@ export interface GameState {
   figures: { found: string[] };
   /** THE REFINERY (v14): transmutation chains found, and bench counters. */
   refinery: { found: string[]; attempts: number; refined: number };
-  /** THE WORKBENCH (v16): crafting-as-a-process. */
-  workbench: import("./systems/workbench").WorkbenchState;
   /** THE NEW FORGE (v36), step 2: the crucible, the rack of cast parts, the
    *  tool station, and the one tool you grow. Coexists with `forge` (the old
    *  head/haft/binding bench) until that one is deliberately retired. */
@@ -832,7 +615,6 @@ export interface GameState {
   /** THE SHAFT (v17): the column as a place — go back up, rail that outlives
    *  Collapse, and a scar record of what happened where. */
   shaft: import("./systems/shaftSys").ShaftState;
-  expeditions: ExpeditionsState;
 
   /** THE CONSIDERED HAND (v19): player-authored conveniences that must survive
    *  an export/import — handwritten notes are the worst thing to lose silently. */
@@ -896,9 +678,6 @@ export interface GameState {
     longestOfflineSec: number;
   };
 
-  /** The Lattice — persists through Collapse AND Breach. */
-  lattice: LatticeState;
-
   /** Possessions — materials, gems, geodes. Survive Collapse. */
   materials: MaterialsState;
   forge: ForgeState;
@@ -950,14 +729,6 @@ export interface RunSummary {
   carried?: { name: string; levels: number };
 }
 
-/** A saved tool composition — recall it and re-forge with different stone. */
-/** A saved Lattice board arrangement — recall it, pay to restore it. */
-export interface LatticeLayout {
-  id: string;
-  name: string;
-  motifs: { q: number; r: number; shape: MotifShape; rank: number }[];
-}
-
 /** A standing rule: refine this stone up while it sits below the target band. */
 export interface RefinePreset {
   materialId: string;
@@ -970,9 +741,6 @@ export interface QolState {
   bookmarks: string[];
   notes: Record<string, string>;
   readAt: Record<string, number>;
-  /** Lattice: saved boards, and chords locked against a misclick. */
-  latticeLayouts: LatticeLayout[];
-  lockedChords: string[];
   /** The Hold: pinned materials and auto-refine standing rules. */
   pins: string[];
   refinePresets: RefinePreset[];
@@ -988,8 +756,8 @@ export interface QolState {
 
 export function defaultQolState(): QolState {
   return {
-    bookmarks: [], notes: {}, readAt: {}, latticeLayouts: [],
-    lockedChords: [], pins: [], refinePresets: [], autoCollapseDepth: null,
+    bookmarks: [], notes: {}, readAt: {},
+    pins: [], refinePresets: [], autoCollapseDepth: null,
     carryUpgradeId: null, confirmSpendFrac: 0.5,
   };
 }
@@ -1019,12 +787,6 @@ export type GameEvent =
   | { type: 'achievement'; id: string }
   | { type: 'rowComplete'; row: number }
   | { type: 'colComplete'; col: number }
-  | { type: 'motifPlaced'; cell: string; shape: MotifShape; rank: number }
-  | { type: 'chordFormed'; id: string; cells: string[] }
-  | { type: 'chordDiscovered'; id: string; cells: string[] }
-  | { type: 'progressionDiscovered'; id: string }
-  | { type: 'doorOpened'; door: string }
-  | { type: 'latticeRing'; rings: number }
   /** `first` is true only the very first time this material ever reaches your
    *  hands — the UI announces those and stays quiet for every find after. */
   | { type: 'materialFound'; materialId: string; purity: number; rarity: MaterialRarity; first: boolean }
@@ -1036,39 +798,12 @@ export type GameEvent =
   | { type: 'breach'; from: string; to: string; echoes: Decimal }
   | { type: 'chainChip'; cell: number; chain: number; mult: number }
   | { type: 'chainBroken'; at: number }
-  | { type: 'alloyDiscovered'; id: string; purity: number }
-  | { type: 'alloyFused'; id: string; rank: number }
-  | { type: 'pourFailed'; refund: string }
-  | { type: 'foundryInstalled'; id: string }
-  | { type: 'encounter'; speciesId: string; known: boolean }
-  | { type: 'combatStart'; speciesId: string; warden: boolean }
-  | { type: 'combatPhase'; speciesId: string; phase: number }
-  | {
-      type: 'combatEnd';
-      speciesId: string;
-      result: 'win' | 'loss' | 'fled';
-      drops: { materialId: string; purity: number }[];
-      auto: boolean;
-    }
-  | { type: 'wardenFelled'; shellId: string; speciesId: string }
-  | { type: 'gearForged'; gearId: string; slot: string; purity: number }
-  | { type: 'guildOpened' }
-  | { type: 'npcsArrived'; gate: string; count: number }
-  | { type: 'fragmentFound'; id: string }
-  | { type: 'fragmentTranslated'; id: string }
-  | { type: 'contractDone'; id: number; npcId: string; scrip: number }
-  | { type: 'questAdvanced'; npcId: string; step: number; note: string }
-  | { type: 'repTier'; npcId: string; tier: number }
-  | { type: 'titleEarned'; id: string }
-  | { type: 'hired'; npcId: string }
-  | { type: 'caravanTraded'; route: string }
   | { type: 'vineHarvest'; cell: number; stage: number; dust: Decimal }
   | { type: 'vineRipe'; cell: number; dust: Decimal }
   /** THE FACE CLUSTER (v20): a FIGURE traced in the rock. `first` on discovery. */
   | { type: 'figure'; id: string; name: string; first: boolean }
   /** THE FACE CLUSTER (v21): a drill wore through and dropped to its floor. */
   /** IMPLEMENTS AND INSCRIPTION (v22). */
-  | { type: 'gemFused'; gemId: string; quality: number }
   | { type: 'bulkSalvaged'; count: number; units: number }
   | { type: 'runePracticed'; harmonic: number; dissonant: number }
   | { type: 'temporalFound'; id: string; name: string }
@@ -1081,26 +816,16 @@ export type GameEvent =
   | { type: 'chokeReleased'; reason: 'idle' | 'overpressure' }
   | { type: 'purged'; heat: number }
   | { type: 'flood'; depth: number }
-  | { type: 'hirelingLost'; npcId: string }
-  | { type: 'crewRecalled' }
-  | { type: 'crewRestationed' }
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
   | { type: 'cellRebuilt'; cell: number; total: number }
   | { type: 'faceWhole' }
   | { type: 'coreTouched' }
   | { type: 'recursion'; count: number; axiomsGained: number }
-  | { type: 'axiomBought'; id: string; heresy: boolean }
   // --- Phase 12: the long tail -------------------------------------------
   | { type: 'spiral'; count: number; spiralGained: number }
-  | { type: 'challengeStarted'; id: string }
-  | { type: 'challengeDone'; id: string; moduleId: string }
-  | { type: 'challengeAbandoned'; id: string }
-  | { type: 'modulePlaced'; id: string; cell: number }
-  | { type: 'shellLicensed'; shellId: string }
   | { type: 'relicFound'; relicId: string; rarity: string; source: string }
   | { type: 'relicWoke'; uid: number; step: number }
   | { type: 'resonanceFound'; id: string }
-  | { type: 'exhibitFormed'; id: string }
   | { type: 'drillAlloyFound'; id: string }
   /** THE ARC: a strike jumped from one cell to these. The face draws it. */
   /**
@@ -1130,10 +855,7 @@ export type GameEvent =
   | { type: 'oreOpened'; cell: number; oreId: string; charge: number; by: 'hand' | 'drill'; first: boolean }
   | { type: 'oreDrought'; cells: number }
   | { type: 'relicFused'; relicId: string; rarity: string }
-  | { type: 'expeditionReturned'; crewId: string; haul: number }
-  | { type: 'caseCompleted'; caseId: string }
   | { type: 'confluenceFound'; id: string; name: string }
-  | { type: 'journalReveal'; kind: 'confluenceHint' | 'cure'; a: string; b: string }
   | { type: 'techniqueUsed'; id: string; cell?: number }
   | { type: 'skimmed'; charge: number; paid: Decimal }
   | { type: 'poleShifted'; cell: number; sign: number }
@@ -1196,13 +918,7 @@ export type GameAction =
   | { type: 'collectCache'; index: number }
   | { type: 'installLift' }
   | { type: 'rideLift' }
-  | { type: 'workExcavation'; id: string }
   | { type: 'collapse'; fall?: CollapseType }
-  | { type: 'placeMotif'; q: number; r: number; shape: MotifShape; rank: number }
-  | { type: 'removeMotif'; q: number; r: number }
-  | { type: 'upgradeMotif'; q: number; r: number }
-  | { type: 'buyLatticeRing' }
-  | { type: 'setLatticePress'; on: boolean }
   /*
    * RETIRED A.70 — 'beginCraft' / 'craftStage' / 'delegateCraft' / 'abandonCraft'.
    *
@@ -1234,28 +950,6 @@ export type GameAction =
   | { type: 'toggleMagnet'; col: number }
   | { type: 'useTechnique'; id: string; cell?: number }
   | { type: 'placeKeystone'; leg: 'craft' | 'buy' }
-  | { type: 'pourAlloy'; amounts: number[]; catalystId: string }
-  | { type: 'socketAlloy'; toolId: number; slot: number; alloyId: string }
-  | { type: 'castBinding'; alloyId: string }
-  | { type: 'combatEngage' }
-  | { type: 'combatAuto' }
-  | { type: 'combatFlee' }
-  | { type: 'combatTurn'; move: -1 | 0 | 1; act: 'strike' | 'guard'; timing: number }
-  | { type: 'fightWarden'; auto: boolean }
-  | { type: 'setAutoResolve'; on: boolean }
-  | { type: 'craftGear'; gearId: string }
-  | { type: 'unequipGear'; slot: 'offhand' | 'lantern' | 'harness' | 'boots' }
-  | { type: 'buyStock'; npcId: string; slot: number; stance?: 'fair' | 'press' | 'lowball' }
-  | { type: 'sellMaterial'; materialId: string; count: number }
-  | { type: 'acceptContract'; slot: number }
-  | { type: 'completeContract'; slot: number }
-  | { type: 'rerollContract'; slot: number }
-  | { type: 'hire'; npcId: string }
-  | { type: 'translateFragment'; fragmentId: string }
-  | { type: 'markFragmentRead'; fragmentId: string }
-  | { type: 'equipTitle'; titleId: string | null }
-  | { type: 'caravanTrade'; route: string; amount: number }
-  | { type: 'spendCharter'; sink: 'berth' | 'boardSlot' }
   | { type: 'setBeamRow'; row: number }
   | { type: 'setMirror'; cell: number; kind: '/' | '\\' | null }
   | { type: 'buyMirror' }
@@ -1263,7 +957,6 @@ export type GameAction =
   | { type: 'setChoke'; on: boolean }
   | { type: 'emergencyPurge' }
   | { type: 'layPipe'; cell: number }
-  | { type: 'recallCrew' }
   | { type: 'refine'; materialId: string; band: string }
   /** Walk every rung up to a target band in one act. Same cost, fewer taps. */
   | { type: 'refineTo'; materialId: string; band: string }
@@ -1276,7 +969,6 @@ export type GameAction =
   | { type: 'rebuildCell'; cell: number }
   | { type: 'touchCore' }
   | { type: 'recurse' }
-  | { type: 'buyAxiom'; id: string }
   | { type: 'markSystemsSeen'; ids: string[] }
   | { type: 'setKilnReverse'; on: boolean }
   | { type: 'buyCoreNode'; id: string }
@@ -1286,21 +978,12 @@ export type GameAction =
   | { type: 'spiral' }
   | { type: 'buyGridSlot' }
   | { type: 'buyLicence' }
-  | { type: 'placeModule'; id: string; cell: number }
-  | { type: 'clearModule'; cell: number }
-  | { type: 'startChallenge'; id: string }
-  | { type: 'abandonChallenge' }
-  | { type: 'licenseShell'; shellId: string }
-  | { type: 'setShellPolicy'; shellId: string; policy: string | null }
-  | { type: 'takeInHand'; shellId: string | null }
   | { type: 'equipRelic'; uid: number; slot: number }
   | { type: 'unequipRelic'; slot: number }
   | { type: 'fuseRelics'; keepUid: number; feedUid: number }
   | { type: 'toggleRelicLock'; uid: number }
   | { type: 'renderRelic'; uid: number }
   | { type: 'setAutoScrap'; on?: boolean; maxRarity?: number; keepPowered?: boolean }
-  | { type: 'sendExpedition'; crewId: string; routeId: string; fromDepth?: number }
-  | { type: 'claimExpedition'; crewId: string }
   | { type: 'hydrate'; state: GameState; nowMs: number }
   | { type: 'applyOffline'; seconds: number }
   | { type: 'dismissOffline' }
@@ -1309,10 +992,6 @@ export type GameAction =
   | { type: 'hardReset' }
   | { type: 'undo' }
   | { type: 'setConfirmSpendFrac'; frac: number }
-  | { type: 'saveLatticeLayout'; name: string }
-  | { type: 'restoreLatticeLayout'; id: string }
-  | { type: 'deleteLatticeLayout'; id: string }
-  | { type: 'toggleChordLock'; id: string }
   | { type: 'togglePin'; materialId: string }
   | { type: 'setRefinePreset'; materialId: string; toBand: PurityBand | null }
   | { type: 'toggleRefinePreset'; materialId: string }
@@ -1348,7 +1027,6 @@ export type GameAction =
   | { type: 'setKilnFuel'; fuelId: string | null }
   | { type: 'overstoke' }
   // --- IMPLEMENTS AND INSCRIPTION (v22) ---------------------------------
-  | { type: 'fuseGems'; gemId: string }
   | { type: 'bulkSalvage'; toolIds: number[]; extract: boolean }
   | { type: 'practiceRunes'; sequence: (string | null)[] }
   | { type: 'debug'; op: 'grant'; currency: string; amount: number }

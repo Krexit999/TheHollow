@@ -32,7 +32,6 @@ import type { DrillState, EngineCtx, GameState } from '../types';
 import { cellCap, harvestCell, neighbors } from './face';
 import { grantXP } from './xp';
 import { DRILL_DROP_FACTOR, rollForDrop } from './drops';
-import { ENCOUNTER_DRILL_FACTOR, rollForEncounter } from '../combat/combat';
 import { addCurrency } from '../resources';
 import { currentShell } from '../shells';
 import { runChipMult } from '../signatures';
@@ -396,7 +395,6 @@ function strike(
   if (by) addCurrency(state, by.currencyId, D(take * by.perCharge));
   grantXP(state, mods, ctx, D(0.12 * (1 + 0.08 * state.depth) * (take / 8)));
   rollForDrop(state, mods, ctx, take, DRILL_DROP_FACTOR * weightShare, drill.name, hit);
-  rollForEncounter(state, ctx, take, ENCOUNTER_DRILL_FACTOR * weightShare);
   ctx.emit({ type: 'drillStrike', drill: d, cell: hit, dust });
 }
 

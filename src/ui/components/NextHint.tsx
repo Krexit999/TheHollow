@@ -25,24 +25,17 @@ function computeHint(s: GameState): string | null {
       if (bank >= cost * 0.6) return 'Keep chipping — the Kiln is nearly within reach. Brick builds the rest of the game.';
     }
   }
-  // 3. A warden bars the floor (the one gate the game forces).
+  // 3. Standing on the floor, ready to Breach.
   const shell = currentShell(s);
-  if (s.depth >= shell.floorDepth && shell.floorDepth > 0 && !s.combat.wardens.includes(shell.id)) {
-    return `You stand on the floor of ${s.shell.current}. Its warden bars the way down — fell it, then Breach.`;
+  if (s.depth >= shell.floorDepth && shell.floorDepth > 0) {
+    return `You stand on the floor of ${s.shell.current}. Breach when you're ready.`;
   }
   // 4. The Kiln is built but cold while Dust piles up.
   if (s.kiln.built && !s.kiln.feeding) {
     const bank = getCurrency(s, shell.chipCurrencyId).toNumber();
     if (bank > 200) return 'The Kiln sits cold while your Dust piles up. Set it feeding.';
   }
-  // 5. A collapse would pay well now.
-  if (s.depth >= 40 && (s.maxDepthRecord >= 15) && shell.id !== 'hollow' && shell.id !== 'aleph') {
-    // Only nudge when they've clearly not collapsed in a while (depth is deep).
-    if (s.depth >= shell.floorDepth * 0.7 && !s.combat.wardens.includes(shell.id)) {
-      return null; // the warden hint above already covers the floor push
-    }
-  }
-  // 6. A face upgrade is affordable and would help (soft, last).
+  // 5. A face upgrade is affordable and would help (soft, last).
   for (const id of ['blade', 'expand', 'soil']) {
     const def = allUpgrades().find((u) => u.id === id);
     if (!def || (def.visible && !def.visible(s))) continue;

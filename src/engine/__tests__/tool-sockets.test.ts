@@ -232,7 +232,7 @@ describe('a socketed relic applies its POWER too', () => {
 describe('a socketed gem applies its bonus', () => {
   it('reaches the bucket the gem names', () => {
     hold(DEEP);
-    const gem = GEMS.find((g) => g.bucket === 'motifGain') ?? GEMS[0]!;
+    const gem = GEMS.find((g) => g.bucket === 'dropRate') ?? GEMS[0]!;
     st().materials.gems[gem.id] = 1;
     const before = bucket(gem.bucket);
     expect(setSocket(st(), ctx, 0, { kind: 'gem', id: gem.id }).ok).toBe(true);
@@ -551,7 +551,7 @@ describe('an affix reaches its bucket even when its id is not the bucket name', 
 
 describe('the save', () => {
   it('seats nothing in anybody\'s tool', () => {
-    expect(SAVE_VERSION).toBe(46);
+    expect(SAVE_VERSION).toBe(47);
     const out = runMigrations({
       version: 44,
       state: {

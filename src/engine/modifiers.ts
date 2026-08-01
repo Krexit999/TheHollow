@@ -21,12 +21,9 @@ export type Bucket =
   | 'drillPower'     // multiplies charge per drill strike
   | 'xpGain'         // multiplies all Delver XP
   | 'descendCost'    // multiplies dust cost to descend (reductions < 1)
-  | 'motifGain'      // multiplies Motif accrual (passive + chip-driven)
   | 'dropRate'       // multiplies material drop chance
   | 'assaySpeed'     // divides Assay Table survey time
   | 'chainPower'     // multiplies polarity chain growth (the 0.35 term)
-  | 'strikePower'    // multiplies tool strike power (combat)
-  | 'scripGain'      // multiplies Caravan Scrip payouts (contracts, sales)
   | 'offlineEffAdd'  // ADDS to offline efficiency (Persistence lives here)
   | 'oreChance'      // multiplies how often a richer pocket forms in the rock
   | 'oreRarity';     // leans the pocket-type roll toward the rarer seams
@@ -37,8 +34,8 @@ export type Bucket =
  */
 export const ALL_BUCKETS = [
   'dustYield', 'brickYield', 'regen', 'cap', 'kilnRate', 'kilnHeatRamp',
-  'drillSpeed', 'drillPower', 'xpGain', 'descendCost', 'motifGain', 'dropRate',
-  'assaySpeed', 'chainPower', 'strikePower', 'scripGain', 'offlineEffAdd',
+  'drillSpeed', 'drillPower', 'xpGain', 'descendCost', 'dropRate',
+  'assaySpeed', 'chainPower', 'offlineEffAdd',
   'oreChance', 'oreRarity',
 ] as const satisfies readonly Bucket[];
 
@@ -72,13 +69,10 @@ const BUCKET_CONSUMERS: Record<Bucket, string> = {
   drillSpeed: 'systems/drills.ts — strike frequency',
   drillPower: 'systems/drills.ts — charge per strike',
   xpGain: 'systems/xp.ts — Delver XP',
-  descendCost: 'systems/depth.ts — cost to descend',
-  motifGain: 'systems/lattice — Motif accrual',
+  descendCost: 'systems/depthSys.ts — cost to descend',
   dropRate: 'systems/drops.ts — material drop chance',
   assaySpeed: 'systems/drops.ts — Assay survey time',
   chainPower: 'systems/polarity.ts — chain growth',
-  strikePower: 'combat/combat.ts — tool strike power',
-  scripGain: 'guild/* — Scrip payouts',
   offlineEffAdd: 'systems/offline.ts — offline efficiency',
   oreChance: 'systems/ores.ts — how often a pocket forms',
   oreRarity: 'systems/ores.ts — the pocket-type roll',

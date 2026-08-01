@@ -15,7 +15,6 @@ import type { GameState } from '../engine';
 import { fmt } from '../engine';
 import { MAX_DRILLS } from '../engine/systems/drills';
 import { spiralPending } from '../engine/systems/spiral';
-import { CASES } from '../engine/systems/museum';
 import { toolLevel } from '../engine/systems/toolMining';
 import type { TabId } from './store';
 
@@ -114,24 +113,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
     next: (s) =>
       s.hollow.silence > 60 ? 'The quiet is loud. Listen — harvest it into Void before it mutes your income.' : 'Let the Silence climb, then Listen. Set an auto-listen line so it never overflows.',
   },
-  lattice: {
-    title: 'The Lattice',
-    purpose:
-      'A board of old sockets you found under the rubble. Set stones on it; stones in a line ring a Chord, and a Chord makes the rock give more — forever. Nobody wrote down which patterns work. That is the game: find them.',
-    next: (s) => (s.lattice.discovered.length === 0 ? 'Place three of the same shape in a line. Something will ring.' : 'Experiment. Undiscovered Chords are still out there — try shapes you haven\'t.'),
-  },
-  crucible: {
-    title: 'The Alloy Crucible',
-    purpose:
-      'Pour metals together in the right ratios and they become an alloy you can socket into a tool. Most ratios make slag. The few that work are yours to find — the Codex remembers each one.',
-    // Board-state only. Naming a ratio would sell what the Insight branch is
-    // for, and pillar 5 is discovery over unlocking.
-    status: (s) => `${s.crucible.discovered.length} alloys known`,
-    next: (s) =>
-      s.crucible.pours === 0
-        ? 'You have never poured. Pick any ratio — a failed pour costs the metal and teaches you the space.'
-        : `${s.crucible.discovered.length} found in ${s.crucible.pours} pours. Nobody wrote the rest down either.`,
-  },
   hold: {
     title: 'The Hold',
     purpose:
@@ -144,15 +125,7 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
     },
   },
   // 'forge' retired A.71. Its copy is not deleted so much as SPLIT: the tool
-  // half is the Refinery's business now and the gear half has its own room.
-  gear: {
-    title: 'Gear',
-    purpose:
-      'Armour, and the two faces it wears. One set is for the rock and one is for whatever is standing in front of it — and nothing down there cares which you happen to have on.',
-    next: (s) => (s.combat.stats.encounters > 0 && !Object.values(s.forge.gear).some(Boolean)
-      ? 'Something has already found you once. Put something on.'
-      : null),
-  },
+  // half is the Refinery's business now. Gear (combat) is gone A.7x.
   casting: {
     title: 'The Casting Floor',
     purpose:
@@ -195,43 +168,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       if (held === 0) return 'You have no runes yet. They are found on Warren walls.';
       if (s.runes.pairsSeen.length === 0) return 'Etch two next to each other and see what happens. Order matters — a bad line fouls the inscription, never the tool.';
       return `${s.runes.pairsSeen.length} pair${s.runes.pairsSeen.length === 1 ? '' : 's'} you have heard speak. The rest are still unsaid.`;
-    },
-  },
-  guild: {
-    title: 'The Lamphouse',
-    purpose:
-      'The one warm room in a cold game. Thirty people who buy, sell, hire on, take contracts, and remember you. Standing here opens doors coin cannot.',
-    status: (s) => `${s.guild.contracts.completed} contracts done`,
-    next: (s) => {
-      const open = s.guild.contracts.board.filter(Boolean).length;
-      const met = Object.values(s.guild.npcs).filter((n) => n.met).length;
-      if (open > 0) return `${open} job${open === 1 ? '' : 's'} on the board — they are written to stack with the digging you were doing anyway.`;
-      if (met < 5) return 'Talk to whoever is in. Standing is the only thing down here that coin cannot buy.';
-      return 'The board is empty for now. New work is posted on the clock, whether you are here or not.';
-    },
-  },
-  bestiary: {
-    title: 'The Bestiary',
-    purpose:
-      'The book of teeth. Everything you have met in the dark, and what you learned by killing it three times — its rhythm, its tell, how to beat it clean.',
-    status: (s) => `${s.combat.seen.length} species logged`,
-    next: (s) =>
-      s.combat.seen.length === 0
-        ? 'Nothing logged yet. Anything you meet in the dark writes itself in here.'
-        : `${s.combat.seen.length} logged. Kill one three times and the book gives up its tell.`,
-  },
-  journal: {
-    title: "Sable's Journal",
-    purpose:
-      'The pages of the one who came before you, surfaced from the rock as you dig. Her hand degrades with depth; Quill translates the ciphered ones. Read them in order and the whole world changes shape.',
-    status: (s) => `${s.guild.sable.found.length} pages found`,
-    next: (s) => {
-      const unread = s.guild.sable.found.filter((id) => !s.guild.sable.read.includes(id)).length;
-      if (s.guild.sable.found.length === 0) return 'No pages yet. They surface out of the rock as you dig — you cannot hunt for them.';
-      if (unread > 0) return `${unread} page${unread === 1 ? '' : 's'} you have not read. They only make sense in order.`;
-      const untranslated = s.guild.sable.found.filter((id) => !s.guild.sable.translated.includes(id)).length;
-      if (untranslated > 0) return `${untranslated} still in her cipher. Quill will read them for you.`;
-      return 'Everything you have found is read. She keeps writing as you go deeper.';
     },
   },
   delver: {
@@ -295,20 +231,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       return 'Take a challenge. They are the only thing here you play with your hands, and each one pays a machine.';
     },
   },
-  automation: {
-    title: 'The Automation Grid',
-    purpose:
-      'The Echo Chamber taught the engine that a program obeys every ceiling a hand does. This is that, grown up: a board of decisions instead of a tape. Modules read the ones beside them, and a full board plays a world exactly as well as a patient idle player — never better, which is the point.',
-    status: (s) => `${Object.keys(s.spiral.grid).length}/${s.spiral.slots} slots`,
-    next: (s) => {
-      if (s.spiral.slots === 0) return 'No slots yet. The Spiral sells them; nothing can be placed until one exists.';
-      if (s.spiral.modules.length === 0) return 'No modules won yet. Challenges are where they come from.';
-      const used = Object.keys(s.spiral.grid).length;
-      if (used === 0) return 'Slots standing empty. Place a module — an unplaced one does nothing at all.';
-      if (used < s.spiral.slots) return `${s.spiral.slots - used} slot${s.spiral.slots - used === 1 ? '' : 's'} free. Modules that work together pay more side by side.`;
-      return 'The board is full. Re-arranging is free — neighbours are where the last of it hides.';
-    },
-  },
   relics: {
     title: 'Relics',
     purpose:
@@ -322,34 +244,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       if (s.relics.equipped.length === 0) return 'Nothing worn. A relic in the hold does nothing at all — wear one.';
       if (s.relics.held.length > s.relics.equipped.length + 2) return 'You are carrying spares. Fuse them in — nothing is lost, and the keeper only ever improves.';
       return `${s.relics.equipped.length} of six worn. An empty slot is pure loss.`;
-    },
-  },
-  museum: {
-    title: 'The Museum',
-    purpose:
-      'The long room off the back of the Lamphouse. Every other screen shows what you can do; this one shows what you did. Nothing is handed over: a hall fills from what you are holding, and now and then the room notices something about the collection and puts a name to it.',
-    // CASES.length was hardcoded to 6 while the case list grew to 20 behind
-    // it — a stale count exactly like the "a number in this document is not
-    // evidence" rule warns about, dormant until this tab was reachable to see
-    // it. Read the registry instead of restating it.
-    status: (s) => `${s.museum.completed.length}/${CASES.length} cases`,
-    next: (s) => {
-      if (s.museum.completed.length === CASES.length) return 'Every hall filled. The room is finished, and so, more or less, are you.';
-      if (s.museum.exhibitsFound.length > 0) return 'The room has named a few of them. Keep collecting — there are more.';
-      if (s.relics.held.length > 0) return 'Your finds already count toward these halls. Nothing to hand over — go and find more.';
-      return 'Empty, for now. Relics, teeth, gems and Codex pages all end up on these walls by themselves.';
-    },
-  },
-  expeditions: {
-    title: 'The Expeditions',
-    purpose:
-      'Crews sent out of the camp gate for two minutes or eight hours. They bring back what digging cannot: material from shells the one-way stair has already closed behind you. Nothing they find expires, and a crew that lands while you sleep waits at the gate until you come.',
-    status: (s) => `${s.expeditions.active.length} out · ${s.expeditions.ready.length} back`,
-    next: (s) => {
-      if (Object.keys(s.guild.hirelings).length === 0) return 'Nobody to send. The Lamphouse hires crews.';
-      if (s.expeditions.ready.length > 0) return `${s.expeditions.ready.length} crew back at the gate with a full pack. Take the haul.`;
-      if (s.expeditions.active.length === 0) return 'Everyone is standing about. Send someone — the long routes are the ones worth sleeping through.';
-      return 'Crews are out. They keep walking whether the tab is open or not.';
     },
   },
   vault: {

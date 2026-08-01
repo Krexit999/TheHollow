@@ -31,7 +31,6 @@ import { logToolDeed } from './heirloom';
 import { skillRank } from '../content/shell1/skillTree';
 import { grantXP } from './xp';
 import { currentShell } from '../shells';
-import { rollForFragment } from '../guild/sable';
 
 export const ASSAY_BASE_SECONDS = 20;
 export const ASSAY_BOOST_CHIPS = 80;
@@ -110,11 +109,8 @@ export function rollForDrop(
    */
   oreDepthBonus = 0,
 ): void {
-  // Sable's pages ride the same harvest rhythm as everything else —
-  // surfaced while mining, never a modal (Phase 6).
-  rollForFragment(state, ctx, weight);
-  // Relics ride the same harvest rhythm as ore and Sable's pages — the one
-  // call site that makes the Relics room and the Museum reachable at all.
+  // Relics ride the same harvest rhythm as ore — the one call site that
+  // makes the Relics room reachable at all.
   maybeDropRelic(state, ctx, 'depth', relicChanceForDepth(state) * weight, by);
   // THE THIN SEAM (challenge): nothing drops at all for the run.
   if (sealed(state, 'sealDrops')) return;

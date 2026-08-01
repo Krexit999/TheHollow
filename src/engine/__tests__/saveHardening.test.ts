@@ -54,7 +54,7 @@ describe('every historical save version reaches v12 and RUNS', () => {
 
     // And every slice the current build reads must exist.
     const s = engine.getState() as GameState;
-    for (const slice of ['spiral', 'relics', 'museum', 'expeditions', 'recursion', 'hollow', 'pressure', 'guild', 'materials'] as const) {
+    for (const slice of ['spiral', 'relics', 'recursion', 'hollow', 'pressure', 'materials'] as const) {
       expect(s[slice], `v${from} -> v12 left state.${slice} undefined`).toBeDefined();
     }
   });
@@ -66,7 +66,7 @@ describe('export/import round-trips at real progression states', () => {
     ['mid-Ferrite', (s) => {
       s.shell.current = 'ferrite'; s.shell.breachCount = 1;
       s.depth = 120; s.maxDepthRecord = 150; s.depthRecords['loam'] = 150;
-      s.kiln.built = true; s.forge.built = true; s.lattice.unlocked = true;
+      s.kiln.built = true; s.forge.built = true;
       s.currencies['dust'] = D('1.234e18');
     }],
     ['post-Recursion with relics', (s) => {
@@ -77,7 +77,6 @@ describe('export/import round-trips at real progression states', () => {
       s.spiral.grid = { 0: 'autoBuyFace' };
       s.relics.held = [{ uid: 1, defId: 'depth-3', rarity: 3, affixes: { regen: 0.12 }, source: 'depth', fusedFrom: 2 }];
       s.relics.equipped = [1]; s.relics.found = 5; s.relics.nextUid = 2;
-      s.museum.completed = ['firstFinds'];
       s.currencies['void'] = D('9.87e42');
       s.totals['dust'] = D('5e60');
     }],
@@ -99,7 +98,6 @@ describe('export/import round-trips at real progression states', () => {
     expect(back.spiral.count).toBe(s.spiral.count);
     expect(back.spiral.grid).toEqual(s.spiral.grid);
     expect(back.relics.held.length).toBe(s.relics.held.length);
-    expect(back.museum.completed).toEqual(s.museum.completed);
     // Decimals are the fragile part — they have their own toJSON.
     for (const id of Object.keys(s.currencies)) {
       expect(back.currencies[id]!.toString(), `currency ${id} drifted`).toBe(s.currencies[id]!.toString());

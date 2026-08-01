@@ -84,10 +84,9 @@ function otherPowered(state: GameState, self: number): number {
   }).length;
 }
 
-/** Halls the collection has filled. (A.49: was studied pieces, and studying
- *  went away with the donation verb — this is the same idea, still collection-
- *  driven, still something the player did rather than something they own.) */
-const namedHalls = (state: GameState): number => state.museum.completed.length;
+/** Halls the collection has filled. The Museum is gone (A.7x) — this floors
+ *  at 0 rather than reading a state slice that no longer exists. */
+const namedHalls = (_state: GameState): number => 0;
 
 export const POWERS: RelicPowerDef[] = [
   // --- RULE — the system works differently ------------------------------
@@ -129,8 +128,8 @@ export const POWERS: RelicPowerDef[] = [
     id: 'openHand', name: 'The Open Hand', kind: 'trade',
     sources: ['warren', 'expedition'],
     line: 'Somebody carried this one for the people above, not for the seam below.',
-    readout: () => `${pct(0.4)} Scrip and ${pct(0.4)} Delver XP, ${pct(-0.15)} dust yield.`,
-    bonus: (_s, b) => (b === 'scripGain' || b === 'xpGain' ? 0.4 : b === 'dustYield' ? -0.15 : 0),
+    readout: () => `${pct(0.4)} find rate and ${pct(0.4)} Delver XP, ${pct(-0.15)} dust yield.`,
+    bonus: (_s, b) => (b === 'dropRate' || b === 'xpGain' ? 0.4 : b === 'dustYield' ? -0.15 : 0),
   },
 
   // --- SCALING — the number is on the board, not on the card -------------
@@ -174,9 +173,9 @@ export const POWERS: RelicPowerDef[] = [
     line: 'It burns brighter next to its own kind, and it can tell its own kind at a distance.',
     readout: (s) =>
       twinFlameOn(s)
-        ? `Another powered relic is carried — ${pct(0.35)} Delver XP and ${pct(0.35)} Motifs.`
+        ? `Another powered relic is carried — ${pct(0.35)} Delver XP.`
         : `Nothing, alone. Carry one other relic that has a power of its own.`,
-    bonus: (s, b) => (twinFlameOn(s) && (b === 'xpGain' || b === 'motifGain') ? 0.35 : 0),
+    bonus: (s, b) => (twinFlameOn(s) && b === 'xpGain' ? 0.35 : 0),
   },
 ];
 
@@ -299,5 +298,5 @@ export function pairMultiplier(state: GameState): number {
 
 /** Buckets any power can touch — the registration loop's domain. */
 export const POWER_BUCKETS: Bucket[] = [
-  'dustYield', 'cap', 'descendCost', 'dropRate', 'scripGain', 'xpGain', 'kilnRate', 'motifGain',
+  'dustYield', 'cap', 'descendCost', 'dropRate', 'xpGain', 'kilnRate',
 ];

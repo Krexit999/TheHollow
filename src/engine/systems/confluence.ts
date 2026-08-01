@@ -66,15 +66,6 @@ function equippedHasTrait(s: GameState, trait: TraitId): boolean {
 const equippedTemper = (s: GameState): string | undefined => s.forge.tools[s.forge.equipped]?.temper;
 
 export const CONFLUENCES: ConfluenceDef[] = [
-  // --- RUNE × ALLOY -------------------------------------------------------
-  // A grammar that knows what it is carved into.
-  {
-    id: 'temperedGrammar', name: 'The Tempered Grammar', systems: ['runes', 'crucible'],
-    flavor: 'A rune cut into an alloy rather than into plain steel. The metal argues back, and the argument is louder than either.',
-    active: (s) => s.runes.inscriptions['tool']?.some((r) => r !== null) === true
-      && (s.forge.tools.find((t) => t.id === s.forge.equipped)?.alloys.some((a) => a !== null) ?? false),
-    bucket: 'strikePower', bonus: 0.12,
-  },
   {
     id: 'quietedMetal', name: 'The Quieted Metal', systems: ['runes', 'forge'],
     flavor: 'Three runes and three alloys on the same tool. It stops ringing entirely, which everyone agrees is worse.',
@@ -98,15 +89,6 @@ export const CONFLUENCES: ConfluenceDef[] = [
         && (s.runes.inscriptions['tool'] ?? []).some((r) => r !== null);
     },
     bucket: 'dropRate', bonus: 0.15,
-  },
-
-  // --- SIGNATURE × CRAFT-SYSTEM -------------------------------------------
-  // Five carried ghosts, seven boards that had never heard of them.
-  {
-    id: 'polarPour', name: 'The Polar Pour', systems: ['polarity', 'crucible'],
-    flavor: 'Pouring with the poles rigged. The metal separates along lines nobody drew.',
-    active: (s) => wearing(s, 'polarity') && s.crucible.discovered.length >= 5,
-    bucket: 'chainPower', bonus: 0.2,
   },
 
   // --- MATERIALS WITH SOULS (Phase 17): traits reach outward --------------
@@ -145,32 +127,13 @@ export const CONFLUENCES: ConfluenceDef[] = [
       const tool = s.forge.tools.find((x) => x.id === s.forge.equipped);
       return tool?.temper != null && (s.runes.inscriptions['tool'] ?? []).some((r) => r !== null);
     },
-    bucket: 'strikePower', bonus: 0.16,
-  },
-  {
-    id: 'setInAlloy', name: 'Set in Alloy', systems: ['gems', 'crucible'],
-    flavor: 'A stone socketed into an alloyed head. The alloy holds it differently — tighter, and it rings at a different pitch.',
-    active: (s) => {
-      const tool = s.forge.tools.find((x) => x.id === s.forge.equipped);
-      return (tool?.sockets.some((g) => g !== null) ?? false)
-        && (tool?.alloys.some((a) => a !== null) ?? false);
-    },
-    bucket: 'cap', bonus: 0.14,
+    bucket: 'dustYield', bonus: 0.16,
   },
   {
     id: 'nothingWasted', name: 'Nothing Wasted', systems: ['refinery', 'forge'],
     flavor: 'A tool forged out of what an older tool used to be. The smiths call this closing the loop and charge extra to say it.',
     active: (s) => s.forge.salvaged >= 3 && s.refinery.found.length >= 2,
     bucket: 'brickYield', bonus: 0.18,
-  },
-
-  // --- MUSEUM × EXPEDITION ------------------------------------------------
-  {
-    // 'relics' since B5: the Museum lives inside the collection screen now.
-    id: 'providedFor', name: 'Provided For', systems: ['relics', 'expeditions'],
-    flavor: 'The crews walk further when the cases are full. Ashka says it is morale; Dovekin says it is the better boots.',
-    active: (s) => s.museum.completed.length >= 3 && s.expeditions.completed >= 5,
-    bucket: 'scripGain', bonus: 0.2,
   },
 ];
 

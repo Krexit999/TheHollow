@@ -6,10 +6,7 @@ import { chainBase, CHAIN_TIMEOUT_SEC, rerollAllSigns } from '../systems/polarit
 import { activeSignatures, carriedStrength, CARRY_BASE } from '../signatures';
 import { canBreach } from '../systems/breach';
 import { echoesForCores } from '../prestigeMath';
-import { masteryLevel } from '../systems/mastery';
-import { matchAlloy, normalizeRatio, ALLOY_DEFS } from '../content/shell2/alloys';
-import { alloyLivePct, crucibleUnlocked } from '../content/shell2/crucibleSystem';
-import { computeBucket, ModifierCache } from '../modifiers';
+import { ModifierCache } from '../modifiers';
 import { addMaterial } from '../systems/forge';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
@@ -29,11 +26,8 @@ function atFloor(): { engine: Engine; s: GameState } {
   s.kiln.built = true;
   s.drills.bayBuilt = true;
   s.drills.units.push({ level: 3, timer: 0, lastCell: 0 });
-  s.lattice.unlocked = true;
-  s.lattice.discovered.push('triangle.isolated.uniform');
   s.collapse.nodes['grit'] = 5;
   addMaterial(s, 'marl', 60, 30);
-  s.combat.wardens.push('loam'); // the Tapmother has fallen (Phase 5 gate)
   s.keystones.placed.push('loam'); // the Brick Arch is set (Part B gate)
   engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 5000 });
   engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 100 });
@@ -41,12 +35,10 @@ function atFloor(): { engine: Engine; s: GameState } {
 }
 
 describe('the breach', () => {
-  it('requires the shell floor AND the fallen Warden (Phase 5 gate)', () => {
+  it('requires the shell floor AND the Keystone (Part B gate)', () => {
     const { engine, s } = fresh();
     expect(engine.dispatch({ type: 'breach' }).ok).toBe(false);
     s.depth = 150;
-    expect(canBreach(s)).toBe(false); // the Tapmother bars the way
-    s.combat.wardens.push('loam');
     expect(canBreach(s)).toBe(false); // the floor is open but unshored (Part B)
     s.keystones.placed.push('loam');
     expect(canBreach(s)).toBe(true);
@@ -72,13 +64,11 @@ describe('the breach', () => {
     expect(s.depth).toBe(0);
   });
 
-  it('what is truly yours survives: records, Lattice, Delver, materials', () => {
+  it('what is truly yours survives: records, Delver, materials', () => {
     const { engine, s } = atFloor();
     const level = s.delver.level;
     engine.dispatch({ type: 'breach' });
     expect(s.depthRecords['loam']).toBe(150);
-    expect(s.lattice.unlocked).toBe(true);
-    expect(s.lattice.discovered).toContain('triangle.isolated.uniform');
     expect(s.delver.level).toBeGreaterThanOrEqual(level); // breach XP only adds
     let marl = 0;
     for (const stack of Object.values(s.materials.stacks['marl'] ?? {})) marl += stack.count;
@@ -206,87 +196,12 @@ describe('polarity chains', () => {
   });
 });
 
-describe('the crucible (CraftSystem interface, unchanged)', () => {
-  function crucibleReady(): { engine: Engine; s: GameState } {
-    const { engine, s } = atFloor();
-    engine.dispatch({ type: 'breach' });
-    s.depth = 20;
-    s.depthRecords['ferrite'] = 20; // mastery 2
-    for (const m of ['ingot', 'flux', 'scale', 'lodestone', 'rime']) {
-      engine.dispatch({ type: 'debug', op: 'grant', currency: m, amount: 10000 });
-    }
-    addMaterial(s, 'bluesteel', 80, 5); // ferrite catalyst
-    return { engine, s };
-  }
-
-  it('unlocks at Ferrite Mastery 2, behind the first breach', () => {
-    const { s } = fresh();
-    expect(crucibleUnlocked(s)).toBe(false);
-    const { s: s2 } = crucibleReady();
-    expect(masteryLevel(s2, 'ferrite')).toBe(2);
-    expect(crucibleUnlocked(s2)).toBe(true);
-  });
-
-  it('pours normalize to primitive ratios before matching', () => {
-    expect(normalizeRatio([6, 2, 0, 0, 0])).toEqual([3, 1, 0, 0, 0]);
-    expect(matchAlloy([4, 2, 0, 0, 0])!.id).toBe('greysteel'); // 2:1 doubled
-    expect(matchAlloy([1, 1, 1, 1, 1])).toBeNull(); // near Sable's Steel, not it
-    expect(matchAlloy([2, 1, 1, 1, 1])!.id).toBe('sablesteel');
-  });
-
-  it('a matched pour discovers; purity comes from the catalyst; dupes fuse', () => {
-    const { engine, s } = crucibleReady();
-    const result = engine.dispatch({ type: 'pourAlloy', amounts: [2, 1, 0, 0, 0], catalystId: 'bluesteel' });
-    expect(result.ok).toBe(true);
-    expect(s.crucible.discovered).toContain('greysteel');
-    expect(s.crucible.purities['greysteel']).toBe(80);
-    engine.dispatch({ type: 'pourAlloy', amounts: [4, 2, 0, 0, 0], catalystId: 'bluesteel' });
-    expect(s.crucible.ranks['greysteel']).toBe(2); // fused upward
-  });
-
-  it('a miss returns half the metals, keeps the catalyst, and hints', () => {
-    const { engine, s } = crucibleReady();
-    const ingotBefore = s.currencies['ingot']!.toNumber();
-    const result = engine.dispatch({ type: 'pourAlloy', amounts: [6, 5, 3, 1, 1], catalystId: 'bluesteel' });
-    expect(result.ok).toBe(true);
-    expect((result.data as { result: string }).result).toBe('slag');
-    expect(s.currencies['ingot']!.toNumber()).toBeCloseTo(ingotBefore - 6 * 20 * 0.5, 3);
-    expect(s.crucible.lastHint).toBeTruthy();
-    let bluesteel = 0;
-    for (const stack of Object.values(s.materials.stacks['bluesteel'] ?? {})) bluesteel += stack.count;
-    expect(bluesteel).toBe(5); // catalyst survived
-  });
-
-  it('bound alloys modify the pipeline through the equipped tool', () => {
-    const { engine, s } = crucibleReady();
-    engine.dispatch({ type: 'pourAlloy', amounts: [2, 1, 0, 0, 0], catalystId: 'bluesteel' });
-    s.depthRecords['ferrite'] = 60; // mastery 6: slots usable
-    s.forge.tools.push({
-      id: 42, recipeId: 'lodestoneRake', name: 'Lodestone Rake', tier: 4,
-      purity: 60, chipPower: 2.4, strikePower: 12, sockets: [null, null], alloys: [null],
-    });
-    s.forge.equipped = s.forge.tools.length - 1;
-    const before = computeBucket(s, 'dustYield').toNumber();
-    expect(engine.dispatch({ type: 'socketAlloy', toolId: 42, slot: 0, alloyId: 'greysteel' }).ok).toBe(true);
-    const after = computeBucket(s, 'dustYield').toNumber();
-    expect(after).toBeGreaterThan(before);
-    expect(after / before).toBeCloseTo(1 + alloyLivePct(s, 'greysteel') / 100, 3);
-  });
-
-  it('60 alloys, unique ids, unique ratios', () => {
-    expect(ALLOY_DEFS).toHaveLength(60);
-    expect(new Set(ALLOY_DEFS.map((a) => a.id)).size).toBe(60);
-    expect(new Set(ALLOY_DEFS.map((a) => a.ratio.join(':'))).size).toBe(60);
-  });
-});
-
 describe('save v4 migration', () => {
-  it('adds shells/polarity/crucible/foundry and maps the depth record', () => {
+  it('adds shells/polarity and maps the depth record', () => {
     const { s } = fresh();
     const raw = JSON.parse(serialize(s, 0)) as { state: Record<string, unknown> };
     delete raw.state['shell'];
     delete raw.state['polarity'];
-    delete raw.state['crucible'];
     delete raw.state['foundry'];
     delete raw.state['depthRecords'];
     raw.state['maxDepthRecord'] = 123;

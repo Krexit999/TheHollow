@@ -69,7 +69,6 @@
 import type { ActionResult, EngineCtx, GameState, RelicInstance } from '../types';
 import { registerModifier, foldBonus, isAdditiveBucket, type Bucket } from '../modifiers';
 import { GEMS, gemDef } from '../materials';
-import { gemCutMult } from './workbench';
 import {
   RUNES, RUNE_NAMES, RUNE_PAIRS, RUNE_TRIPLES, DISSONANT,
   sequencePairs, sequenceTriples, type RuneId,
@@ -277,7 +276,9 @@ export function socketGemBonus(state: GameState, bucket: Bucket): number {
   for (const g of gems) {
     const def = GEMS.find((x) => x.id === g.id);
     if (!def || def.bucket !== bucket) continue;
-    const cut = gemCutMult(state.workbench?.gemCuts?.[g.id], 'mine');
+    // The Workbench is gone (A.7x) — nothing can cut a gem any more, so the
+    // cut is always neutral (gemCutMult's own undefined-cut behavior).
+    const cut = 1;
     // A gem states a MULTIPLIER (1.15) except on an additive bucket, where it
     // states the addend (0.05). Same split the legacy registration makes.
     total += (additive ? def.value : def.value - 1) * cut * focus;

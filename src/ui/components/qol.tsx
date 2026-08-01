@@ -12,7 +12,6 @@ import { materialCount, TOOL_RECIPES } from '../../engine/systems/forge';
 import { refineryUnlocked } from '../../engine/systems/refinery';
 import { allUpgrades, upgradeLevel, costForLevels } from '../../engine/upgrades';
 import { collapseRetained } from '../../engine/systems/collapseSys';
-import { automationRate } from '../../engine/content/shell7/gridModules';
 import { dispatch, useGame } from '../store';
 import { Select } from './Select';
 
@@ -383,7 +382,6 @@ export function CollapseControls() {
     const levels = Math.max(0, lvl - retained);
     return { levels, cost: def ? costForLevels(def, retained, levels) : null };
   };
-  const autoOn = automationRate(state.spiral?.grid ?? {}) > 0;
   const acd = state.qol.autoCollapseDepth;
 
   return (
@@ -453,11 +451,7 @@ export function CollapseControls() {
       {/* Auto-collapse depth */}
       <div>
         <div className="mb-1 text-[10px] uppercase tracking-widest text-cave-400">Auto-collapse</div>
-        {!autoOn ? (
-          <div className="text-[10px] italic leading-snug text-cave-500">
-            Runs with the Automation Grid. Build the Grid and this can pull the collapse for you.
-          </div>
-        ) : acd != null ? (
+        {acd != null ? (
           <div className="flex items-center justify-between gap-2 text-[11px]">
             <span className="text-cave-300">Collapsing itself at depth <span className="tnum font-semibold text-[#8be9fd]">{acd}</span>.</span>
             <button className="btn px-2 py-1 text-[10px]" onClick={() => dispatch({ type: 'setAutoCollapseDepth', depth: null })}>

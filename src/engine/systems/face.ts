@@ -24,7 +24,6 @@ import { advanceToolCharges, wireHandHarvest } from './toolAbilities';
 import { gainModXp, modCache } from './toolMods';
 import { growLivingParts } from './casting';
 import { noteBioWork } from './toolBio';
-import { rollForEncounter } from '../combat/combat';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
 import { registerTechnique } from '../techniques';
@@ -166,11 +165,10 @@ export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
       // toward the pillar-2 numerator. It does NOT count as charge CHIPPED —
       // nothing struck the rock — which is why the two stats differ.
       state.stats.fieldChargeHarvested = state.stats.fieldChargeHarvested.add(collected);
-      // Seepage is harvest: it rolls drops (and, faintly, encounters) like
-      // any harvest — this is what lets a fully idle player forge past the
-      // hardness walls instead of deadlocking at them (pillar 1).
+      // Seepage is harvest: it rolls drops like any harvest — this is what
+      // lets a fully idle player forge past the hardness walls instead of
+      // deadlocking at them (pillar 1).
       rollForDrop(state, mods, ctx, collected, 1);
-      rollForEncounter(state, ctx, collected, 0.5);
       // SKIM's pool banks on top — the leak above is byte-for-byte unchanged.
       state.face.seepPool = Math.min(
         skimPoolCap(state, mods),
@@ -535,7 +533,6 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // CONTROL leans the drop roll and nothing else. Drops are outside the charge
   // economy, which is exactly why it is the only stat allowed a multiplier.
   rollForDrop(state, mods, ctx, charge + splashCharge, tool.dropWeight);
-  rollForEncounter(state, ctx, charge, 1);
   // FIGURES (v20): a chip that completes a traced shape pays a ceiling-free bonus
   // (XP + a drop roll + stamina) and records the figure in the Codex. Never Dust.
   recordChipForFigures(state, mods, ctx, cell);

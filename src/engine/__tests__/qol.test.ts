@@ -11,8 +11,6 @@ import { upgradeLevel } from '../upgrades';
 import { fmt, setNumberFormat } from '../decimal';
 import { tickAutoRefine, refineryUnlocked } from '../systems/refinery';
 import { addMaterial, materialCount } from '../systems/forge';
-import { latticeGhost, removeMotif } from '../content/shell1/latticeSystem';
-import { hexKey } from '../systems/lattice/hex';
 import type { EngineCtx } from '../types';
 
 const nullCtx: EngineCtx = { emit() {}, dirty() {} };
@@ -102,15 +100,30 @@ describe('carry-one — the one balance change, bounded', () => {
 });
 
 describe('auto-collapse — automation, not a free prestige', () => {
-  it('does not fire without the Grid running, even past the threshold', () => {
+  /**
+   * The Grid it used to be gated on is gone (gridModules.ts cut, A.7x); a
+   * standing autoCollapseDepth now fires on its own once the threshold is
+   * crossed, with no automation prerequisite left to gate it.
+   */
+  it('fires on the standing threshold alone, with no Grid to gate it', () => {
     const { engine, s } = fresh();
     const st = s();
     st.qol.autoCollapseDepth = 30;
     st.depth = 40;
     st.shaft.reached = 40;
-    st.spiral.grid = {}; // no automation built
     engine.tick(2); // two seconds of live sim
-    expect(s().depth).toBe(40); // still deep — nothing auto-collapsed
+    expect(s().depth).toBe(0); // collapsed
+    expect(s().collapse.count).toBe(1);
+  });
+
+  it('does not fire under the threshold', () => {
+    const { engine, s } = fresh();
+    const st = s();
+    st.qol.autoCollapseDepth = 30;
+    st.depth = 20;
+    st.shaft.reached = 20;
+    engine.tick(2);
+    expect(s().depth).toBe(20);
     expect(s().collapse.count).toBe(0);
   });
 });
@@ -177,14 +190,6 @@ describe('qol action handlers', () => {
     expect(s().qol.refinePresets).toHaveLength(0);
   });
 
-  it('chord locks toggle', () => {
-    const { engine, s } = fresh();
-    engine.dispatch({ type: 'toggleChordLock', id: 'someChord' });
-    expect(s().qol.lockedChords).toContain('someChord');
-    engine.dispatch({ type: 'toggleChordLock', id: 'someChord' });
-    expect(s().qol.lockedChords).not.toContain('someChord');
-  });
-
   it('auto-collapse depth clamps to a floor of 1, and null turns it off', () => {
     const { engine, s } = fresh();
     engine.dispatch({ type: 'setAutoCollapseDepth', depth: 33 });
@@ -240,74 +245,6 @@ describe('auto-refine — a standing rule that only ever converts (pillar 2)', (
     st.qol.refinePresets[0]!.enabled = false;
     tickAutoRefine(st, nullCtx);
     expect(materialCount(st, 'marl')).toBe(30);
-  });
-});
-
-describe('the Lattice — ghost preview, lock, saved layouts (pillar 5)', () => {
-  it('ghost preview is pure geometry — identical whatever has been discovered', () => {
-    const { s } = fresh();
-    const st = s();
-    st.lattice.unlocked = true;
-    st.lattice.rings = 2;
-    st.lattice.cells[hexKey(1, 0)] = { shape: 'triangle', rank: 2, seq: 0 };
-    st.lattice.cells[hexKey(-1, 0)] = { shape: 'triangle', rank: 3, seq: 1 };
-
-    // With NOTHING discovered:
-    st.lattice.discovered = [];
-    const blind = latticeGhost(st, 0, 0, 1);
-    // Adjacency: the two neighbours on either side.
-    expect(blind.adjacency).toBe(2);
-    // The line through (−1,0)-(0,0)-(1,0): 3 + 1(brush) + 2 = 6 on that axis.
-    expect(blind.lines).toContain(6);
-
-    // With EVERYTHING "discovered" — the output must not change one bit.
-    st.lattice.discovered = ['a', 'b', 'c', 'd', 'e'];
-    const seeing = latticeGhost(st, 0, 0, 1);
-    expect(seeing).toEqual(blind);
-  });
-
-  it('a locked chord guards its sockets from removal', () => {
-    const { s } = fresh();
-    const st = s();
-    st.lattice.unlocked = true;
-    st.lattice.rings = 2;
-    const key = hexKey(1, 0);
-    st.lattice.cells[key] = { shape: 'triangle', rank: 2, seq: 0 };
-    st.lattice.activeChords = [{ id: 'guarded', cells: [key], sumRanks: 2 } as never];
-
-    // Unlocked: removal works.
-    st.qol.lockedChords = [];
-    // (don't actually remove yet — check the lock first, then confirm unlock path)
-    st.qol.lockedChords = ['guarded'];
-    const blocked = removeMotif(st, nullCtx, 1, 0);
-    expect(blocked.ok).toBe(false);
-    expect(st.lattice.cells[key]).toBeDefined(); // still there
-
-    st.qol.lockedChords = [];
-    const freed = removeMotif(st, nullCtx, 1, 0);
-    expect(freed.ok).toBe(true);
-    expect(st.lattice.cells[key]).toBeUndefined();
-  });
-
-  it('saved layouts store the arrangement and restore into empty sockets, paying cost', () => {
-    const { engine, s } = fresh();
-    s().lattice.unlocked = true;
-    s().lattice.rings = 2;
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'motif', amount: 1000 });
-    engine.dispatch({ type: 'placeMotif', q: 1, r: 0, shape: 'triangle', rank: 1 });
-    engine.dispatch({ type: 'placeMotif', q: 0, r: 1, shape: 'square', rank: 1 });
-
-    const save = engine.dispatch({ type: 'saveLatticeLayout', name: 'test' });
-    expect(save.ok).toBe(true);
-    const id = (save.data as { id: string }).id;
-    expect(s().qol.latticeLayouts).toHaveLength(1);
-    expect(s().qol.latticeLayouts[0]!.motifs).toHaveLength(2);
-
-    // Clear the board, then restore — the sockets refill.
-    s().lattice.cells = {};
-    const restore = engine.dispatch({ type: 'restoreLatticeLayout', id });
-    expect(restore.ok).toBe(true);
-    expect(Object.keys(s().lattice.cells)).toHaveLength(2);
   });
 });
 

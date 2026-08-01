@@ -17,7 +17,6 @@ import {
 import { dispatch, useGame } from '../store';
 import { Amount, HoldButton } from './shared';
 import { BreachCard } from './ferrite';
-import { WardenChallenge } from './combat';
 import { CollapseControls } from './qol';
 
 // ---------------------------------------------------------------------------
@@ -78,7 +77,6 @@ export function CollapsePanel() {
 
   return (
     <div className="space-y-2">
-      <WardenChallenge />
       <BreachCard />
       <div className="panel p-4">
         <div className="text-center text-[10px] uppercase tracking-widest text-cave-400">Let the shaft fall</div>

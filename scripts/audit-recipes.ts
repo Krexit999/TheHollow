@@ -12,9 +12,6 @@ import { shellDef } from '../src/engine/shells';
 import { ensureContentLoaded } from '../src/engine/content';
 import { SHELL_EXPORTS } from '../src/engine/content/exports';
 import { CHAINS } from '../src/engine/systems/refinery';
-import { createEngine } from '../src/engine';
-import type { GameState } from '../src/engine/types';
-import { stockFor } from '../src/engine/guild/guild';
 import { allKeystones } from '../src/engine/systems/keystones';
 import { allCurrencies } from '../src/engine/resources';
 
@@ -83,28 +80,6 @@ for (const e of SHELL_EXPORTS) {
     }
   } else {
     bad(`${e.materialId} has no producing chain`);
-  }
-
-  // LAW 3 — Serra lists it the moment its home shell is behind you, at every
-  // later rung of the stair (deterministic, never rotated away).
-  const probe = createEngine({ nowMs: 0 }).getState() as GameState;
-  probe.guild.discovered = true;
-  for (let breach = home + 1; breach <= 6; breach++) {
-    probe.shell.breachCount = breach;
-    const shelf = stockFor(probe, 'serra');
-    if (!shelf.some((slot) => slot.id === e.materialId)) {
-      bad(`${e.materialId} missing from Serra's shelf at breachCount ${breach}`);
-    }
-  }
-}
-
-// The Hollow's currency export: Serra bottles Resonance once the Hollow is behind you.
-{
-  const probe = createEngine({ nowMs: 0 }).getState() as GameState;
-  probe.guild.discovered = true;
-  probe.shell.breachCount = 6;
-  if (!stockFor(probe, 'serra').some((slot) => slot.id === 'resonance')) {
-    bad('resonance pack missing from Serra at breachCount 6');
   }
 }
 
