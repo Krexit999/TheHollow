@@ -1,23 +1,17 @@
 /**
- * Phase 9 UI: heat and threat. The Pressure card (the gauge and its two
- * levers), the OVERPRESSURE and flood states (calm, legible, motionless),
- * the Vent Network, the Ember Array, and the Magma Wells.
- * The boldness budget is spent on heat; everything else is quiet.
+ * CINDER UI — what survived A.72's craft-system cut.
+ *
+ * The Ember Array and the Magma Wells were Cinder's two craft rooms; both are
+ * gone. The Pressure card, the OVERPRESSURE/flood states and the Vent Network
+ * — Cinder's actual signature mechanic — survive untouched.
  */
 import { useEffect, useRef, useState } from 'react';
-import { fmt, getCurrency } from '../../engine';
+import { getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
 import {
   MAX_PIPES, OVERPRESSURE_SEC, VENT_OUTLETS, VENT_SHAFT_CELL,
-  VENT_W, VENT_H, FREE_PIPES, heatCeiling, holdLine, networkCapacity, nextPipeCost, ventRate, yieldMult,
+  VENT_W, VENT_H, heatCeiling, holdLine, networkCapacity, nextPipeCost, ventRate, yieldMult,
 } from '../../engine/systems/pressure';
-import {
-  ARRAY_SIZE, BAND_HIGH, BAND_LOW, FUELS, FUEL_BY_ID, arrayUnlocked, DRAW_RATE, DRAW_FLOOR,
-  openRows, ANNEAL_SEC,
-} from '../../engine/content/shell5/emberArray';
-import { materialCount } from '../../engine/systems/forge';
-import { InstallButton } from './exports';
-import { WELLS, WELL_ODDS, wellProgress, wellsUnlocked, wellTapLive } from '../../engine/content/shell5/wells';
 import { floodCasualty } from '../../engine/systems/pressure';
 import { npcDef } from '../../engine/guild/npcs';
 import { dispatch, useGame } from '../store';
@@ -186,7 +180,6 @@ export function FloodModal() {
   );
 }
 
-
 // ---------------------------------------------------------------------------
 // The Vent Network — plumbing as a hobby, headroom as the payoff.
 // ---------------------------------------------------------------------------
@@ -216,13 +209,6 @@ export function VentsPanel() {
           Better routing is how you run hotter SAFELY — for the idle line and the greedy one alike.
           Pulling pipe back up is free; re-routing is the whole game here.
         </div>
-        {pipes >= FREE_PIPES && pipes < MAX_PIPES && (
-          <div className="mt-1 text-[10px] leading-snug text-[#a2b8a8]">
-            Sections past the twelfth want <span className="font-semibold">1 Glasseal</span> each
-            (held {materialCount(state as GameState, 'glasseal')}) — Glassmere's export. Cast at the
-            Bench, or from Serra.
-          </div>
-        )}
         <div className="mt-2 inline-block">
           {Array.from({ length: VENT_H }, (_, r) => (
             <div key={r} className="flex gap-0.5" style={{ marginTop: r > 0 ? 2 : 0 }}>
@@ -253,216 +239,6 @@ export function VentsPanel() {
         <div className="tnum mt-1.5 text-[10px] text-cave-400">
           Next section: {cost} Obsidian (held <Amount value={getCurrency(state, 'obsidian')} color="#a89ec0" />)
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The Ember Array — the one board that wants your hands on it.
-// ---------------------------------------------------------------------------
-
-export function EmberPanel() {
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  const [fuelPick, setFuelPick] = useState<string>('emberbillet');
-  if (!state) return null;
-  if (!arrayUnlocked(state as GameState)) {
-    return <div className="panel p-4 text-center text-xs italic text-cave-400">A furnace grate the size of a room, cold since the first delvers. It answers to Cinder Mastery 3.</div>;
-  }
-  const e = state.ember;
-  const inBand = e.temp >= BAND_LOW && e.temp <= BAND_HIGH;
-
-  return (
-    <div className="space-y-2">
-      <div className="panel p-3">
-        <div className="flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#e0955c]">Your record</span>
-          <span className="tnum text-[10px] text-cave-400">
-            best {Math.floor(e.bestSustainSec / 60)}m{Math.floor(e.bestSustainSec % 60)}s · rank {e.passiveRank}/20
-          </span>
-        </div>
-        {/* Temperature and the band. */}
-        <div className="relative mt-2 h-3 overflow-hidden rounded-full border border-cave-700 bg-cave-950">
-          <div className="absolute h-full bg-[#4a3020]" style={{ left: `${BAND_LOW}%`, width: `${BAND_HIGH - BAND_LOW}%` }} />
-          <div className="h-full" style={{ width: `${Math.min(100, e.temp)}%`, background: inBand ? '#e0955c' : '#8a6248', opacity: 0.9 }} />
-        </div>
-        <div className="tnum mt-0.5 flex justify-between text-[9px] text-cave-400">
-          <span>{e.temp.toFixed(0)}° {inBand ? `· IN BAND ${Math.floor(e.sustainSec)}s` : ''}</span>
-          <span>band {BAND_LOW}-{BAND_HIGH}° · a record never cools</span>
-        </div>
-        {/* The anneal: in-band work becomes the Hollow's glass (Part B spine). */}
-        <div className="tnum mt-1 text-[9px] text-cave-400">
-          Anneal: {Math.floor((e.annealSec ?? 0) % ANNEAL_SEC)}/{ANNEAL_SEC}s in band →{' '}
-          <span className="text-[#c8642e]">1 Emberglass</span> (held {materialCount(state as GameState, 'emberglass')}) — work done keeps; only a live fire anneals.
-        </div>
-        {/* The grate. */}
-        <div className="mt-2 inline-block">
-          {Array.from({ length: ARRAY_SIZE }, (_, r) => (
-            <div key={r} className="flex gap-0.5" style={{ marginTop: r > 0 ? 2 : 0 }}>
-              {Array.from({ length: ARRAY_SIZE }, (_, c) => {
-                const cell = r * ARRAY_SIZE + c;
-                const rowClosed = r >= openRows(state as GameState);
-                const fuelId = e.grid[cell];
-                const burning = (e.burn[cell] ?? 0) > 0;
-                const fuel = fuelId ? FUEL_BY_ID.get(fuelId) : null;
-                return (
-                  <button
-                    key={c}
-                    className={`h-7 w-7 rounded-[3px] border text-[11px] leading-none ${
-                      burning ? 'border-[#ff8a4a] bg-[#3a1c0e] text-[#ffb36a]'
-                      : fuelId ? 'border-[#8a6248] bg-[#241a12] text-[#c9a86a]'
-                      : rowClosed ? 'border-cave-800 bg-cave-950/60 text-cave-700'
-                      : 'border-cave-700 bg-cave-950 text-cave-600'
-                    }`}
-                    title={burning ? `${fuel?.name} — ${Math.ceil(e.burn[cell]!)}s left`
-                      : fuelId ? `${fuel?.name} (tap to light, long-press logic: place empties)`
-                      : rowClosed ? 'No lens over this row — socket a Ground Lens to open it'
-                      : 'Place the selected fuel'}
-                    onClick={() => {
-                      if (burning) return;
-                      if (fuelId) dispatch({ type: 'lightCell', cell });
-                      else dispatch({ type: 'placeFuel', cell, fuelId: fuelPick });
-                    }}
-                  >
-                    {burning ? '🔥' : fuelId ? '▪' : rowClosed ? '×' : '·'}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-        {openRows(state as GameState) < ARRAY_SIZE && (
-          <div className="mt-1.5">
-            <InstallButton
-              action={{ type: 'installSocket' }}
-              label={`Socket row ${openRows(state as GameState) + 1} of ${ARRAY_SIZE}`}
-              exportId="groundlens"
-            />
-            <div className="mt-1 text-[10px] leading-snug text-cave-500">
-              Each Ground Lens — Glassmere's export — steadies one more row's draft. The Bench
-              grinds them; Serra hauls them.
-            </div>
-          </div>
-        )}
-        {/* Fuel rack. */}
-        <div className="mt-2 flex flex-wrap gap-1">
-          {FUELS.map((f) => (
-            <button
-              key={f.id}
-              className={`btn px-2 py-1 text-[10px] ${fuelPick === f.id ? 'btn-warm' : ''}`}
-              title={`${f.flavor} · ${f.heatPerSec}°/s for ${f.burnSec}s · ${f.cost} ${f.costCurrency}`}
-              onClick={() => setFuelPick(f.id)}
-            >
-              {f.name} <span className="tnum text-cave-400">×{e.fuelOwned[f.id] ?? 0}</span>
-            </button>
-          ))}
-          <button className="btn px-2 py-1 text-[10px]" onClick={() => dispatch({ type: 'buyFuel', fuelId: fuelPick, count: 4 })}>
-            buy 4
-          </button>
-        </div>
-        {/* The two couplings, side by side, because they are opposites: one
-            pushes the furnace into the shaft, the other pulls the shaft into
-            the furnace. Setting either one clears the other. */}
-        <div className="mt-2 grid grid-cols-2 gap-1.5">
-          <button
-            className={`btn py-1.5 text-[11px] ${e.overdrive ? 'btn-warm' : ''}`}
-            title="Feed the furnace into the shaft: +50% burn heat, +0.8 shaft heat/s, and the governor comes OFF while it runs. It shuts itself down at the klaxon."
-            onClick={() => dispatch({ type: 'setOverdrive', on: !e.overdrive })}
-          >
-            {e.overdrive ? 'OVERDRIVE — running' : 'Overdrive'}
-            <span className="block text-[9px] font-normal opacity-70">feeds shaft heat</span>
-          </button>
-          <button
-            className={`btn py-1.5 text-[11px] ${e.draw ? 'btn-warm' : ''}`}
-            title={`Run the pipe the other way: the shaft's held heat becomes furnace temperature at ${DRAW_RATE}/s, down to a floor of ${DRAW_FLOOR}. Costs nothing but standing here.`}
-            onClick={() => dispatch({ type: 'setDraw', on: !e.draw })}
-          >
-            {e.draw ? 'THE DRAW — running' : 'The Draw'}
-            <span className="block text-[9px] font-normal opacity-70">
-              {e.draw && state.pressure.heat > DRAW_FLOOR
-                ? `pulling ${DRAW_RATE}/s from the shaft`
-                : 'burns shaft heat'}
-            </span>
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The Magma Wells — the odds ARE the interface. One draw, no drama.
-// ---------------------------------------------------------------------------
-
-export function WellsPanel() {
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  if (!state) return null;
-  if (!wellsUnlocked(state as GameState)) {
-    return <div className="panel p-4 text-center text-xs italic text-cave-400">Three ropes coiled by three holes in the floor. They answer to Cinder Mastery 6.</div>;
-  }
-  return (
-    <div className="space-y-2">
-      <div className="panel p-3 text-[10px] leading-snug text-cave-400">
-        <span className="font-semibold uppercase tracking-widest text-[#e0955c]">The odds, as posted at the mouth</span>
-        <div className="tnum mt-1 space-y-0.5">
-          {WELL_ODDS.map((l) => (
-            <div key={l.label} className="flex justify-between">
-              <span>{(l.p * 100).toFixed(0)}%</span>
-              <span className={l.mult === 0 ? 'text-cave-500' : 'text-[#ffb36a]'}>{l.label}</span>
-            </div>
-          ))}
-        </div>
-        <div className="mt-1 italic">
-          A tenth of your holdings at most, three ropes at once, results wait forever. A player who
-          never touches a Well misses stories, not progress.
-        </div>
-        {/* B5: the pressure tap — the gallery's flow stirs the rope. */}
-        <div className={`mt-1 ${wellTapLive(state as GameState) ? 'text-[#ffb36a]' : 'text-cave-500'}`}>
-          THE TAP: a well fed while the gallery vents hot (heat 50+, a route laid) resolves 25%
-          faster. {wellTapLive(state as GameState) ? 'It is flowing now.' : 'It is not flowing now.'}
-        </div>
-      </div>
-      {WELLS.map((w) => {
-        const active = state.wells.active.find((a) => a.wellId === w.id);
-        const progress = wellProgress(state as GameState, w.id);
-        const held = getCurrency(state, w.currencyId);
-        const commit = held.mul(0.1).floor();
-        return (
-          <div key={w.id} className="panel p-3">
-            <div className="flex items-baseline justify-between">
-              <span className="text-xs font-semibold text-cave-200">{w.name}</span>
-              <span className="tnum text-[9px] text-cave-400">{w.minutes}m · takes {w.currencyId}</span>
-            </div>
-            <div className="text-[10px] italic text-cave-400">{w.flavor}</div>
-            {active ? (
-              <div className="mt-1.5">
-                <div className="h-2 overflow-hidden rounded-full border border-cave-700 bg-cave-950">
-                  <div className="h-full bg-[#e0955c]/70" style={{ width: `${progress * 100}%` }} />
-                </div>
-                <button
-                  className="btn btn-warm mt-1.5 w-full py-1.5 text-xs"
-                  disabled={progress < 1}
-                  onClick={() => dispatch({ type: 'collectWell', wellId: w.id })}
-                >
-                  {progress < 1 ? `${fmt(active.amount)} committed — the well does not hurry` : 'Haul the rope up'}
-                </button>
-              </div>
-            ) : (
-              <button
-                className="btn mt-1.5 w-full py-1.5 text-xs"
-                disabled={commit.lt(w.minCommit)}
-                onClick={() => dispatch({ type: 'commitWell', wellId: w.id, amount: commit.toNumber() })}
-              >
-                Commit a tenth ({fmt(commit)})
-              </button>
-            )}
-          </div>
-        );
-      })}
-      <div className="tnum px-1 text-center text-[9px] text-cave-500">
-        lifetime: {state.wells.rolls} draws · {state.wells.wins} paid · {state.wells.losses} kept by the well
       </div>
     </div>
   );

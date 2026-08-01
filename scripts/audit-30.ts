@@ -1,10 +1,13 @@
 /**
- * PART 8, done properly (Phase 11b): every one of the 30 systems, shot at a
+ * PART 8, done properly (Phase 11b): every surviving system, shot at a
  * single state, then composed into contact sheets for a per-screen verdict.
+ * A.72 cut ten of the original thirty tabs (Foundry, Greenhouse, Mycelium,
+ * Loom, Bench, Array, Chamber, Warrens, Observatory, Wells) along with their
+ * systems; the file name is historical.
  *
- * All 30 are only simultaneously visible POST-RECURSION (parallel needs
- * recursion>=1, rewrite needs breach>=6, chamber/hollow need Hollow records),
- * so that is the state used. Shoots the room region — SystemHeader + panel —
+ * All are only simultaneously visible POST-RECURSION (parallel needs
+ * recursion>=1, rewrite needs breach>=6, hollow needs Hollow records), so
+ * that is the state used. Shoots the room region — SystemHeader + panel —
  * which is what the audit is actually about.
  *
  * Usage: npx tsx scripts/audit-30.ts        (dev server must be running)
@@ -18,12 +21,10 @@ const URL = 'http://localhost:5173';
 const SYSTEMS = [
   ['dig', 'The Face'], ['kiln', 'The Kiln'], ['drills', 'The Drill Bay'],
   ['vents', 'The Vent Network'], ['hollow', 'The Silence'],
-  ['lattice', 'The Lattice'], ['crucible', 'The Alloy Crucible'], ['foundry', 'The Foundry'],
-  ['greenhouse', 'The Greenhouse'], ['mycelium', 'The Mycelium'], ['loom', 'The Loom'],
-  ['bench', 'The Refraction Bench'], ['array', 'The Ember Array'], ['chamber', 'The Echo Chamber'],
-  ['hold', 'The Hold'], ['forge', 'The Forge'], ['runes', 'Rune Inscription'], ['brew', 'The Still'],
-  ['guild', 'The Lamphouse'], ['bestiary', 'The Bestiary'], ['warrens', 'The Warrens'],
-  ['observatory', 'The Observatory'], ['journal', "Sable's Journal"], ['wells', 'The Magma Wells'],
+  ['lattice', 'The Lattice'], ['crucible', 'The Alloy Crucible'],
+  ['hold', 'The Hold'], ['forge', 'The Forge'], ['runes', 'Rune Inscription'],
+  ['guild', 'The Lamphouse'], ['bestiary', 'The Bestiary'],
+  ['journal', "Sable's Journal"],
   ['delver', 'The Delver'], ['collapse', 'The Collapse'], ['rewrite', 'The Rewrite'],
   ['parallel', 'The Parallel View'], ['grid', 'Achievements'], ['vault', 'The Vault'],
 ] as const;
@@ -48,11 +49,7 @@ const SEED = `(() => {
   // its registry, blanking the whole app — a harness trap, not a game bug.
   // Counters and unlocks are safe; collections of ids are left to fill
   // themselves or stay empty.
-  s.observatory.completed=3;
-  s.mycelium.reserve=80;
   s.pressure.pipes=new Array(35).fill(0); for(const c of [14,15,16,3]) s.pressure.pipes[c]=1; s.pressure.heat=48;
-  s.ember.bestSustainSec=95;
-  s.wells.rolls=4; s.wells.wins=1; s.wells.losses=3;
   s.crucible.pours=17;
   s.hollow.silence=55; s.hollow.rebuilt=[]; for(let i=0;i<16;i++) s.hollow.rebuilt.push(i);
   s.delver.level=40; s.delver.skillPoints=3;

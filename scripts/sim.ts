@@ -38,27 +38,20 @@ import { canBreach } from '../src/engine/systems/breach';
 import { magnetArrayUnlocked } from '../src/engine/systems/polarity';
 import { castingForAlloy, crucibleUnlocked } from '../src/engine/content/shell2/crucibleSystem';
 import { matchAlloy } from '../src/engine/content/shell2/alloys';
-import { foundryUnlocked, FOUNDRY_MODULES } from '../src/engine/systems/foundry';
 import { GEAR_DEFS } from '../src/engine/combat/gear';
 import { COMPETENT_SKILL, resolveFight } from '../src/engine/combat/combat';
 import { canSpiral } from '../src/engine/systems/spiral';
 import { speciesDef, SPECIES } from '../src/engine/combat/species';
 import { rollSpecies } from '../src/engine/combat/species';
 import { contractProgress, contractSatisfied } from '../src/engine/guild/contracts';
-import { strainDef } from '../src/engine/content/shell3/greenhouse';
-import { currentWeather } from '../src/engine/systems/weather';
-import { AUTHORED_PUZZLES } from '../src/engine/content/shell4/bench';
-import { WARRENS, puzzleData, warrenAvailable } from '../src/engine/content/shell4/warrens';
 import { translationFee, FRAGMENTS } from '../src/engine/guild/sable';
 import { CARAVAN_ROUTES, drift } from '../src/engine/guild/caravan';
 import { TITLE_BY_ID } from '../src/engine/guild/titles';
 import { hiredCount } from '../src/engine/guild/hirelings';
 import { dpsMax, cellRegen, cellCap } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
-import { arrayUnlocked, openRows, ARRAY_SIZE } from '../src/engine/content/shell5/emberArray';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { stockFor } from '../src/engine/guild/guild';
-import { WELLS, wellProgress, wellsUnlocked } from '../src/engine/content/shell5/wells';
 import {
   activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceSlotCap,
 } from '../src/engine/systems/confluence';
@@ -258,10 +251,6 @@ function combatPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
       : shell.id === 'glassmere' ? 'meridianEdge'
       : shell.id === 'verdance' ? 'wildstarFalx'
       : shell.id === 'ferrite' ? 'stormcaller' : 'wardenbreaker';
-    // A brew is exactly for this moment (spikes, not sustains).
-    if ((s.brewing.doses['ironblood'] ?? 0) > 0 && !s.brewing.active) {
-      engine.dispatch({ type: 'drinkBrew', brewId: 'ironblood' });
-    }
     // The Unblinking demands SIGHT: craft and wear a reveal lantern first
     // (the Phase-8 run lost 1,314 blind attempts for want of this line).
     if (shell.id === 'glassmere' && !s.forge.gear.lantern) {
@@ -272,7 +261,6 @@ function combatPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
     // The Smolder demands RESTRAINT: vent to the safe line before her stair.
     if (shell.id === 'cinder' && s.pressure.heat > 35) {
       engine.dispatch({ type: 'setChoke', on: false });
-      engine.dispatch({ type: 'setOverdrive', on: false });
       if (s.pressure.heat > 45) engine.dispatch({ type: 'emergencyPurge' });
     }
     // The Unattended demands its OPPOSITE: presence grows it — put the reveal
@@ -532,14 +520,8 @@ const contractWatch = new Map<number, { have: number; sinceSec: number }>();
 // ---------------------------------------------------------------------------
 
 let growthPolicy: Args['growth'] = 'clear';
-const verdMetrics = { brewActiveSec: 0, brewSamples: 0, farmHarvests: 0 };
+const verdMetrics = { farmHarvests: 0 };
 let lastFarmSweep = -1e9;
-let brewTrialIdx = 0;
-/** Honest experimentation: sweep the small-ratio space in order. */
-const BREW_TRIALS: Array<[number, number, number]> = [];
-for (let a = 0; a <= 4; a++) for (let b = 0; b <= 4; b++) for (let c = 0; c <= 3; c++) {
-  if (a + b + c >= 2 && a + b + c <= 7) BREW_TRIALS.push([a, b, c]);
-}
 
 /** Two quadrants (top-left, bottom-right) go feral under the cultivate policy. */
 function isFarmCell(s: GameState, cell: number): boolean {
@@ -554,11 +536,7 @@ function isFarmCell(s: GameState, cell: number): boolean {
 }
 
 function verdancePlay(engine: Engine, s: GameState, wallBlocked: boolean): void {
-  // Brew uptime sample (every policy pass ~2s).
-  if (s.shell.breachCount >= 2 || currentShell(s).id === 'verdance') {
-    verdMetrics.brewSamples += 1;
-    if (s.brewing.active) verdMetrics.brewActiveSec += 2;
-  }
+  void wallBlocked;
   // The farm sweep: harvest bloom+ vines in the farmed quadrants.
   if (growthPolicy === 'cultivate' && currentShell(s).id === 'verdance' &&
       s.stats.playTimeSec - lastFarmSweep > 120) {
@@ -571,97 +549,14 @@ function verdancePlay(engine: Engine, s: GameState, wallBlocked: boolean): void 
       }
     }
   }
-  // The Mycelium: feed it, seed it.
-  if (Object.keys(s.mycelium.nodes).length < 20) {
-    if ((s.currencies['humus']?.toNumber() ?? 0) > 120) {
-      engine.dispatch({ type: 'feedMycelium', humus: 60 });
-      const types = ['marrowcap', 'dewthread', 'lanterngill', 'burrowlace', 'sporefather'];
-      const owned = Object.keys(s.mycelium.nodes).length;
-      // Next site: walk rows shallow-to-deep, lanes left-to-right.
-      outer: for (let r = 0; r < 14; r++) {
-        for (let l = 0; l < 3; l++) {
-          const id = `${r}-${l}`;
-          if (!s.mycelium.nodes[id]) {
-            engine.dispatch({ type: 'inoculate', siteId: id, nodeType: types[owned % types.length]! });
-            break outer;
-          }
-        }
-      }
-    }
-  }
-  // The Greenhouse: plant differing base strains side by side (breeding),
-  // harvest ripe non-hybrids, let two mature cultivars stand.
-  const gh = s.greenhouse;
-  const baseSeeds = Object.entries(gh.seeds).filter(([id, n]) => n > 0 && !id.startsWith('hy.'));
-  for (let plot = 0; plot < gh.plots.length; plot++) {
-    if (!gh.plots[plot] && baseSeeds.length > 0) {
-      const neighborId = gh.plots[plot - 1]?.speciesId;
-      const pick = baseSeeds.find(([id]) => id !== neighborId) ?? baseSeeds[0]!;
-      engine.dispatch({ type: 'plantSeed', plot, speciesId: pick[0] });
-      break;
-    }
-  }
-  let standing = 0;
-  for (let plot = 0; plot < gh.plots.length; plot++) {
-    const p = gh.plots[plot];
-    if (!p) continue;
-    const mature = (() => {
-      try { return p.progressMs >= strainDef(p.speciesId).growMs; } catch { return false; }
-    })();
-    if (!mature) continue;
-    if (p.speciesId.startsWith('hy.') && standing < 2) {
-      standing += 1; // cultivars work while they stand
-      continue;
-    }
-    engine.dispatch({ type: 'harvestPlot', plot });
-  }
-  // The still: experiment when flush (skip resin trials until the deep pays).
-  // Never siphon Sap the forge is hoarding for a wall.
-  if (!wallBlocked && (s.currencies['sap']?.toNumber() ?? 0) > 250 && (s.currencies['spore']?.toNumber() ?? 0) > 800) {
-    const resin = s.currencies['resin']?.toNumber() ?? 0;
-    for (let tries = 0; tries < BREW_TRIALS.length; tries++) {
-      const trial = BREW_TRIALS[brewTrialIdx % BREW_TRIALS.length]!;
-      brewTrialIdx += 1;
-      if (trial[2] * 5 > resin) continue; // can't afford the resin leg yet
-      engine.dispatch({ type: 'brewExperiment', sap: trial[0], spore: trial[1], resin: trial[2] });
-      break;
-    }
-  }
-  if (!s.brewing.active && (s.brewing.doses['longlight'] ?? 0) > 1 && Math.random() < 0.02) {
-    engine.dispatch({ type: 'drinkBrew', brewId: 'longlight' });
-  }
-  // The Loom: spin what the fights dropped, then keep the I-weave set.
-  if (!wallBlocked && s.loom.weaves === 0) {
-    for (const t of ['silkS', 'rootZ', 'rootS'] as const) {
-      engine.dispatch({ type: 'spinThread', threadId: t });
-    }
-    if ((s.loom.threads['silkS'] ?? 0) >= 1 && (s.loom.threads['rootZ'] ?? 0) >= 9 && (s.loom.threads['rootS'] ?? 0) >= 2) {
-      for (let i = 0; i < 6; i++) {
-        engine.dispatch({ type: 'setThread', axis: 'warp', index: i, threadId: i === 0 ? 'silkS' : 'rootZ' });
-        engine.dispatch({ type: 'setThread', axis: 'weft', index: i, threadId: i < 4 ? 'rootZ' : 'rootS' });
-      }
-      engine.dispatch({ type: 'commitWeave' });
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
 // Glassmere play — optics, skies, the bench, detours, runes.
 // ---------------------------------------------------------------------------
 
-let lastWarrenAt = -1e9;
-let lastBenchAt = -1e9;
-const glassMetrics = { warrensRun: 0, lensesGround: 0, observationsIdle: 0 };
-
 function glassmerePlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
-  // The Observatory: always exposing (pure AFK — the idle payoff).
-  if (masteryLevelOf(s, 'glassmere') >= 2) {
-    if (!s.observatory.active) {
-      engine.dispatch({ type: 'startObservation', tier: 1 });
-    } else if (engine.dispatch({ type: 'collectObservation' }).ok) {
-      glassMetrics.observationsIdle += 1;
-    }
-  }
+  void log;
   if (currentShell(s).id === 'glassmere') {
     // Optics: keep a simple L-path lit (mirrors survive descends).
     if (Object.keys(s.refraction.mirrors).length === 0) {
@@ -672,52 +567,6 @@ function glassmerePlay(engine: Engine, s: GameState, log: (msg: string) => void)
     }
     if (s.refraction.mirrorStock < 4 && (s.currencies['silica']?.toNumber() ?? 0) > 300) {
       engine.dispatch({ type: 'buyMirror' });
-    }
-    // The Bench: one honest solve per stretch; wear the best lens.
-    if (s.stats.playTimeSec - lastBenchAt > 600 && (s.currencies['silica']?.toNumber() ?? 0) > 60) {
-      lastBenchAt = s.stats.playTimeSec;
-      const next = AUTHORED_PUZZLES.find((p) => !s.bench.solved.includes(p.id));
-      if (next) {
-        const r = engine.dispatch({ type: 'benchAttempt', puzzleId: next.id, mirrors: next.solution });
-        if (r.ok && (r.data as { solved: boolean }).solved) {
-          glassMetrics.lensesGround += 1;
-          engine.dispatch({ type: 'equipLens', puzzleId: next.id });
-        }
-      }
-    }
-  }
-  // The Warrens: a detour every half hour, wherever one is open.
-  if (!s.warrens.active && !s.combat.active && s.stats.playTimeSec - lastWarrenAt > 1800) {
-    const open = WARRENS.find((w) => warrenAvailable(s, w) && !(s.warrens.cleared[w.id] && s.warrens.uniques.includes(w.id) && Math.random() < 0.8));
-    if (open) {
-      lastWarrenAt = s.stats.playTimeSec;
-      if (engine.dispatch({ type: 'warrenEnter', id: open.id }).ok) {
-        const data = puzzleData(open);
-        let answer: number[] = [];
-        if (open.puzzle.kind === 'echo') answer = data.sequence!;
-        else if (open.puzzle.kind === 'weights') {
-          const ws = data.weights!;
-          outer: for (let mask = 1; mask < 1 << ws.length; mask++) {
-            if (ws.reduce((a, x, i) => a + ((mask >> i) & 1) * x, 0) === data.target) {
-              answer = ws.map((_, i) => i).filter((i) => (mask >> i) & 1);
-              break outer;
-            }
-          }
-        } else {
-          const lit = new Set<number>();
-          for (const g of data.gates!) for (const l of g.on) lit.add(l);
-          for (const g of data.gates!) for (const l of g.off) lit.delete(l);
-          answer = [...lit];
-        }
-        engine.dispatch({ type: 'warrenAnswer', id: open.id, answer });
-        if (s.combat.active) fightManually(engine, s);
-        if (engine.dispatch({ type: 'warrenClaim' }).ok) {
-          glassMetrics.warrensRun += 1;
-          if (glassMetrics.warrensRun <= 4) log(`warren cleared: ${open.name}`);
-        } else {
-          engine.dispatch({ type: 'warrenLeave' });
-        }
-      }
     }
   }
   // Runes: etch the good grammar as finds allow.
@@ -737,10 +586,6 @@ function glassmerePlay(engine: Engine, s: GameState, log: (msg: string) => void)
   }
 }
 
-function masteryLevelOf(s: GameState, shellId: string): number {
-  return Math.min(50, Math.floor((s.depthRecords[shellId] ?? 0) / 10));
-}
-
 // ---------------------------------------------------------------------------
 // Cinder play — three heat stances audit the failure state's charter:
 //   safe    never chokes, never wells; the Damper's line must stay VIABLE.
@@ -749,11 +594,7 @@ function masteryLevelOf(s: GameState, shellId: string): number {
 // ---------------------------------------------------------------------------
 
 let heatStance: Args['heat'] = 'balanced';
-const cinderMetrics = {
-  heatSum: 0, heatSamples: 0, purges: 0, wellsNet: 0, wellsCommitted: 0,
-  fuelLit: 0,
-};
-let lastArrayTend = -1e9;
+const cinderMetrics = { heatSum: 0, heatSamples: 0, purges: 0 };
 
 function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
   if (currentShell(s).id !== 'cinder') return;
@@ -794,49 +635,11 @@ function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
     if (p.overpressureAtSec !== null && s.stats.playTimeSec - p.overpressureAtSec > 25) {
       if (engine.dispatch({ type: 'emergencyPurge' }).ok) cinderMetrics.purges += 1;
     }
-    if (s.ember.overdrive && (!active || p.heat >= 96)) engine.dispatch({ type: 'setOverdrive', on: false });
   }
 
   // Crew safety: a competent player recalls at the red line, always.
   if (p.heat >= 90 && !s.guild.crewRecalled && Object.keys(s.guild.hirelings).length > 0) {
     engine.dispatch({ type: 'recallCrew' });
-  }
-
-  // The Ember Array: tend a billet block every few minutes.
-  if (arrayUnlocked(s) && s.stats.playTimeSec - lastArrayTend > 240) {
-    lastArrayTend = s.stats.playTimeSec;
-    if ((s.currencies['ember']?.toNumber() ?? 0) > 200) {
-      engine.dispatch({ type: 'buyFuel', fuelId: 'emberbillet', count: 4 });
-      const cold = [14, 15, 20, 21].filter((c) => !s.ember.grid[c] && s.ember.burn[c]! <= 0);
-      for (const c of cold) engine.dispatch({ type: 'placeFuel', cell: c, fuelId: 'emberbillet' });
-      if (s.ember.temp < 5 && s.ember.grid[14]) {
-        if (engine.dispatch({ type: 'lightCell', cell: 14 }).ok) cinderMetrics.fuelLit += 1;
-        engine.dispatch({ type: 'lightCell', cell: 21 });
-      }
-    }
-  }
-
-  // Magma Wells: balanced dips a toe; greedy commits the cap; safe abstains.
-  if (heatStance !== 'safe' && wellsUnlocked(s)) {
-    for (const well of WELLS) {
-      const progress = wellProgress(s, well.id);
-      if (progress >= 1) {
-        const before = s.currencies[well.currencyId]?.toNumber() ?? 0;
-        const r = engine.dispatch({ type: 'collectWell', wellId: well.id });
-        if (r.ok) {
-          const after = s.currencies[well.currencyId]?.toNumber() ?? 0;
-          cinderMetrics.wellsNet += after - before;
-        }
-      } else if (progress === 0) {
-        const held = s.currencies[well.currencyId]?.toNumber() ?? 0;
-        const commit = heatStance === 'greedy' ? Math.floor(held * 0.1) : well.minCommit;
-        if (held > well.minCommit * 12 && commit >= well.minCommit) {
-          if (engine.dispatch({ type: 'commitWell', wellId: well.id, amount: commit }).ok) {
-            cinderMetrics.wellsCommitted += commit;
-          }
-        }
-      }
-    }
   }
   void log;
 }
@@ -847,10 +650,9 @@ function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
 // ---------------------------------------------------------------------------
 
 const p10Metrics = {
-  silenceHarvests: 0, cellsRebuilt: 0, tapeLoops: 0, recursions: 0,
+  silenceHarvests: 0, cellsRebuilt: 0, recursions: 0,
   axiomsBought: [] as string[], coreTouches: 0,
 };
-let tapeArmed = false;
 
 function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
   const shell = currentShell(s).id;
@@ -877,16 +679,6 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
         }
       }
     }
-    // The Echo Chamber: record a two-chip loop once, run it forever.
-    if (masteryLevelOf(s, 'hollow') >= 2 && !tapeArmed && s.hollow.rebuilt.length >= 2) {
-      tapeArmed = true;
-      engine.dispatch({ type: 'tapeRecord', on: true });
-      const lit = s.hollow.rebuilt.slice(0, 2);
-      for (const c of lit) engine.dispatch({ type: 'chip', cell: c });
-      engine.dispatch({ type: 'tapeRun', on: true });
-      log(`echo chamber: recorded a ${s.chamber.tape.length}-step loop`);
-    }
-    p10Metrics.tapeLoops = s.chamber.loops;
   }
 
   if (shell === 'aleph') {
@@ -929,7 +721,6 @@ function hollowPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
             break;
           }
         }
-        tapeArmed = false;
       }
     }
     // THE SPIRAL — rung four, and the sim has never once dispatched it (A.44).
@@ -1222,12 +1013,13 @@ const POUR_PLAN: Array<{ amounts: number[]; log: string }> = [
 // the policies here, or the run stalls and the harness shows it.
 // ---------------------------------------------------------------------------
 
-const spineMetrics = { fluxFired: 0, framesCast: 0, lensesGround: 0, clothBought: 0, serraBuys: 0 };
+const spineMetrics = { fluxFired: 0, serraBuys: 0 };
 
 function provisionSpine(engine: Engine, s: GameState, log: (msg: string) => void): void {
   const shell = currentShell(s).id;
 
-  // FERRITE — fire Kilnflux for the pours, cast Lodeframes for the greenery.
+  // FERRITE — fire Kilnflux for the pours (the last surviving export, via the
+  // Refinery transmute chain).
   if (shell === 'ferrite') {
     if (
       transmuteUnlocked(s) && materialCount(s, 'kilnflux') < 2
@@ -1238,49 +1030,18 @@ function provisionSpine(engine: Engine, s: GameState, log: (msg: string) => void
         if (spineMetrics.fluxFired === 1) log('spine: first Kiln Firing (palegold + marl -> 6 kilnflux)');
       }
     }
-    if (materialCount(s, 'lodeframe') < 4) {
-      if (engine.dispatch({ type: 'produceExport', id: 'lodeframe' }).ok) spineMetrics.framesCast += 1;
-    }
-  }
-
-  // VERDANCE — brace the loom, frame the beds, render resin ahead of need.
-  if (shell === 'verdance') {
-    if (!s.loom.framed && materialCount(s, 'lodeframe') > 0) {
-      if (engine.dispatch({ type: 'installLoomFrame' }).ok) log('spine: loom braced in iron');
-    }
-    if (materialCount(s, 'lodeframe') > 0) engine.dispatch({ type: 'installFrame' }); // no-ops at cap
-    if (materialCount(s, 'setresin') < 2) engine.dispatch({ type: 'produceExport', id: 'setresin' });
-  }
-
-  // GLASSMERE — grind the fire's lenses before the fire is yours.
-  if (shell === 'glassmere') {
-    if (materialCount(s, 'groundlens') < 5) {
-      if (engine.dispatch({ type: 'produceExport', id: 'groundlens' }).ok) spineMetrics.lensesGround += 1;
-    }
-  }
-
-  // CINDER — socket the grate while the lenses hold out.
-  if (shell === 'cinder' && openRows(s) < ARRAY_SIZE && materialCount(s, 'groundlens') > 0) {
-    if (engine.dispatch({ type: 'installSocket' }).ok && openRows(s) === 4) {
-      log(`spine: grate socketed to row ${openRows(s)} — the billet block fits`);
-    }
   }
 
   // ANYWHERE — Serra hauls what the stair left short (the designed fallback,
   // and buying from her here is what verifies it).
   const wants: string[] = [];
-  if (masteryLevelOf(s, 'glassmere') >= 2 && materialCount(s, 'fibercloth') < 1) wants.push('fibercloth');
   if (shell === 'ferrite' && transmuteUnlocked(s) && materialCount(s, 'kilnflux') < 1) wants.push('kilnflux');
-  if (shell === 'verdance' && materialCount(s, 'lodeframe') < 1 && (!s.loom.framed || s.greenhouse.plots.length < 6)) wants.push('lodeframe');
-  if (shell === 'cinder' && openRows(s) < 4 && materialCount(s, 'groundlens') < 1) wants.push('groundlens');
-  if ((shell === 'hollow' || shell === 'aleph') && materialCount(s, 'emberglass') < 1) wants.push('emberglass');
   if (wants.length > 0 && (s.currencies['scrip']?.toNumber() ?? 0) > 120) {
     const shelf = stockFor(s, 'serra');
     for (const want of wants) {
       const idx = shelf.findIndex((slot) => slot.id === want);
       if (idx >= 0 && engine.dispatch({ type: 'buyStock', npcId: 'serra', slot: idx }).ok) {
         spineMetrics.serraBuys += 1;
-        if (want === 'fibercloth') spineMetrics.clothBought += 1;
       }
     }
   }
@@ -1329,23 +1090,11 @@ function ferritePlay(engine: Engine, s: GameState, log: (msg: string) => void): 
     }
   }
   // THE ATTENDED MARGIN (B3): the best Echo deals on the board, so a
-  // competent player RESERVES for the next slot — the cheaper sinks (foundry,
-  // resonant memory) otherwise drain every purse before a 4-Echo slot fills.
+  // competent player RESERVES for the next slot — the cheaper sinks
+  // (resonant memory) otherwise drain every purse before a 4-Echo slot fills.
   attendConfluences(engine, s, log);
   const savingForSlot =
     s.confluences.found.length > 0 && s.confluences.slots.length < confluenceSlotCap(s);
-  // Foundry: slots then modules.
-  if (foundryUnlocked(s)) {
-    if (!savingForSlot && s.foundry.installed.length >= s.foundry.slots) {
-      engine.dispatch({ type: 'buyFoundrySlot' });
-    }
-    for (const mod of FOUNDRY_MODULES) {
-      if (engine.dispatch({ type: 'installModule', id: mod.id }).ok) {
-        log(`foundry: ${mod.name}`);
-        break;
-      }
-    }
-  }
   if (!savingForSlot) engine.dispatch({ type: 'buyResonantMemory' });
 }
 
@@ -2157,7 +1906,6 @@ function main(): void {
     s.forge.gear.harness = { defId: 'emberweave', purity: 70 };
     s.forge.gear.lantern = { defId: 'unblinkingMonocle', purity: 70 };
     s.forge.gear.boots = { defId: 'stokersGauntlet', purity: 70 };
-    s.warrens.gearUnlocked.push('authorsRule', 'quietshroud', 'unblinkingMonocle', 'stokersGauntlet');
     s.delver.skills['twoHandedSwing'] = 5;
     s.delver.skills['deepGrip'] = 5;
     s.delver.skills['heavyHands'] = 3;
@@ -2615,7 +2363,7 @@ function main(): void {
   console.error(
     `shell: ${s.shell.current} | breaches ${s.shell.breachCount} | echoes ${fmt(s.currencies['echo'] ?? 0)} | ` +
       `best chain ${s.polarity.bestChain} | magnets ${s.polarity.magnetCount} | ` +
-      `alloys ${s.crucible.discovered.length}/60 | foundry ${s.foundry.installed.length}/${s.foundry.slots} | ` +
+      `alloys ${s.crucible.discovered.length}/60 | ` +
       `loam record ${s.depthRecords['loam'] ?? 0} | ferrite record ${s.depthRecords['ferrite'] ?? 0}`,
   );
   const cs = s.combat.stats;
@@ -2648,12 +2396,7 @@ function main(): void {
     `verdance[${args.growth}]: spore ${fmt(s.totals['spore'] ?? 0)} total | sap ${fmt(s.totals['sap'] ?? 0)} | ` +
       `chlorophyll ${fmt(s.totals['chlorophyll'] ?? 0)} | vines now ${s.growth.stage.filter((x) => x > 0).length} ` +
       `(feral ${s.growth.stage.filter((x) => x >= 4).length}) | fruit harvested ${Math.round(s.growth.fruitHarvested)} ` +
-      `(+${Math.round(s.growth.autoDropped)} self-dropped) | farm sweeps ${verdMetrics.farmHarvests} | ` +
-      `greenhouse ${s.greenhouse.codex.length}/78 strains (${s.greenhouse.harvests} harvests) | ` +
-      `mycelium ${Object.keys(s.mycelium.nodes).length} nodes | loom shapes ${s.loom.discoveredShapes.join('') || '—'} | ` +
-      `brews ${s.brewing.discovered.length}/12 (${s.brewing.drunk} drunk, uptime ${
-        verdMetrics.brewSamples > 0 ? ((100 * verdMetrics.brewActiveSec) / (verdMetrics.brewSamples * 2)).toFixed(1) : '0'
-      }%) | weather now ${currentWeather(s as GameState).name}`,
+      `(+${Math.round(s.growth.autoDropped)} self-dropped) | farm sweeps ${verdMetrics.farmHarvests}`,
   );
   const min = (x: number) => (x / 60).toFixed(1) + 'm';
   console.error(
@@ -2669,9 +2412,7 @@ function main(): void {
   );
   console.error(
     `glassmere: mirrors ${Object.keys(s.refraction.mirrors).length}/${s.refraction.mirrorStock} | beam harvests ${s.refraction.beamHarvests} | ` +
-      `observations ${s.observatory.completed} (spectrum ${fmt(s.totals['spectrum'] ?? 0)}, constellations ${s.observatory.constellations.length}/8) | ` +
-      `lenses ${s.bench.solved.length} (wearing ${s.bench.equippedLens ?? 'none'}) | warrens ${Object.keys(s.warrens.cleared).length}/16 cleared ` +
-      `(${s.warrens.uniques.length} uniques) | runes ${Object.entries(s.runes.found).map(([r, n]) => `${r}:${n}`).join(' ') || '—'} | ` +
+      `runes ${Object.entries(s.runes.found).map(([r, n]) => `${r}:${n}`).join(' ') || '—'} | ` +
       `pairs known ${s.runes.pairsSeen.length}/14`,
   );
   const avgHeat = cinderMetrics.heatSamples > 0 ? cinderMetrics.heatSum / cinderMetrics.heatSamples : 0;
@@ -2680,15 +2421,12 @@ function main(): void {
       `(avg ${avgHeat.toFixed(0)}, peak ${s.pressure.peakHeat.toFixed(0)}) | FLOODS ${s.pressure.floods} | ` +
       `overpressures ${s.pressure.overpressures} (purges ${cinderMetrics.purges}) | ` +
       `pipes ${s.pressure.pipes.filter((p: number) => p > 0).length} (vented ${fmt(s.pressure.ventedTotal)}) | ` +
-      `array best ${Math.floor(s.ember.bestSustainSec / 60)}m${Math.floor(s.ember.bestSustainSec % 60)}s (rank ${s.ember.passiveRank}) | ` +
-      `wells ${s.wells.rolls} rolls ${s.wells.wins}W/${s.wells.losses}L (net ${fmt(cinderMetrics.wellsNet)}) | ` +
       `crew ${s.guild.crewRecalled ? 'RECALLED' : 'stationed'}, fallen ${Object.values(s.guild.hirelings).filter((h) => h.status === 'fallen').length}`,
   );
   console.error(
     `hollow/aleph: void ${fmt(s.totals['void'] ?? 0)} total | silence now ${s.hollow.silence.toFixed(0)} ` +
       `(harvested ${p10Metrics.silenceHarvests}, lifetime stacks ${fmt(s.hollow.silenceHarvested)}) | ` +
       `rebuilt ${s.hollow.rebuilt.length}/${s.face.cells.length} cells (void spent ${fmt(D(s.hollow.voidSpent))}) | ` +
-      `chamber loops ${s.chamber.loops} (best eff ${s.chamber.bestEfficiency.toExponential(1)}, rank ${s.chamber.passiveRank}) | ` +
       `RECURSIONS ${s.recursion.count} | axioms held ${s.recursion.axioms.length} [${s.recursion.axioms.join(',') || '—'}] | ` +
       `core touched ${s.aleph.coreTouched} | heirlooms ${s.forge.tools.filter((t) => t.heirloom).length}`,
   );
@@ -2711,11 +2449,9 @@ function main(): void {
       `RECURSION 1 ${beats.tRecursion1 ? min(beats.tRecursion1) : '—'}`,
   );
   console.error(
-    `export spine: kiln firings ${spineMetrics.fluxFired} | frames cast ${spineMetrics.framesCast} | ` +
-      `lenses ground ${spineMetrics.lensesGround} | grate rows ${openRows(s)}/${ARRAY_SIZE} | ` +
-      `loom ${s.loom.framed ? 'braced' : 'WOODEN'} | beds ${s.greenhouse.plots.length} | ` +
-      `serra fallback buys ${spineMetrics.serraBuys} (cloth ${spineMetrics.clothBought}) | ` +
-      `held: flux ${materialCount(s, 'kilnflux')} cloth ${materialCount(s, 'fibercloth')} glass ${materialCount(s, 'emberglass')}`,
+    `export spine: kiln firings ${spineMetrics.fluxFired} | ` +
+      `serra fallback buys ${spineMetrics.serraBuys} | ` +
+      `held: flux ${materialCount(s, 'kilnflux')}`,
   );
   if (args.income) {
     const rows = Object.entries(incomeLedger).sort((a, b) => b[1] - a[1]);

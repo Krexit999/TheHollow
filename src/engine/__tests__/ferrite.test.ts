@@ -9,7 +9,6 @@ import { echoesForCores } from '../prestigeMath';
 import { masteryLevel } from '../systems/mastery';
 import { matchAlloy, normalizeRatio, ALLOY_DEFS } from '../content/shell2/alloys';
 import { alloyLivePct, crucibleUnlocked } from '../content/shell2/crucibleSystem';
-import { installModule } from '../systems/foundry';
 import { computeBucket, ModifierCache } from '../modifiers';
 import { addMaterial } from '../systems/forge';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
@@ -278,22 +277,6 @@ describe('the crucible (CraftSystem interface, unchanged)', () => {
     expect(ALLOY_DEFS).toHaveLength(60);
     expect(new Set(ALLOY_DEFS.map((a) => a.id)).size).toBe(60);
     expect(new Set(ALLOY_DEFS.map((a) => a.ratio.join(':'))).size).toBe(60);
-  });
-});
-
-describe('the foundry', () => {
-  it('modules install into Echo-gated slots; tags conflict', () => {
-    const { engine, s } = atFloor();
-    engine.dispatch({ type: 'breach' });
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'flux', amount: 1000 });
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'rime', amount: 1000 });
-    const kilnBefore = computeBucket(s, 'kilnRate').toNumber();
-    expect(engine.dispatch({ type: 'installModule', id: 'ballastFurnace' }).ok).toBe(true);
-    expect(computeBucket(s, 'kilnRate').toNumber()).toBeCloseTo(kilnBefore * 1.3, 3);
-    // Dream Boiler shares the 'heat' tag — refused.
-    const clash = installModule(s, { emit: () => {}, dirty: () => {} }, 'dreamBoiler');
-    expect(clash.ok).toBe(false);
-    expect(clash.reason).toMatch(/Conflicts/);
   });
 });
 

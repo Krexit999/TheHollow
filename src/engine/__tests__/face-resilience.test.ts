@@ -79,7 +79,7 @@ describe('the error boundaries that keep a throw from black-screening the game',
     // FaceCanvas is bare (Pixi is resilient; the root net covers it); the chips
     // and banners over it are boundaried so one throwing overlay cannot unmount
     // the hero and destroy the Face's renderer.
-    expect(app).toMatch(/<PanelErrorBoundary[^>]*>\s*<WeatherChip/);
+    expect(app).toMatch(/<PanelErrorBoundary[^>]*>\s*<GrowthChip/);
   });
 
   it('the Pixi frame loop is wrapped so a bad frame cannot kill the ticker', () => {

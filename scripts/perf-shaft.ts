@@ -1,8 +1,8 @@
 /**
  * THE SHAFT renderer — frame numbers with their load conditions.
  *
- * The Phase-13 heavy load (Shell VII, 24 drills, 120 relics, Chamber running, a
- * large save) at a 4x-throttled phone, ON THE SHAFT TAB. Reports steady-state
+ * The Phase-13 heavy load (Shell VII, 24 drills, 120 relics, a large save) at
+ * a 4x-throttled phone, ON THE SHAFT TAB. Reports steady-state
  * frame pacing, a scroll sweep (which bakes and evicts chunks), and the LRU cache
  * hit rate — the renderer's own guardrails. Baseline to beat: 9.7ms mean, 0
  * frames >100ms; do not regress past ~16ms mean.
@@ -27,8 +27,6 @@ const HEAVY = `(() => {
   s.materials.totalDrops = 20000; s.guild.discovered = true;
   for (let i=0;i<120;i++) s.relics.held.push({uid:i+1,defId:'depth-2',rarity:2,affixes:{regen:0.08},source:'depth',fusedFrom:0});
   s.relics.nextUid = 200; s.relics.equipped = [1,2,3,4,5,6];
-  s.chamber.tape = []; for (let i=0;i<12;i++) s.chamber.tape.push({action:{type:'chip',cell:i%36},label:'chip'});
-  s.chamber.running = true;
   // Rail + caches + scars so the dynamic overlay is fully loaded too.
   s.shaft.rail = { hollow: 220 };
   for (const d of [40,90,140,190]) s.shaft.caches.push({shell:'hollow',depth:d,material:'voidsalt',qty:5,purity:60,startedMs:0});

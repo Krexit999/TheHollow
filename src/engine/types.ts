@@ -96,10 +96,6 @@ export interface CrucibleState {
   lastHint: string | null;
 }
 
-export interface FoundryState {
-  slots: number;
-  installed: string[];
-}
 
 // ---------------------------------------------------------------------------
 // Combat (Phase 5)
@@ -331,53 +327,9 @@ export interface OfflineSummary {
 // Verdance (Phase 7)
 // ---------------------------------------------------------------------------
 
-export interface GreenhouseState {
-  /** Planted plots; progressMs advances on the game clock × weather. */
-  plots: Array<{ speciesId: string; progressMs: number } | null>;
-  seeds: Record<string, number>;
-  /** Discovered strains — base finds and bred hybrids. Pillar 5: only this. */
-  codex: string[];
-  harvests: number;
-  /** Iron bed-frames (Part B export spine): each Lodeframe installed opens one
-   *  plot beyond the free four. Mastery still sets the CEILING (6 at 8, 8 at
-   *  15) — mastery reveals the room, Ferrite iron builds the bed. */
-  frames: number;
-}
 
-export interface MyceliumState {
-  /** siteId ("row-lane") -> node type. Survives Collapse AND Breach. */
-  nodes: Record<string, string>;
-  /** Humus banked for self-spread. */
-  reserve: number;
-  lastSpreadMs: number;
-}
 
-export interface BrewingState {
-  discovered: string[];
-  doses: Record<string, number>;
-  attempts: number;
-  fails: number;
-  lastHint: string | null;
-  active: { brewId: string; endsAtSec: number } | null;
-  drunk: number;
-}
 
-export interface LoomState {
-  /** Thread id per warp row / weft column (6 each), or null. */
-  warp: (string | null)[];
-  weft: (string | null)[];
-  /** The committed weave (modifiers run off THIS, not the working draft). */
-  setWarp: (string | null)[];
-  setWeft: (string | null)[];
-  threads: Record<string, number>;
-  discoveredShapes: string[];
-  weaves: number;
-  passiveRank: number;
-  passiveProgressSec: number;
-  /** The iron frame (Part B export spine): a wooden loom cannot hold a full
-   *  warp. One Ferrite Lodeframe braces it for good; until then, no commit. */
-  framed: boolean;
-}
 
 // ---------------------------------------------------------------------------
 // Glassmere (Phase 8)
@@ -393,29 +345,8 @@ export interface RefractionState {
   beamHarvests: number;
 }
 
-export interface ObservatoryState {
-  active: { tier: number; startedMs: number } | null;
-  completed: number;
-  pieces: Record<string, number>;
-  constellations: string[];
-}
 
-export interface BenchState {
-  solved: string[];
-  equippedLens: string | null;
-  /** The second slot (Phase 10 gear deepening; opens at Hollow Mastery 5). */
-  equippedLens2: string | null;
-  nextGenSeed: number;
-  passiveRank: number;
-  passiveProgressSec: number;
-}
 
-export interface WarrensState {
-  active: { id: string; stage: 'puzzle' | 'fight'; killBase: number } | null;
-  cleared: Record<string, number>;
-  uniques: string[];
-  gearUnlocked: string[];
-}
 
 export interface RunesState {
   found: Record<string, number>;
@@ -462,41 +393,7 @@ export interface PressureState {
   peakHeat: number;
 }
 
-export interface EmberState {
-  grid: (string | null)[];
-  /** Remaining burn seconds per cell; 0 = cold. */
-  burn: number[];
-  temp: number;
-  sustainSec: number;
-  bestSustainSec: number;
-  savedLayout: (string | null)[];
-  overdrive: boolean;
-  /** The Draw (P14): pulling shaft heat into the furnace. Opposite of overdrive. */
-  draw: boolean;
-  fuelOwned: Record<string, number>;
-  passiveRank: number;
-  passiveProgressSec: number;
-  /** Lens sockets (Part B export spine): row r of the grate needs r sockets
-   *  open — each Ground Lens from the Glassmere bench focuses one more row's
-   *  draft. Row 0 is free; 5 sockets open the whole 6×6. */
-  sockets: number;
-  /** Cumulative in-band seconds toward the next Emberglass anneal (90s each).
-   *  Unlike sustainSec this never resets on a band exit — annealing is WORK
-   *  DONE, the streak is a record. Live burns only; the banked fire anneals
-   *  nothing while you are away. */
-  annealSec: number;
-}
 
-export interface WellsState {
-  /** `tapped` (B5): fed while the vent gallery ran hot — the rope stirs and
-   *  the well resolves 25% faster. Absent on old records = not tapped. */
-  active: Array<{ wellId: string; currencyId: string; amount: Decimal; startedMs: number; tapped?: boolean }>;
-  rolls: number;
-  wins: number;
-  losses: number;
-  totalCommitted: Decimal;
-  totalReturned: Decimal;
-}
 
 
 // ---------------------------------------------------------------------------
@@ -516,22 +413,6 @@ export interface HollowState {
   voidSpent: string;
 }
 
-export interface ChamberState {
-  /** The tape: recorded actions, replayed through REAL dispatch forever. */
-  tape: Array<{ action: unknown; label: string }>;
-  recording: boolean;
-  running: boolean;
-  cursor: number;
-  stepTimer: number;
-  /** Last replay pass's per-step yield trace (Void-equivalent) — the legible
-   * execution trace that shows where a program wastes steps. */
-  trace: number[];
-  /** Best efficiency (yield per step per loop) ever achieved — persists. */
-  bestEfficiency: number;
-  loops: number;
-  passiveRank: number;
-  passiveProgressSec: number;
-}
 
 export interface AlephState {
   /** Sigils placed at the Core seal (its warden + warrens grant them). */
@@ -909,7 +790,6 @@ export interface GameState {
   shell: ShellState;
   polarity: PolarityState;
   crucible: CrucibleState;
-  foundry: FoundryState;
   combat: CombatState;
   guild: GuildState;
   /** GROWTH (Verdance signature) — vines over the face. Owned slice. */
@@ -922,22 +802,10 @@ export interface GameState {
     fruitHarvested: number;
     autoDropped: number;
   };
-  /** Last-seen weather segment (for change events). */
-  weatherSeg: number;
-  greenhouse: GreenhouseState;
-  mycelium: MyceliumState;
-  brewing: BrewingState;
-  loom: LoomState;
   refraction: RefractionState;
-  observatory: ObservatoryState;
-  bench: BenchState;
-  warrens: WarrensState;
   runes: RunesState;
   pressure: PressureState;
-  ember: EmberState;
-  wells: WellsState;
   hollow: HollowState;
-  chamber: ChamberState;
   aleph: AlephState;
   recursion: RecursionState;
   /** The long tail (Phase 12). */
@@ -1196,15 +1064,6 @@ export type GameEvent =
   | { type: 'caravanTraded'; route: string }
   | { type: 'vineHarvest'; cell: number; stage: number; dust: Decimal }
   | { type: 'vineRipe'; cell: number; dust: Decimal }
-  | { type: 'weatherChanged'; id: string; name: string; blurb: string }
-  | { type: 'seedFound'; speciesId: string }
-  | { type: 'hybridBred'; id: string }
-  | { type: 'plotHarvested'; speciesId: string }
-  | { type: 'myceliumSpread'; siteId: string; auto: boolean }
-  | { type: 'brewDiscovered'; id: string }
-  | { type: 'brewDrunk'; id: string }
-  | { type: 'shapeWoven'; shapeId: string; count: number }
-  | { type: 'weaveSet' }
   /** THE FACE CLUSTER (v20): a FIGURE traced in the rock. `first` on discovery. */
   | { type: 'figure'; id: string; name: string; first: boolean }
   /** THE FACE CLUSTER (v21): a drill wore through and dropped to its floor. */
@@ -1213,11 +1072,6 @@ export type GameEvent =
   | { type: 'bulkSalvaged'; count: number; units: number }
   | { type: 'runePracticed'; harmonic: number; dissonant: number }
   | { type: 'temporalFound'; id: string; name: string }
-  | { type: 'observationDone'; tier: number; pieces: number }
-  | { type: 'constellation'; id: string }
-  | { type: 'lensGround'; puzzleId: string }
-  | { type: 'warrenCleared'; warrenId: string }
-  | { type: 'warrenUnique'; warrenId: string; note: string }
   | { type: 'runeFound'; runeId: string }
   | { type: 'pairDiscovered'; pair: string }
   | { type: 'inscribed'; target: string }
@@ -1230,13 +1084,9 @@ export type GameEvent =
   | { type: 'hirelingLost'; npcId: string }
   | { type: 'crewRecalled' }
   | { type: 'crewRestationed' }
-  | { type: 'arrayBest'; seconds: number }
-  | { type: 'emberglassAnnealed'; total: number }
-  | { type: 'wellResult'; wellId: string; mult: number; amount: Decimal }
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
   | { type: 'cellRebuilt'; cell: number; total: number }
   | { type: 'faceWhole' }
-  | { type: 'tapeStep'; index: number; label: string }
   | { type: 'coreTouched' }
   | { type: 'recursion'; count: number; axiomsGained: number }
   | { type: 'axiomBought'; id: string; heresy: boolean }
@@ -1387,10 +1237,6 @@ export type GameAction =
   | { type: 'pourAlloy'; amounts: number[]; catalystId: string }
   | { type: 'socketAlloy'; toolId: number; slot: number; alloyId: string }
   | { type: 'castBinding'; alloyId: string }
-  | { type: 'grindChartLens'; constellationId: string }
-  | { type: 'buyFoundrySlot' }
-  | { type: 'installModule'; id: string }
-  | { type: 'uninstallModule'; id: string }
   | { type: 'combatEngage' }
   | { type: 'combatAuto' }
   | { type: 'combatFlee' }
@@ -1410,41 +1256,14 @@ export type GameAction =
   | { type: 'equipTitle'; titleId: string | null }
   | { type: 'caravanTrade'; route: string; amount: number }
   | { type: 'spendCharter'; sink: 'berth' | 'boardSlot' }
-  | { type: 'plantSeed'; plot: number; speciesId: string }
-  | { type: 'harvestPlot'; plot: number }
-  | { type: 'inoculate'; siteId: string; nodeType: string }
-  | { type: 'feedMycelium'; humus: number }
-  | { type: 'brewExperiment'; sap: number; spore: number; resin: number }
-  | { type: 'drinkBrew'; brewId: string }
-  | { type: 'setThread'; axis: 'warp' | 'weft'; index: number; threadId: string | null }
-  | { type: 'commitWeave' }
-  | { type: 'spinThread'; threadId: string }
   | { type: 'setBeamRow'; row: number }
   | { type: 'setMirror'; cell: number; kind: '/' | '\\' | null }
   | { type: 'buyMirror' }
-  | { type: 'startObservation'; tier: number }
-  | { type: 'collectObservation' }
-  | { type: 'benchAttempt'; puzzleId: string; mirrors: Record<number, '/' | '\\'> }
-  | { type: 'equipLens'; puzzleId: string | null; slot?: 1 | 2 }
-  | { type: 'warrenEnter'; id: string }
-  | { type: 'warrenAnswer'; id: string; answer: number[] }
-  | { type: 'warrenClaim' }
-  | { type: 'warrenLeave' }
   | { type: 'inscribe'; target: 'tool' | 'offhand' | 'lantern' | 'harness' | 'boots'; sequence: (string | null)[] }
   | { type: 'setChoke'; on: boolean }
   | { type: 'emergencyPurge' }
   | { type: 'layPipe'; cell: number }
   | { type: 'recallCrew' }
-  | { type: 'buyFuel'; fuelId: string; count?: number }
-  | { type: 'placeFuel'; cell: number; fuelId: string | null }
-  | { type: 'lightCell'; cell: number }
-  | { type: 'setOverdrive'; on: boolean }
-  | { type: 'setDraw'; on: boolean }
-  // Part B export spine — production + the installs that consume exports.
-  | { type: 'produceExport'; id: string }
-  | { type: 'installFrame' }
-  | { type: 'installLoomFrame' }
-  | { type: 'installSocket' }
   | { type: 'refine'; materialId: string; band: string }
   /** Walk every rung up to a target band in one act. Same cost, fewer taps. */
   | { type: 'refineTo'; materialId: string; band: string }
@@ -1452,14 +1271,9 @@ export type GameAction =
   | { type: 'transmute'; a: string; b: string }
   | { type: 'salvageTool'; toolId: number; extract: boolean }
   | { type: 'temperTool'; temperId: string }
-  | { type: 'commitWell'; wellId: string; amount: number }
-  | { type: 'collectWell'; wellId: string }
   | { type: 'listen' }
   | { type: 'setListenAt'; stacks: number }
   | { type: 'rebuildCell'; cell: number }
-  | { type: 'tapeRecord'; on: boolean }
-  | { type: 'tapeRun'; on: boolean }
-  | { type: 'tapeClear' }
   | { type: 'touchCore' }
   | { type: 'recurse' }
   | { type: 'buyAxiom'; id: string }

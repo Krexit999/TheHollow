@@ -103,32 +103,30 @@ describe('a confluence is a bonus for having both, never a requirement', () => {
 describe('a confluence pays only while it holds', () => {
   it('found is a record, not a retainer', () => {
     const { s } = fresh();
-    // Force one true: three relics out of a Warren.
-    s.relics.held = [1, 2, 3].map((uid) => ({
-      uid, defId: 'warren-1', rarity: 1, affixes: {}, source: 'warren', fusedFrom: 0,
-    }));
+    // Force one true: three museum cases plus five expeditions.
+    s.museum.completed = ['a', 'b', 'c'];
+    s.expeditions.completed = 5;
     const live = activeConfluences(s).map((c) => c.id);
-    expect(live).toContain('warrenFlavour');
-    expect(confluenceBonus(s, 'dropRate')).toBeGreaterThan(0);
+    expect(live).toContain('providedFor');
+    expect(confluenceBonus(s, 'scripGain')).toBeGreaterThan(0);
 
     noticeConfluences(s, ctx);
-    expect(s.confluences.found).toContain('warrenFlavour');
+    expect(s.confluences.found).toContain('providedFor');
 
-    // Take the relics away: still FOUND, no longer PAYING.
-    s.relics.held = [];
-    expect(s.confluences.found).toContain('warrenFlavour');
-    expect(confluenceBonus(s, 'dropRate')).toBe(0);
+    // Take the cases away: still FOUND, no longer PAYING.
+    s.museum.completed = [];
+    expect(s.confluences.found).toContain('providedFor');
+    expect(confluenceBonus(s, 'scripGain')).toBe(0);
   });
 
   it('records each one once', () => {
     const { s } = fresh();
-    s.relics.held = [1, 2, 3].map((uid) => ({
-      uid, defId: 'warren-1', rarity: 1, affixes: {}, source: 'warren', fusedFrom: 0,
-    }));
+    s.museum.completed = ['a', 'b', 'c'];
+    s.expeditions.completed = 5;
     noticeConfluences(s, ctx);
     noticeConfluences(s, ctx);
     noticeConfluences(s, ctx);
-    expect(s.confluences.found.filter((id) => id === 'warrenFlavour')).toHaveLength(1);
+    expect(s.confluences.found.filter((id) => id === 'providedFor')).toHaveLength(1);
   });
 
   it('survives a state slice that is mid-migration rather than throwing the tick', () => {
@@ -209,9 +207,14 @@ describe('confluences are reachable', () => {
     for (const c of CONFLUENCES) {
       for (const sys of c.systems) involved.set(sys, (involved.get(sys) ?? 0) + 1);
     }
-    expect(involved.size).toBeGreaterThanOrEqual(20);
-    // A hub may be busy, but never more than a third of the layer.
+    // A.72 cut the Verdance/Glassmere/Cinder craft-system producers (and
+    // weather), which took eleven confluences with them — the coverage floor
+    // shrank along with the layer it measures.
+    expect(involved.size).toBeGreaterThanOrEqual(10);
+    // A hub may be busy, but never more than a bit over a third of the
+    // (now much smaller) layer — refinery picked up relative share as the
+    // craft-system confluences around it were cut.
     const busiest = Math.max(...involved.values());
-    expect(busiest / CONFLUENCES.length, 'one system dominates the layer').toBeLessThanOrEqual(0.34);
+    expect(busiest / CONFLUENCES.length, 'one system dominates the layer').toBeLessThanOrEqual(0.4);
   });
 });

@@ -55,13 +55,6 @@ export const CLUSTERS: ClusterDef[] = [
     systems: [
       { id: 'lattice', label: 'Lattice', visible: (s) => s.lattice.unlocked },
       { id: 'crucible', label: 'Crucible', visible: (s) => s.shell.breachCount >= 1 },
-      { id: 'foundry', label: 'Foundry', visible: (s) => s.shell.breachCount >= 1 },
-      { id: 'greenhouse', label: 'Greenhouse', visible: (s) => rec(s, 'verdance', 20) },
-      { id: 'mycelium', label: 'Mycelium', visible: (s) => rec(s, 'verdance', 30) },
-      { id: 'loom', label: 'Loom', visible: (s) => rec(s, 'verdance', 40) },
-      { id: 'bench', label: 'Bench', visible: (s) => rec(s, 'glassmere', 40) },
-      { id: 'array', label: 'Array', visible: (s) => rec(s, 'cinder', 30) },
-      { id: 'chamber', label: 'Chamber', visible: (s) => rec(s, 'hollow', 20) },
       { id: 'automation', label: 'Automation', visible: (s) => s.spiral.count >= 1 },
     ],
   },
@@ -82,7 +75,6 @@ export const CLUSTERS: ClusterDef[] = [
       { id: 'casting', label: 'Casting', visible: (s) => s.forge.built },
       { id: 'refinery', label: 'Refinery', visible: (s) => refineryUnlocked(s) },
       { id: 'runes', label: 'Runes', visible: (s) => Object.values(s.runes.found).some((n) => n > 0) || s.runes.pairsSeen.length > 0 },
-      { id: 'brew', label: 'Still', visible: (s) => rec(s, 'verdance', 60) },
       { id: 'relics', label: 'Relics', visible: (s) => s.relics.found > 0 },
       // A.47 UNFOLDED: Museum split back into its own room. It became a real
       // arrange-and-discover screen (exhibits, identify, curated halls) rather
@@ -102,8 +94,6 @@ export const CLUSTERS: ClusterDef[] = [
       // the only reason to wear any of it is what is down there.
       { id: 'gear', label: 'Gear', visible: (s) => s.combat.stats.encounters > 0 || s.materials.totalDrops >= 30 },
       { id: 'bestiary', label: 'Bestiary', visible: (s) => s.combat.seen.length > 0, codex: true },
-      { id: 'warrens', label: 'Warrens', visible: (s) => s.maxDepthRecord >= 35 && (s.shell.breachCount >= 3 || Object.keys(s.warrens.cleared).length > 0 || !!s.warrens.active) },
-      { id: 'observatory', label: 'Stars', visible: (s) => rec(s, 'glassmere', 20) },
       { id: 'journal', label: 'Journal', visible: (s) => s.guild.sable.found.length > 0, codex: true },
       { id: 'expeditions', label: 'Expeditions', visible: (s) => Object.keys(s.guild.hirelings).length > 0 },
     ],

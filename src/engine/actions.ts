@@ -41,7 +41,6 @@ import { buyResonantMemory, doBreach } from './systems/breach';
 import { buyConfluenceSlot, buyConfluenceRank, setConfluenceSlot } from './systems/confluence';
 import { buyMagnet, toggleMagnet } from './systems/polarity';
 import { castBinding, pourAlloy } from './content/shell2/crucibleSystem';
-import { buyFoundrySlot, installModule, uninstallModule } from './systems/foundry';
 import {
   autoResolvePending,
   combatTurn,
@@ -59,14 +58,9 @@ import { placeKeystone } from './systems/keystones';
 import { equipTitle } from './guild/titles';
 import { caravanTrade } from './guild/caravan';
 import { setMirror } from './systems/refraction';
-import { collectObservation, startObservation } from './content/shell4/observatory';
-import { benchAttempt, equipLens, grindChartLens } from './content/shell4/bench';
-import { warrenAnswer, warrenClaim, warrenEnter, warrenLeave } from './content/shell4/warrens';
 import { inscribe } from './content/shell4/runes';
 import { RUNES } from './content/shell4/runes';
 import { emergencyPurge, layPipe, setChoke } from './systems/pressure';
-import { buyFuel, lightCell, placeFuel, setOverdrive, setDraw, installSocket } from './content/shell5/emberArray';
-import { produceExport } from './content/exports';
 import { refine, refineTo, transmute } from './systems/refinery';
 import { recastLegendary } from './systems/legendary';
 import {
@@ -89,15 +83,10 @@ import { practiceRunes } from './content/shell4/runes';
 import { temperTool } from './systems/tempering';
 import type { PurityBand } from './materials';
 import { materialDef, MATERIALS, GEMS } from './materials';
-import { collectWell, commitToWell } from './content/shell5/wells';
 import { listen, rebuildCell } from './systems/absence';
 import { buyAxiom, doRecursion } from './systems/recursionSys';
 import { wardenOf, SPECIES } from './combat/species';
 import { lawFlag, sealed } from './laws';
-import { harvestPlot, plantSeed, installFrame } from './content/shell3/greenhouse';
-import { feedMycelium, inoculate } from './content/shell3/mycelium';
-import { brewExperiment, drinkBrew } from './content/shell3/brews';
-import { commitWeave, setThread, spinThread, installLoomFrame } from './content/shell3/loomSystem';
 import { allShells, convCurrencyId, resolveCurrencyId } from './shells';
 import { MAX_DRILLS, newDrill, defaultDrillName } from './systems/drills';
 import { grantXP } from './systems/xp';
@@ -418,15 +407,6 @@ export function handleAction(
     case 'castBinding':
       return castBinding(state, ctx, action.alloyId);
 
-    case 'buyFoundrySlot':
-      return buyFoundrySlot(state, ctx);
-
-    case 'installModule':
-      return installModule(state, ctx, action.id);
-
-    case 'uninstallModule':
-      return uninstallModule(state, ctx, action.id);
-
     case 'combatEngage': {
       const pending = state.combat.pending;
       if (!pending) return { ok: false, reason: 'Nothing stirring' };
@@ -492,33 +472,6 @@ export function handleAction(
     case 'spendCharter':
       return spendCharter(state, ctx, action.sink);
 
-    case 'plantSeed':
-      return plantSeed(state, action.plot, action.speciesId);
-
-    case 'harvestPlot':
-      return harvestPlot(state, ctx, action.plot);
-
-    case 'inoculate':
-      return inoculate(state, ctx, action.siteId, action.nodeType);
-
-    case 'feedMycelium':
-      return feedMycelium(state, action.humus);
-
-    case 'brewExperiment':
-      return brewExperiment(state, ctx, action.sap, action.spore, action.resin);
-
-    case 'drinkBrew':
-      return drinkBrew(state, ctx, action.brewId);
-
-    case 'setThread':
-      return setThread(state, action.axis, action.index, action.threadId);
-
-    case 'commitWeave':
-      return commitWeave(state, ctx);
-
-    case 'spinThread':
-      return spinThread(state, ctx, action.threadId);
-
     case 'setBeamRow': {
       state.refraction.entryRow = Math.max(0, Math.min(state.face.h - 1, action.row));
       state.refraction.pathDirty = true;
@@ -529,45 +482,18 @@ export function handleAction(
       return setMirror(state, action.cell, action.kind);
 
     case 'buyMirror': {
+      /**
+       * THE EXPORT-SPINE GATE IS GONE (A.72). Mirrors past the fourth wanted
+       * a Set Resin — Verdance's export, rendered at the Still — and both roads
+       * to one (render it, or buy it from Serra) went with the Still and the
+       * Guild. A requirement nothing can ever satisfy is not a decision, it is
+       * a wall with no door; dropped rather than left standing.
+       */
       const cost = D(40).mul(Decimal.pow(1.5, state.refraction.mirrorStock - 2));
-      // The export spine: mirrors past the fourth are silvered with Set Resin —
-      // Verdance's export, rendered at the Still. Serra hauls it if you won't.
-      const wantsResin = state.refraction.mirrorStock >= 4;
-      if (wantsResin && materialCount(state, 'setresin') < 1) {
-        return { ok: false, reason: 'Mirrors past the fourth want 1 Set Resin — render it at the Still in Verdance, or buy it from Serra' };
-      }
       if (!spendCurrency(state, 'silica', cost)) return { ok: false, reason: `${cost.toFixed(0)} Silica for the next mirror` };
-      if (wantsResin) consumeMaterial(state, 'setresin', 1);
       state.refraction.mirrorStock += 1;
       return { ok: true };
     }
-
-    case 'startObservation':
-      return startObservation(state, action.tier);
-
-    case 'collectObservation':
-      return collectObservation(state, ctx);
-
-    case 'benchAttempt':
-      return benchAttempt(state, ctx, action.puzzleId, action.mirrors);
-
-    case 'equipLens':
-      return equipLens(state, action.puzzleId, action.slot ?? 1);
-
-    case 'grindChartLens':
-      return grindChartLens(state, ctx, action.constellationId);
-
-    case 'warrenEnter':
-      return warrenEnter(state, action.id);
-
-    case 'warrenAnswer':
-      return warrenAnswer(state, ctx, action.id, action.answer);
-
-    case 'warrenClaim':
-      return warrenClaim(state, ctx);
-
-    case 'warrenLeave':
-      return warrenLeave(state);
 
     case 'inscribe':
       return inscribe(state, ctx, action.target, action.sequence as never);
@@ -586,34 +512,6 @@ export function handleAction(
       ctx.emit({ type: 'crewRecalled' });
       return { ok: true };
     }
-
-    case 'buyFuel':
-      return buyFuel(state, action.fuelId, action.count ?? 1);
-
-    case 'placeFuel':
-      return placeFuel(state, action.cell, action.fuelId);
-
-    case 'lightCell':
-      return lightCell(state, action.cell);
-
-    // --- Part B export spine: production + export-consuming installs -------
-    case 'produceExport':
-      return produceExport(state, action.id);
-
-    case 'installFrame':
-      return installFrame(state);
-
-    case 'installLoomFrame':
-      return installLoomFrame(state);
-
-    case 'installSocket':
-      return installSocket(state);
-
-    case 'setOverdrive':
-      return setOverdrive(state, action.on);
-
-    case 'setDraw':
-      return setDraw(state, action.on);
 
     case 'refine':
       return refine(state, ctx, action.materialId, action.band as PurityBand);
@@ -713,12 +611,6 @@ export function handleAction(
     case 'temperTool':
       return temperTool(state, ctx, action.temperId);
 
-    case 'commitWell':
-      return commitToWell(state, action.wellId, D(action.amount));
-
-    case 'collectWell':
-      return collectWell(state, ctx, action.wellId);
-
     case 'listen':
       return listen(state, mods, ctx);
 
@@ -729,44 +621,6 @@ export function handleAction(
 
     case 'rebuildCell':
       return rebuildCell(state, ctx, action.cell);
-
-    case 'tapeRecord': {
-      if (action.on) {
-        // The export spine: arming a recording burns 1 Emberglass — the tape
-        // is CUT in Cinder's glass, which is why it survives being replayed
-        // forever. Stopping is free; a new recording is a new plate.
-        if (!state.chamber.recording) {
-          if (materialCount(state, 'emberglass') < 1) {
-            return { ok: false, reason: 'A recording is cut in 1 Emberglass — hold the Ember Array in the band, or buy it from Serra' };
-          }
-          consumeMaterial(state, 'emberglass', 1);
-        }
-        state.chamber.running = false;
-        state.chamber.tape = [];
-        state.chamber.trace = [];
-        state.chamber.cursor = 0;
-      }
-      state.chamber.recording = action.on;
-      return { ok: true };
-    }
-
-    case 'tapeRun': {
-      if (state.chamber.tape.length === 0) return { ok: false, reason: 'The tape is blank' };
-      state.chamber.recording = false;
-      state.chamber.running = action.on;
-      state.chamber.cursor = 0;
-      state.chamber.stepTimer = 0;
-      return { ok: true };
-    }
-
-    case 'tapeClear': {
-      state.chamber.tape = [];
-      state.chamber.trace = [];
-      state.chamber.running = false;
-      state.chamber.recording = false;
-      state.chamber.cursor = 0;
-      return { ok: true };
-    }
 
     case 'touchCore': {
       if (state.shell.current !== 'aleph') return { ok: false, reason: 'The Core is at the bottom of everything, not here' };
@@ -983,10 +837,6 @@ export function handleAction(
       const next = action.state;
       for (const cs of allCraftSystems()) cs.ensureState(next);
       next.shell.coresEarnedThisBreach = D(next.shell.coresEarnedThisBreach ?? 0);
-      // Migrated wells totals arrive as plain numbers.
-      next.wells.totalCommitted = D(next.wells.totalCommitted ?? 0);
-      next.wells.totalReturned = D(next.wells.totalReturned ?? 0);
-      for (const w of next.wells.active) w.amount = D(w.amount ?? 0);
       ctx.dirty();
       const awaySec = Math.max(0, (action.nowMs - next.stats.lastSavedAt) / 1000);
       if (awaySec > 60) {

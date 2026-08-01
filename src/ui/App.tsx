@@ -13,14 +13,14 @@ import { RefineryPanel } from './components/refinery';
 import { CollapsePanel, DelverPanel } from './components/prestige';
 import { GridPanel, VaultPanel } from './components/meta';
 import { OfflineModal, Toasts } from './components/overlays';
-import { BreachOverlay, CruciblePanel, FoundryPanel } from './components/ferrite';
+import { BreachOverlay, CruciblePanel } from './components/ferrite';
 import { BestiaryPanel, CombatOverlay, EncounterBanner, GearRoom } from './components/combat';
 import { GuildPanel } from './components/guild';
 import { JournalPanel } from './components/journal';
-import { BrewPanel, GreenhousePanel, GrowthChip, LoomPanel, MyceliumPanel, WeatherChip } from './components/verdance';
-import { BenchPanel, ObservatoryPanel, RunesPanel, WarrensPanel } from './components/glassmere';
-import { EmberPanel, FloodModal, OverpressureOverlay, VentsPanel, WellsPanel } from './components/cinder';
-import { ChamberPanel, HollowPanel, ParallelView, RewritePanel } from './components/hollow';
+import { GrowthChip } from './components/verdance';
+import { RunesPanel } from './components/glassmere';
+import { FloodModal, OverpressureOverlay, VentsPanel } from './components/cinder';
+import { HollowPanel, ParallelView, RewritePanel } from './components/hollow';
 import { NextHint } from './components/NextHint';
 import { DisclosureGate } from './components/DisclosureGate';
 import { SystemHeader } from './components/SystemHeader';
@@ -56,34 +56,17 @@ function PanelHost({ tab, state }: { tab: TabId; state: ReturnType<typeof useGam
       {/* The Shaft is a full canvas takeover in the hero, not a panel here. */}
       {only('kiln') && <KilnPanel />}
       {only('drills') && <DrillsPanel />}
-      {/* B5 FOLD: the Wells are a pressure-tap in the vent gallery — one room,
-          three ropes by three holes, not a tab of their own. */}
-      {only('vents') && (
-        <>
-          <VentsPanel />
-          {(state?.depthRecords['cinder'] ?? 0) >= 60 && <WellsPanel />}
-        </>
-      )}
+      {only('vents') && <VentsPanel />}
       {only('hollow') && <HollowPanel />}
       <div className={show('lattice')}>{state?.lattice.unlocked && <LatticePanel active={tab === 'lattice'} />}</div>
       {only('crucible') && (state?.shell.breachCount ?? 0) >= 1 && <CruciblePanel />}
-      {only('foundry') && (state?.shell.breachCount ?? 0) >= 1 && <FoundryPanel />}
-      {only('greenhouse') && <GreenhousePanel />}
-      {only('mycelium') && <MyceliumPanel />}
-      {only('loom') && <LoomPanel />}
-      {only('bench') && <BenchPanel />}
-      {only('array') && <EmberPanel />}
-      {only('chamber') && <ChamberPanel />}
       {only('hold') && <HoldPanel />}
       {only('gear') && <GearRoom />}
       {only('casting') && <CastingPanel />}
       {only('refinery') && <RefineryPanel />}
       {only('runes') && <RunesPanel />}
-      {only('brew') && <BrewPanel />}
       {only('guild') && <GuildPanel />}
       {only('bestiary') && <BestiaryPanel />}
-      {only('warrens') && <WarrensPanel />}
-      {only('observatory') && <ObservatoryPanel />}
       {only('journal') && <JournalPanel />}
       {only('delver') && <DelverPanel />}
       {only('collapse') && <CollapsePanel />}
@@ -249,7 +232,6 @@ export function App() {
                   hero — which would destroy the Face's Pixi renderer. The canvas
                   itself sits outside, protected by the root AppErrorBoundary. */}
               <PanelErrorBoundary label="Face overlays" fallback={null}>
-                <WeatherChip />
                 <GrowthChip />
                 <EncounterBanner />
                 <OverpressureOverlay />

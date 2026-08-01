@@ -29,9 +29,6 @@ import { addCurrency } from '../resources';
 import type { EngineCtx, GameState } from '../types';
 import { registerSignature } from '../signatures';
 import { cellCap, cellRegen, chipYield } from './face';
-import { growthAgingMult } from './weather';
-import { brewGrowthMult } from '../content/shell3/brews';
-import { rollForSeed } from '../content/shell3/greenhouse';
 import { masteryLevel } from './mastery';
 
 export const GROW_DELAY_SEC = 25; // at cap, before sprouting (÷ strength)
@@ -99,7 +96,9 @@ function tickGrowth(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: n
   const cap = cellCap(state, mods);
   const regen = cellRegen(state, mods);
   const cells = state.face.cells;
-  const aging = dt * strength * growthAgingMult(state) * brewGrowthMult(state); // bloom seasons and Greenmantle hasten it
+  // A.72: weather's bloom-season and the Still's Greenmantle brew both hastened
+  // aging; both are cut, so this is just the base rate now.
+  const aging = dt * strength;
   g.spreadTimer += dt;
   const spreadPass = g.spreadTimer >= SPREAD_EVERY_SEC;
   if (spreadPass) g.spreadTimer = 0;
@@ -189,7 +188,8 @@ function harvestVine(
   if (stage >= 3) {
     const chloro = Math.max(1, Math.floor(fruit / cellCap(state, mods)));
     addCurrency(state, 'chlorophyll', D(chloro * Math.max(0.25, strength)));
-    rollForSeed(state, ctx, stage); // blooms carry seed — the Greenhouse's gate
+    // A.72: blooms used to carry seed for the (cut) Greenhouse. Nothing reads
+    // seed any more, so nothing is rolled.
   }
   ctx.emit({ type: 'vineHarvest', cell, stage, dust: chipYield(state, mods).mul(fruit * HARVEST_BONUS[stage]!) });
   return 1 + (fruit * HARVEST_BONUS[stage]!) / cellCharge;

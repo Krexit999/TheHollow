@@ -1,8 +1,8 @@
 /**
  * B4 verification shots — the pull-through surfaces, proved by clicking:
  * Cast a binding at the Crucible (0→1 Steel Casting, metals spent), the
- * Refined forge button naming its worked material, and the cellar quench
- * naming its dose. Usage: npx tsx scripts/shot-b4.ts [port]
+ * Refined forge button naming its worked material, and a quench in the
+ * trough. Usage: npx tsx scripts/shot-b4.ts [port]
  */
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
@@ -10,10 +10,10 @@ import { mkdirSync } from 'node:fs';
 const OUT = 'sim-out/b4-shots';
 const URL = `http://localhost:${process.argv[2] ?? '5173'}`;
 const ALL = [
-  'dig', 'kiln', 'drills', 'vents', 'hollow', 'lattice', 'crucible', 'foundry',
-  'greenhouse', 'mycelium', 'loom', 'bench', 'array', 'chamber', 'hold', 'forge',
-  'runes', 'brew', 'guild', 'bestiary', 'warrens', 'observatory', 'journal',
-  'wells', 'delver', 'collapse', 'rewrite', 'parallel', 'grid', 'vault',
+  'dig', 'kiln', 'drills', 'vents', 'hollow', 'lattice', 'crucible',
+  'hold', 'forge',
+  'runes', 'guild', 'bestiary', 'journal',
+  'delver', 'collapse', 'rewrite', 'parallel', 'grid', 'vault',
   // the mastery-6 seed opens these after the first mark — mark them too
   'refinery', 'salvage', 'workbench', 'museum', 'relics', 'titles',
   'expeditions', 'caravan', 'shaft', 'spiral', 'compendium', 'gear',
@@ -35,7 +35,6 @@ async function main(): Promise<void> {
     s.depthRecords['loam'] = 150; s.depthRecords['ferrite'] = 200; // mastery 6: trough + alloy slots
     s.forge.built = true; s.guild.discovered = true;
     s.crucible.discovered.push('greysteel'); s.crucible.purities['greysteel'] = 82;
-    s.brewing.doses['ironblood'] = 1;
     for (const c of ['ingot', 'flux', 'scale', 'lodestone', 'rime', 'brick']) {
       e.dispatch({ type: 'debug', op: 'grant', currency: c, amount: 5000 });
     }
@@ -73,8 +72,8 @@ async function main(): Promise<void> {
 
   await go('refinery'); // the Refinery panel hosts the quench trough
   await page.waitForTimeout(600);
-  const quench = await page.getByText("Hawk's-Blood-quenched").count();
-  console.log('cellar quenches visible:', quench > 0);
+  const quench = await page.getByText('Rime-quenched').count();
+  console.log('quenches visible:', quench > 0);
   await browser.close();
   console.log('b4 shots ->', OUT);
 }

@@ -11,7 +11,6 @@ import type { Engine, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import { D } from '../decimal';
 import { addCurrency, getCurrency } from '../resources';
-import { addMaterial } from '../systems/forge';
 import { lawFlag, lawNum } from '../laws';
 import { AXIOMS } from '../content/shell7/axioms';
 import { axiomsFromEchoes } from '../systems/recursionSys';
@@ -140,7 +139,6 @@ describe('recursion: the world resets and you do not', () => {
     s.delver.level = 150;
     s.guild.npcs['vess'] = { rep: 300, met: true, questStep: 2 };
     s.runes.pairsSeen = ['kel|thur'];
-    s.warrens.uniques = ['ossuary'];
     s.materials.stacks['marl'] = { good: { count: 50, puritySum: 2500 } };
     s.currencies['slag'] = D(1e6);
     s.currencies['scrip'] = D(777);
@@ -161,7 +159,6 @@ describe('recursion: the world resets and you do not', () => {
     expect(n.delver.level).toBe(150);
     expect(n.guild.npcs['vess']!.rep).toBe(300);
     expect(n.runes.pairsSeen).toContain('kel|thur');
-    expect(n.warrens.uniques).toContain('ossuary');
     expect(getCurrency(n, 'scrip').toNumber()).toBe(777);
     // Resets:
     expect(n.shell.current).toBe('loam');
@@ -217,35 +214,6 @@ describe('recursion: the world resets and you do not', () => {
   });
 });
 
-describe('the echo chamber: a program is indistinguishable from a hand', () => {
-  it('records whitelisted actions, replays through real dispatch, pays keep, traces', () => {
-    const { engine, s } = hollowed();
-    s.depthRecords['hollow'] = 30; // mastery 3: unlocked
-    s.hollow.rebuilt = [0, 1];
-    s.face.cells[0] = 5;
-    s.face.cells[1] = 5;
-    addCurrency(s, 'resonance', D(100));
-    addMaterial(s, 'emberglass', 70, 1); // the plate a recording is cut in (export spine)
-    engine.dispatch({ type: 'tapeRecord', on: true });
-    engine.dispatch({ type: 'chip', cell: 0 });
-    engine.dispatch({ type: 'chip', cell: 1 });
-    engine.dispatch({ type: 'recurse' }); // NOT whitelisted — never on a tape
-    expect(s.chamber.tape).toHaveLength(2);
-    engine.dispatch({ type: 'tapeRun', on: true });
-    const resBefore = getCurrency(s, 'resonance').toNumber();
-    engine.tick(12); // several replay steps
-    expect(getCurrency(s, 'resonance').toNumber()).toBeLessThan(resBefore); // keep paid
-    expect(s.chamber.loops).toBeGreaterThan(0);
-    expect(s.chamber.trace.length).toBeGreaterThan(0); // the legible trace
-  });
-
-  it('the tape length is a LAW: the Long Echo extends it', () => {
-    const { s } = fresh();
-    expect(lawNum(s, 'tapeSteps')).toBe(12);
-    s.recursion.axioms.push('longEcho');
-    expect(lawNum(s, 'tapeSteps')).toBe(20);
-  });
-});
 
 describe('the axiom matrix: no law, alone or paired, softlocks the world', () => {
   it('every axiom solo: a fresh run still earns and descends', () => {

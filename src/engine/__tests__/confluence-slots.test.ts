@@ -25,14 +25,11 @@ const fresh = () => {
 };
 
 // A confluence with a condition we can arrange cheaply from a fresh state:
-// The Warren Hoard needs 3 warren-sourced relics and nothing else.
-const HOARD = 'warrenFlavour';
+// Provided For needs three museum cases and five expeditions and nothing else.
+const HOARD = 'providedFor';
 function makeHoardLive(s: GameState): void {
-  for (let i = 0; i < 3; i++) {
-    s.relics.held.push({
-      uid: 900 + i, defId: 'r', rarity: 0, affixes: {}, source: 'warren', fusedFrom: 0,
-    });
-  }
+  s.museum.completed = ['a', 'b', 'c'];
+  s.expeditions.completed = 5;
 }
 
 describe('attention slots — buying', () => {
@@ -119,7 +116,7 @@ describe('the amplifier', () => {
     engine.dispatch({ type: 'confluenceBuyRank', slot: 0 });
     expect(confluenceBonus(s, def.bucket)).toBeCloseTo(def.bonus * 3, 10);
     // a dwelt confluence whose condition LAPSES pays nothing at all
-    s.relics.held = [];
+    s.museum.completed = [];
     expect(confluenceBonus(s, def.bucket)).toBe(0);
   });
 

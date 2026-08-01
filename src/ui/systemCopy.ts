@@ -132,94 +132,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
         ? 'You have never poured. Pick any ratio — a failed pour costs the metal and teaches you the space.'
         : `${s.crucible.discovered.length} found in ${s.crucible.pours} pours. Nobody wrote the rest down either.`,
   },
-  foundry: {
-    title: 'The Foundry',
-    purpose:
-      'A workshop of modules that bend the other systems — a little more here, a different rule there. Install what suits how you play.',
-    status: (s) => `${s.foundry.installed.length}/${s.foundry.slots} slots`,
-    next: (s) => {
-      const free = s.foundry.slots - s.foundry.installed.length;
-      if (free > 0) return `${free} slot${free === 1 ? '' : 's'} standing empty — an uninstalled module does nothing.`;
-      return 'Every slot filled. Swapping costs nothing, so re-fit when your play changes.';
-    },
-  },
-  greenhouse: {
-    title: 'The Greenhouse',
-    purpose:
-      'Verdance grows things. Plant a strain, wait, harvest; cross two and you may breed a third nobody has grown. The green book fills with every strain you find.',
-    status: (s) => `${s.greenhouse.codex.length} strains · ${s.greenhouse.plots.filter(Boolean).length}/${s.greenhouse.plots.length} beds`,
-    next: (s) => {
-      const empty = s.greenhouse.plots.filter((p) => !p).length;
-      if (empty === s.greenhouse.plots.length) return 'Every bed is empty. Plant one — it grows whether you watch or not.';
-      if (empty > 0) return `${empty} bed${empty === 1 ? '' : 's'} still empty. A full house crosses more often.`;
-      return 'All beds working. When two mature side by side they may cross into something you have never grown.';
-    },
-  },
-  mycelium: {
-    title: 'The Mycelium',
-    purpose:
-      'A living network you feed. Fed well, it spreads on its own — to new sites, to new work — and it survives everything the shells throw at it.',
-    status: (s) => `${Object.keys(s.mycelium.nodes).length} sites · ${Math.floor(s.mycelium.reserve)} humus`,
-    next: (s) => {
-      const sites = Object.keys(s.mycelium.nodes).length;
-      if (sites === 0) return 'Nothing is growing. Inoculate your first site — it will not need you again.';
-      if (s.mycelium.reserve > 50) return `Humus is banked (${Math.floor(s.mycelium.reserve)}). It will spread on its own; you can also place one yourself.`;
-      return `${sites} sites live. Feed it and the network extends without you.`;
-    },
-  },
-  loom: {
-    title: 'The Loom',
-    purpose:
-      'Thread the warp and weft and a pattern emerges where they cross. The pattern makes SHAPES, and the shapes are the point — solve for them. You will know when you weave one.',
-    // Board-state only — never which shape, never where.
-    status: (s) => `${s.loom.discoveredShapes.length} shapes · ${s.loom.weaves} weaves`,
-    next: (s) => {
-      const held = Object.values(s.loom.threads).reduce((a, b) => a + b, 0);
-      if (held === 0) return 'No thread in hand. Spin some first — the Loom cannot run dry.';
-      const draft = [...s.loom.warp, ...s.loom.weft].filter(Boolean).length;
-      if (draft === 0) return `${held} thread in hand. Assign some to the rows and columns, then commit.`;
-      return 'A draft is set. Commit it and see whether anything crosses.';
-    },
-  },
-  bench: {
-    title: 'The Refraction Bench',
-    purpose:
-      'Optics puzzles. Route a beam through every target with a few mirrors. Every solution you find is saved as a Lens you can equip — a solved thing becomes a thing you own.',
-    // Board-state only — never a mirror placement.
-    status: (s) => `${s.bench.solved.length} solved`,
-    next: (s) => {
-      if (s.bench.solved.length === 0) return 'Nothing solved yet. Route the beam through every target and fire.';
-      if (!s.bench.equippedLens) return `${s.bench.solved.length} Lenses solved and none equipped — a solved Lens does nothing on the shelf.`;
-      return `${s.bench.solved.length} solved. Every puzzle you beat stays yours as a Lens.`;
-    },
-  },
-  array: {
-    title: 'The Ember Array',
-    purpose:
-      'A furnace grid that wants your hands on it. Place fuel, light it, and hold the heat in the band as long as you can — fire spreads as fuel dies, so a layout is a fuse you design. Your best run sets a bonus that never resets.',
-    status: (s) => `best ${Math.floor(s.ember.bestSustainSec / 60)}m${Math.floor(s.ember.bestSustainSec % 60)}s · rank ${s.ember.passiveRank}/20`,
-    next: (s) => {
-      const fuelled = s.ember.grid.filter(Boolean).length;
-      const lit = s.ember.burn.some((b) => b > 0);
-      if (fuelled === 0) return 'The grid is bare. Place fuel, then light a corner.';
-      if (!lit) return 'Fuel is laid but nothing is burning. Light a cell and watch the fire walk.';
-      if (s.ember.sustainSec > s.ember.bestSustainSec) return 'You are past your own record right now. Keep it in the band.';
-      return `Burning. Your best hold is ${Math.floor(s.ember.bestSustainSec)}s — beat it and the bonus is permanent.`;
-    },
-  },
-  chamber: {
-    title: 'The Echo Chamber',
-    purpose:
-      'It records what you do and does it again, forever, exactly — a way to hand the Chamber your own hands. Shorter routines score higher. This buys your attention back; it never breaks the ceilings.',
-    // Board-state only — the trace shows waste; it never writes the program.
-    status: (s) => `${s.chamber.tape.length} steps · rank ${s.chamber.passiveRank}/20`,
-    next: (s) => {
-      if (s.chamber.recording) return 'Recording. Everything you do is going onto the tape — stop when the loop is complete.';
-      if (s.chamber.tape.length === 0) return 'The tape is blank. Record a short loop of your own moves, then run it.';
-      if (!s.chamber.running) return `${s.chamber.tape.length} steps on the tape. Run it and read the trace.`;
-      return 'Running. The trace shows which steps earn and which are dead weight.';
-    },
-  },
   hold: {
     title: 'The Hold',
     purpose:
@@ -285,18 +197,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       return `${s.runes.pairsSeen.length} pair${s.runes.pairsSeen.length === 1 ? '' : 's'} you have heard speak. The rest are still unsaid.`;
     },
   },
-  brew: {
-    title: 'The Still',
-    purpose:
-      'Alchemy from what the green shell sheds. Brews are spikes, not engines — a burst for the moment you need one. Recipes are found by mixing, never bought.',
-    status: (s) => `${s.brewing.discovered.length} recipes known`,
-    next: (s) => {
-      if (s.brewing.active) return 'A brew is working through you now. Spend the window — it does not pause.';
-      const doses = Object.values(s.brewing.doses).reduce((a, b) => a + b, 0);
-      if (doses > 0) return `${doses} dose${doses === 1 ? '' : 's'} on the shelf. Save the strong ones for a warden or a hard push.`;
-      return 'Nothing on the shelf. Mix a ratio and drink it — a failed mix still teaches you something.';
-    },
-  },
   guild: {
     title: 'The Lamphouse',
     purpose:
@@ -320,29 +220,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
         ? 'Nothing logged yet. Anything you meet in the dark writes itself in here.'
         : `${s.combat.seen.length} logged. Kill one three times and the book gives up its tell.`,
   },
-  warrens: {
-    title: 'The Warrens',
-    purpose:
-      'Side-tunnels off the main shaft — a detour, never a cost. Each is hand-built: a puzzle, a keeper, and one thing that exists nowhere else. The runes come from here.',
-    status: (s) => `${Object.keys(s.warrens.cleared).length} cleared · ${s.warrens.uniques.length} uniques`,
-    next: (s) => {
-      if (s.warrens.active) {
-        return s.warrens.active.stage === 'puzzle'
-          ? 'You are inside one. Solve the puzzle to wake its keeper.'
-          : 'The keeper is awake. Put it down and the unique is yours.';
-      }
-      const cleared = Object.keys(s.warrens.cleared).length;
-      return cleared === 0
-        ? 'Step into an open Warren. It is a detour, never a cost — you cannot lose progress here.'
-        : `${cleared} cleared. Each remaining one still holds something that exists nowhere else.`;
-    },
-  },
-  observatory: {
-    title: 'The Observatory',
-    purpose:
-      'A dome aimed at skies nobody down here has stood under. Long exposures — minutes to half a day — return Spectrum and pieces of star-charts that assemble into permanent gifts. It finishes whether you watch or not.',
-    next: (s) => (s.observatory.active ? 'An exposure is running. It waits for you — nothing is missable.' : 'Start an exposure. The long ones pay more; none of them expire.'),
-  },
   journal: {
     title: "Sable's Journal",
     purpose:
@@ -355,17 +232,6 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       const untranslated = s.guild.sable.found.filter((id) => !s.guild.sable.translated.includes(id)).length;
       if (untranslated > 0) return `${untranslated} still in her cipher. Quill will read them for you.`;
       return 'Everything you have found is read. She keeps writing as you go deeper.';
-    },
-  },
-  wells: {
-    title: 'The Magma Wells',
-    purpose:
-      'Commit some of what you hold, wait, and roll — three, eight, or forty times back, or nothing. The odds are posted at the mouth, honest. A spice, never a strategy; a player who never touches them stays competitive.',
-    status: (s) => (s.wells.rolls > 0 ? `${s.wells.wins}W / ${s.wells.losses}L` : 'never rolled'),
-    next: (s) => {
-      if (s.wells.active.length > 0) return `${s.wells.active.length} commit${s.wells.active.length === 1 ? '' : 's'} still out. The result waits forever — you cannot miss it.`;
-      if (s.wells.rolls === 0) return 'The odds are posted at the mouth and they are honest. Never commit what you actually need.';
-      return `${s.wells.rolls} rolls so far. This is a spice, not a strategy — the game is winnable without it.`;
     },
   },
   delver: {

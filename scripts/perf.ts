@@ -36,8 +36,6 @@ const HEAVY = `(() => {
   for (const c of [14,15,16,3,10,11]) s.pressure.pipes[c]=1;
   s.pressure.heat = 62;
   s.hollow.silence = 70; s.hollow.rebuilt = []; for (let i=0;i<36;i++) s.hollow.rebuilt.push(i);
-  s.chamber.tape = []; for (let i=0;i<12;i++) s.chamber.tape.push({action:{type:'chip',cell:i%36},label:'chip'});
-  s.chamber.running = true;
   // A LARGE save: lots of relics, materials, feed history.
   for (let i=0;i<120;i++) s.relics.held.push({uid:i+1,defId:'depth-2',rarity:2,affixes:{regen:0.08,cellCap:0.1},source:'depth',fusedFrom:0});
   s.relics.nextUid = 200; s.relics.found = 200; s.relics.equipped = [1,2,3,4,5,6];

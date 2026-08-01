@@ -15,8 +15,7 @@ import { CASTING_IDS, materialDef, RARITY_GATES } from '../materials';
 import { shellDef } from '../shells';
 import { castBindingCosts, castingForAlloy } from '../content/shell2/crucibleSystem';
 import { ALLOY_DEFS } from '../content/shell2/alloys';
-import { TEMPERS, TEMPER_BY_ID } from '../systems/tempering';
-import { BREW_BY_ID } from '../content/shell3/brews';
+import { TEMPERS } from '../systems/tempering';
 import { MUSEUM_FUSION_NEED, fuseRelics } from '../systems/relics';
 import { traitsOf } from '../traits';
 
@@ -181,35 +180,12 @@ describe('alloy castings', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Edge 3 — Still brews → the quench catalog
+// Edge 3 (brew quenches) removed A.72 — the Still is gone, and with it the
+// three brew-gated tempers. The six material-medium quenches stand.
 // ---------------------------------------------------------------------------
-describe('brew quenches', () => {
-  it('three cellar quenches exist, each naming a real brew; the six material media stand', () => {
-    const brewed = TEMPERS.filter((t) => t.brew);
-    expect(brewed.length).toBe(3);
-    for (const t of brewed) expect(BREW_BY_ID.has(t.brew!.id), t.id).toBe(true);
-    expect(TEMPERS.filter((t) => !t.brew).length).toBe(6);
-  });
-
-  it('a cellar quench drinks the dose; without one it refuses and names the Still', () => {
-    const { engine, s } = fresh();
-    s.forge.built = true;
-    s.depthRecords['ferrite'] = 200; // mastery 6 → trough open
-    s.shell.breachCount = 1;
-    addMaterial(s, 'temperash', 60, 4);
-    s.currencies['brick'] = D(1000);
-    s.currencies['flux'] = D(1000);
-
-    const dry = engine.dispatch({ type: 'temperTool', temperId: 'ironbrew' });
-    expect(dry.ok).toBe(false);
-    expect((dry as { reason: string }).reason).toContain('Still');
-
-    s.brewing.doses['ironblood'] = 2;
-    const wet = engine.dispatch({ type: 'temperTool', temperId: 'ironbrew' });
-    expect(wet.ok).toBe(true);
-    expect(s.brewing.doses['ironblood']).toBe(1); // one dose drunk by the trough
-    const def = TEMPER_BY_ID.get('ironbrew')!;
-    expect(def.active(s)).toBe(true); // warden of loam still stands on a fresh save
+describe('tempers', () => {
+  it('six material quenches stand', () => {
+    expect(TEMPERS.length).toBe(6);
   });
 });
 

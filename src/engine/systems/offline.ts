@@ -26,9 +26,6 @@ import { KILN_DUST_PER_BRICK, kilnRate } from './kiln';
 import { grantXP } from './xp';
 import { chipCurrencyId, convCurrencyId } from '../shells';
 import { offlineHawkerScrip } from '../guild/hirelings';
-import { tickGreenhouse } from '../content/shell3/greenhouse';
-import { tickMycelium } from '../content/shell3/mycelium';
-import { tickBrewing } from '../content/shell3/brews';
 import { lawNum, sealed } from '../laws';
 import { settleOffline } from './settle';
 
@@ -141,18 +138,6 @@ export function applyOfflineProgress(
   //        keeps selling surplus at his usual cadence. -----------------------
   state.guild.clockMs += seconds * 1000;
   const scrip = offlineHawkerScrip(state, mods, seconds * eff);
-
-  // --- 6. Verdance keeps living: plots grow (and breed, coarsely), the fed
-  //        mycelium creeps a night's worth, brews expire. -------------------
-  const nullCtx = { emit: () => {}, dirty: () => ctx.dirty() };
-  let left = seconds * 1000;
-  while (left > 0) {
-    const chunk = Math.min(left, 600_000);
-    tickGreenhouse(state, nullCtx, chunk);
-    left -= chunk;
-  }
-  tickMycelium(state, nullCtx);
-  tickBrewing(state, nullCtx);
 
   const summary: OfflineSummary = {
     seconds,

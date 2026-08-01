@@ -276,8 +276,8 @@ export function craftGear(
 ): ActionResult {
   if (!state.forge.built) return { ok: false, reason: 'No forge' };
   const def = gearDef(gearId);
-  if (def.guildLock === 'warren' && !state.warrens.gearUnlocked.includes(gearId)) {
-    return { ok: false, reason: 'That pattern waits in a Warren, once' };
+  if (def.guildLock === 'warren') {
+    return { ok: false, reason: 'That pattern waited in a Warren. The Warrens are gone.' };
   }
   if (def.guildLock && def.guildLock !== 'warren' && !state.guild.unlockedGear.includes(gearId)) {
     return { ok: false, reason: 'That pattern belongs to someone at the Lamphouse' };

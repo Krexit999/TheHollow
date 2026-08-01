@@ -46,15 +46,8 @@ import { tickBio } from './systems/toolBio';
 import { doCollapse } from './systems/collapseSys';
 import { automationRate } from './content/shell7/gridModules';
 import { tickParallelShells, checkChallengeGoal } from './systems/spiral';
-import { tickWeather } from './systems/weather';
-import { tickGreenhouse } from './content/shell3/greenhouse';
-import { tickMycelium } from './content/shell3/mycelium';
-import { tickBrewing } from './content/shell3/brews';
-import { RESONANCE_PER_STEP, TAPE_WHITELIST, replayInterval, tapeLabel } from './content/shell6/chamber';
-import { lawFlag, lawNum } from './laws';
-import { addCurrency, getTotal, spendCurrency } from './resources';
-import { chipCurrencyId } from './shells';
-import { D } from './decimal';
+import { lawFlag } from './laws';
+import { addCurrency } from './resources';
 import { runFaceTick } from './signatures';
 import { checkAchievements } from './content/shell1/achievements';
 import { tickRelics, noteResonances } from './systems/relics';
@@ -78,10 +71,9 @@ const UNDOABLE = new Set<string>([
   'craftTool', 'craftFromParts', 'beginCraft', 'delegateCraft', 'craftGear',
   'crackGeode', 'buyResonantMemory', 'confluenceBuySlot', 'confluenceBuyRank',
   'buyMagnet', 'pourAlloy', 'castBinding', 'socketAlloy', 'socketGem',
-  'buyFoundrySlot', 'installModule', 'buyStock', 'hire', 'plantSeed', 'inoculate',
-  'feedMycelium', 'brewExperiment', 'drinkBrew', 'commitWeave', 'spinThread', 'buyMirror',
-  'benchAttempt', 'grindChartLens', 'inscribe', 'buyFuel', 'placeFuel', 'refine', 'transmute', 'salvageTool',
-  'temperTool', 'commitWell', 'rebuildCell', 'buyAxiom', 'buyGridSlot', 'buyLicence',
+  'buyStock', 'hire', 'buyMirror',
+  'inscribe', 'refine', 'transmute', 'salvageTool',
+  'temperTool', 'rebuildCell', 'buyAxiom', 'buyGridSlot', 'buyLicence',
   'placeModule', 'fuseRelics', 'donateRelic', 'donateItem', 'buyCoreNode', 'buySkillNode',
   'extendRail', 'installCache', 'depositCache', 'installLift', 'workExcavation',
   'sendExpedition', 'caravanTrade', 'spendCharter', 'discardTool', 'sellMaterial', 'respecSkills',
@@ -96,8 +88,8 @@ const UNDO_LABELS: Record<string, string> = {
   transmute: 'the transmute', salvageTool: 'the salvage', temperTool: 'the temper',
   installCache: 'the cache', depositCache: 'the deposit', extendRail: 'the rail',
   installLift: 'the lift', buyCoreNode: 'the Core node', buySkillNode: 'the skill',
-  donateRelic: 'the donation', donateItem: 'the donation', drinkBrew: 'the brew',
-  commitWeave: 'the weave', sellMaterial: 'the sale', sendExpedition: 'the expedition',
+  donateRelic: 'the donation', donateItem: 'the donation',
+  sellMaterial: 'the sale', sendExpedition: 'the expedition',
   buyStock: 'the buy', hire: 'the hire', workExcavation: 'the dig', inscribe: 'the carving',
 };
 function undoLabel(type: string): string { return UNDO_LABELS[type] ?? 'that'; }
@@ -189,10 +181,6 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     tickParallelShells(state, mods, dt);
     verdAcc += dt;
     if (verdAcc >= 1) {
-      tickWeather(state, ctx);
-      tickGreenhouse(state, ctx, verdAcc * 1000);
-      tickMycelium(state, ctx);
-      tickBrewing(state, ctx);
       noticeConfluences(state, ctx);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
@@ -215,35 +203,6 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
         addCurrency(state, left.chipCurrencyId, left.ratePerSec);
       }
       verdAcc = 0;
-    }
-    // THE ECHO CHAMBER's replay head: the tape runs through the REAL action
-    // handler — the engine cannot tell a program from a hand, which is the
-    // whole law-compliance argument. Each step pays its Resonance keep.
-    const tape = state.chamber;
-    if (tape.running && tape.tape.length > 0) {
-      tape.stepTimer += dt;
-      const interval = replayInterval(state);
-      if (tape.stepTimer >= interval) {
-        tape.stepTimer -= interval;
-        if (!spendCurrency(state, 'resonance', D(RESONANCE_PER_STEP))) {
-          tape.running = false; // out of keep: the program halts, loses nothing
-        } else {
-          const step = tape.tape[tape.cursor]!;
-          const before = getTotal(state, chipCurrencyId(state)).add(getTotal(state, 'void'));
-          handleAction(state, step.action as GameAction, { mods, ctx, replaceState: () => {} });
-          const gained = getTotal(state, chipCurrencyId(state)).add(getTotal(state, 'void')).sub(before).toNumber();
-          tape.trace[tape.cursor] = Math.max(0, Math.min(1e300, Number.isFinite(gained) ? gained : 1e300));
-          ctx.emit({ type: 'tapeStep', index: tape.cursor, label: step.label });
-          tape.cursor += 1;
-          if (tape.cursor >= tape.tape.length) {
-            tape.cursor = 0;
-            tape.loops += 1;
-            const yieldSum = tape.trace.reduce((a, b) => a + b, 0);
-            const efficiency = yieldSum / Math.max(1, tape.tape.length);
-            if (efficiency > tape.bestEfficiency) tape.bestEfficiency = efficiency;
-          }
-        }
-      }
     }
     state.stats.playTimeSec += dt;
     // THE SETTLING: the shaft banks quiet while no hand is on the face. Reads
@@ -340,14 +299,6 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
         mods.invalidate();
         notify();
         return { ok: true };
-      }
-      // THE TAPE HEAD (recording): the Chamber watches the dispatch itself.
-      if (
-        state.chamber?.recording &&
-        TAPE_WHITELIST.includes(action.type) &&
-        state.chamber.tape.length < lawNum(state, 'tapeSteps')
-      ) {
-        state.chamber.tape.push({ action: JSON.parse(JSON.stringify(action)), label: tapeLabel(action) });
       }
       // THE SHAPE NET (A.39): every save enters the engine through hydrate —
       // fill any slice a long-lived save is missing (an array added after the

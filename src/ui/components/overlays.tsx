@@ -9,25 +9,10 @@ import { gearDef } from '../../engine/combat/gear';
 import { npcDef, REP_TIER_NAMES } from '../../engine/guild/npcs';
 import { fragmentDef } from '../../engine/guild/sable';
 import { titleDef } from '../../engine/guild/titles';
-import { strainDef } from '../../engine/content/shell3/greenhouse';
-import { BREW_BY_ID } from '../../engine/content/shell3/brews';
-import { CONSTELLATIONS } from '../../engine/content/shell4/observatory';
-import { lensFor } from '../../engine/content/shell4/bench';
-import { WARREN_BY_ID } from '../../engine/content/shell4/warrens';
 import { RUNE_NAMES, RUNE_PAIRS } from '../../engine/content/shell4/runes';
 import { AXIOM_BY_ID } from '../../engine/content/shell7/axioms';
 import { RARITY_COLOR } from './HoldPanel';
 import { dispatch, useGame } from '../store';
-
-function greenStrainName(id: string): string {
-  try { return strainDef(id).name; } catch { return id; }
-}
-function brewName(id: string): string {
-  return BREW_BY_ID.get(id)?.name ?? id;
-}
-function warrenName(id: string): string {
-  return WARREN_BY_ID.get(id)?.name ?? id;
-}
 
 // ---------------------------------------------------------------------------
 // Offline summary — a clear account of what accrued while you were gone.
@@ -55,9 +40,6 @@ export function OfflineModal() {
   if (curing > 0) threads.push(`${curing} cache${curing === 1 ? '' : 's'} curing in the shaft`);
   if (state.lattice.unlocked && Object.keys(state.lattice.cells).length > 0)
     threads.push('the Lattice board mid-arrangement');
-  if (state.observatory.active) threads.push('an exposure running at the Observatory');
-  if (state.wells.active.length > 0)
-    threads.push(`${state.wells.active.length} Magma Well${state.wells.active.length === 1 ? '' : 's'} committed`);
   if (state.shell.current === 'hollow' && state.hollow.rebuilt.length > 0)
     threads.push(`reconstruction underway — ${state.hollow.rebuilt.length}/${state.face.cells.length} cells`);
   else if (state.depth >= shell.floorDepth && shell.floorDepth > 0 && !state.combat.wardens.includes(shell.id))
@@ -304,16 +286,6 @@ export function Toasts() {
         fresh.push({ key: entry.seq, title: `A name earned: ${t.name}`, body: `${t.flavor} (${t.effect} — see Sal's book.)`, color: '#e0b054' });
       } else if (ev.type === 'hired') {
         fresh.push({ key: entry.seq, title: `${npcDef(ev.npcId).name} signs on`, body: 'A berth filled in the crew loft.', color: '#c9a86a' });
-      } else if (ev.type === 'weatherChanged') {
-        fresh.push({ key: entry.seq, title: ev.name, body: `${ev.blurb} (Weather only ever helps.)`, color: '#cfe89a' });
-      } else if (ev.type === 'seedFound') {
-        fresh.push({ key: entry.seq, title: 'A seed in the bloom', body: `${greenStrainName(ev.speciesId)} — the Greenhouse can raise it.`, color: '#9ee07a' });
-      } else if (ev.type === 'hybridBred') {
-        fresh.push({ key: entry.seq, title: `Bred true: ${greenStrainName(ev.id)}`, body: 'A strain nobody has grown before. The green book learns it.', color: '#cfe89a' });
-      } else if (ev.type === 'brewDiscovered') {
-        fresh.push({ key: entry.seq, title: `The still yields: ${brewName(ev.id)}`, body: 'Two doses bottled. Spikes, not sustains — save it for a moment.', color: '#d9b64a' });
-      } else if (ev.type === 'shapeWoven') {
-        fresh.push({ key: entry.seq, title: 'A shape in the weave', body: 'The knots made a figure. The Loom remembers it now.', color: '#b8d09a' });
       } else if (ev.type === 'temporalFound') {
         fresh.push({ key: entry.seq, title: `A slow carving completes: ${ev.name}`, body: 'Runes cut into the same tool across long stretches finally spoke together. The slowest thing you can find, and now it is yours.', color: '#c8a35a' });
       } else if (ev.type === 'gemFused') {
@@ -334,21 +306,8 @@ export function Toasts() {
             color: '#e6c15a',
           });
         }
-      } else if (ev.type === 'myceliumSpread') {
-        if (ev.auto) fresh.push({ key: entry.seq, title: 'The thread wanders', body: 'The fed mycelium took another site on its own.', color: '#9ee07a' });
       } else if (ev.type === 'assayComplete') {
         fresh.push({ key: entry.seq, title: `Assay complete: depth ${ev.depth}`, body: 'The vein is marked. Drops doubled for a while — see the Hold.', color: '#9ab87a' });
-      } else if (ev.type === 'observationDone') {
-        fresh.push({ key: entry.seq, title: 'The plate is read', body: `Spectrum banked; ${ev.pieces} chart piece${ev.pieces === 1 ? '' : 's'} placed in the sky.`, color: '#d8b8ee' });
-      } else if (ev.type === 'constellation') {
-        const con = CONSTELLATIONS.find((c) => c.id === ev.id);
-        fresh.push({ key: entry.seq, title: `A sky closes: ${con?.name ?? ev.id}`, body: `${con?.bonus.label ?? ''} — permanent, like stars.`, color: '#e8d8f8' });
-      } else if (ev.type === 'lensGround') {
-        fresh.push({ key: entry.seq, title: `Ground and kept: ${lensFor(ev.puzzleId).name}`, body: 'The solution is a possession now. Equip it at the Bench.', color: '#bcd8ee' });
-      } else if (ev.type === 'warrenCleared') {
-        fresh.push({ key: entry.seq, title: `${warrenName(ev.warrenId)} cleared`, body: 'The keeper yields; the tunnel keeps its materials stocked.', color: '#bcd8ee' });
-      } else if (ev.type === 'warrenUnique') {
-        fresh.push({ key: entry.seq, title: 'A thing that exists nowhere else', body: ev.note, color: '#e8f4ff' });
       } else if (ev.type === 'runeFound') {
         fresh.push({ key: entry.seq, title: `A rune: ${RUNE_NAMES[ev.runeId as keyof typeof RUNE_NAMES] ?? ev.runeId}`, body: 'A letter that does something. The Runes tab will take it.', color: '#bcd8ee' });
       } else if (ev.type === 'pairDiscovered') {
@@ -370,15 +329,6 @@ export function Toasts() {
         fresh.push({ key: entry.seq, title: 'Crew recalled', body: 'Everyone off the floor. Nothing works, nobody dies. They restation under 70 heat.', color: '#c9a86a' });
       } else if (ev.type === 'crewRestationed') {
         fresh.push({ key: entry.seq, title: 'The crew files back down', body: 'The shaft cooled; the berths refill on their own.', color: '#c9a86a' });
-      } else if (ev.type === 'arrayBest') {
-        fresh.push({ key: entry.seq, title: `A steadier fire: ${Math.floor(ev.seconds / 60)}m${ev.seconds % 60}s`, body: 'Your best sustained burn. Records do not cool.', color: '#ffb36a' });
-      } else if (ev.type === 'wellResult') {
-        fresh.push({
-          key: entry.seq,
-          title: ev.mult === 0 ? 'The well keeps it' : `The well pays ×${ev.mult}`,
-          body: ev.mult === 0 ? `${fmt(ev.amount)} gone where the rope goes. The odds said this, out loud.` : `${fmt(ev.amount.mul(ev.mult))} up the rope. The posted odds, honored.`,
-          color: ev.mult === 0 ? '#8a7f70' : '#ffb36a',
-        });
       } else if (ev.type === 'hirelingLost') {
         fresh.push({ key: entry.seq, title: `${npcDef(ev.npcId).name} is gone`, body: 'The flood took the longest-serving hand still on the floor. The hall will hold a wake.', color: '#e07a6a' });
       } else if (ev.type === 'silenceHarvest') {

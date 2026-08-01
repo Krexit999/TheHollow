@@ -75,7 +75,6 @@ export const TITLES: TitleDef[] = [
   T('assayer', 'Vein-Reader', 'Twenty-five surveys filed.', (s) => s.assay.surveysDone >= 25, 'assaySpeed', 1.15, '+15% assay speed'),
   T('alloyist', 'Slag-Prophet', 'Ten alloys poured true.', (s) => s.crucible.discovered.length >= 10, 'brickYield', 1.05, '+5% converter output'),
   T('sablesteel', 'Keeper of the Ratio', 'Sable\'s Steel, poured from her own numbers.', (s) => s.crucible.discovered.includes('sablesteel'), 'brickYield', 1.06, '+6% converter output'),
-  T('founder', 'Wellfitted', 'Six Foundry modules bolted and humming.', (s) => s.foundry.installed.length >= 6, 'kilnRate', 1.05, '+5% converter intake'),
   T('kilnkeeper', 'Firstfire\'s Friend', 'Ten thousand firings.', (s) => s.stats.bricksFired.gte(1e4), 'kilnRate', 1.05, '+5% converter intake'),
   T('foreman', 'Bay Foreman', 'A hundred drill levels under your whistle.', (s) => drillLv(s) >= 100, 'drillSpeed', 1.05, '+5% drill speed'),
   T('fullbay', 'Twenty-Four Hands', 'Every drill slot filled.', (s) => s.drills.units.length >= 24, 'drillSpeed', 1.06, '+6% drill speed'),

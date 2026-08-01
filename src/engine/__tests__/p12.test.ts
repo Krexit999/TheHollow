@@ -10,9 +10,8 @@ import { GEMS } from '../materials';
 import { SPECIES } from '../combat/species';
 import { CHORD_DEFS } from '../content/shell1/latticeChords';
 import { ALLOY_DEFS } from '../content/shell2/alloys';
-import { BREWS } from '../content/shell3/brews';
-import { BASE_STRAINS } from '../content/shell3/greenhouse';
-import { SHAPE_EFFECTS } from '../content/shell3/loomSystem';
+import { CHAINS } from '../systems/refinery';
+import { FIGURE_DEFS } from '../systems/figures';
 import { CHALLENGES } from '../content/shell7/challenges';
 import { GRID_MODULES, automationRate, neighbours } from '../content/shell7/gridModules';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
@@ -382,8 +381,8 @@ describe('bonus definitions point at REAL modifier buckets', () => {
     const CEILING: Record<MuseumCaseDef['from'], number> = {
       gem: GEMS.length,
       bestiary: SPECIES.length,
-      // Chords + alloys + brews + strains + weave shapes (+ lenses, uncounted).
-      codex: CHORD_DEFS.length + ALLOY_DEFS.length + BREWS.length + BASE_STRAINS.length + Object.keys(SHAPE_EFFECTS).length,
+      // Chords + alloys + refinery chains + figures.
+      codex: CHORD_DEFS.length + ALLOY_DEFS.length + CHAINS.length + FIGURE_DEFS.length,
       // Relics drop indefinitely, so there is no finite ceiling to check.
       relic: Number.POSITIVE_INFINITY,
     };

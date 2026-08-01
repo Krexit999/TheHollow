@@ -113,23 +113,7 @@ export function doSpiral(
   next.lattice.discoveredProgressions = state.lattice.discoveredProgressions;
   next.crucible.discovered = state.crucible.discovered;
   next.crucible.ranks = state.crucible.ranks;
-  next.loom.discoveredShapes = state.loom.discoveredShapes;
-  next.greenhouse.codex = state.greenhouse.codex;
-  next.brewing.discovered = state.brewing.discovered;
-  next.bench.solved = state.bench.solved;
-  next.observatory.pieces = state.observatory.pieces;
-  next.observatory.constellations = state.observatory.constellations;
-  next.observatory.completed = state.observatory.completed;
-  next.warrens.uniques = state.warrens.uniques;
-  next.warrens.gearUnlocked = state.warrens.gearUnlocked;
   next.runes = state.runes;
-  next.ember.bestSustainSec = state.ember.bestSustainSec;
-  next.ember.passiveRank = state.ember.passiveRank;
-  next.chamber.bestEfficiency = state.chamber.bestEfficiency;
-  next.chamber.passiveRank = state.chamber.passiveRank;
-  next.wells.rolls = state.wells.rolls;
-  next.wells.wins = state.wells.wins;
-  next.wells.losses = state.wells.losses;
   for (const id of ['scrip', 'renown', 'charter'] as const) {
     next.currencies[id] = state.currencies[id] ?? D(0);
   }

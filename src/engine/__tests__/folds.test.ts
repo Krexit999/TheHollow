@@ -9,14 +9,10 @@
  *    codex surfaces are flagged, not deleted.
  */
 import { describe, expect, it } from 'vitest';
-import { D } from '../decimal';
 import { createEngine } from '../index';
 import type { GameState } from '../types';
 import { CONFLUENCES } from '../systems/confluence';
 import { CURE_RECIPES } from '../systems/curing';
-import { WELLS, WELL_TAP_SPEED, wellProgress, wellTapLive } from '../content/shell5/wells';
-import { CONSTELLATIONS } from '../content/shell4/observatory';
-import { lensFor } from '../content/shell4/bench';
 import { computeBucket } from '../modifiers';
 import { CLUSTERS, ALL_SYSTEMS } from '../../ui/nav';
 
@@ -55,64 +51,9 @@ describe('the journal pays for reading', () => {
   });
 });
 
-describe('the pressure tap', () => {
-  it('a well fed while the gallery vents hot runs 25% faster; untapped is untouched', () => {
-    const { s } = fresh();
-    s.depthRecords['cinder'] = 200; // mastery 6
-    // untapped: at 75% of the printed minutes the rope is still down
-    s.pressure.heat = 0;
-    s.wells.active.push({ wellId: 'nearWell', currencyId: 'slag', amount: D(200), startedMs: 0 });
-    const well = WELLS[0]!;
-    s.guild.clockMs = well.minutes * 60_000 * WELL_TAP_SPEED;
-    expect(wellProgress(s, 'nearWell')).toBeLessThan(1);
-    // tapped: the same fraction of the clock resolves it
-    s.pressure.heat = 60;
-    s.pressure.pipes = [1, 0, 0];
-    expect(wellTapLive(s)).toBe(true);
-    s.wells.active.push({ wellId: 'deepWell', currencyId: 'ember', amount: D(60), startedMs: 0, tapped: true });
-    const deep = WELLS[1]!;
-    s.guild.clockMs = deep.minutes * 60_000 * WELL_TAP_SPEED + 1;
-    expect(wellProgress(s, 'deepWell')).toBe(1);
-  });
-});
-
-describe('star charts are lens blueprints', () => {
-  it('grinding needs the constellation closed, costs silica, and the lens pays', () => {
-    const { engine, s } = fresh();
-    s.depthRecords['glassmere'] = 150; // bench mastery
-    s.currencies['silica'] = D(1000);
-    const refused = engine.dispatch({ type: 'grindChartLens', constellationId: 'pick' });
-    expect(refused.ok).toBe(false);
-    expect((refused as { reason: string }).reason).toContain('Observatory');
-
-    s.observatory.constellations.push('pick');
-    expect(engine.dispatch({ type: 'grindChartLens', constellationId: 'pick' }).ok).toBe(true);
-    expect(s.bench.solved).toContain('chart:pick');
-    expect(engine.dispatch({ type: 'grindChartLens', constellationId: 'pick' }).ok).toBe(false); // once
-
-    const lens = lensFor('chart:pick');
-    expect(lens.name).toBe('Lens of The Pick');
-    const before = computeBucket(s, lens.bucket).toNumber();
-    expect(engine.dispatch({ type: 'equipLens', puzzleId: 'chart:pick' }).ok).toBe(true);
-    expect(computeBucket(s, lens.bucket).toNumber()).toBeGreaterThan(before);
-  });
-
-  it('every constellation yields a well-formed lens (no inert buckets)', () => {
-    for (const con of CONSTELLATIONS) {
-      const lens = lensFor(`chart:${con.id}`);
-      expect(lens.name, con.id).toContain(con.name);
-      // The Door maps to regen — offlineEffAdd is additive and no lens mount
-      // carries it; everything else echoes its own theme.
-      if (con.bonus.bucket === 'offlineEffAdd') expect(lens.bucket).toBe('regen');
-      expect(lens.value, con.id).not.toBe(1);
-    }
-  });
-});
-
 describe('the nav fold', () => {
-  it('wells are still no tab; their panel lives inside vents', () => {
+  it('vents and relics keep their tabs', () => {
     const ids = ALL_SYSTEMS.map((sys) => sys.id);
-    expect(ids).not.toContain('wells');
     expect(ids).toContain('vents');
     expect(ids).toContain('relics');
   });
@@ -138,14 +79,13 @@ describe('the nav fold', () => {
   });
 
   /**
-   * 34 AS OF THE NEW FORGE (step 2): the Casting Floor is a room. It is not a
-   * fold candidate — it has its own loop (melt, pour, build) and shares only a
-   * gate with the Forge — but it IS a system that will eventually REPLACE the
-   * Forge, and when that happens this number goes back to 33. Recorded here so
-   * the retirement is a deliberate act rather than a drift.
+   * 24 AS OF A.72: ten nav tabs (greenhouse, mycelium, loom, bench, array,
+   * chamber, brew, warrens, observatory, foundry) were cut along with their
+   * systems, taking the count from 34 down to 24. Recorded here so the next
+   * change is a deliberate act rather than a drift.
    */
-  it('the counted-system number is 34 (Casting joined; Forge retires into it later)', () => {
-    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(34);
+  it('the counted-system number is 24 (A.72 cut ten craft-system tabs)', () => {
+    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(24);
     expect(CLUSTERS.length).toBe(5); // the five rooms stand
   });
 });

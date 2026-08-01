@@ -338,9 +338,9 @@ export function fusionGate(state: GameState, rarity: number): { need: number; ha
  *    charged only when a fusion lifts a relic into the top band — Fabled or
  *    Mythic — which is the rare, deliberate act worth a prestige price.
  *
- * WHY CORES AND NOT RESONANCE (unchanged from A.48). Resonance is SHELL VI's
- * chip currency (`content/shell6/chamber.ts`) and is unobtainable before the
- * sixth world, so pricing fusion in it would strand the system for ~90% of a
+ * WHY CORES AND NOT RESONANCE (unchanged from A.48). Resonance is earned by
+ * listening in the Hollow and is unobtainable before the sixth world, so
+ * pricing fusion in it would strand the system for ~90% of a
  * playthrough — the exact shape of the standing reach rule (the Silica
  * problem). Cores come from the Collapse, which happens in EVERY shell.
  */

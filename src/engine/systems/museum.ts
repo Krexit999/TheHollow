@@ -186,10 +186,6 @@ export const RELIC_HALLS = CASES.filter((c) => c.from === 'relic');
 export function codexCount(state: GameState): number {
   return state.lattice.discovered.length
     + state.crucible.discovered.length
-    + state.loom.discoveredShapes.length
-    + state.greenhouse.codex.length
-    + state.brewing.discovered.length
-    + state.bench.solved.length
     + state.refinery.found.length
     + state.figures.found.length;
 }

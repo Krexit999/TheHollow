@@ -20,7 +20,6 @@ import {
 } from '../../engine/systems/refinery';
 import { salvagePreview } from '../../engine/systems/salvage';
 import { TEMPERS, temperingUnlocked, temperCost, currentTemper } from '../../engine/systems/tempering';
-import { BREW_BY_ID } from '../../engine/content/shell3/brews';
 import { dispatch, useGame } from '../store';
 import { ToolShelf } from './toolShelf';
 import { MaterialIcon } from './MaterialIcon';
@@ -468,8 +467,6 @@ function TemperPanel() {
           const cost = temperCost(state as GameState, t.id)!;
           const shortAsh = materialCount(state as GameState, 'temperash') < cost.ash;
           const shortMedium = cost.medium > 0 && materialCount(state as GameState, t.medium) < cost.medium;
-          // B4: a cellar quench drinks a Still dose — say so before the click.
-          const shortBrew = t.brew !== undefined && (state.brewing.doses[t.brew.id] ?? 0) < t.brew.doses;
           return (
             <div
               key={t.id}
@@ -491,18 +488,14 @@ function TemperPanel() {
               {!worn && (
                 <button
                   className="btn mt-1.5 w-full py-1 text-[11px]"
-                  disabled={shortAsh || shortMedium || shortBrew}
+                  disabled={shortAsh || shortMedium}
                   onClick={() => dispatch({ type: 'temperTool', temperId: t.id })}
                 >
                   {shortAsh
                     ? `Need ${cost.ash} Temper Ash`
                     : shortMedium
                       ? `Need ${cost.medium} ${materialDef(t.medium).name}`
-                      : shortBrew
-                        ? `Needs a dose of ${BREW_BY_ID.get(t.brew!.id)?.name ?? t.brew!.id} — the Still brews it`
-                        : t.brew
-                          ? `Quench it · ${cost.conv} + 1 ${BREW_BY_ID.get(t.brew.id)?.name ?? t.brew.id} dose`
-                          : `Quench it · ${cost.conv}`}
+                      : `Quench it · ${cost.conv}`}
                 </button>
               )}
             </div>

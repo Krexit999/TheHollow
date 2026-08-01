@@ -22,10 +22,6 @@ type Strip = (s: GameState) => void;
 // Only the systems WITHOUT a consumed output — everything else clears the
 // floor structurally (its output is demanded somewhere).
 const STRIPS: Record<string, Strip> = {
-  mycelium: (s) => { s.mycelium.nodes = {}; },
-  foundry: (s) => { s.foundry.slots = 0; s.foundry.installed = []; },
-  greenhouseHybrids: (s) => { s.greenhouse.codex = []; },
-  observatoryCharts: (s) => { s.observatory.constellations = []; },
   museumCases: (s) => { s.museum.completed = []; },
   titlesEquip: (s) => { s.guild.titles.equipped = null; },
 };

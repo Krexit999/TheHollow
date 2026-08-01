@@ -472,13 +472,11 @@ export const QUESTLINES: Record<string, QuestStep[]> = {
   ],
   // Phase 9 accrual — five more askings; the hall smells of ash now.
   dovekin: [
-    { note: 'Read three plates off the Observatory — skies are lamps too.', check: (s) => (s.observatory?.completed ?? 0) >= 3, reward: { scrip: 20 } },
     { note: 'Two hundred harvests inside the beam. Light that WORKS.', check: (s) => (s.refraction?.beamHarvests ?? 0) >= 200, reward: { scrip: 30, renown: 3 } },
     { note: 'Stand in Cinder, where the lamps light themselves.', check: (s) => (s.depthRecords['cinder'] ?? 0) >= 10, reward: { renown: 8 } },
   ],
   ossian: [
     { note: 'Fire five thousand converter units. The god of small flames counts.', check: (s) => s.stats.bricksFired.gte(5000), reward: { scrip: 20 } },
-    { note: 'Hold the Ember Array in its band for three unbroken minutes.', check: (s) => (s.ember?.bestSustainSec ?? 0) >= 180, reward: { scrip: 35, renown: 4 } },
     { note: 'Vent a thousand heat and flood nothing. Devotion is restraint.', check: (s) => (s.pressure?.ventedTotal ?? 0) >= 1000 && (s.pressure?.floods ?? 0) === 0, reward: { renown: 10 } },
   ],
   // jib: emptied A.72 — all three asks named anomalies (cut).
@@ -488,9 +486,8 @@ export const QUESTLINES: Record<string, QuestStep[]> = {
     { note: 'Tier XIII. Marrow pretends not to watch either of you.', check: (s) => s.forge.tools.some((t) => t.tier >= 13), reward: { scrip: 35, renown: 4 } },
     { note: 'Forge the Fifteenth. The ladder ends; the apprenticeship does too.', check: (s) => s.forge.tools.some((t) => t.tier >= 15), reward: { charter: 1, renown: 12 } },
   ],
-  rane: [
-    { note: 'Ride a Magma Well to a payout she can misquote.', check: (s) => (s.wells?.wins ?? 0) >= 1, reward: { scrip: 30, renown: 3 } },
-  ],
+  // rane: emptied A.72 — her one ask named the Magma Wells (cut).
+  rane: [],
   // Phase 10 accrual — the last five askings. The book of the hall closes.
   lark: [
     { note: 'Know half the hall by name — meet fifteen of the thirty.', check: (s) => Object.values(s.guild.npcs).filter((n) => n.met).length >= 15, reward: { scrip: 25 } },
@@ -508,7 +505,6 @@ export const QUESTLINES: Record<string, QuestStep[]> = {
     { note: 'Reach the shell no charter can name. She stamps a blank page for you.', check: (s) => s.shell.breachCount >= 5, reward: { renown: 12 } },
   ],
   ferro: [
-    { note: 'Run three Foundry modules at once.', check: (s) => s.foundry.installed.length >= 3, reward: { scrip: 25 } },
     { note: 'Three hundred tools forged, lifetime. He remembers every one.', check: (s) => s.stats.toolsForged >= 300, reward: { scrip: 35, renown: 4 } },
     { note: 'Carry a tool through a Recursion. An heirloom, he says, is a tool that outlived its world.', check: (s) => s.forge.tools.some((t) => t.heirloom === true), reward: { renown: 12 } },
   ],

@@ -10,7 +10,6 @@ import { D } from '../../engine/decimal';
 import {
   HOLLOW_FLOOR, faceWhole, rebuildCost, silenceRatePerMin, voidRate,
 } from '../../engine/systems/absence';
-import { chamberUnlocked } from '../../engine/content/shell6/chamber';
 import { AXIOMS } from '../../engine/content/shell7/axioms';
 import { axiomsFromEchoes, canRecurse, AXIOM_RESONANCE } from '../../engine/systems/recursionSys';
 import { materialCount } from '../../engine/systems/forge';
@@ -113,85 +112,6 @@ export function HollowPanel() {
             )}
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// The Echo Chamber — a program is indistinguishable from a hand.
-// ---------------------------------------------------------------------------
-
-export function ChamberPanel() {
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  if (!state) return null;
-  if (!chamberUnlocked(state as GameState)) {
-    return <div className="panel p-4 text-center text-xs italic text-cave-400">A room that repeats you. It answers to Hollow Mastery 2.</div>;
-  }
-  const c = state.chamber;
-
-  return (
-    <div className="space-y-2">
-      <div className="panel p-3">
-        <div className="flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-[#9a8ec0]">Upkeep</span>
-          <span className="tnum text-[10px] text-cave-400">
-            Resonance <Amount value={getCurrency(state, 'resonance')} color="#9a8ec0" /> · rank {c.passiveRank}/20
-          </span>
-        </div>
-        <div className="mt-1 text-[10px] leading-snug text-cave-400">
-          Record your own actions; the Chamber replays them forever, through the real
-          engine — so a program obeys every ceiling a hand does. Shorter is better:
-          each step burns Resonance, and the trace shows where a step wastes its keep.
-        </div>
-        <div className="mt-2 flex gap-1.5">
-          {c.recording ? (
-            <button className="btn btn-warm flex-1 py-1.5 text-xs" onClick={() => dispatch({ type: 'tapeRecord', on: false })}>
-              Stop recording ({c.tape.length} steps)
-            </button>
-          ) : (
-            <button
-              className="btn flex-1 py-1.5 text-xs"
-              disabled={materialCount(state as GameState, 'emberglass') < 1}
-              title="A recording is cut in Emberglass — Cinder's export. Hold the Array in the band, or buy from Serra."
-              onClick={() => dispatch({ type: 'tapeRecord', on: true })}
-            >
-              Record a tape · 1 Emberglass ({materialCount(state as GameState, 'emberglass')})
-            </button>
-          )}
-          {c.tape.length > 0 && !c.recording && (
-            <button
-              className={`btn flex-1 py-1.5 text-xs ${c.running ? 'btn-warm' : ''}`}
-              onClick={() => dispatch({ type: 'tapeRun', on: !c.running })}
-            >
-              {c.running ? 'Halt' : 'Run forever'}
-            </button>
-          )}
-          {c.tape.length > 0 && (
-            <button className="btn px-2 py-1.5 text-xs" onClick={() => dispatch({ type: 'tapeClear' })}>
-              Clear
-            </button>
-          )}
-        </div>
-        {/* The execution trace — watch your own program run. */}
-        {c.tape.length > 0 && (
-          <div className="mt-2 space-y-0.5">
-            {c.tape.map((step, i) => {
-              const y = c.trace[i] ?? 0;
-              const running = c.running && c.cursor === i;
-              return (
-                <div key={i} className={`flex items-center justify-between rounded px-2 py-0.5 text-[10px] ${running ? 'bg-[#3a3458]' : ''}`}>
-                  <span className="tnum text-cave-300">{i + 1}. {step.label}</span>
-                  <span className="tnum text-[9px] text-cave-400">{y > 0 ? `+${fmt(D(y))}` : '—'}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <div className="tnum mt-1.5 text-[9px] text-cave-400">
-          loops {c.loops} · best efficiency {c.bestEfficiency > 0 ? c.bestEfficiency.toExponential(2) : '—'} yield/step
-        </div>
       </div>
     </div>
   );

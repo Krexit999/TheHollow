@@ -54,7 +54,7 @@ describe('every historical save version reaches v12 and RUNS', () => {
 
     // And every slice the current build reads must exist.
     const s = engine.getState() as GameState;
-    for (const slice of ['spiral', 'relics', 'museum', 'expeditions', 'recursion', 'chamber', 'hollow', 'pressure', 'guild', 'materials'] as const) {
+    for (const slice of ['spiral', 'relics', 'museum', 'expeditions', 'recursion', 'hollow', 'pressure', 'guild', 'materials'] as const) {
       expect(s[slice], `v${from} -> v12 left state.${slice} undefined`).toBeDefined();
     }
   });

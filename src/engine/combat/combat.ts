@@ -22,7 +22,6 @@ import { skillRank } from '../content/shell1/skillTree';
 import { rollSpecies, speciesDef, wardenOf, type SpeciesDef, type TelegraphKind } from './species';
 import { equippedGearDefs, gearCombatTotals } from './gear';
 import { hirelingCombat } from '../guild/hirelings';
-import { brewCombat } from '../content/shell3/brews';
 
 export const LANES = 5;
 export const BEAT_SEC = 2.2;
@@ -36,19 +35,19 @@ export const LOSS_TOLL = 0.1;
 // ---------------------------------------------------------------------------
 
 export function effectiveStrike(state: GameState, mods: ModifierCache): number {
-  return equippedTool(state).strikePower * mods.get(state, 'strikePower').toNumber() * brewCombat(state).strikeMult;
+  return equippedTool(state).strikePower * mods.get(state, 'strikePower').toNumber();
 }
 
 export function playerMaxHp(state: GameState): number {
   const gear = gearCombatTotals(state);
   return Math.round(
     24 + equippedTool(state).tier * 6 + gear.hp + gemHpBonus(state) +
-    6 * skillRank(state, 'deepGrip') + hirelingCombat(state).hp + brewCombat(state).hp,
+    6 * skillRank(state, 'deepGrip') + hirelingCombat(state).hp,
   );
 }
 
 export function playerRegen(state: GameState): number {
-  return gearCombatTotals(state).regen + hirelingCombat(state).regen + brewCombat(state).regen;
+  return gearCombatTotals(state).regen + hirelingCombat(state).regen;
 }
 
 /** Damage taken while guarding (off-hands improve it). */

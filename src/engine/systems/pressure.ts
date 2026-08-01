@@ -48,8 +48,6 @@ import { allUpgrades, stat } from '../upgrades';
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { applyFieldSize, cellCap } from './face';
 import { runFaceReset } from '../signatures';
-import { consumeMaterial, materialCount } from './forge';
-import { currentWeather } from './weather';
 import { harmHireling } from '../guild/hirelings';
 import { chipCurrencyId, currentShell } from '../shells';
 import { lawFlag, sealed, challengeNum } from '../laws';
@@ -157,17 +155,14 @@ export function layPipe(state: GameState, cell: number): ActionResult {
   const cost = nextPipeCost(state);
   const held = state.currencies['obsidian'] ?? D(0);
   if (held.lt(cost)) return { ok: false, reason: `${cost} Obsidian to cast the section` };
-  // THE EXPORT SPINE (Part B): the standard gallery — twelve sections, enough
-  // for the full three-outlet route every heat policy runs — joins dry. Every
-  // section past it wants a Glasseal gasket, Glassmere's export, or the joint
-  // weeps heat. The idle-never-floods guarantee never needed a thirteenth
-  // pipe, so the guarantee and the gate never meet.
-  const wantsSeal = pipeCount(state) >= FREE_PIPES;
-  if (wantsSeal && materialCount(state, 'glasseal') < 1) {
-    return { ok: false, reason: 'Sections past the twelfth want 1 Glasseal — cast it at the Bench in Glassmere, or buy it from Serra' };
-  }
+  /**
+   * THE EXPORT-SPINE GATE IS GONE (A.72). Sections past the twelfth wanted a
+   * Glasseal gasket — Glassmere's export, cast at the Bench — and both roads to
+   * one (cast it, or buy it from Serra) went with the Bench and the Guild. A
+   * requirement nothing can ever satisfy is not a decision, it is a wall with
+   * no door; dropped rather than left standing.
+   */
   state.currencies['obsidian'] = held.sub(cost);
-  if (wantsSeal) consumeMaterial(state, 'glasseal', 1);
   state.pressure.pipes[cell] = 1;
   return { ok: true };
 }
@@ -181,8 +176,9 @@ export function holdLine(state: GameState): number {
 }
 
 export function ventRate(state: GameState): number {
+  // A.72: weather's 'updraft' bonus is gone with weather.ts — dropped rather
+  // than left as a term that can never fire.
   let vent = BASE_VENT + networkCapacity(state);
-  if (currentWeather(state).id === 'updraft') vent *= 1.5; // eruptions help — always
   if (state.pressure.choke) vent *= CHOKE_VENT_MULT;
   return vent;
 }
@@ -192,11 +188,13 @@ export function ambientHeatRate(state: GameState): number {
   return AMBIENT_BASE + AMBIENT_DEEP * Math.min(1, state.depth / floor);
 }
 
+/**
+ * A.72: the Ember Array's 'overdrive' flag is gone with the Array — it always
+ * read as "not overdriving" once nothing can ever set it, so the term is
+ * dropped rather than left as permanent dead weight on every call.
+ */
 export function heatIdle(state: GameState): boolean {
-  return (
-    state.stats.playTimeSec - state.pressure.lastStokeSec > IDLE_GRACE_SEC &&
-    !state.ember.overdrive
-  );
+  return state.stats.playTimeSec - state.pressure.lastStokeSec > IDLE_GRACE_SEC;
 }
 
 export function yieldMult(state: GameState, strength: number): number {
@@ -209,7 +207,7 @@ export function heatCeiling(state: GameState, native: boolean): number {
   // welded shut. Nothing quietly saves you from your own plumbing — which is
   // the whole point of the run, and the only way to feel what it was doing.
   if (sealed(state, 'sealGovernor')) return native ? 100 : CARRY_HEAT_CAP;
-  if (state.pressure.choke || state.ember.overdrive) {
+  if (state.pressure.choke) {
     // THE SEALED SEAM (law): the choke keeps a safety seam at 97 — you can
     // never flood, and you can never touch the top of the gauge. A trade.
     if (lawFlag(state, 'sealedSeam')) return Math.min(native ? 97 : CARRY_HEAT_CAP, 97);
@@ -242,7 +240,6 @@ function tickPressure(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt:
 
   let sources = ambientHeatRate(state) * strength + p.drillHeatPending / Math.max(dt, 0.001);
   p.drillHeatPending = 0;
-  if (state.ember.overdrive) sources += 0.8;
 
   if (idle) {
     // THE DAMPER (pillar 1, by construction): an untended shaft converges to
@@ -259,7 +256,7 @@ function tickPressure(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt:
     addHeat(state, (sources - vent) * dt, native);
     // THE GOVERNOR'S RELIEF: with the vents open, anything above the ceiling
     // sheds fast — unchoking during the klaxon is always a real escape.
-    if (!p.choke && !state.ember.overdrive) {
+    if (!p.choke) {
       const ceiling = heatCeiling(state, native);
       if (p.heat > ceiling) {
         const shed = Math.min(RELIEF_RATE * dt, p.heat - ceiling);
@@ -285,7 +282,6 @@ function tickPressure(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt:
   ) {
     p.overpressureAtSec = state.stats.playTimeSec;
     p.overpressures += 1;
-    state.ember.overdrive = false; // the Array will not burn the mine down
     // Entering the klaxon un-chokes the vents unless you are actively riding
     // it (a manual chip in the last 20s) — the failure needs your hands on it.
     if (p.choke && state.stats.playTimeSec - p.lastStokeSec > 20) {

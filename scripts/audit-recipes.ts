@@ -10,7 +10,7 @@ import { TOOL_RECIPES } from '../src/engine/systems/forge';
 import { materialDef, RARITY_GATES } from '../src/engine/materials';
 import { shellDef } from '../src/engine/shells';
 import { ensureContentLoaded } from '../src/engine/content';
-import { SHELL_EXPORTS, EXPORT_RECIPE_BY_ID } from '../src/engine/content/exports';
+import { SHELL_EXPORTS } from '../src/engine/content/exports';
 import { CHAINS } from '../src/engine/systems/refinery';
 import { createEngine } from '../src/engine';
 import type { GameState } from '../src/engine/types';
@@ -73,39 +73,16 @@ for (const e of SHELL_EXPORTS) {
   if (!def.worked) bad(`${e.materialId} is not worked — it could drop from rock`);
 
   // LAW 2 — producible at home: a chain whose inputs are minable in (or before)
-  // the home shell, or a recipe paid in the home shell's own currencies.
+  // the home shell.
   const chain = CHAINS.find((c) => c.out === e.materialId);
-  const recipe = EXPORT_RECIPE_BY_ID.get(e.materialId);
-  const byproductOf: Record<string, string> = {
-    fibercloth: 'every committed weave (verdance loom)',
-    emberglass: '90s held in the Ember Array band (cinder)',
-  };
   if (chain) {
     for (const input of [chain.a, chain.b]) {
       const idef = materialDef(input);
       if (idef.worked) { bad(`${e.materialId} chain input ${input} is itself worked`); continue; }
       if (ORDER.indexOf(idef.shellId) > home) bad(`${e.materialId} chain input ${input} lives below ${e.shellId}`);
     }
-  } else if (recipe) {
-    // The recipe's currencies must belong to the home shell (or earlier) —
-    // a shell's currencies are the ones its own rock and drills emit.
-    // Currencies a shell's SIGNATURE verb sheds (not in ShellDef): polarity
-    // chains shed Lodestone in Ferrite (polarity.ts:101).
-    const SIGNATURE_CURRENCIES: Record<string, string[]> = { ferrite: ['lodestone'] };
-    const homeCurrencies = new Set<string>();
-    for (let i = 0; i <= home && i < ORDER.length - 1; i++) {
-      const sd = shellDef(ORDER[i]!);
-      homeCurrencies.add(sd.chipCurrencyId);
-      homeCurrencies.add(sd.convCurrencyId);
-      if (sd.drillByproduct) homeCurrencies.add(sd.drillByproduct.currencyId);
-      if (sd.deepByproduct) homeCurrencies.add(sd.deepByproduct.currencyId);
-      for (const c of SIGNATURE_CURRENCIES[ORDER[i]!] ?? []) homeCurrencies.add(c);
-    }
-    for (const c of recipe.costs) {
-      if (!homeCurrencies.has(c.currencyId)) bad(`${e.materialId} recipe wants ${c.currencyId}, not a currency of ${e.shellId} or earlier`);
-    }
-  } else if (!byproductOf[e.materialId]) {
-    bad(`${e.materialId} has no chain, no recipe, and no byproduct source`);
+  } else {
+    bad(`${e.materialId} has no producing chain`);
   }
 
   // LAW 3 — Serra lists it the moment its home shell is behind you, at every

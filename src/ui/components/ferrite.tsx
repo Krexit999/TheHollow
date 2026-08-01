@@ -1,13 +1,13 @@
 /**
  * Phase 4 UI: the Breach (the game's biggest beat — staged, not a dialog),
- * the Alloy Crucible, the Foundry, and the Magnet Array purchase card.
+ * the Alloy Crucible, and the Magnet Array purchase card. The Foundry left
+ * with foundry.ts (A.72).
  */
 import { useEffect, useState } from 'react';
 import {
   breachEchoPreview,
   canBreach,
   carriedStrength,
-  currencyDef,
   currentShell,
   fmt,
   getCurrency,
@@ -22,7 +22,6 @@ import type { GameState } from '../../engine';
 import { materialsOfShell } from '../../engine/materials';
 import { materialCount, equippedTool, alloySlotsUsable } from '../../engine/systems/forge';
 import { transmuteUnlocked } from '../../engine/systems/refinery';
-import { ExportProduceRow } from './exports';
 import {
   buyMagnet as _bm, // typing anchor
   magnetArrayUnlocked,
@@ -40,16 +39,9 @@ import {
   POUR_UNIT,
 } from '../../engine/content/shell2/crucibleSystem';
 import { CASTING_BIND_TIER, materialDef } from '../../engine/materials';
-import {
-  FOUNDRY_MODULES,
-  foundryUnlocked,
-  moduleDef,
-  nextSlotCost,
-  FOUNDRY_MAX_SLOTS,
-} from '../../engine/systems/foundry';
 import { dispatch, useGame } from '../store';
 import { usePersisted } from '../usePersisted';
-import { Amount, HoldButton, BUCKET_NAME } from './shared';
+import { Amount, HoldButton } from './shared';
 import { MaterialIcon } from './MaterialIcon';
 
 void _bm;
@@ -81,6 +73,7 @@ export function BreachCard() {
         <span className="block text-[10px] opacity-80">⌊3 · (Cores earned this breach / 200)^0.6⌋ — collapse more first to raise it.</span>
       </div>
       <KeystoneCard />
+      <ResonantMemoryCard />
       <HoldButton
         onConfirm={() => {
           window.dispatchEvent(new CustomEvent('hollow:breach'));
@@ -157,6 +150,47 @@ function KeystoneCard() {
           onClick={() => dispatch({ type: 'placeKeystone', leg: 'buy' })}
         >
           Or the Guild hauls one up — <Amount value={price} color="#8be9fd" /> {chipCurrencyId(state)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Resonant Memory — the other Echo sink. Used to live inside the Foundry
+ * panel (a UI mistake, not a design one — it has nothing to do with Foundry
+ * modules); the Foundry left with foundry.ts (A.72), this stayed.
+ */
+function ResonantMemoryCard() {
+  const state = useGame((s) => s.state);
+  useGame((s) => s.rev);
+  if (!state) return null;
+  const echoes = getCurrency(state, 'echo');
+  return (
+    <div className="mt-2 rounded-md border border-[#d8ccf0]/20 p-2 text-left">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 text-[11px] text-cave-400">
+          <span className="font-semibold text-cave-200">Resonant Memory</span>
+          <span className="tnum ml-2">Lv {state.shell.resonantMemory}</span>
+          <div className="text-[10px] leading-snug">
+            Carried signatures run +15% stronger per level.
+          </div>
+          {state.shell.signatures.length > 0 && (
+            <div className="tnum mt-0.5 text-[10px] text-[#c9b8f0]">
+              {state.shell.signatures.map((id) => id[0]!.toUpperCase() + id.slice(1)).join(' · ')} — each
+              at {Math.round(carriedStrength(state as GameState) * 100)}% of native strength
+              ({Math.round(CARRY_BASE * 100)}% base{state.shell.resonantMemory > 0
+                ? ` + ${Math.round((carriedStrength(state as GameState) - CARRY_BASE) * 100)}% from your levels`
+                : ''}).
+            </div>
+          )}
+        </div>
+        <button
+          className="btn shrink-0 px-2.5 py-1 text-xs"
+          disabled={echoes.lt(resonantMemoryCost(state))}
+          onClick={() => dispatch({ type: 'buyResonantMemory' })}
+        >
+          <Amount value={resonantMemoryCost(state)} color="#d8ccf0" /> Echo
         </button>
       </div>
     </div>
@@ -441,8 +475,8 @@ export function CruciblePanel() {
         )}
       </div>
 
-      {/* The export: iron cast for the shell below (Part B spine) */}
-      <ExportProduceRow materialId="lodeframe" />
+      {/* A.72: the export it fed (Lodeframe -> Greenhouse/Loom) is cut; the
+          Crucible no longer names a downstream consumer. */}
 
       {/* Codex — discovered alloys, bindable */}
       <div className="panel p-3">
@@ -500,116 +534,3 @@ export function CruciblePanel() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// The Foundry
-// ---------------------------------------------------------------------------
-
-/** What a module actually does, in plain +/-% — the line the card was missing. */
-function moduleEffectText(mod: { bucket: string; value: number }): string {
-  const name = (BUCKET_NAME as Record<string, string>)[mod.bucket] ?? mod.bucket;
-  if (mod.bucket === 'offlineEffAdd') return `+${Math.round(mod.value * 100)}% offline efficiency`;
-  const pct = Math.round((mod.value - 1) * 100);
-  return `${pct >= 0 ? '+' : ''}${pct}% ${name}`;
-}
-
-export function FoundryPanel() {
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  if (!state || !foundryUnlocked(state)) return null;
-  const echoes = getCurrency(state, 'echo');
-
-  return (
-    <div className="space-y-2">
-      <div className="panel flex items-center justify-between p-3">
-        <div className="text-xs text-cave-400">
-          Slots:{' '}
-          <span className="tnum text-cave-200">
-            {state.foundry.installed.length}/{state.foundry.slots}
-          </span>
-          <span className="opacity-60"> (max {FOUNDRY_MAX_SLOTS})</span>
-          <span className="ml-3">
-            Echoes: <Amount value={echoes} color="#d8ccf0" />
-          </span>
-        </div>
-        {state.foundry.slots < FOUNDRY_MAX_SLOTS && (
-          <button
-            className="btn px-2.5 py-1 text-xs"
-            disabled={echoes.lt(nextSlotCost(state))}
-            onClick={() => dispatch({ type: 'buyFoundrySlot' })}
-          >
-            +Slot · <Amount value={nextSlotCost(state)} color="#d8ccf0" />
-          </button>
-        )}
-      </div>
-
-      <div className="space-y-1.5">
-        {FOUNDRY_MODULES.map((mod) => {
-          const installed = state.foundry.installed.includes(mod.id);
-          const clash = state.foundry.installed.find((o) => o !== mod.id && moduleDef(o).tag === mod.tag);
-          const cur = currencyDef(mod.cost.currencyId);
-          return (
-            <div key={mod.id} className={`panel p-2.5 ${installed ? 'border-[#d8ccf0]/40' : ''}`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="text-xs font-semibold text-cave-200">{mod.name}</span>
-                  <span className="ml-2 text-[9px] uppercase tracking-wider text-cave-400">[{mod.tag}]</span>
-                  {/* The EFFECT, which the card never showed — only flavour. That
-                      missing line is why a hovered module read as "random text". */}
-                  <div className="text-[10px] font-medium text-[#c9b8f0]">{moduleEffectText(mod)}</div>
-                  <div className="text-[10px] italic leading-snug text-cave-400">{mod.flavor}</div>
-                </div>
-                {installed ? (
-                  <button className="btn shrink-0 px-2 py-0.5 text-[10px]" onClick={() => dispatch({ type: 'uninstallModule', id: mod.id })}>
-                    Unbolt
-                  </button>
-                ) : (
-                  <button
-                    className="btn shrink-0 px-2 py-1 text-[10px]"
-                    disabled={!!clash || getCurrency(state, mod.cost.currencyId).lt(mod.cost.amount)}
-                    title={clash ? `Conflicts with ${moduleDef(clash).name}` : `${moduleEffectText(mod)} · costs ${fmt(mod.cost.amount)} ${cur.name}`}
-                    onClick={() => dispatch({ type: 'installModule', id: mod.id })}
-                  >
-                    {clash ? 'Conflict' : <>Fit · <Amount value={mod.cost.amount} color={cur.color} /> {cur.name}</>}
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Resonant Memory — the other Echo sink */}
-      <div className="panel flex items-center justify-between p-3">
-        <div className="min-w-0 text-xs text-cave-400">
-          <span className="font-semibold text-cave-200">Resonant Memory</span>
-          <span className="tnum ml-2">Lv {state.shell.resonantMemory}</span>
-          <div className="text-[10px] leading-snug">
-            Carried signatures run +15% stronger per level. Seepage came down with you;
-            Polarity follows at the next breach.
-          </div>
-          {/* The Breach reward, attributed (B3 caveat): the carry IS most of
-              what the echo layer is worth — say its strength out loud. */}
-          {state.shell.signatures.length > 0 && (
-            <div className="tnum mt-0.5 text-[10px] text-[#c9b8f0]">
-              {state.shell.signatures.map((id) => id[0]!.toUpperCase() + id.slice(1)).join(' · ')} — each
-              at {Math.round(carriedStrength(state as GameState) * 100)}% of native strength
-              ({Math.round(CARRY_BASE * 100)}% base{state.shell.resonantMemory > 0
-                ? ` + ${Math.round((carriedStrength(state as GameState) - CARRY_BASE) * 100)}% from your levels`
-                : ''}).
-            </div>
-          )}
-          <div className="mt-0.5 text-[10px] leading-snug text-cave-500">
-            The third Echo sink — attention on your own margins — is spent in the Journal.
-          </div>
-        </div>
-        <button
-          className="btn shrink-0 px-2.5 py-1 text-xs"
-          disabled={echoes.lt(resonantMemoryCost(state))}
-          onClick={() => dispatch({ type: 'buyResonantMemory' })}
-        >
-          <Amount value={resonantMemoryCost(state)} color="#d8ccf0" /> Echo
-        </button>
-      </div>
-    </div>
-  );
-}

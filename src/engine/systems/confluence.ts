@@ -31,7 +31,6 @@
  */
 import type { ActionResult, ConfluenceSlot, EngineCtx, GameState } from '../types';
 import { registerModifier, foldBonus, type Bucket } from '../modifiers';
-import { currentWeather } from './weather';
 import { traitsOf, type TraitId } from '../traits';
 import { D, type Decimal } from '../decimal';
 import { spendCurrency } from '../resources';
@@ -54,7 +53,6 @@ export interface ConfluenceDef {
 
 /** Small helpers so the conditions below read as sentences. */
 const wearing = (s: GameState, sig: string): boolean => s.shell.signatures.includes(sig);
-const weatherIs = (s: GameState, id: string): boolean => currentWeather(s).id === id;
 
 /** Traits of the equipped tool's three parts — the reach of the parts system. */
 function equippedHasTrait(s: GameState, trait: TraitId): boolean {
@@ -102,25 +100,6 @@ export const CONFLUENCES: ConfluenceDef[] = [
     bucket: 'dropRate', bonus: 0.15,
   },
 
-  // --- CHORD × WEATHER ----------------------------------------------------
-  // The Lattice is static; weather cycles. A reason to check back in.
-  {
-    id: 'stormChord', name: 'The Storm Chord', systems: ['lattice', 'weather'],
-    flavor: 'The board reads differently when the shell is charged. The same stones, a different sentence.',
-    active: (s) => s.lattice.discovered.length >= 3 && weatherIs(s, 'magneticStorm'),
-    bucket: 'motifGain', bonus: 0.4,
-  },
-  {
-    // Deliberately NOT keyed to 'stillness': that is Loam's neutral weather
-    // AND the pre-Guild fallback, so a confluence on it would fire on a fresh
-    // save having discovered nothing. A confluence keyed to the default state
-    // of the world is not a discovery. Warm Seams is a real roll.
-    id: 'warmBoard', name: 'The Warm Board', systems: ['lattice', 'weather'],
-    flavor: 'The loam runs warm and the stones take it up. Every resonance on the board holds a half-beat longer than it should.',
-    active: (s) => s.lattice.discovered.length >= 6 && weatherIs(s, 'warmSeams'),
-    bucket: 'cap', bonus: 0.15,
-  },
-
   // --- SIGNATURE × CRAFT-SYSTEM -------------------------------------------
   // Five carried ghosts, seven boards that had never heard of them.
   {
@@ -128,63 +107,6 @@ export const CONFLUENCES: ConfluenceDef[] = [
     flavor: 'Pouring with the poles rigged. The metal separates along lines nobody drew.',
     active: (s) => wearing(s, 'polarity') && s.crucible.discovered.length >= 5,
     bucket: 'chainPower', bonus: 0.2,
-  },
-  {
-    id: 'growingWeave', name: 'The Growing Weave', systems: ['growth', 'loom'],
-    flavor: 'Thread spun while the vines are up. It keeps growing on the frame, very slightly, for about a day.',
-    active: (s) => wearing(s, 'growth') && s.loom.discoveredShapes.length >= 2,
-    bucket: 'brickYield', bonus: 0.15,
-  },
-  {
-    id: 'refractedGrammar', name: 'The Refracted Grammar', systems: ['refraction', 'runes'],
-    flavor: 'A rune read through a lens is not the rune you cut. Both are true.',
-    active: (s) => wearing(s, 'refraction') && s.bench.solved.length >= 3,
-    bucket: 'assaySpeed', bonus: 0.25,
-  },
-  {
-    id: 'pressuredFire', name: 'The Pressured Fire', systems: ['pressure', 'array'],
-    flavor: 'The furnace and the shaft on the same circuit. Each one is the other\'s exhaust.',
-    active: (s) => wearing(s, 'pressure') && s.ember.bestSustainSec >= 120,
-    bucket: 'kilnHeatRamp', bonus: 0.3,
-  },
-  {
-    id: 'absentBoard', name: 'The Absent Board', systems: ['absence', 'chamber'],
-    flavor: 'A recorded program running in a world that is not there. It works better than it has any right to.',
-    active: (s) => wearing(s, 'absence') && s.chamber.tape.length >= 1,
-    bucket: 'offlineEffAdd', bonus: 0.04,
-  },
-
-  // --- HYBRID × EVERYTHING ------------------------------------------------
-  // 78 Greenhouse hybrids with nothing downstream of them.
-  {
-    id: 'gardenersHand', name: "The Gardener's Hand", systems: ['greenhouse', 'forge'],
-    flavor: 'Hybrid fibre in the haft. The tool is a little alive and forgives a bad angle.',
-    active: (s) => s.greenhouse.codex.filter((c) => c.includes('+')).length >= 4,
-    bucket: 'drillPower', bonus: 0.14,
-  },
-  {
-    id: 'deepRootstock', name: 'The Deep Rootstock', systems: ['greenhouse', 'mycelium'],
-    flavor: 'A hybrid strain fed into the spread. The network takes to it the way it never took to the base stock.',
-    active: (s) => s.greenhouse.codex.filter((c) => c.includes('+')).length >= 8,
-    bucket: 'dustYield', bonus: 0.16,
-  },
-
-  // --- BREW × COMBAT ------------------------------------------------------
-  // Brews are spikes; combat is events. They should meet.
-  {
-    id: 'steadyHand', name: 'The Steady Hand', systems: ['brew', 'bestiary'],
-    flavor: 'Something bitter, drunk before the lanes. The telegraphs read a half-beat slower.',
-    active: (s) => s.brewing.discovered.length >= 3 && s.combat.kills !== undefined
-      && Object.values(s.combat.kills).reduce((a, b) => a + b, 0) >= 25,
-    bucket: 'strikePower', bonus: 0.15,
-  },
-
-  // --- WARREN × RELIC -----------------------------------------------------
-  {
-    id: 'warrenFlavour', name: 'The Warren Hoard', systems: ['warrens', 'relics'],
-    flavor: 'Relics pulled out of the same warren start to resemble each other. Nobody is sure which way the causation runs.',
-    active: (s) => s.relics.held.filter((r) => r.source === 'warren').length >= 3,
-    bucket: 'dropRate', bonus: 0.12,
   },
 
   // --- MATERIALS WITH SOULS (Phase 17): traits reach outward --------------
@@ -200,13 +122,6 @@ export const CONFLUENCES: ConfluenceDef[] = [
     active: (s) => equippedTemper(s) === 'ember' && equippedHasTrait(s, 'warm'),
     bucket: 'kilnHeatRamp', bonus: 0.25,
   },
-  {
-    id: 'chargedInStorm', name: 'The Grounded Rod', systems: ['forge', 'weather'],
-    flavor: 'A charged tool during a charged season. It draws the storm down the haft and into the work.',
-    active: (s) => weatherIs(s, 'magneticStorm') && equippedHasTrait(s, 'charged'),
-    bucket: 'chainPower', bonus: 0.3,
-  },
-
   // --- THE SMITHING DEPTH (Phase 16) --------------------------------------
   // The brief asked for these three specifically, and they are the natural
   // extension: the new axis meeting the two that already existed.

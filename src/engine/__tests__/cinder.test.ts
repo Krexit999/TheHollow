@@ -13,8 +13,6 @@ import {
   emergencyPurge, floodCasualty, floodRun, holdLine, layPipe, networkCapacity,
   setChoke, ventRate, yieldMult, VENT_SHAFT_CELL, VENT_W,
 } from '../systems/pressure';
-import { ARRAY_SIZE, BAND_LOW, buyFuel, lightCell, placeFuel, setDraw, setOverdrive, DRAW_FLOOR } from '../content/shell5/emberArray';
-import { WELL_ODDS, WELLS, collectWell, commitToWell, wellProgress } from '../content/shell5/wells';
 import { AUTO_SKILL, resolveFight } from '../combat/combat';
 import { rollSpecies, speciesOfShell, wardenOf } from '../combat/species';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
@@ -25,6 +23,27 @@ const ctx = { emit: () => {}, dirty: () => {} };
 function fresh(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const engine = createEngine({ nowMs: 0 });
   return { engine, s: engine.getState() as GameState, mods: new ModifierCache() };
+}
+
+/**
+ * Ride the klaxon for one real second, choked. The engine integrates in fixed
+ * 100ms substeps (SIM_STEP, index.ts), and each substep bleeds a little heat
+ * (choked vent still exceeds bare ambient sources now that the Ember Array's
+ * overdrive — the other heat source real "furious riding" used to add — is
+ * gone). Re-priming heat above the ceiling before every substep is what a
+ * player's continuous manual stoking would do in real play; a single
+ * per-second nudge only survives the first substep and decays for the other
+ * nine.
+ */
+function rideChokeSeconds(engine: Engine, s: GameState, seconds: number): void {
+  for (let sec = 0; sec < seconds; sec++) {
+    s.pressure.choke = true;
+    s.pressure.lastStokeSec = s.stats.playTimeSec;
+    for (let sub = 0; sub < 10; sub++) {
+      s.pressure.heat = 150;
+      engine.tick(0.1);
+    }
+  }
 }
 
 function cindery(): { engine: Engine; s: GameState; mods: ModifierCache } {
@@ -65,18 +84,10 @@ describe('pressure: the four laws', () => {
     expect(s.pressure.floods).toBe(0);
     // And releasing the choke mid-klaxon is always a real escape. (The
     // klaxon has a 2s fuse — grazing 100 does not cry wolf; HOLDING it does.)
-    for (let i = 0; i < 4; i++) {
-      s.pressure.choke = true;
-      s.ember.overdrive = true; // sources must actually outpace the choked vent
-      s.pressure.heat = 100;
-      s.pressure.lastStokeSec = s.stats.playTimeSec;
-      engine.tick(1);
-    }
+    rideChokeSeconds(engine, s, 4);
     expect(s.pressure.overpressures).toBe(1);
-    // The escape releases BOTH opt-ins — choke and overdrive each hold the
-    // relief valve open on their own; that is what "opt-in" means here.
+    // The escape releases the choke — the relief valve opens the moment you let go.
     s.pressure.choke = false;
-    s.ember.overdrive = false;
     for (let i = 0; i < 10; i++) {
       s.pressure.lastStokeSec = s.stats.playTimeSec;
       engine.tick(1);
@@ -103,15 +114,9 @@ describe('pressure: the four laws', () => {
   it('LAW 3 — overpressure is a 45s named countdown, and the purge always works', () => {
     const { engine, s } = cindery();
     engine.dispatch({ type: 'debug', op: 'grant', currency: 'slag', amount: 10000 });
-    // Ride the klaxon for 30s (choked vents + a roaring Array outpace the
-    // Damper — holding 100 takes REAL stoking, which is the point), then out.
-    for (let i = 0; i < 30; i++) {
-      s.pressure.heat = 100;
-      s.pressure.choke = true;
-      s.ember.overdrive = true;
-      s.pressure.lastStokeSec = s.stats.playTimeSec;
-      engine.tick(1);
-    }
+    // Ride the klaxon for 30s (choked vents held against — holding 100 takes
+    // REAL stoking, which is the point), then out.
+    rideChokeSeconds(engine, s, 30);
     expect(s.pressure.overpressures).toBe(1);
     expect(s.pressure.floods).toBe(0);
     const slagBefore = getCurrency(s, 'slag');
@@ -124,13 +129,7 @@ describe('pressure: the four laws', () => {
 
   it('a ridden countdown completes: the flood is real', () => {
     const { engine, s } = cindery();
-    for (let i = 0; i < 50 && s.pressure.floods === 0; i++) {
-      s.pressure.heat = 100;
-      s.pressure.choke = true;
-      s.ember.overdrive = true;
-      s.pressure.lastStokeSec = s.stats.playTimeSec;
-      engine.tick(1);
-    }
+    for (let i = 0; i < 50 && s.pressure.floods === 0; i++) rideChokeSeconds(engine, s, 1);
     expect(s.pressure.floods).toBe(1);
     expect(s.depth).toBe(0);
   });
@@ -197,84 +196,6 @@ describe('pressure: the four laws', () => {
   });
 });
 
-describe('the ember array: a fuse you design and then ride', () => {
-  it('fuel burns, spreads to neighbors as it dies, and the best sustain never cools', () => {
-    const { engine, s } = cindery();
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'ember', amount: 10000 });
-    expect(buyFuel(s, 'emberbillet', 4).ok).toBe(true);
-    // Cells 14-16 sit in row 2 — rows past the first want lens sockets (export
-    // spine; the gate itself is exercised in export-spine.test.ts).
-    expect(placeFuel(s, 14, 'emberbillet').ok).toBe(false);
-    s.ember.sockets = 2;
-    expect(placeFuel(s, 14, 'emberbillet').ok).toBe(true);
-    expect(placeFuel(s, 15, 'emberbillet').ok).toBe(true);
-    expect(placeFuel(s, 16, 'emberbillet').ok).toBe(true);
-    expect(lightCell(s, 14).ok).toBe(true);
-    expect(lightCell(s, 15).ok).toBe(true);
-    engine.dispatch({ type: 'debug', op: 'warp', seconds: 55 });
-    expect(s.ember.temp).toBeGreaterThan(BAND_LOW - 10);
-    expect(s.ember.bestSustainSec).toBeGreaterThan(5);
-    // The dying billets lit their neighbor.
-    expect(s.ember.burn[16]).toBeGreaterThan(0);
-    const best = s.ember.bestSustainSec;
-    engine.dispatch({ type: 'debug', op: 'warp', seconds: 400 }); // everything burns out
-    expect(s.ember.temp).toBeLessThan(BAND_LOW);
-    expect(s.ember.sustainSec).toBe(0);
-    expect(s.ember.bestSustainSec).toBeGreaterThanOrEqual(best); // the record holds
-    expect(s.ember.grid.every((g, i) => g === null || s.ember.burn[i]! > 0)).toBe(true);
-  });
-
-  it('engaged ≈ 2× passive by construction: the two bonus halves are equal at their caps', () => {
-    // Passive cap: 20 ranks × 0.008 = +0.16. A 30-minute best burn:
-    // 0.04 × log2(1 + 1800/120) = 0.04 × 4 = +0.16. Equal halves — engaged
-    // (both) is exactly twice passive (rank only). The charter, arithmetic.
-    expect(20 * 0.008).toBeCloseTo(0.16);
-    expect(0.04 * Math.log2(1 + 1800 / 120)).toBeCloseTo(0.16, 2);
-  });
-
-  it('the array is a valid grid citizen', () => {
-    const { s } = cindery();
-    expect(s.ember.grid).toHaveLength(ARRAY_SIZE * ARRAY_SIZE);
-    expect(placeFuel(s, 99, 'emberbillet').ok).toBe(false);
-    expect(placeFuel(s, 0, 'nosuch').ok).toBe(false);
-  });
-});
-
-describe('magma wells: published odds, capped commits, results that wait', () => {
-  it('the table is honest and prints as written', () => {
-    const pSum = WELL_ODDS.reduce((a, l) => a + l.p, 0);
-    const ev = WELL_ODDS.reduce((a, l) => a + l.p * l.mult, 0);
-    expect(pSum).toBeCloseTo(1.0);
-    expect(ev).toBeGreaterThan(1.0); // honestly positive for the variance...
-    expect(ev).toBeLessThan(1.3); // ...never an engine
-  });
-
-  it('commits cap at a tenth, wells resolve on the game clock, results wait forever', () => {
-    const { engine, s } = cindery();
-    engine.dispatch({ type: 'debug', op: 'grant', currency: 'slag', amount: 10000 });
-    expect(commitToWell(s, 'nearWell', D(2000)).ok).toBe(false); // over the cap
-    expect(commitToWell(s, 'nearWell', D(100)).ok).toBe(false); // under the minimum
-    expect(commitToWell(s, 'nearWell', D(900)).ok).toBe(true);
-    expect(commitToWell(s, 'nearWell', D(300)).ok).toBe(false); // one rope per well
-    expect(collectWell(s, ctx as never, 'nearWell').ok).toBe(false); // not yet
-    engine.dispatch({ type: 'debug', op: 'warp', seconds: 25 * 60 });
-    expect(wellProgress(s, 'nearWell')).toBe(1);
-    engine.dispatch({ type: 'debug', op: 'warp', seconds: 3600 }); // it WAITS
-    const before = getCurrency(s, 'slag').toNumber();
-    const r = collectWell(s, ctx as never, 'nearWell');
-    expect(r.ok).toBe(true);
-    const mult = (r.data as { mult: number }).mult;
-    expect([0, 3, 8, 40]).toContain(mult);
-    expect(getCurrency(s, 'slag').toNumber()).toBeCloseTo(before + 900 * mult, 0);
-    expect(s.wells.rolls).toBe(1);
-  });
-
-  it('three wells exist and all are Cinder currencies', () => {
-    expect(WELLS).toHaveLength(3);
-    expect(new Set(WELLS.map((w) => w.currencyId)).size).toBe(3);
-  });
-});
-
 describe('the cinder bestiary: heat is the ecology', () => {
   it('fifteen species; the hot ones do not exist below their heat', () => {
     expect(speciesOfShell('cinder')).toHaveLength(15);
@@ -318,68 +239,15 @@ describe('save v9', () => {
     const { s } = fresh();
     s.guild.hirelings['pell'] = { level: 1, xp: 100, status: 'well' };
     const raw = JSON.parse(serialize(s, 0)) as { state: Record<string, unknown> };
-    for (const k of ['pressure', 'ember', 'wells']) delete raw.state[k];
+    delete raw.state['pressure'];
     delete (raw.state['guild'] as Record<string, unknown>)['crewRecalled'];
     const migrated = runMigrations({ version: 8, savedAt: 0, state: raw.state } as never);
     expect(migrated.version).toBe(SAVE_VERSION);
     const st = migrated.state as Record<string, Record<string, unknown>>;
     expect(st['pressure']!['heat']).toBe(0);
     expect((st['pressure']!['pipes'] as number[]).length).toBe(35);
-    expect(st['ember']!['bestSustainSec']).toBe(0);
     expect((st['guild'] as Record<string, unknown>)['crewRecalled']).toBe(false);
     const crew = (st['guild'] as Record<string, Record<string, Record<string, unknown>>>)['hirelings']!;
     expect(crew['pell']!['hiredAtMs']).toBe(0);
-  });
-});
-
-describe('THE DRAW — the Array eats the shaft\'s problem (Phase 14)', () => {
-  const hotShaft = (heat: number) => {
-    const { engine, s } = fresh();
-    s.shell.current = 'cinder';
-    s.depth = 400;
-    s.depthRecords['cinder'] = 400;
-    s.pressure.heat = heat;
-    return { engine, s };
-  };
-
-  it('pulls shaft heat into the furnace, down to its floor', () => {
-    const { engine, s } = hotShaft(80);
-    expect(setDraw(s, true).ok).toBe(true);
-    for (let i = 0; i < 40; i++) engine.tick(1);
-    const after = engine.getState();
-    expect(after.pressure.heat).toBeLessThan(80);
-    expect(after.pressure.heat).toBeGreaterThanOrEqual(DRAW_FLOOR - 0.001);
-    expect(after.ember.temp).toBeGreaterThan(0); // it arrived somewhere
-  });
-
-  // The flood guarantees are the load-bearing promise of the whole shell, so
-  // this asserts the direction of the coupling rather than a magic number.
-  it('can never leave a shaft hotter than not drawing at all', () => {
-    for (const start of [0, 30, 60, 90]) {
-      const off = hotShaft(start);
-      const on = hotShaft(start);
-      setDraw(on.s, true);
-      for (let i = 0; i < 60; i++) { off.engine.tick(1); on.engine.tick(1); }
-      expect(on.engine.getState().pressure.heat)
-        .toBeLessThanOrEqual(off.engine.getState().pressure.heat + 1e-9);
-    }
-  });
-
-  it('is exclusive with Overdrive — they run the same pipe both ways', () => {
-    const { s } = hotShaft(50);
-    setDraw(s, true);
-    expect(s.ember.draw).toBe(true);
-    setOverdrive(s, true);
-    expect(s.ember.draw).toBe(false);
-    setDraw(s, true);
-    expect(s.ember.overdrive).toBe(false);
-  });
-
-  it('does nothing while shut, and survives a save that predates it', () => {
-    const { engine, s } = hotShaft(50);
-    // A v12 save has no `draw` field at all.
-    delete (s.ember as unknown as Record<string, unknown>)['draw'];
-    for (let i = 0; i < 10; i++) engine.tick(1);
-    expect(engine.getState().ember.draw ?? false).toBe(false);
   });
 });

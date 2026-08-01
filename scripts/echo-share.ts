@@ -33,16 +33,11 @@ const STRIPS: Record<string, Strip> = {
     s.shell.signatures = [];
     s.shell.resonantMemory = 0;
   },
-  foundry: (s) => {
-    s.foundry.slots = 0;
-    s.foundry.installed = [];
-  },
   attention: (s) => {
     s.confluences.slots = [];
   },
   all: (s) => {
     STRIPS['signatures']!(s);
-    STRIPS['foundry']!(s);
     STRIPS['attention']!(s);
   },
 };

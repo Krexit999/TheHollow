@@ -15,7 +15,6 @@ import type { GameState } from '../types';
 import { CHALLENGES, CHALLENGE_BY_ID } from '../content/shell7/challenges';
 import { GRID_MODULES } from '../content/shell7/gridModules';
 import { sealed, challengeNum } from '../laws';
-import { weatherFor } from '../systems/weather';
 import { ModifierCache } from '../modifiers';
 import { cellRegen } from '../systems/face';
 import { applyOfflineProgress } from '../systems/offline';
@@ -103,20 +102,6 @@ describe('each new seal actually bites', () => {
     const res = engine.dispatch({ type: 'descend' });
     expect(res.ok).toBe(false);
     expect(res.reason).toMatch(/no deeper/i);
-  });
-
-  it('THE FLAT WORLD pins every shell to neutral', () => {
-    const { s } = fresh();
-    s.guild.discovered = true;
-    // Find a segment where Ferrite is NOT neutral, then seal and re-read.
-    let stormy = -1;
-    for (let seg = 0; seg < 60; seg++) {
-      s.guild.clockMs = seg * 50 * 60_000;
-      if (!weatherFor(s, 'ferrite').neutral) { stormy = seg; break; }
-    }
-    expect(stormy, 'no non-neutral Ferrite weather in 60 segments').toBeGreaterThanOrEqual(0);
-    run(s, 'flatWorld');
-    expect(weatherFor(s, 'ferrite').neutral).toBe(true);
   });
 
   // NOTE: the first draft of this test called `engine.applyOffline?.(...)`,
