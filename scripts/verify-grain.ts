@@ -194,11 +194,17 @@ async function main(): Promise<void> {
   for (let i = 0; i < 120; i++) {
     const f = await face(page);
     const head = f.front?.alive ? f.front.cell : -1;
-    // THE WAVE IS PACED BY REGEN, and that is the rock's answer rather than a
-    // driver detail: a front walks four or five cells and comes back round to
-    // rock it just emptied, which refuses the chip (THE UNEMPTYING).
-    const target = head >= 0 && !f.ore[head] && f.cells[head]! > WORTH_STRIKING
-      ? head : openAt(f);
+    /**
+     * DRIVE THE WAVE THROUGH EMPTIED ROCK — that is the point of it.
+     *
+     * This used to skip a head with no charge left, which made the driver a
+     * model of a rule the game no longer has: an across-grain strike compacts
+     * and propagates whether or not the cell had anything to give. With the old
+     * guard in place the run measured 83 waves abandoned and ZERO ending on
+     * their own, and every one of those abandonments was the harness refusing,
+     * not the game. A pocket is still not a tap target.
+     */
+    const target = head >= 0 && !f.ore[head] ? head : openAt(f);
     if (target >= 0) await click(target);
     await page.waitForTimeout(330);
     if (i % 10 === 9) await dismiss(page);

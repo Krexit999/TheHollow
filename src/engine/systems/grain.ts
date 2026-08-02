@@ -126,6 +126,23 @@ export const GRAIN_SEAMS_PER_CELL = 1 / 3;
 /** Chance a seam turns 90 degrees as it is drawn. Sets how much it wanders. */
 export const GRAIN_TURN_RATE = 0.3;
 
+/**
+ * WHICH GENERATOR DREW THE FIELD ON THIS BOARD.
+ *
+ * `ensureBand` only ever rebuilt the grain array when it was MISSING or the
+ * wrong length — so a save carrying a full-length field from an older generator
+ * kept it forever, and shipping a new generator changed nothing a player could
+ * see until their next Collapse. That is exactly what happened: the seam
+ * generator went in, the metric read 0.17 facing pairs on fresh boards, and the
+ * board on screen was still the old per-cell roll with arrows pointing at each
+ * other. The code was live and had never run.
+ *
+ * Bumping this re-rolls the field on load. It is a FIELD version, not a save
+ * version: nothing else about the band moves, and compaction is deliberately
+ * kept — the rock you worked is still worked, it just runs a different way now.
+ */
+export const GRAIN_GENERATION = 2;
+
 // --- deep entry -------------------------------------------------------------
 
 export interface DeepGate { at: number; materialId: string; chance: number }
@@ -171,8 +188,12 @@ export function ensureBand(state: GameState, rng: () => number = Math.random): v
     f.compaction = new Array<number>(n).fill(0);
   }
   if (f.locked !== undefined) delete f.locked;
-  if (!Array.isArray(f.grain) || f.grain.length !== n) {
+  // MISSING, WRONG SIZE, OR DRAWN BY AN OLDER GENERATOR. The third case is the
+  // one that bit: a full-length field from a superseded generator is not
+  // "already fine", it is a board the new rules were never applied to.
+  if (!Array.isArray(f.grain) || f.grain.length !== n || f.grainGen !== GRAIN_GENERATION) {
     f.grain = generateGrain(state.face.w, state.face.h, rng);
+    f.grainGen = GRAIN_GENERATION;
     f.bandGrain = f.grain[0] ?? GRAIN_E;
   }
   if (f.bandGrain === undefined) f.bandGrain = GRAIN_E;
@@ -210,22 +231,47 @@ export function generateGrain(w: number, h: number, rng: () => number = Math.ran
     else if (side === 2) { c = n - 1 - Math.floor(rng() * w); d = GRAIN_N; }
     else { c = Math.floor(rng() * h) * w; d = GRAIN_E; }
 
+    /**
+     * WOULD POINTING `from` ALONG `dir` CREATE A HEAD-ON PAIR?
+     *
+     * The one question the whole generator exists to keep answering "no". It is
+     * asked at EVERY write — the seam walk and the fill below — because both
+     * can produce it and both did: turning at the wall instead of running off
+     * it took outward cells from 11.2% to 0.3% and put facing pairs UP from
+     * 0.17 to 1.18, because two seams running along the same rim meet nose to
+     * nose. A fix that trades one visible defect for another is not a fix.
+     */
+    const facesBack = (from: number, dir: number): boolean => {
+      const to = step(from, dir);
+      return to >= 0 && dirs[to]! >= 0 && step(to, dirs[to]!) === from;
+    };
+
     for (let k = 0; k < n; k++) {
+      if (dirs[c]! >= 0) break; // met an older seam: stop, never overwrite
       if (rng() < GRAIN_TURN_RATE) d = (d + (rng() < 0.5 ? 1 : 3)) % 4;
-      // A seam that meets an older one stops rather than overwriting it —
-      // overwriting would break the older seam in the middle and put exactly
-      // the contradiction back that this whole approach exists to remove.
-      if (dirs[c]! >= 0) break;
-      const next = step(c, d);
-      if (next < 0) { dirs[c] = d; break; } // it runs off the board and ends
+      // Straight on if it can, else turn, and never into a wall or a head-on.
+      // A SEAM RUNS ACROSS THE FIELD, NOT OUT OF IT: writing the outward
+      // direction on the last cell put one dead square at the end of every
+      // seam, and a wave opened on one of those died on hop zero.
+      const tries = [d, (d + 1) % 4, (d + 3) % 4, (d + 2) % 4];
+      const ok = tries.find((t) => step(c, t) >= 0 && !facesBack(c, t));
+      if (ok === undefined) break; // boxed in — the seam ends here
+      d = ok;
       dirs[c] = d;
-      c = next;
+      c = step(c, d);
     }
   }
 
   // The rock BETWEEN the seams takes the direction of a neighbour that is on
   // one, spreading outward until the board is full. That keeps the face reading
-  // as broad currents rather than as bright lines drawn over noise.
+  // as broad currents rather than as bright lines drawn over noise — and it
+  // asks the same head-on question, because an inherited direction is just as
+  // capable of pointing back at the cell it was inherited from.
+  const stepAt = (from: number, dir: number): number => step(from, dir);
+  const wouldFaceBack = (from: number, dir: number): boolean => {
+    const to = stepAt(from, dir);
+    return to >= 0 && dirs[to]! >= 0 && stepAt(to, dirs[to]!) === from;
+  };
   for (let pass = 0; pass < w + h; pass++) {
     let changed = false;
     for (let i = 0; i < n; i++) {
@@ -239,7 +285,11 @@ export function generateGrain(w: number, h: number, rng: () => number = Math.ran
       if (y < h - 1) nbs.push(i + w);
       const set = nbs.filter((q) => dirs[q]! >= 0);
       if (set.length === 0) continue;
-      dirs[i] = dirs[set[Math.floor(rng() * set.length)]!]!;
+      const want = dirs[set[Math.floor(rng() * set.length)]!]!;
+      const tries = [want, (want + 1) % 4, (want + 3) % 4, (want + 2) % 4];
+      const ok = tries.find((t) => stepAt(i, t) >= 0 && !wouldFaceBack(i, t));
+      if (ok === undefined) continue;
+      dirs[i] = ok;
       changed = true;
     }
     if (!changed) break;

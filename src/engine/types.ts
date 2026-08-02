@@ -524,6 +524,10 @@ export interface GameState {
      *  axis: propagation gets exactly one successor, so a wave is a path. Drawn
      *  at band generation in RUNS, and never changes in place. */
     grain?: number[];
+    /** Which generator drew `grain`. A field from an older one is re-rolled on
+     *  load — see GRAIN_GENERATION. Without it a superseded generator stayed on
+     *  screen forever and a shipped fix changed nothing the player could see. */
+    grainGen?: number;
     /** 0-26. Persists until the band re-rolls at a Collapse. Opens the
      *  deep-entry drop gates at 8/14/20; above 20 an across-grain take kills the
      *  cell. Not income — it moves what drops, never how much charge grew. */

@@ -90,7 +90,12 @@ export function handleAction(
         return { ok: false, reason: 'Not this run. The shaft works without you — that was the promise' };
       }
       const result = manualChip(state, mods, ctx, action.cell, action.strike ?? 'with');
-      if (result.charge <= 0) return { ok: false, reason: 'Nothing to chip', data: result };
+      // A STRIKE THAT DROVE THE FRACTURE DID SOMETHING, even on rock with
+      // nothing left to give — see manualChip. Reporting it as "nothing to
+      // chip" would leave the renderer with no wave to draw.
+      if (result.charge <= 0 && !result.grain) {
+        return { ok: false, reason: 'Nothing to chip', data: result };
+      }
       return { ok: true, data: result };
     }
     case 'setGrainScope': {

@@ -468,7 +468,32 @@ export function manualChip(
   const wasFull = (state.face.cells[cell] ?? 0) >= cellCap(state, mods) * 0.7;
 
   const { dust, charge } = harvestCell(state, mods, cell, 1, mult);
-  if (charge <= 0) return { dust, charge, crit: false, fractured: [] };
+  if (charge <= 0) {
+    /**
+     * AN ACROSS-GRAIN STRIKE WORKS ROCK THAT HAS NOTHING LEFT TO GIVE.
+     *
+     * This early return used to be unconditional, and it inverted the whole
+     * mechanic. Compaction is a property of the ROCK, not of the charge in it
+     * (§2.2: a fracture propagates +1 COMPACTION along the grain line, not a
+     * chip) — so a drained cell can be compacted, and driving a wave through
+     * rock you have already emptied, so it comes back richer, is the INTENDED
+     * use. Emptied rock in the path is the target, not the wall.
+     *
+     * Bailing here meant the opposite: strike the head, head is empty, nothing
+     * happens at all — no compaction, no propagation, the wave silently dead.
+     * It is most of why a live driver measured mean wave length 0.76.
+     *
+     * WITH-grain still refuses. That one is the HARVEST verb, and a face you
+     * could compact by tapping empty rock with the cheap fast stroke would open
+     * every gate for free. Across is the aiming verb, it costs 1.8x the time,
+     * and it is the one the spec ties to propagation.
+     */
+    if (strike === 'across') {
+      const grain = applyStrike(state, mods, ctx, cell, strike);
+      return { dust: D(0), charge: 0, crit: false, fractured: [], grain };
+    }
+    return { dust, charge, crit: false, fractured: [] };
+  }
 
   let totalDust = dust;
   const fractured: number[] = [];

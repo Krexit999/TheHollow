@@ -122,8 +122,27 @@ describe('the grain field — runs, not noise', () => {
    * colouring the cells takes it to ~0.2, and the survivors are seams crossing
    * rather than noise.
    */
-  it('squares do not point at each other — the field is made of paths', () => {
-    expect(field(120).facingPairs).toBeLessThan(0.6);
+  it('NO square ever points at the square pointing back at it', () => {
+    // Zero, not "few". Every write in the generator refuses a direction that
+    // would create a head-on pair, so this is a construction guarantee and the
+    // test should fail the moment it stops being one.
+    expect(field(200).facingPairs).toBe(0);
+  });
+
+  it('no square points off the board', () => {
+    // A wave opened on one died on hop zero, and the uniform mean-walk average
+    // buried those zeroes under long runs elsewhere: 11.2% of cells, against a
+    // script reporting 4.26 mean while a live driver measured 0.76.
+    let off = 0;
+    for (let t = 0; t < 200; t++) {
+      const g = generateGrain(6, 6);
+      for (let c = 0; c < 36; c++) {
+        const x = c % 6, y = Math.floor(c / 6), d = g[c]!;
+        if ((d === 0 && y === 0) || (d === 1 && x === 5)
+          || (d === 2 && y === 5) || (d === 3 && x === 0)) off++;
+      }
+    }
+    expect(off).toBe(0);
   });
 
   it('has visible currents — neighbours agree well above chance', () => {
@@ -178,12 +197,41 @@ describe('the two modes', () => {
     expect(strikeTimeMult('with')).toBe(1);
   });
 
-  it('a chip that takes nothing seeds no compaction', () => {
+  /**
+   * ACROSS THE GRAIN WORKS ROCK THAT HAS NOTHING LEFT TO GIVE.
+   *
+   * This asserted the opposite for two builds, on an anti-farm argument, and it
+   * inverted the mechanic. §2.2: a fracture propagates +1 COMPACTION along the
+   * grain line — not a chip. Compaction is a property of the rock, so a drained
+   * cell can be compacted, and driving a wave through rock you have already
+   * emptied so it comes back richer is the INTENDED use. Emptied rock in the
+   * path is the target, not the wall.
+   *
+   * Bailing out meant: strike the head, head is empty, nothing happens at all.
+   * No compaction, no propagation, the wave silently dead — most of why a live
+   * driver measured mean wave length 0.76.
+   */
+  it('ACROSS on drained rock still compacts it and still drives the wave', () => {
+    const { s, m } = fresh();
+    const st = s();
+    flattenGrainEast(st);
+    st.face.cells[0] = 0; // nothing left to give
+    const r = manualChip(st, m, nullCtx, 0, 'across');
+    expect(r.charge).toBe(0);                              // it paid nothing...
+    expect(compactionAt(st, 0)).toBe(ACROSS_COMPACTION);   // ...and still worked
+    expect(st.face.front!.alive).toBe(true);               // ...and the wave moved
+    expect(st.face.front!.cell).toBe(1);
+    expect(compactionAt(st, 1)).toBe(FRONT_COMPACTION);
+  });
+
+  it('WITH on drained rock still refuses — that one is the harvest verb', () => {
+    // A face you could compact with the cheap fast stroke on empty rock would
+    // open every gate for free. Across pays 1.8x the time for the privilege.
     const { s, m } = fresh();
     const st = s();
     ensureBand(st);
-    st.face.cells[0] = 0; // drained to the floor
-    manualChip(st, m, nullCtx, 0, 'across');
+    st.face.cells[0] = 0;
+    manualChip(st, m, nullCtx, 0, 'with');
     expect(compactionAt(st, 0)).toBe(0);
   });
 

@@ -1238,7 +1238,9 @@ export class FaceView {
     this.cellCooldown.set(cell, now + 170 * strikeTimeMult(strike));
     const result = this.engine.dispatch({ type: 'chip', cell, strike });
     const data = result.data as ChipResult | undefined;
-    if (!result.ok || !data || data.charge <= 0) return;
+    // A wave driven through emptied rock takes no charge and is still the thing
+    // the player is doing — it has to draw.
+    if (!result.ok || !data || (data.charge <= 0 && !data.grain)) return;
     this.onChip(cell, data);
   }
 
