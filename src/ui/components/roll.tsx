@@ -4,9 +4,13 @@
  * PLAIN HTML. Canvas has been tried twice on this codebase and reverted twice;
  * this is a list, and a list is what the DOM is for.
  *
- * IT LIVES IN THE FACE CLUSTER, not in a menu. The Roll is where you ARE — the
- * ladder you are standing on — and putting it behind a tab would make the
- * geography something you go and consult rather than something you are in.
+ * IT IS THE SHAFT SCREEN. Not a small block wedged under the Dig upgrades,
+ * where it was competing for room with nine other cards and had to be capped at
+ * a 280px scroller to fit — the Roll is the answer to "where am I going", and
+ * clicking SHAFT is how you ask that question. So it is the whole right-hand
+ * side of that screen, sized so all fifteen rows land without scrolling: the
+ * legible ones get real height, the fogged ones stay tight, and the floor is
+ * pinned under a rule at the bottom.
  *
  * The visibility rule is the engine's (`rollRows`), not this file's: the next
  * three are fully legible, everything below is a name and a depth, and the
@@ -59,15 +63,37 @@ function contentsLine(row: RollRow, tier: number): { text: string; tone: string 
   return { text: bits.length > 0 ? bits.join(' · ') : '—', tone: 'text-cave-400' };
 }
 
-function StationRow({ row, tier }: { row: RollRow; tier: number }) {
+/**
+ * `pinned` is the FLOOR slot. §1's mock prints `150  DEEPGRAVE  FLOOR` from the
+ * moment you enter the shell, so the floor's TYPE is known even though it sits
+ * far below the lamp — you know there is a bottom and what kind of thing it is,
+ * you just do not know what is in it. That is a renderer distinction, not an
+ * engine one: `legible` stays false for the floor, because the fog over its
+ * contents is real.
+ */
+function StationRow({ row, tier, pinned }: { row: RollRow; tier: number; pinned?: boolean }) {
   const t = TYPE_LABEL[row.type];
   const tone = TYPE_TONE[row.type] ?? 'text-cave-400';
 
+  if (pinned && !row.legible) {
+    return (
+      <div className="flex items-baseline gap-2 py-[4px] text-[12px]" data-testid={`station-${row.def.id}`}>
+        <span className="w-2 shrink-0 text-transparent">▸</span>
+        <span className="tnum w-8 shrink-0 text-right text-cave-500">{row.def.depth}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-cave-300">{row.def.name}</span>
+        <span className="shrink-0 text-[10px] text-cave-600">—</span>
+        <span className={`w-[52px] shrink-0 text-right text-[9px] font-semibold tracking-wide ${tone}`}>{t}</span>
+      </div>
+    );
+  }
+
   // BELOW THE LAMP: name and depth only. No type, no seam, no hardness — the
-  // fog is the point, and a greyed-out real value is not fog.
+  // fog is the point, and a greyed-out real value is not fog. These rows stay
+  // TIGHT: ten of them, and every pixel they take is a pixel the three legible
+  // rows do not get.
   if (!row.legible) {
     return (
-      <div className="flex items-baseline gap-2 py-[3px] text-[11px] text-cave-600">
+      <div className="flex h-[15px] items-baseline gap-2 text-[10px] leading-[15px] text-cave-600">
         <span className="tnum w-8 shrink-0 text-right">{row.def.depth}</span>
         <span className="min-w-0 flex-1 truncate">{row.def.name}</span>
         <span className="shrink-0 text-cave-700">·</span>
@@ -78,7 +104,7 @@ function StationRow({ row, tier }: { row: RollRow; tier: number }) {
   const c = contentsLine(row, tier);
   return (
     <div
-      className={`flex items-baseline gap-2 py-[3px] text-[11px] ${
+      className={`flex items-baseline gap-2 rounded-sm py-[4px] pr-0.5 text-[12px] ${
         row.current ? 'bg-lamp-500/10' : ''
       } ${row.behind ? 'opacity-60' : ''}`}
       data-testid={`station-${row.def.id}`}
@@ -91,7 +117,7 @@ function StationRow({ row, tier }: { row: RollRow; tier: number }) {
       {row.def.hardness !== undefined && (
         <span className="tnum shrink-0 text-[10px] text-cave-500">h{row.def.hardness}</span>
       )}
-      <span className={`min-w-0 max-w-[38%] shrink-0 truncate text-[10px] ${c.tone}`}>{c.text}</span>
+      <span className={`min-w-0 max-w-[36%] shrink-0 truncate text-[10px] ${c.tone}`}>{c.text}</span>
       <span className={`w-[52px] shrink-0 text-right text-[9px] font-semibold tracking-wide ${tone}`}>{t}</span>
     </div>
   );
@@ -110,18 +136,23 @@ export function RollPanel() {
 
   return (
     <div className="panel p-3">
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-cave-400">The Roll</span>
-        <span className="tnum text-[10px] text-cave-500">depth {state.depth}</span>
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-cave-300">The Roll</span>
+        <span className="tnum text-[10px] text-cave-500">
+          {state.shell.current} · depth {state.depth}
+        </span>
       </div>
-      <div className="max-h-[280px] overflow-y-auto overflow-x-hidden pr-0.5">
+      {/* NO SCROLLER. Fifteen rows at these heights land inside the Shaft
+          screen's column, and a list you have to scroll to see the floor of is
+          not a list of where you are going — it is a menu. */}
+      <div className="overflow-x-hidden">
         {listed.map((r) => <StationRow key={r.def.id} row={r} tier={tier} />)}
       </div>
       {floor && (
         /* PINNED FROM THE MOMENT YOU ENTER THE SHELL. You always know where the
            bottom is and what it is called, however far off it is. */
-        <div className="mt-1 border-t border-cave-800 pt-1">
-          <StationRow row={floor} tier={tier} />
+        <div className="mt-1 border-t border-cave-700 pt-1">
+          <StationRow row={floor} tier={tier} pinned />
         </div>
       )}
     </div>

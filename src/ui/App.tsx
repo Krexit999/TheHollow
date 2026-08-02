@@ -25,6 +25,7 @@ import { SYSTEM_COPY } from './systemCopy';
 import { SpiralPanel, RelicsPanel } from './components/longtail';
 import { Compendium, CompendiumButton } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
+import { RollPanel } from './components/roll';
 
 /**
  * Only the ACTIVE panel renders. `hidden` is a CSS class — React still builds
@@ -48,7 +49,11 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
   return (
     <>
       {only('dig') && <DigPanel />}
-      {/* The Shaft is a full canvas takeover in the hero, not a panel here. */}
+      {/* THE SHAFT SCREEN IS THE ROLL. The hero shows the column you carved;
+          this side shows the column you have not. It is the main content of the
+          screen rather than a card inside another room, because "where am I
+          going" is a question you ask by clicking SHAFT. */}
+      {only('shaft') && <RollPanel />}
       {only('kiln') && <KilnPanel />}
       {only('drills') && <DrillsPanel />}
       {only('vents') && <VentsPanel />}
@@ -183,6 +188,10 @@ export function App() {
   // never destroyed under a live Face.
   const onShaft = tab === 'shaft';
   const shaftAvailable = state.maxDepthRecord >= 10 || state.shaft.reached >= 10;
+  // The Shaft TAB now exists from minute 0 (it is the Roll), but the carved
+  // column only exists once something has been carved. Before that the hero has
+  // nothing to draw, so it steps aside entirely and the Roll is the screen.
+  const heroIsShaft = onShaft && shaftAvailable;
 
   const goCluster = (c: ClusterDef) => {
     const d = defaultSystem(c, state);
@@ -206,12 +215,23 @@ export function App() {
             The SHAFT is the same hero, seen sideways: it takes the whole stage
             when its tab is active, and both canvases stay mounted (Pixi's shared
             batch pools do not survive a renderer being destroyed mid-flight). */}
-        <div className={`shrink-0 flex-col gap-2 px-2 pt-1 lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:px-0 lg:pt-0 ${inRoom ? 'hidden' : 'flex'}`}>
-          <div className={`relative shrink-0 lg:h-auto lg:min-h-0 lg:flex-1 ${onShaft ? 'h-[66vh]' : 'h-[42vh]'}`}>
-            <div className={`absolute inset-0 ${onShaft ? 'invisible' : ''}`}>
+        {/* ON PHONE THE SHAFT TAB IS A ROOM LIKE ANY OTHER, and that is a
+            measurement, not a preference. At 380x820 the room column has ~716px
+            once the header and the system selector are paid for; the Roll's
+            fifteen rows plus the pinned floor need ~400 and the system header
+            above them another 184, which leaves about 36px for a hero. A 36px
+            slice of a carved column is not a view of anything. So the column
+            keeps the desktop layout — where it IS the left panel and the Roll
+            IS the right side, exactly as asked — and on a phone the Shaft
+            screen is the Roll. */}
+        <div className={`shrink-0 flex-col gap-2 px-2 pt-1 lg:flex lg:min-h-0 lg:min-w-0 lg:flex-1 lg:px-0 lg:pt-0 ${
+          inRoom || onShaft ? 'hidden' : 'flex'
+        }`}>
+          <div className={`relative shrink-0 lg:h-auto lg:min-h-0 lg:flex-1 ${heroIsShaft ? 'h-[66vh]' : 'h-[42vh]'}`}>
+            <div className={`absolute inset-0 ${heroIsShaft ? 'invisible' : ''}`}>
               {/* One live renderer at a time: the Face sleeps while the Shaft
                   owns the hero, and wakes with a full repaint (A.38). */}
-              <FaceCanvas active={!onShaft} />
+              <FaceCanvas active={!heroIsShaft} />
               {/* The chips/banners that float OVER the face live in their own
                   boundary, apart from the canvas: if one throws (a weather or
                   encounter edge case), it vanishes instead of unmounting the

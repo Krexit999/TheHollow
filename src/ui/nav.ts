@@ -41,7 +41,11 @@ export const CLUSTERS: ClusterDef[] = [
     glyph: '⛏',
     systems: [
       { id: 'dig', label: 'Dig', visible: always },
-      { id: 'shaft', label: 'Shaft', visible: (s) => s.maxDepthRecord >= 10 || s.shaft.reached >= 10 },
+      // ALWAYS VISIBLE, because the Shaft screen is now the ROLL and §1 says the
+      // floor is pinned from the moment you enter the shell. Gating it at depth
+      // 10 would have hidden the whole geography for the opening two minutes —
+      // the carved-column canvas is what waits for depth 10, not the list.
+      { id: 'shaft', label: 'Shaft', visible: always },
       { id: 'kiln', label: 'Kiln', visible: (s) => s.kiln.built },
       { id: 'drills', label: 'Drills', visible: (s) => s.kiln.built && (s.maxDepthRecord >= 55 || s.drills.bayBuilt) },
       { id: 'vents', label: 'Vents', visible: (s) => rec(s, 'cinder', 10) },

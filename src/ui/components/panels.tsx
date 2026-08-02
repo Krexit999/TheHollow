@@ -33,7 +33,6 @@ import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
-import { RollPanel } from './roll';
 import { PlantPanel, CrusherPanel } from './plant';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
@@ -254,9 +253,10 @@ export function DigPanel() {
   return (
     <div className="space-y-2">
       <FieldStats state={state as GameState} m={m} />
-      {/* THE ROLL sits with the face, not behind a tab: it is the ladder you
-          are standing on, not a menu you go and consult. */}
-      <RollPanel />
+      {/* THE ROLL MOVED TO THE SHAFT SCREEN. Down here it was one card among
+          ten, capped at a 280px scroller, and the floor — the thing §1 says is
+          always pinned — was below the fold. Dig is where you are; Shaft is
+          where you are going. */}
       <InHandStrip state={state as GameState} />
       <ToolAbilityStrip state={state as GameState} />
       {spammable && (

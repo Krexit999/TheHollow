@@ -99,7 +99,12 @@ describe('the A.38-addendum lifecycle: one live renderer, guarded renders, recyc
   it('the Face sleeps while the Shaft owns the hero (no interleaved rendering)', () => {
     expect(read('ui/face/FaceView.ts')).toMatch(/setActive\(active: boolean\)/);
     expect(read('ui/components/FaceCanvas.tsx')).toMatch(/setActive\(active\)/);
-    expect(read('ui/App.tsx')).toMatch(/<FaceCanvas active=\{!onShaft\}/);
+    // `heroIsShaft`, not `onShaft`: the Shaft TAB exists from minute 0 now
+    // (it is the Roll), but the Shaft CANVAS only mounts once a column has been
+    // carved — and it is the canvas, not the tab, that must put the Face to
+    // sleep. Gating on the tab would have left both renderers dark.
+    expect(read('ui/App.tsx')).toMatch(/<FaceCanvas active=\{!heroIsShaft\}/);
+    expect(read('ui/App.tsx')).toMatch(/const heroIsShaft = onShaft && shaftAvailable;/);
   });
 
   it('the Shaft defers layout (and its RT churn) while hidden', () => {
