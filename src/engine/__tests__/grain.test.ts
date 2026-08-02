@@ -64,12 +64,23 @@ describe('the grain field — runs, not noise', () => {
    * actually gets — is the one that would have caught it.
    */
   const field = (trials: number) => {
-    let agree = 0, pairs = 0, domSum = 0, walkSum = 0, walkN = 0;
+    let agree = 0, pairs = 0, domSum = 0, walkSum = 0, walkN = 0, facing = 0;
     for (let t = 0; t < trials; t++) {
       const g = generateGrain(6, 6);
       const dirTotals = [0, 0, 0, 0];
       for (const d of g) dirTotals[d]! += 1;
       domSum += Math.max(...dirTotals) / g.length;
+      // FACING PAIRS — squares pointing straight at each other. The defect a
+      // player saw on the grid while every metric here reported healthy.
+      const nextOf = (c: number): number => {
+        const x = c % 6, y = Math.floor(c / 6), d = g[c]!;
+        return d === 0 ? (y > 0 ? c - 6 : -1) : d === 1 ? (x < 5 ? c + 1 : -1)
+          : d === 2 ? (y < 5 ? c + 6 : -1) : (x > 0 ? c - 1 : -1);
+      };
+      for (let c = 0; c < 36; c++) {
+        const nx = nextOf(c);
+        if (nx >= 0 && nextOf(nx) === c) facing += 0.5;
+      }
       for (let y = 0; y < 6; y++) {
         for (let x = 0; x < 6; x++) {
           const c = y * 6 + x;
@@ -92,8 +103,28 @@ describe('the grain field — runs, not noise', () => {
         walkSum += hops; walkN++;
       }
     }
-    return { coherence: agree / pairs, dominance: domSum / trials, walk: walkSum / walkN };
+    return {
+      coherence: agree / pairs,
+      dominance: domSum / trials,
+      walk: walkSum / walkN,
+      facingPairs: facing / trials,
+    };
   };
+
+  /**
+   * THE ONE A PLAYER FOUND BY LOOKING.
+   *
+   * Two squares pointing at each other cannot both be on the same path, and a
+   * field of independently-assigned directions always contains such pairs —
+   * 3.21 per board, measured, on the generator this replaced. Every other test
+   * in this file passed while that was true, because a walk that entered a
+   * two-cell ping-pong scored as "still going". Drawing the seams instead of
+   * colouring the cells takes it to ~0.2, and the survivors are seams crossing
+   * rather than noise.
+   */
+  it('squares do not point at each other — the field is made of paths', () => {
+    expect(field(120).facingPairs).toBeLessThan(0.6);
+  });
 
   it('has visible currents — neighbours agree well above chance', () => {
     expect(field(60).coherence).toBeGreaterThan(0.4); // uniform noise is 0.25

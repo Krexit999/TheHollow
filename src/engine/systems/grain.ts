@@ -90,38 +90,41 @@ export const TRAIL_LEN = 6;
 // --- grain field generation (the highest-leverage knob in the proof) --------
 
 /**
- * ALL THREE OF THESE WERE SET BY MEASUREMENT, NOT BY EYE — see
- * `scripts/tune-grain.ts`, which reports the only figures that matter:
+ * THE FIELD IS BUILT AS PATHS. Two earlier versions were not, and both failed.
  *
- *   COHERENCE  how often orthogonal neighbours agree. 0.25 is uniform noise
- *              (nothing to aim ALONG); 1.0 is a single arrow (nothing to aim
- *              AT). Landed at ~0.46, roughly twice noise.
- *   DOMINANCE  the biggest direction's share of one board. Landed at ~0.41.
- *   MEAN WALK  how many hops a front actually gets, simulated from every cell.
- *              This is the number §9's kill criterion is stated in. Landed at
- *              ~4.2 against a floor of 3.
+ * Version one assigned each cell a direction on its own and tuned for
+ * COHERENCE, on the theory that a noisy field has nothing to aim along. It
+ * produced boards 64% one direction where half the cells pointed off the same
+ * edge; the first driven session measured mean front length 0.00.
  *
- * THE FIRST VERSION OF THIS FILE FAILED ITS OWN KILL CRITERION, and it failed
- * the way nobody expected. §2 warns that a noisy field has nothing to aim
- * along, so the generator was tuned for coherence — and produced boards that
- * were 64% one direction, where half the cells pointed off the same edge and
- * every wave died on hop zero. Mean front length in the first driven session
- * was 0.00. Too coherent is as unaimable as too noisy; it just fails silently.
+ * Version two spread the directions out and turned edge cells inward. That
+ * measured well — 4.30 mean walk — and was still wrong, because a player looked
+ * at the grid and asked how a wave could possibly follow it when squares point
+ * at each other. Measured: 3.21 such pairs per board, and 100% of walks
+ * eventually hit one. No amount of per-cell tuning fixes that. Directions
+ * assigned independently will always contradict each other somewhere; the
+ * metrics simply could not see it, because a walk that entered a two-cell
+ * ping-pong was scored as "still going".
+ *
+ * So the seams are DRAWN. Start on the rim aimed inward, walk across the board
+ * turning now and then, and write the direction along the way — so every cell
+ * on a seam points at the next cell of that seam by construction. Follow the
+ * grain from any seam cell and you walk the rest of that seam. That is what a
+ * path is, and it cannot be arrived at by colouring cells one at a time.
+ *
+ * MEASURED (scripts/tune-grain.ts, 400 boards):
+ *   facing pairs per board   3.21 -> 0.20     the thing the player could see
+ *   coherence                0.46 -> 0.59     currents, still not one arrow
+ *   dominance                0.40 -> 0.47
+ *   mean walk                4.10 -> 4.08     unchanged, and bounded by the
+ *                                             board: 36 squares is a short
+ *                                             journey however you draw it
  */
-/** One seed per this many cells. */
-export const GRAIN_CELLS_PER_SEED = 6;
-/** Chance a cell turns 90 degrees off the direction it inherited, which sets
- *  run length at roughly 1 / this — about three cells. */
-export const GRAIN_BRANCH_RATE = 0.3;
-/**
- * THE SEAM DOES NOT RUN INTO THE WALL. A boundary cell whose direction points
- * off the board turns inward this often. It is by far the highest-leverage of
- * the three (it alone moves mean walk from 2.9 to 4.2), and it is NOT 1.0 on
- * purpose: a quarter of edge-pointing cells keep pointing out, so a front can
- * still run off the board and the choice to abandon one stays a real decision
- * rather than a thing that only ever happens when you say so.
- */
-export const GRAIN_EDGE_TURN = 0.75;
+/** How many seams are drawn across the band. One per ~3 cells, so most of the
+ *  face is ON a seam rather than inheriting from one. */
+export const GRAIN_SEAMS_PER_CELL = 1 / 3;
+/** Chance a seam turns 90 degrees as it is drawn. Sets how much it wanders. */
+export const GRAIN_TURN_RATE = 0.3;
 
 // --- deep entry -------------------------------------------------------------
 
@@ -177,61 +180,73 @@ export function ensureBand(state: GameState, rng: () => number = Math.random): v
 }
 
 /**
- * GRAIN IS GENERATED IN RUNS, NOT UNIFORM NOISE. Uniform random across 36 cells
- * is unreadable and there is nothing to aim along — the player must be able to
- * look at a fresh band and see where the grain WANTS to go.
- *
- * A flood from a handful of seeds, each cell inheriting its parent's direction
- * unless it turns 90 degrees. That produces currents with visible edges between
- * them, which is the thing a wave is aimed relative to.
+ * DRAW THE SEAMS, then let the rock between them settle into the same currents.
+ * See the constants above for why this is a rewrite rather than a retune.
  */
 export function generateGrain(w: number, h: number, rng: () => number = Math.random): GrainDir[] {
   const n = w * h;
   const dirs = new Array<number>(n).fill(-1);
-  const queue: number[] = [];
-  const seeds = Math.max(2, Math.round(n / GRAIN_CELLS_PER_SEED));
-  for (let s = 0; s < seeds; s++) {
-    const c = Math.floor(rng() * n);
-    if (dirs[c]! >= 0) continue;
-    dirs[c] = Math.floor(rng() * 4);
-    queue.push(c);
-  }
-  // A grid with every seed colliding still has to come out with a field.
-  if (queue.length === 0) { dirs[0] = Math.floor(rng() * 4); queue.push(0); }
-  for (let qi = 0; qi < queue.length; qi++) {
-    const c = queue[qi]!;
+
+  /** One step along `d`, or -1 off the board. The same walk the front takes, so
+   *  a seam drawn here is a path the front can actually follow. */
+  const step = (c: number, d: number): number => {
     const x = c % w;
     const y = Math.floor(c / w);
-    const nbs: number[] = [];
-    if (x > 0) nbs.push(c - 1);
-    if (x < w - 1) nbs.push(c + 1);
-    if (y > 0) nbs.push(c - w);
-    if (y < h - 1) nbs.push(c + w);
-    for (const nb of nbs) {
-      if (dirs[nb]! >= 0) continue;
-      let d = dirs[c]!;
-      if (rng() < GRAIN_BRANCH_RATE) d = (d + (rng() < 0.5 ? 1 : 3)) % 4;
-      dirs[nb] = d;
-      queue.push(nb);
+    if (d === GRAIN_N) return y > 0 ? c - w : -1;
+    if (d === GRAIN_E) return x < w - 1 ? c + 1 : -1;
+    if (d === GRAIN_S) return y < h - 1 ? c + w : -1;
+    return x > 0 ? c - 1 : -1;
+  };
+
+  const seams = Math.max(2, Math.round(n * GRAIN_SEAMS_PER_CELL));
+  for (let s = 0; s < seams; s++) {
+    // START ON THE RIM, AIMED INWARD. A seam that starts mid-board has spent
+    // half its length before it has anywhere left to go.
+    const side = Math.floor(rng() * 4);
+    let c: number;
+    let d: number;
+    if (side === 0) { c = Math.floor(rng() * w); d = GRAIN_S; }
+    else if (side === 1) { c = (Math.floor(rng() * h) + 1) * w - 1; d = GRAIN_W; }
+    else if (side === 2) { c = n - 1 - Math.floor(rng() * w); d = GRAIN_N; }
+    else { c = Math.floor(rng() * h) * w; d = GRAIN_E; }
+
+    for (let k = 0; k < n; k++) {
+      if (rng() < GRAIN_TURN_RATE) d = (d + (rng() < 0.5 ? 1 : 3)) % 4;
+      // A seam that meets an older one stops rather than overwriting it —
+      // overwriting would break the older seam in the middle and put exactly
+      // the contradiction back that this whole approach exists to remove.
+      if (dirs[c]! >= 0) break;
+      const next = step(c, d);
+      if (next < 0) { dirs[c] = d; break; } // it runs off the board and ends
+      dirs[c] = d;
+      c = next;
     }
   }
-  for (let i = 0; i < n; i++) if (dirs[i]! < 0) dirs[i] = Math.floor(rng() * 4);
-  // THE EDGE PASS. Everything above builds currents; this is what stops most of
-  // them draining straight off the board. Applied last so it corrects the
-  // finished field rather than biasing the flood, which would have pulled every
-  // current toward the middle and made the whole face read as a whirlpool.
-  const pointsOff = (cell: number, d: number): boolean => {
-    const x = cell % w;
-    const y = Math.floor(cell / w);
-    return (d === GRAIN_N && y === 0) || (d === GRAIN_E && x === w - 1)
-      || (d === GRAIN_S && y === h - 1) || (d === GRAIN_W && x === 0);
-  };
-  for (let i = 0; i < n; i++) {
-    if (!pointsOff(i, dirs[i]!)) continue;
-    if (rng() >= GRAIN_EDGE_TURN) continue;
-    const alts = [0, 1, 2, 3].filter((d) => !pointsOff(i, d));
-    if (alts.length > 0) dirs[i] = alts[Math.floor(rng() * alts.length)]!;
+
+  // The rock BETWEEN the seams takes the direction of a neighbour that is on
+  // one, spreading outward until the board is full. That keeps the face reading
+  // as broad currents rather than as bright lines drawn over noise.
+  for (let pass = 0; pass < w + h; pass++) {
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      if (dirs[i]! >= 0) continue;
+      const x = i % w;
+      const y = Math.floor(i / w);
+      const nbs: number[] = [];
+      if (x > 0) nbs.push(i - 1);
+      if (x < w - 1) nbs.push(i + 1);
+      if (y > 0) nbs.push(i - w);
+      if (y < h - 1) nbs.push(i + w);
+      const set = nbs.filter((q) => dirs[q]! >= 0);
+      if (set.length === 0) continue;
+      dirs[i] = dirs[set[Math.floor(rng() * set.length)]!]!;
+      changed = true;
+    }
+    if (!changed) break;
   }
+  // A one-cell face, or a board no seam happened to touch, still comes out with
+  // a field rather than a hole.
+  for (let i = 0; i < n; i++) if (dirs[i]! < 0) dirs[i] = Math.floor(rng() * 4);
   return dirs as GrainDir[];
 }
 
