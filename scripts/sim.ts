@@ -41,6 +41,10 @@ import {
 } from '../src/engine/systems/confluence';
 import { serialize } from '../src/engine/save/codec';
 import { SETTLE_TUNING, settleFill } from '../src/engine/systems/settle';
+import {
+  HOLD_TUNING, type Branch, type ForkedRow, holdFloor, packedLevels,
+} from '../src/engine/systems/shopFork';
+import { resetCompaction } from '../src/engine/systems/compaction';
 import { BAY_DEPTH_UNLOCK } from '../src/engine/content/shell1/upgrades';
 
 interface Args {
@@ -80,12 +84,48 @@ interface Args {
   /** What the run-end horizon sizes pushing power against. `field` is the
    *  pre-A.44 basis, kept so both arms come from ONE binary, one flag apart. */
   horizon: 'income' | 'field';
+  /** §40.2 shop forks — which side of the forked rows this arm buys. */
+  fork: 'income' | 'packed' | 'switch';
+  /** Which row forks. The other two stay on INCOME, so a row is measured alone. */
+  forkRow: ForkedRow | 'all';
+  /** Seconds of ceiling income the stair may cost before `switch` goes PACKED. */
+  forkSwitchSec: number;
+  /** HOLD's cap, for the sweep. Defaults to the shipped 8. */
+  holdCap: number;
+  /** Seeded engine RNG — omitted, the run is unseeded exactly as before. */
+  seed: number | null;
+  /**
+   * MEASURE HOLD AS SPECIFIED, NOT AS BUILT. `doCollapse` zeroes the roots row
+   * and then `clampPacked` zeroes the packed tally, both BEFORE it reads
+   * `holdFloor(state)` — so the shipped floor is 0 at every cap and the cap
+   * sweep measures nothing. This flag reads the floor before the dispatch and
+   * re-applies it after, which is the mechanic §40.2 describes.
+   *
+   * IT IS NOT A FIX AND MUST NOT BE READ AS ONE. What survives a Collapse is
+   * the reset ladder, and this pass is scoring only. Off by default; every
+   * number it produces is labelled as an emulation of an unbuilt mechanic.
+   */
+  holdEmulate: boolean;
+  /**
+   * THE HAND. `fullest` is the greedy policy every prior run used; it spreads
+   * strokes across the whole board, which is the worst possible model for a
+   * PER-CELL counter and is why the fork verdicts were measured on a player who
+   * never compacts anything. `concentrated` works a six-cell window down to the
+   * terminal gate and then moves on — the standing rule for any sim that
+   * touches compaction.
+   */
+  hand: 'fullest' | 'concentrated';
 }
 
 function parseArgs(): Args {
   const argv = process.argv.slice(2);
+  // LAST OCCURRENCE WINS. `indexOf` took the FIRST, so a driver that appends an
+  // override to a base flag list got the base value back and never knew —
+  // `--hand concentrated ... --hand fullest` silently measured `concentrated`
+  // TWICE and reported the two hands as identical to the digit, which is what
+  // gave it away. Later-flag-wins is what every CLI does anyway.
   const get = (flag: string): string | undefined => {
-    const i = argv.indexOf(`--${flag}`);
+    const i = argv.lastIndexOf(`--${flag}`);
     return i >= 0 ? argv[i + 1] : undefined;
   };
   const policy = (get('policy') ?? 'balanced') as Args['policy'];
@@ -114,8 +154,40 @@ function parseArgs(): Args {
     horizon: (get('horizon') ?? 'income') as 'income' | 'field',
     opening: get('opening') ?? null,
     bay: get('bay') !== undefined ? Number(get('bay')) : null,
+    fork: (get('fork') ?? 'income') as Args['fork'],
+    forkRow: (get('fork-row') ?? 'all') as Args['forkRow'],
+    forkSwitchSec: Number(get('fork-switch-sec') ?? 20),
+    holdCap: Number(get('hold-cap') ?? HOLD_TUNING.cap),
+    seed: get('seed') !== undefined ? Number(get('seed')) : null,
+    hand: (get('hand') ?? 'fullest') as Args['hand'],
+    holdEmulate: argv.includes('--hold-emulate'),
   };
 }
+
+/**
+ * A SEEDED ENGINE. `Math.random` is what the engine reaches for directly —
+ * compaction decay, ore pockets, crits, deep-entry gate rolls — so seeding the
+ * harness's own picks seeds nothing. Two arms one flag apart now see the same
+ * world, which is the difference between a comparison and two anecdotes.
+ */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Set by main; read by `shop`. Null = every row buys INCOME, as it always did. */
+let forkPolicy: ((s: GameState, id: string) => Branch | undefined) | null = null;
+let forkPackedBuys = 0;
+/** PROGRESSION, not yield. Seconds to each of Loam's two hardness walls and its
+ *  floor; zero means never reached inside the run. */
+const forkTrack = { t45: 0, t110: 0, t150: 0, packedPeak: 0 };
+/** Set by main. See `Args.holdEmulate` — this emulates an UNBUILT mechanic. */
+let holdEmulate = false;
 
 // ---------------------------------------------------------------------------
 // THE INCOME INSTRUMENT (A.44 A0) — what a frontier minute is actually short of
@@ -565,6 +637,44 @@ const mods = new ModifierCache();
  * the fullest cell of the SAME sign; break deliberately only when nothing
  * same-signed holds meaningful charge. Without polarity it's plain greedy.
  */
+/**
+ * THE CONCENTRATED HAND — a rotating six-cell working set, worked down to the
+ * terminal gate and then abandoned for the next six.
+ *
+ * `chipFullest` below is greedy on CHARGE, which means it walks the whole board
+ * and never leaves a cell packed. That is the correct policy for income and the
+ * worst possible one for a per-cell counter: it models a player who never does
+ * the thing compaction exists to reward, and every fork verdict this project
+ * has produced was measured through it. Standing rule since the decay pass —
+ * any sim that touches compaction uses this hand.
+ */
+let handWindow = 0;
+let handCursor = 0;
+const HAND_WIDTH = 6;
+function chipConcentrated(engine: Engine, count: number): void {
+  const s = engine.getState() as GameState;
+  const n = s.face.cells.length;
+  if (n === 0) return;
+  for (let k = 0; k < count; k++) {
+    const base = (handWindow * HAND_WIDTH) % n;
+    engine.dispatch({ type: 'chip', cell: (base + (handCursor % HAND_WIDTH)) % n });
+    handCursor++;
+    // Move on once every cell in the window is on the terminal gate. Below
+    // that the window is still paying better than a fresh one.
+    const comp = s.face.compaction ?? [];
+    let done = true;
+    for (let i = 0; i < HAND_WIDTH; i++) {
+      if ((comp[(base + i) % n] ?? 0) < 20) { done = false; break; }
+    }
+    if (done) handWindow++;
+  }
+}
+
+function chipHand(engine: Engine, count: number, hand: Args['hand']): void {
+  if (hand === 'concentrated') chipConcentrated(engine, count);
+  else chipFullest(engine, count);
+}
+
 function chipFullest(engine: Engine, count: number): void {
   const s = engine.getState();
   const usePolarity = currentShell(s).signatureId === 'polarity' || s.shell.signatures.includes('polarity');
@@ -800,7 +910,11 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     const level = upgradeLevel(s, id);
     if (level >= def.maxLevel) return;
     const cost = nextCost(def, level);
-    if (bank().mul(slice).gte(cost)) engine.dispatch({ type: 'buyUpgrade', id });
+    if (!bank().mul(slice).gte(cost)) return;
+    const branch = forkPolicy?.(s, id);
+    if (engine.dispatch({ type: 'buyUpgrade', id, branch }).ok && branch === 'packed') {
+      forkPackedBuys += 1;
+    }
   };
   buyIfUnder('blade', dust, 0.35);
   buyIfUnder('soil', dust, 0.35);
@@ -997,7 +1111,11 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     // made it. Reading it after is how the first cut of this instrument
     // reported I_final/I_mean = 0.01x: it was comparing the run to the ruins.
     const iFinal = dpsMax(s, mods).toNumber();
+    // Read HOLD's floor while the levels it counts still exist — see the flag's
+    // note. Zero unless `--hold-emulate`, so the default path is untouched.
+    const holdBefore = holdEmulate ? holdFloor(s) : 0;
     if (engine.dispatch({ type: 'collapse' }).ok) {
+      if (holdBefore > 0) resetCompaction(s, holdBefore);
       noteRtpCollapse(currentShell(s).id, peak, s.stats.playTimeSec);
       {
         const now = s.stats.playTimeSec;
@@ -1138,6 +1256,28 @@ function main(): void {
   if (args.commons) installCommonsLedger(engine);
   if (args.income) installIncomeLedger(engine);
   horizonBasis = args.horizon;
+  if (args.seed !== null) Math.random = mulberry32(args.seed);
+  HOLD_TUNING.cap = args.holdCap;
+  holdEmulate = args.holdEmulate;
+  if (args.fork !== 'income') {
+    const rows: readonly string[] = args.forkRow === 'all'
+      ? ['blade', 'soil', 'roots'] : [args.forkRow];
+    forkPolicy = (s, id) => {
+      if (!rows.includes(id)) return 'income';
+      if (args.fork === 'packed') return 'packed';
+      /**
+       * THE STATE §40.2 NAMES, not a depth proxy. "Early in a run you cannot
+       * afford the stair, so INCOME compounds; late in a run the stair has
+       * outrun you and the face is worked, so PACKED harvests it before the
+       * fall takes it back." So the switch fires when the next step costs more
+       * than `--fork-switch-sec` of ceiling income — which is run-relative by
+       * construction and resets with every Collapse.
+       */
+      mods.invalidate();
+      return currentDescendCost(s, mods).gt(dpsMax(s, mods).mul(args.forkSwitchSec))
+        ? 'packed' : 'income';
+    };
+  }
   const totalSec = Math.round(args.hours * 3600);
   const logEverySec = Math.max(1, Math.round(args.logMin * 60));
 
@@ -1502,8 +1642,15 @@ function main(): void {
       (args.policy === 'balanced' &&
         (sec <= 60 * 60 || (beats.tBreach > 0 && sec - beats.tBreach <= 45 * 60))) ||
       (args.policy === 'idle' && sec <= 120); // idle still has to bootstrap
-    if (active) chipFullest(engine, 2);
-    else if (args.policy === 'balanced' && sec % 300 === 0) chipFullest(engine, 40);
+    if (active) chipHand(engine, 2, args.hand);
+    else if (args.policy === 'balanced' && sec % 300 === 0) chipHand(engine, 40, args.hand);
+    if (forkTrack.t45 === 0 && s.maxDepthRecord >= 45) forkTrack.t45 = sec;
+    if (forkTrack.t110 === 0 && s.maxDepthRecord >= 110) forkTrack.t110 = sec;
+    if (forkTrack.t150 === 0 && s.maxDepthRecord >= 150) forkTrack.t150 = sec;
+    forkTrack.packedPeak = Math.max(
+      forkTrack.packedPeak,
+      packedLevels(s, 'blade') + packedLevels(s, 'soil') + packedLevels(s, 'roots'),
+    );
     engine.tick(1);
     noteRtpTick(s.shell.current, s.depthRecords[s.shell.current] ?? 0, s.depth, sec);
     if (args.opening) {
@@ -1775,6 +1922,21 @@ function main(): void {
     );
   }
   if (!args.quiet) for (const e of events) console.error(e);
+  // THE ONE MACHINE-READABLE LINE. stdout, so a driver can collect 99 runs
+  // without parsing the human log — and on stdout ALONE, because everything
+  // else this script says goes to stderr.
+  {
+    const deep: Record<string, number> = {};
+    for (const id of ['umberjade', 'graveclaydeep', 'deepgrave']) deep[id] = materialCount(s, id);
+    console.log(`FORKRESULT ${JSON.stringify({
+      fork: args.fork, row: args.forkRow, seed: args.seed,
+      holdCap: args.holdCap, holdEmulate: args.holdEmulate,
+      hand: args.hand, sec: totalSec,
+      depth: s.maxDepthRecord, ...forkTrack,
+      collapses: s.collapse.count, tier: equippedTool(s).tier,
+      tools: s.stats.toolsForged, packedBuys: forkPackedBuys, deep,
+    })}`);
+  }
   console.error(
     `final: dust ${fmt(s.currencies['dust']!)} | brick ${fmt(s.currencies['brick']!)} | ` +
       `cores ${fmt(s.currencies['core']!)} | depth ${s.depth} (max ${s.maxDepthRecord}) | ` +

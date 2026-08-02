@@ -108,6 +108,15 @@ export const HOLD_PER_LEVEL = 0.55;
  */
 export const HOLD_CAP = 8;
 
+/**
+ * MUTABLE so a harness can SWEEP the cap — §40.2's HOLD is the row that has to
+ * reconcile compaction with the reset ladder, and "what cap makes this worth a
+ * purchase line" is not a question you can ask of a frozen const. Same pattern
+ * as `DECAY_TUNING` and `SETTLE_TUNING`; nothing in the game writes to it, and
+ * it starts at the shipped value so default behaviour is byte-identical.
+ */
+export const HOLD_TUNING = { cap: HOLD_CAP };
+
 /** Extra compaction a hand chip packs, from BITE. */
 export function biteBonus(state: GameState): number {
   return BITE_PER_LEVEL * packedLevels(state, 'blade');
@@ -120,7 +129,7 @@ export function settleMult(state: GameState): number {
 
 /** Compaction a Collapse leaves in every cell, from HOLD. */
 export function holdFloor(state: GameState): number {
-  return Math.min(HOLD_CAP, Math.floor(HOLD_PER_LEVEL * packedLevels(state, 'roots')));
+  return Math.min(HOLD_TUNING.cap, Math.floor(HOLD_PER_LEVEL * packedLevels(state, 'roots')));
 }
 
 // ---------------------------------------------------------------------------
