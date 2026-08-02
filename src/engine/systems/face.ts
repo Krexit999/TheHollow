@@ -31,7 +31,7 @@ import { lawNum, sealed, challengeNum } from '../laws';
 import { oreDef, oreRichness } from '../content/ores';
 import type { ReachPattern } from '../content/forgeParts';
 import {
-  applyChipCompaction, ensureCompaction, remapCompaction, type CompactionResult,
+  applyChipCompaction, ensureCompaction, remapCompaction, tickCompaction, type CompactionResult,
 } from './compaction';
 
 export const BASE_CAP = 8;
@@ -122,6 +122,9 @@ export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
   // THE COUNTER EXISTS BY THE TIME ANYTHING ELSE ASKS. Every save reaches the
   // compaction layer through here first — one length check per tick, no migration.
   ensureCompaction(state);
+  // UNWORKED ROCK RELAXES. Here rather than in its own tick: this function
+  // already owns the per-cell loop and already runs in offline catch-up.
+  tickCompaction(state, dt);
   const base = cellCap(state, mods);
   const regen = cellRegen(state, mods) * dt;
   const cells = state.face.cells;

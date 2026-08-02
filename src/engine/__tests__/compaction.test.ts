@@ -10,7 +10,8 @@ import { createEngine } from '../index';
 import type { Engine, EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import {
-  CHIP_COMPACTION, COMPACTION_SHOW_AT, DEEP_GATES, MAX_COMPACTION, TERMINAL_GATE,
+  CHIP_COMPACTION, COMPACTION_SHOW_AT, DECAY_TUNING, DEEP_GATES, MAX_COMPACTION, TERMINAL_GATE,
+  decayRate, tickCompaction,
   compactionAt, ensureCompaction, gateCrossed, resetCompaction,
 } from '../systems/compaction';
 import { applyFieldSize, cellCap, manualChip, tickFace } from '../systems/face';
@@ -157,5 +158,85 @@ describe('nothing named grain survives', () => {
     face['front'] = { cell: 3, hops: 2, alive: true, trail: [1, 2], path: [1, 2, 3] };
     tickFace(st, m, nullCtx, 0.1);
     for (const key of DEAD) expect(face[key], key).toBeUndefined();
+  });
+});
+
+describe('COMPACTION DECAY — a packed board is maintained, not owned', () => {
+  it('a cell parked on the terminal gate falls off it in MINUTES, not seconds', () => {
+    const { s } = fresh();
+    const st = s();
+    ensureCompaction(st);
+    st.face.compaction = st.face.cells.map(() => 20);
+    const n = st.face.compaction!.length;
+    // ONE SECOND must almost never cost a point at 20 — this is not a timer.
+    tickCompaction(st, 1);
+    expect(st.face.compaction!.filter((c) => c < 20).length).toBeLessThan(4);
+    // THREE MINUTES and most of the board is off the terminal gate.
+    for (let i = 0; i < 180; i++) tickCompaction(st, 1);
+    expect(st.face.compaction!.filter((c) => c < 20).length).toBeGreaterThan(n * 0.6);
+    /**
+     * TEN MINUTES and effectively all of it. Stated as a fraction, not "every
+     * cell": decay is a per-cell PROBABILITY, so at 300s a cell survives with
+     * p = (1-0.0099)^300 ≈ 5%, and across 36 cells about two of them will —
+     * which is the process working, not a bug. A first cut asserted `every`
+     * and failed on exactly that.
+     */
+    for (let i = 0; i < 420; i++) tickCompaction(st, 1);
+    expect(st.face.compaction!.filter((c) => c < 20).length).toBeGreaterThan(n * 0.95);
+  });
+
+  it('is STEEPER WHEN DEEPER — the top of the ladder is the part that will not hold', () => {
+    expect(decayRate(26)).toBeGreaterThan(decayRate(20));
+    expect(decayRate(20)).toBeGreaterThan(decayRate(8));
+    expect(decayRate(8)).toBeGreaterThan(0);
+    expect(decayRate(0)).toBe(0);
+    // The shallow end is forgiving: >5 minutes to shed one point at the first
+    // gate, so §23's opening is not turned into a maintenance chore.
+    expect(1 / decayRate(8)).toBeGreaterThan(300);
+  });
+
+  it('STAYS AN INTEGER — the renderer redraw gate depends on it', () => {
+    const { s } = fresh();
+    const st = s();
+    ensureCompaction(st);
+    st.face.compaction = st.face.cells.map(() => 26);
+    for (let i = 0; i < 200; i++) tickCompaction(st, 1);
+    for (const c of st.face.compaction!) expect(Number.isInteger(c)).toBe(true);
+  });
+
+  it('never goes below zero, however long it is left', () => {
+    const { s } = fresh();
+    const st = s();
+    ensureCompaction(st);
+    st.face.compaction = st.face.cells.map(() => 3);
+    // One enormous offline step: the whole-part path, not the probability one.
+    tickCompaction(st, 100000);
+    expect(st.face.compaction!.every((c) => c === 0)).toBe(true);
+  });
+
+  it('a working hand outruns it — chipping a cell still climbs', () => {
+    const { s, m } = fresh();
+    const st = s();
+    ensureCompaction(st);
+    for (let i = 0; i < 40; i++) {
+      st.face.cells[0] = cellCap(st, m);
+      manualChip(st, m, nullCtx, 0);
+      tickCompaction(st, 0.5); // half a second between strokes
+    }
+    expect(st.face.compaction![0]).toBeGreaterThanOrEqual(20);
+  });
+
+  it('DECAY OFF is the old physics, byte for byte', () => {
+    const { s } = fresh();
+    const st = s();
+    ensureCompaction(st);
+    st.face.compaction = st.face.cells.map(() => 26);
+    DECAY_TUNING.enabled = false;
+    try {
+      for (let i = 0; i < 1000; i++) tickCompaction(st, 1);
+      expect(st.face.compaction!.every((c) => c === 26)).toBe(true);
+    } finally {
+      DECAY_TUNING.enabled = true;
+    }
   });
 });

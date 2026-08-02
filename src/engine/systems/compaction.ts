@@ -62,6 +62,75 @@ export const DEEP_GATES: DeepGate[] = [
 export const TERMINAL_GATE = DEEP_GATES[0]!.at;
 
 /**
+ * COMPACTION FALLS BACK, AND THIS IS A PHYSICS CHANGE TO THE SCARCEST RESOURCE
+ * IN THE GAME.
+ *
+ * Before this, a packed cell was PARKED: you worked it to 20 once and it paid
+ * the terminal table forever, so the dominant strategy was to stop playing —
+ * `sim-shop-fork.ts` measured always-packed winning on 1-4 Collapses against a
+ * normal player's 15, because nothing punished camping. A resource you can
+ * bank permanently is not a resource you maintain, and compaction is supposed
+ * to be a run-length project.
+ *
+ * So unworked rock relaxes. STEEPER WHEN DEEPER — the top of the ladder is the
+ * part that will not hold, which is what makes a deep board something you keep
+ * rather than something you own:
+ *
+ *   rate(c) = DECAY_AT_MAX · (c / MAX_COMPACTION)²   points per second
+ *
+ * At 26 that is one point a minute; at 20, one per ~1.7 minutes (so a cell
+ * parked on the terminal gate falls off it in MINUTES, not seconds); at 8, one
+ * per ~10 minutes, so the shallow end stays forgiving and §23's opening is not
+ * a maintenance chore.
+ *
+ * IT STAYS AN INTEGER. `FaceView.drawTile` gates its redraw on compaction being
+ * discrete, so a fractional counter would fail the equality check every frame
+ * and repaint all 36 tiles forever. The fractional rate is resolved as a
+ * PROBABILITY of losing one whole point — honest in expectation, integer by
+ * construction, and the same treatment `applyChipCompaction` gives BITE.
+ */
+/**
+ * MUTABLE so a sim can measure the world WITHOUT it — this is a physics change
+ * to the scarcest resource in the game, and "before and after" is not a thing
+ * you can measure against a frozen const. Same pattern as `SETTLE_TUNING`.
+ * Nothing in the game writes to it; only harnesses do.
+ */
+export const DECAY_TUNING = {
+  /** Points per second shed at MAX_COMPACTION. */
+  atMax: 1 / 60,
+  /** How much steeper the top of the ladder is than the bottom. */
+  exponent: 2,
+  /** Off = the old physics, where a packed cell stayed packed forever. */
+  enabled: true,
+};
+
+/** Points per second a cell at this compaction sheds while nobody works it. */
+export function decayRate(compaction: number): number {
+  if (compaction <= 0 || !DECAY_TUNING.enabled) return 0;
+  return DECAY_TUNING.atMax * Math.pow(compaction / MAX_COMPACTION, DECAY_TUNING.exponent);
+}
+
+/**
+ * Relax every cell. Called from `tickFace`, which already owns the per-cell
+ * loop and already runs in offline catch-up — a face left alone for an hour
+ * comes back soft, which is the whole point.
+ */
+export function tickCompaction(state: GameState, dt: number): void {
+  ensureCompaction(state);
+  const comp = state.face.compaction!;
+  for (let i = 0; i < comp.length; i++) {
+    const c = comp[i] ?? 0;
+    if (c <= 0) continue;
+    // A long offline step can owe more than one point; pay the whole part
+    // outright and roll for the remainder, so a big dt is not a free pass.
+    const owed = decayRate(c) * dt;
+    const whole = Math.floor(owed);
+    const lost = whole + (Math.random() < owed - whole ? 1 : 0);
+    if (lost > 0) comp[i] = Math.max(0, c - lost);
+  }
+}
+
+/**
  * The array is never assumed. A save written before this existed has none, and
  * a face that was widened has one at the wrong length; both heal here rather
  * than in a migration, which is why this needs no save version bump.
