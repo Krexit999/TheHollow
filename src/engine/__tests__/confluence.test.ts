@@ -20,7 +20,8 @@ import {
   CONFLUENCES, CONFLUENCE_BY_ID, activeConfluences, confluenceBonus, noticeConfluences,
   type ConfluenceDef,
 } from '../systems/confluence';
-import { computeBucket, isBucket } from '../modifiers';
+import { ModifierCache, computeBucket, isBucket } from '../modifiers';
+import { isOre, plantOre } from '../systems/ores';
 import { CLUSTERS } from '../../ui/nav';
 import { allShells } from '../shells';
 
@@ -61,8 +62,47 @@ describe('a confluence is a bonus for having both, never a requirement', () => {
     expect(activeConfluences(s)).toHaveLength(0);
     for (let i = 0; i < 30; i++) engine.tick(1);
     expect(engine.getState().confluences.found).toHaveLength(0);
-    // The face still pays — nothing is gated behind a confluence.
-    expect(engine.dispatch({ type: 'chip', cell: 0 }).ok).toBe(true);
+    /**
+     * THE FACE STILL PAYS — nothing is gated behind a confluence.
+     *
+     * CHIP A CELL VERIFIED TO BE PLAIN ROCK, not cell 0. This asserted cell 0
+     * and flaked for the whole life of the project: `tickOres` runs on
+     * `Math.random` every tick, so across 30 simulated seconds it can seed a
+     * pocket anywhere on the face including cell 0, and a pocket CORRECTLY
+     * refuses an ordinary chip (you hold it to work it out, or a drill opens
+     * it). The failure was the ore system behaving exactly as designed and the
+     * test naming a cell it had no claim on.
+     *
+     * Picking the cell by inspection rather than seeding the RNG keeps the test
+     * on the real tick path — a seeded run would also stop exercising the ore
+     * spawn it is meant to coexist with.
+     */
+    const st = engine.getState() as GameState;
+    const plain = st.face.cells.findIndex((_, i) => !isOre(st, i));
+    expect(plain, 'the face cannot be entirely pocket — the cap forbids it').toBeGreaterThanOrEqual(0);
+    expect(engine.dispatch({ type: 'chip', cell: plain }).ok).toBe(true);
+  });
+
+  /**
+   * THE FLAKE, PINNED. The test above passed ~4 runs in 5 for the whole life of
+   * the project and nobody could name the cause, because reproducing it meant
+   * winning the ore lottery on cell 0. This states the mechanism directly and
+   * deterministically, so the next person who sees that test fail has the
+   * answer in the file rather than a coin-flip to re-run.
+   *
+   * A pocket refusing an ordinary chip is CORRECT (you hold it to work it out,
+   * or a drill opens it) — the bug was ever asserting on a fixed index.
+   */
+  it('a pocket refuses an ordinary chip — which is why cell 0 was never a safe assertion', () => {
+    const { engine, s: st } = fresh();
+    for (let i = 0; i < st.face.cells.length; i++) st.face.cells[i] = 8;
+    // Through the real spawn path, not by writing the array.
+    expect(plantOre(st, new ModifierCache(), ctx, 0)).toBe(true);
+    expect(isOre(st, 0)).toBe(true);
+    expect(engine.dispatch({ type: 'chip', cell: 0 }).ok).toBe(false);
+    // ...and a plain cell on the same face pays perfectly well.
+    const plain = st.face.cells.findIndex((_: number, i: number) => !isOre(st, i));
+    expect(engine.dispatch({ type: 'chip', cell: plain }).ok).toBe(true);
   });
 
   it('every bucket a confluence touches sits at its NEUTRAL value with none active', () => {
