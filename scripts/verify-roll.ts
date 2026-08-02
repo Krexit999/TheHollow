@@ -73,6 +73,22 @@ async function main(): Promise<void> {
   // Let the opening toast fade rather than photographing it over the panel.
   await page.waitForTimeout(6000);
 
+  // THE ROLL LIVES IN THE SHAFT SCREEN NOW. This driver used to read it off the
+  // Dig screen and would otherwise report "0 rows" as a design failure. The
+  // disclosure gate is marked seen first — nothing is granted — or the modal
+  // eats the tab switch.
+  await page.evaluate(() => {
+    const e = (window as unknown as Record<string, never>)['__engine'] as unknown as
+      { dispatch: (a: unknown) => unknown; tick: (n: number) => void };
+    e.dispatch({ type: 'markSystemsSeen', ids: ['dig', 'shaft', 'kiln', 'hold', 'collapse'] });
+    e.tick(0.2);
+  });
+  await page.evaluate(() => {
+    const ui = (window as unknown as Record<string, { getState: () => { setTab: (x: string) => void } }>)['__ui']!;
+    ui.getState().setTab('shaft');
+  });
+  await page.waitForTimeout(800);
+
   // ── A. MINUTE 2 ─────────────────────────────────────────────────────────
   // Nothing is granted or stipulated: this is what a player who has just
   // started actually sees.
@@ -80,8 +96,12 @@ async function main(): Promise<void> {
   const rows = await panel(page);
   console.log(rows.map((r) => `      ${r}`).join('\n'));
   const legible = rows.filter((r) => /SEAM|WALL|WRECK|WORKS|CHAMBER|HAZARD|REST|FLOOR/.test(r));
-  // Three legible ahead, and the pinned floor makes a fourth typed row.
-  check(legible.length === 4, 'three legible rows plus the pinned floor', `${legible.length} typed rows`);
+  // FIVE, and the count was wrong here from the day it was written: the four
+  // it asserted were the legible rows alone (the station underfoot plus three
+  // ahead) and the pinned floor was NOT among them, because the floor rendered
+  // fogged against §1's own mock. The floor now names itself, so the number
+  // moved — which is the proof the old one was measuring something else.
+  check(legible.length === 5, 'three legible ahead, the one underfoot, and the pinned floor', `${legible.length} typed rows`);
   const floor = rows[rows.length - 1] ?? '';
   check(/DEEPGRAVE/.test(floor) && /150/.test(floor), 'DEEPGRAVE 150 pinned at the bottom', floor);
   check(rows.some((r) => /The Turnrow/.test(r)), 'the ladder starts at The Turnrow');

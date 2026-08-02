@@ -85,7 +85,7 @@ async function main(): Promise<void> {
       casting: { rack: unknown[] };
     };
     e.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e12 });
-    e.dispatch({ type: 'markSystemsSeen', ids: ['dig', 'kiln', 'drills', 'hold', 'collapse', 'casting', 'refinery'] });
+    e.dispatch({ type: 'markSystemsSeen', ids: ['dig', 'shaft', 'kiln', 'drills', 'hold', 'collapse', 'casting', 'refinery'] });
     s.kiln.built = true; s.kiln.feeding = true; s.kiln.heat = 1;
     s.casting.rack = Array.from({ length: 3 }, (_, i) => ({ id: 900 + i, type: 'head', materialId: 'marl', purity: 50 }));
     e.tick(0.5);
@@ -137,7 +137,10 @@ async function main(): Promise<void> {
   });
   await page.waitForTimeout(600);
   const preBatch = await readState(page);
-  await page.locator('[data-testid^="crush-"]').first().click({ timeout: 4000 }).catch(() => {});
+  // NO .catch HERE. A swallowed click reports "the batch did not drain the
+  // bank" as a design failure when it was really a missed button — the exact
+  // instrument-lies-confidently pattern this project keeps paying for.
+  await page.locator('[data-testid^="crush-"]').first().click({ timeout: 6000 });
   await page.waitForTimeout(500);
   const postBatch = await readState(page);
   check(postBatch.surge < preBatch.surge, 'the batch emptied the bank',
