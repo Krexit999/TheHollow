@@ -16,7 +16,7 @@ import { coreNodeLevel } from '../content/shell1/coreTree';
 import { applyFieldSize, cellCap } from './face';
 import { grantXP } from './xp';
 import { runFaceReset } from '../signatures';
-import { rerollBand } from './grain';
+import { resetCompaction } from './compaction';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
 
@@ -153,11 +153,10 @@ export function doCollapse(
   const cap = cellCap(state, mods);
   state.face.cells = new Array(state.face.w * state.face.h).fill(cap * shape.faceFill);
   runFaceReset(state, 'collapse'); // signatures re-roll their face state
-  // THE BAND RE-ROLLS WITH THE ROCK (Proof #1). Fresh grain, compaction back to
-  // zero, every lock cleared. This is the ONLY recovery from a locked cell, and
-  // it is deliberately the reset that already existed rather than a new one:
-  // killing rock has to cost you the run, not a button.
-  rerollBand(state);
+  // THE WORK GOES BACK WITH THE ROCK. Compaction to zero: what you packed into
+  // this band came down with it, which is what makes it a run-length project
+  // rather than a permanent ratchet.
+  resetCompaction(state);
 
   grantXP(state, mods, ctx, cores.mul(8));
 

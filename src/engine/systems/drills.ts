@@ -44,7 +44,6 @@ import {
   DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, oreAt, openOre, plantOre,
 } from './ores';
 import { oreRichness } from '../content/ores';
-import { ACROSS_TIME_MULT, FRONT_COMPACTION, seedCompaction } from './grain';
 
 /** Twenty-four rails, and A.56 split how you fill them: `BOUGHT_DRILLS` come
  *  off the shop at a steep escalating curve, the rest are PRIZES from other
@@ -54,18 +53,7 @@ export const BOUGHT_DRILLS = 16;
 export const DRILL_BASE_INTERVAL = 2.0;
 
 export function drillInterval(state: GameState, mods: ModifierCache, drill: DrillState): number {
-  const base = DRILL_BASE_INTERVAL / (1 + 0.04 * drill.level) / mods.get(state, 'drillSpeed').toNumber();
-  // ACROSS THE GRAIN IS SLOW, for the machine exactly as for the hand — and the
-  // machine gets NO dust bonus for it, because the thing it is buying is
-  // compaction on cells the player will come back and finish. A bay set to
-  // `across` earns strictly less dust than one set to `with`; what it buys is
-  // reach into the deep-entry gates, which is drop-table and not income.
-  return base * (grainModeOf(drill) === 'across' ? ACROSS_TIME_MULT : 1);
-}
-
-/** Absent = 'with', which is what every drill did before the grain existed. */
-export function grainModeOf(drill: DrillState): 'with' | 'across' | 'follow' {
-  return drill.grainMode ?? 'with';
+  return DRILL_BASE_INTERVAL / (1 + 0.04 * drill.level) / mods.get(state, 'drillSpeed').toNumber();
 }
 
 /**
@@ -331,30 +319,11 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
 
     drill.timer += dt;
     const interval = drillInterval(state, mods, drill);
-    // ── THE GRAIN MODE (Proof #1) ────────────────────────────────────────────
-    // Three behaviours on the existing dropdown, built ON TOP of the existing
-    // claiming, crowding and zone routing rather than beside it: the mode picks
-    // a preferred cell and decides what the strike SEEDS, and everything else
-    // — pockets, priority, crowd-out, the second hand — runs exactly as before.
-    const grainMode = grainModeOf(drill);
-    const seeds = grainMode !== 'with';
     let strikes = 0;
     while (drill.timer >= interval && strikes < 4) {
       drill.timer -= interval;
       strikes++;
-      // FOLLOW: chase the live front's head and extend it. It DIES WITH THE
-      // FRONT in the sense that matters — the chasing stops — but the machine
-      // falls back to ordinary targeting rather than standing still, because a
-      // drill that idles while you are away is worse than one that mines badly.
-      let target = -1;
-      if (grainMode === 'follow') {
-        const head = state.face.front;
-        if (head?.alive && !skip(head.cell) && (!zone || zone.has(head.cell))
-          && !state.face.ore?.[head.cell]) {
-          target = head.cell;
-        }
-      }
-      if (target < 0) target = pickTarget(state, skip, zone, rotted, crowd);
+      const target = pickTarget(state, skip, zone, rotted, crowd);
       if (target < 0) continue; // every cell vined or out of zone — it idles
       if (crowd) crowdOut(state, crowd, target);
 
@@ -386,12 +355,11 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
       const wasFull = (state.face.cells[target] ?? 0) >= capNow * 0.7;
 
       for (const hit of handCells) {
+        // A MACHINE NEVER COMPACTS. The deep-entry gates are hand-only
+        // (systems/compaction.ts): a drill parked on a deep cell would roll the
+        // terminal material every stroke, which is a faucet wearing a drop
+        // table's clothes. The gates are what your own attention buys.
         strike(state, mods, ctx, drill, hit, power * rotBite(state, hit), d);
-        // A SEEDING MACHINE LEAVES COMPACTION AND COLLECTS NOTHING. The
-        // deep-entry gates are hand-only (grain.ts): a machine parked on a deep
-        // cell would otherwise roll the terminal material every stroke, which is
-        // a faucet wearing a drop table's clothes.
-        if (seeds) seedCompaction(state, hit, FRONT_COMPACTION);
       }
 
       // THE METER. Every fitted ability advances, and anything that fills FIRES

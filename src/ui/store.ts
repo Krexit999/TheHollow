@@ -79,13 +79,6 @@ interface UIStore {
   faceMode: 'chip' | 'sweep' | 'technique';
   /** Which targeted technique a face tap performs while faceMode='technique'. */
   armedTechnique: string | null;
-  /**
-   * HOW THE NEXT CHIP STRIKES THE GRAIN (Proof #1, decision 3). A persistent
-   * toggle plus a tap — two targets, no direction picker, both thumb-reachable
-   * at 380px. The engine resolves what that means against the cell's own grain;
-   * this is only which of the two the player has chosen.
-   */
-  grainStrike: 'with' | 'across';
   /** The bulk-buy multiplier, persisted across sessions (localStorage). */
   bulkMode: BulkMode;
   /** Number display format — device preference (localStorage), not in the save. */
@@ -118,11 +111,6 @@ interface UIStore {
   markFresh: (tab: TabId) => void;
   setOpticsMode: (on: boolean) => void;
   setFaceMode: (m: 'chip' | 'sweep' | 'technique') => void;
-  setGrainStrike: (s: 'with' | 'across') => void;
-  /** §6's fallback. It dispatches, because grain scope is an ENGINE rule — the
-   *  front walks the field the player is being shown, and a display-only
-   *  toggle would draw one direction while the wave took another. */
-  setGrainScope: (scope: 'cell' | 'band') => void;
   armTechnique: (id: string | null) => void;
   setBulkMode: (m: BulkMode) => void;
   setNumberFormat: (m: NumberFormat) => void;
@@ -147,7 +135,6 @@ export const useGame = create<UIStore>((set, get) => ({
   opticsMode: false,
   faceMode: 'chip',
   armedTechnique: null,
-  grainStrike: 'with',
   bulkMode: loadBulk(),
   numberFormat: loadNumberFormat(),
   alloyTargets: [],
@@ -166,8 +153,6 @@ export const useGame = create<UIStore>((set, get) => ({
     })),
   setOpticsMode: (on) => set({ opticsMode: on }),
   setFaceMode: (m) => set({ faceMode: m, ...(m !== 'technique' ? { armedTechnique: null } : {}) }),
-  setGrainStrike: (g) => set({ grainStrike: g }),
-  setGrainScope: (scope) => { dispatch({ type: 'setGrainScope', scope }); },
   armTechnique: (id) => set(id ? { armedTechnique: id, faceMode: 'technique' } : { armedTechnique: null, faceMode: 'chip' }),
   setBulkMode: (m) => {
     if (typeof localStorage !== 'undefined') localStorage.setItem(BULK_KEY, String(m));

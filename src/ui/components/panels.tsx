@@ -12,7 +12,7 @@ import { cellCap, cellRegen, chipYield, dpsMax } from '../../engine/systems/face
 import { kilnRate, kilnEfficiency, KILN_DUST_PER_BRICK, overstokeActive, overstokeReady, overstokeCost } from '../../engine/systems/kiln';
 import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '../../engine/content/kilnFuel';
 import {
-  drillInterval, drillPower, MAX_DRILLS, BOUGHT_DRILLS, PRIZE_POWER, drillPriority, grainModeOf,
+  drillInterval, drillPower, MAX_DRILLS, BOUGHT_DRILLS, PRIZE_POWER, drillPriority,
   type DrillPriority,
 } from '../../engine/systems/drills';
 import {
@@ -486,23 +486,6 @@ const PRIORITY_BLURB: Record<DrillPriority, string> = {
 };
 
 /**
- * THE GRAIN MODES (Proof #1). Named for what the machine DOES to the rock, not
- * for a mechanic — "packs it" is a thing a player can picture and "seeds
- * compaction" is not.
- */
-export const GRAIN_MODE_LABEL: Record<'with' | 'across' | 'follow', string> = {
-  with: 'with it',
-  across: 'against it',
-  follow: 'the fracture',
-};
-
-const GRAIN_MODE_BLURB: Record<'with' | 'across' | 'follow', string> = {
-  with: 'Fast and shallow. Follows the grain, leaves the rock as loose as it found it. The safe one.',
-  across: 'Slower for the same pay, and it packs every cell it works — driving rock toward the deep seams for you to open by hand. It never collects them itself.',
-  follow: 'Chases the live fracture and drives it on. With no fracture running it just works the grain like the first setting, rather than standing there.',
-};
-
-/**
  * THE ROUTING GUI — paint the squares, pick what it prefers, done.
  *
  * PLAIN HTML, and that is a standing ruling in this project, not a shortcut:
@@ -529,7 +512,6 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
   const box = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
   const prio = drillPriority(state, unit);
-  const gmode = grainModeOf(unit);
 
   /**
    * BRING ITSELF INTO VIEW. The painter renders at the BOTTOM of the room,
@@ -672,27 +654,6 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
       </div>
       <p className="mt-1 text-[10px] leading-snug text-cave-500">{PRIORITY_BLURB[prio]}</p>
 
-      {/* AND HOW IT WORKS THE GRAIN (Proof #1). Three more states on the same
-          panel, deliberately not a second screen: a machine's routing and its
-          grain habit are one decision, and splitting them would make the player
-          set half a drill in two places. */}
-      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">And it works the grain</div>
-      <div className="mt-1 grid grid-cols-3 gap-1">
-        {(['with', 'across', 'follow'] as const).map((g) => (
-          <button
-            key={g}
-            data-testid={`grain-${g}`}
-            aria-pressed={gmode === g}
-            className={`rounded border px-1.5 py-1 text-[10px] ${
-              gmode === g ? 'border-[#7fd4ff]/60 bg-[#7fd4ff]/10 text-[#bfe8ff]' : 'border-cave-800 text-cave-300 hover:bg-cave-800'
-            }`}
-            onClick={() => dispatch({ type: 'setDrillGrainMode', index, mode: g })}
-          >
-            {GRAIN_MODE_LABEL[g]}
-          </button>
-        ))}
-      </div>
-      <p className="mt-1 text-[10px] leading-snug text-cave-500">{GRAIN_MODE_BLURB[gmode]}</p>
       <button className="btn btn-warm mt-2 w-full py-1 text-[11px]" data-testid="route-done" onClick={done}>
         Done
       </button>
@@ -1113,7 +1074,6 @@ export function DrillsPanel() {
                 </button>
                 <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500" data-testid={`route-state-${i}`}>
                   {zoned > 0 ? `${zoned} squares` : 'whole face'} · {PRIORITY_LABEL[prio]}
-                  {grainModeOf(unit) !== 'with' ? ` · ${GRAIN_MODE_LABEL[grainModeOf(unit)]}` : ''}
                 </span>
               </div>
 

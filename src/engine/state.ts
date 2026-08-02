@@ -75,11 +75,10 @@ export function initialState(nowMs: number): GameState {
       staminaMax: 100,
       recentChips: [],
       seepPool: 0,
-      // THE GRAIN is not seeded here. `ensureBand` (systems/grain.ts) builds the
-      // three arrays on the first tick, which is the same code path a save
-      // written before the grain existed takes — so the fresh-game shape and
-      // the migrated shape are produced by one function and cannot drift apart.
-      grainScope: 'cell',
+      // COMPACTION is not seeded here: `ensureCompaction` builds it on the
+      // first tick, which is the same code path a save written before it
+      // existed takes — so the fresh-game shape and the migrated shape are
+      // produced by one function and cannot drift apart.
     },
     techniques: defaultTechniquesState(),
     keystones: defaultKeystonesState(),

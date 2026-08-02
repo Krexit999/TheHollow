@@ -15,9 +15,8 @@ import {
 } from 'pixi.js';
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import {
-  COMPACTION_SHOW_AT, DEEP_GATES, MAX_COMPACTION, TERMINAL_GATE,
-  compactionAt, grainAt, strikeTimeMult,
-} from '../../engine/systems/grain';
+  COMPACTION_SHOW_AT, MAX_COMPACTION, TERMINAL_GATE, compactionAt, gateCrossed,
+} from '../../engine/systems/compaction';
 import { materialDef } from '../../engine/materials';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
@@ -204,13 +203,9 @@ interface TileEntry {
    *  ring's step. Both join the redraw gate — see drawTile. */
   oreId: string;
   digBand: number;
-  /** THE GRAIN (Proof #1). All four join the redraw gate: grain never changes
-   *  in place, compaction is already an integer, lock is terminal, and the
-   *  front marker is 0/1/2 — so none of them can force a repaint per frame. */
-  grainDir: number;
+  /** WORKED ROCK. Joins the redraw gate: compaction is already an integer, so
+   *  it cannot force a repaint every frame. */
   compaction: number;
-  /** 0 none · 1 in the wake · 2 the head. */
-  frontMark: number;
   /** The compaction digit. A Graphics cannot draw text, and a number this
    *  load-bearing is not going to be a bar. One per tile, updated only when the
    *  gate above opens. */
@@ -225,15 +220,6 @@ function deepDropLabel(materialId: string): string {
   } catch {
     return 'DEEP FIND';
   }
-}
-
-/** Which gate this strike crossed, if any. Deepest first, so a single strike
- *  that jumps two gates names the better one. */
-function gateCrossed(before: number, after: number): number | null {
-  for (const g of DEEP_GATES) {
-    if (before < g.at && after >= g.at) return g.at;
-  }
-  return null;
 }
 
 interface Particle {
@@ -496,7 +482,7 @@ export class FaceView {
       const y = Math.floor(i / this.faceW);
       tile.g.position.set(this.gridX + x * this.cellSize, this.gridY + y * this.cellSize);
       // The compaction digit sits in the tile's top-right corner, clear of the
-      // grain tick through the middle and of the pocket rim around the edge.
+      // compaction wash and clear of the pocket rim around the edge.
       // It scales with the tile so a 380px face and a desktop one read the same.
       if (tile.label) {
         const m = Math.max(1.5, this.cellSize * 0.05);
@@ -560,7 +546,7 @@ export class FaceView {
       // plain cell still counts as a change and the gate does not swallow it.
       return {
         g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, rotBand: -1, burnBand: -1,
-        oreId: '?', digBand: -1, grainDir: -1, compaction: -1, frontMark: -1,
+        oreId: '?', digBand: -1, compaction: -1,
         label,
       };
     });
@@ -594,20 +580,12 @@ export class FaceView {
     const digBand = oreId ? Math.round(digProgress(gstate, i) * 12) : 0;
     // THE GRAIN. Every one of these is already discrete, so they cost the gate
     // nothing — a face nobody is chipping still repaints zero tiles per frame.
-    const grainDir = grainAt(gstate, i);
     const compaction = compactionAt(gstate, i);
-    const live = gstate.face.front;
-    const frontMark = live?.alive
-      ? (live.cell === i ? 2 : live.trail.includes(i) ? 1 : 0)
-      : 0;
     if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
       && rotBand === tile.rotBand && burnBand === tile.burnBand
       && oreId === tile.oreId && digBand === tile.digBand
-      && grainDir === tile.grainDir && compaction === tile.compaction
-      && frontMark === tile.frontMark && tile.flash <= 0) return;
-    tile.grainDir = grainDir;
+      && compaction === tile.compaction && tile.flash <= 0) return;
     tile.compaction = compaction;
-    tile.frontMark = frontMark;
     tile.band = band;
     tile.crackStage = crackStage;
     tile.vine = vine;
@@ -900,75 +878,34 @@ export class FaceView {
     //   the TELEGRAPH   — one more across-chip kills this cell.
     //   the FRONT       — the live head, and a wake behind it.
     // ------------------------------------------------------------------
-    this.drawGrain(tile, g, m, w, r, ratio);
+    this.drawCompaction(tile, g, m, w, r);
   }
 
   /**
-   * THE GRAIN TICK IS THE ONLY NEW PIXEL, and it carries the mitigation for
-   * "grain is fiddly, not tactical". It is a LINE WITH A HEAD, not an arrow
-   * glyph: at a 55px tile on a 380px screen an arrowhead is four pixels of mush,
-   * while a bar that is thick at one end reads as direction from across the room.
-   *
-   * Drawn in a cool bone-white against warm rock so it never competes with
-   * charge for the same channel — charge is the warmth, grain is the mark.
+   * WORKED ROCK. Three marks, drawn over everything else because a cell's
+   * compaction is the one thing on the tile that says what it is WORTH.
    */
-  private drawGrain(
-    tile: TileEntry, g: Graphics, m: number, w: number, r: number, ratio: number,
-  ): void {
-    const cx = m + w / 2;
-    const cy = m + w / 2;
-
-    // COMPACTION AS DENSITY. A cool grey-violet wash that deepens with the
-    // count — deliberately NOT the warm channel, which belongs to charge, and
+  private drawCompaction(tile: TileEntry, g: Graphics, m: number, w: number, r: number): void {
+    // DENSITY. A cool grey-violet wash that deepens with the count —
+    // deliberately NOT the warm channel, which belongs to charge, and
     // deliberately subtractive: worked rock should look tighter and colder, not
-    // more valuable. Below the display threshold this is the ONLY signal, which
-    // is what keeps the opening face quiet.
+    // brighter. Below the display threshold this is the ONLY signal, which is
+    // what keeps the opening face quiet.
     if (tile.compaction > 0) {
       const t = Math.min(1, tile.compaction / MAX_COMPACTION);
       g.roundRect(m, m, w, w, r).fill({ color: 0x2b2733, alpha: 0.10 + t * 0.42 });
     }
 
-    // THE DEEPEST GATE, RUNG. This ring used to be a hot red warning — the
-    // cell was one across-grain strike from dead — and it is now the exact
-    // opposite reading on the exact same cells: this is the rock you worked all
-    // the way down, and it pays the terminal material on every chip. Warm gold,
-    // because it is good news now.
+    // THE DEEPEST GATE, RUNG. Warm gold: this is rock worked all the way down,
+    // and it pays the terminal material on every chip.
     if (tile.compaction >= TERMINAL_GATE) {
       g.roundRect(m + 1, m + 1, w - 2, w - 2, r).stroke({ width: Math.max(2, w * 0.055), color: 0xe0b25a, alpha: 0.9 });
       g.roundRect(m + 3.5, m + 3.5, w - 7, w - 7, r * 0.8).stroke({ width: 1, color: 0xffe3a8, alpha: 0.55 });
     }
 
-    // THE TICK. Length is 40% of the tile, so a run of them reads as a current
-    // rather than as scattered dashes.
-    const len = w * 0.2;
-    const dir = tile.grainDir;
-    const dx = dir === 1 ? 1 : dir === 3 ? -1 : 0;
-    const dy = dir === 2 ? 1 : dir === 0 ? -1 : 0;
-    const tail = { x: cx - dx * len, y: cy - dy * len };
-    const head = { x: cx + dx * len, y: cy + dy * len };
-    const bright = 0xdfe4ee;
-    // The shadow underneath is what makes it survive a fully-charged cell,
-    // which is the brightest thing the tile ever is.
-    g.moveTo(tail.x, tail.y + 1).lineTo(head.x, head.y + 1)
-      .stroke({ width: Math.max(2.4, w * 0.075), color: 0x000000, alpha: 0.5 });
-    g.moveTo(tail.x, tail.y).lineTo(head.x, head.y)
-      .stroke({ width: Math.max(1.4, w * 0.045), color: bright, alpha: 0.55 + ratio * 0.2 });
-    // The head end thickens: direction without an arrowhead.
-    g.circle(head.x, head.y, Math.max(1.8, w * 0.055)).fill({ color: bright, alpha: 0.9 });
-
-    // THE FRONT. A wake of dimming pips behind, and a hard ring on the head —
-    // the wave has to be WATCHABLE or nobody will believe they steered it.
-    if (tile.frontMark === 1) {
-      g.circle(cx, cy, Math.max(2, w * 0.1)).fill({ color: 0x7fd4ff, alpha: 0.35 });
-    } else if (tile.frontMark === 2) {
-      g.roundRect(m, m, w, w, r).stroke({ width: Math.max(2, w * 0.055), color: 0x7fd4ff, alpha: 0.95 });
-      g.circle(cx, cy, Math.max(3, w * 0.14)).fill({ color: 0xd8f2ff, alpha: 0.9 });
-      g.circle(cx, cy, Math.max(5.5, w * 0.24)).stroke({ width: 1.5, color: 0x7fd4ff, alpha: 0.7 });
-    }
-
-    // THE NUMBER, from the first deep-entry gate up (decision 4). Below 8 there
-    // is nothing it could tell you that the wash does not; at 8 it starts
-    // naming which table this cell is rolling on.
+    // THE NUMBER, from the first deep-entry gate up. Below 8 there is nothing it
+    // could tell you that the wash does not; at 8 it starts naming which table
+    // this cell is rolling on.
     if (tile.label) {
       tile.label.text = tile.compaction >= COMPACTION_SHOW_AT ? String(tile.compaction) : '';
       tile.label.style.fill = tile.compaction >= TERMINAL_GATE ? 0xffe3a8
@@ -1230,17 +1167,10 @@ export class FaceView {
     const now = performance.now();
     const until = this.cellCooldown.get(cell) ?? 0;
     if (now < until) return;
-    // ACROSS THE GRAIN IS SLOW IN THE HAND. The multiplier comes from the
-    // engine (`strikeTimeMult`) rather than being a number in this file: the
-    // rate half of the WITH/ACROSS trade is a game rule, and a renderer that
-    // owned it could be tuned out of agreement with the dust half.
-    const strike = useGame.getState().grainStrike;
-    this.cellCooldown.set(cell, now + 170 * strikeTimeMult(strike));
-    const result = this.engine.dispatch({ type: 'chip', cell, strike });
+    this.cellCooldown.set(cell, now + 170);
+    const result = this.engine.dispatch({ type: 'chip', cell });
     const data = result.data as ChipResult | undefined;
-    // A wave driven through emptied rock takes no charge and is still the thing
-    // the player is doing — it has to draw.
-    if (!result.ok || !data || (data.charge <= 0 && !data.grain)) return;
+    if (!result.ok || !data || data.charge <= 0) return;
     this.onChip(cell, data);
   }
 
@@ -1257,41 +1187,16 @@ export class FaceView {
       const ft = this.tiles[f];
       if (ft) ft.flash = 0.7;
     }
-    // THE WAVE MOVING IS THE THING THE PLAYER IS BUYING, so it gets its own
-    // feedback rather than sharing the chip's. Shards where the fracture
-    // ARRIVED (one cell ahead of the hand — that gap is the whole read), and a
-    // heavier shake as the run gets longer, so a wave five cells deep feels
-    // like more than one cell deep even though each hop costs the same tap.
-    const grain = data.grain;
-    if (grain) {
-      for (const wc of grain.waveCells) {
-        const c = this.cellCenter(wc);
-        this.spawnShards(c.x, c.y, 4, false);
-        const wt = this.tiles[wc];
-        if (wt) wt.flash = 0.85;
-      }
-      if (grain.waveCells.length > 0) this.addShake(1.5 + Math.min(6, grain.frontHops * 0.7));
-      // A CELL DYING IS THE LOUDEST THING ON THE FACE. It has to be, or the
-      // telegraph was decoration: the player must never be able to lock a cell
-      // and not notice it happened.
-      /**
-       * SAY WHAT IT WAS FOR, ON THE CELL IT CAME OUT OF.
-       *
-       * The player report was "it doesn't show any benefit", and it was exactly
-       * right: the number went up, a ring turned gold, and nothing anywhere
-       * connected that to the reason you were paying 1.8x the time. The gates
-       * were real and invisible. So a deep-entry drop now names itself where it
-       * happened — and when the WAVE found it, it names itself on the cell the
-       * wave reached, which is the whole feature saying its own name.
-       */
-      for (const id of grain.deepDrops) {
-        const from = grain.waveCells.length > 0 ? this.cellCenter(grain.waveCells[0]!) : { x, y };
-        this.spawnPop(from.x, from.y, deepDropLabel(id), true);
-      }
+    // SAY WHAT THE WORK WAS FOR, ON THE CELL IT CAME OUT OF. Without this the
+    // number just goes up in a corner and nothing joins it to the seams it
+    // opens — a player reported exactly that, and it was right.
+    const comp = data.compaction;
+    if (comp) {
+      for (const id of comp.deepDrops) this.spawnPop(x, y, deepDropLabel(id), true);
       // CROSSING A GATE is the other half: the moment this cell started paying
-      // a table it was not paying before. Fires on the strike that crosses it,
-      // not on every strike above it.
-      const gate = gateCrossed(grain.compactionBefore, grain.compactionAfter);
+      // a table it was not paying before. Fires on the chip that crosses it,
+      // not on every chip above it.
+      const gate = gateCrossed(comp.before, comp.after);
       if (gate !== null) {
         this.spawnPop(x, y, `SEAM ${gate}`, gate === TERMINAL_GATE);
         this.addShake(gate === TERMINAL_GATE ? 6 : 3);

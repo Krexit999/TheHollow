@@ -30,7 +30,7 @@ export interface MaterialDef {
   /**
    * MATERIALS THAT DO NOT COME OUT OF THE RARITY TABLE.
    *   'combat' — the Deepwrought drop them.
-   *   'deep'   — the compaction gates drop them (systems/grain.ts).
+   *   'deep'   — the compaction gates drop them (systems/compaction.ts).
    * Both pools in this file filter on `!m.source`, so one flag keeps a material
    * out of ordinary chips AND out of cracked geodes.
    */

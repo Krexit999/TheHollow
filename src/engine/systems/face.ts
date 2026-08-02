@@ -32,9 +32,8 @@ import { lawNum, sealed, challengeNum } from '../laws';
 import { oreDef, oreRichness } from '../content/ores';
 import type { ReachPattern } from '../content/forgeParts';
 import {
-  ACROSS_DUST_MULT, applyStrike, ensureBand, remapBand,
-  type GrainStrikeResult, type StrikeMode,
-} from './grain';
+  applyChipCompaction, ensureCompaction, remapCompaction, type CompactionResult,
+} from './compaction';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -125,9 +124,9 @@ export function seepStrength(state: GameState): number {
 
 /** Refill cells from below; with Seepage active, full cells leak. */
 export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: number): void {
-  // THE BAND EXISTS BY THE TIME ANYTHING ELSE ASKS. Every save reaches the grain
-  // layer through here first — one length check per tick, and no migration.
-  ensureBand(state);
+  // THE COUNTER EXISTS BY THE TIME ANYTHING ELSE ASKS. Every save reaches the
+  // compaction layer through here first — one length check per tick, no migration.
+  ensureCompaction(state);
   const base = cellCap(state, mods);
   const regen = cellRegen(state, mods) * dt;
   const cells = state.face.cells;
@@ -238,12 +237,11 @@ export interface ChipResult {
   /** Cells splashed by Fault Lines. */
   fractured: number[];
   /**
-   * WHAT THE GRAIN LAYER DID (Proof #1). Absent when nothing came away, so a
-   * refused swing reads the same as it always did. Distinct from `fractured`
-   * above, which is Fault Lines' splash — a one-shot neighbour hit with no
-   * position and no memory. The FRONT is a live thing on the board.
+   * WHAT THE CHIP DID TO THE ROCK. Absent when nothing came away, so a refused
+   * swing reads exactly as it always did. Distinct from `fractured` above,
+   * which is Fault Lines' splash.
    */
-  grain?: GrainStrikeResult;
+  compaction?: CompactionResult;
 }
 
 /**
@@ -415,9 +413,6 @@ export function reachPattern(
  */
 export function manualChip(
   state: GameState, mods: ModifierCache, ctx: EngineCtx, cell: number,
-  /** HOW the player chose to strike, not a property of the cell. Defaults to
-   *  'with', which is the pre-grain behaviour exactly. */
-  strike: StrikeMode = 'with',
 ): ChipResult {
   if (cell < 0 || cell >= state.face.cells.length) {
     return { dust: D(0), charge: 0, crit: false, fractured: [] };
@@ -457,43 +452,14 @@ export function manualChip(
   // Signature mechanics (polarity chains, carried growth...) compose here.
   const sigMult = runChipMult(state, mods, ctx, cell, true);
   // ACROSS THE GRAIN PAYS 1.3x AND COSTS 1.8x THE TIME. That is not a buff
-  // dressed as a choice: 1.3 / 1.8 = 0.72, so an across-chipping player earns
-  // dust STRICTLY SLOWER than a with-chipping one. The mode is bought out of
-  // the ceiling and paid back in compaction — which moves the drop table, not
-  // the income (pillar 2).
-  const mult = D(sigMult).mul(crit ? 3 : 1).mul(strike === 'across' ? ACROSS_DUST_MULT : 1);
+  const mult = D(sigMult).mul(crit ? 3 : 1);
 
   // Read BEFORE the swing takes it: the ability meters' `onFull` rule asks
   // whether the rock you hit was nearly full, and after the harvest it never is.
   const wasFull = (state.face.cells[cell] ?? 0) >= cellCap(state, mods) * 0.7;
 
   const { dust, charge } = harvestCell(state, mods, cell, 1, mult);
-  if (charge <= 0) {
-    /**
-     * AN ACROSS-GRAIN STRIKE WORKS ROCK THAT HAS NOTHING LEFT TO GIVE.
-     *
-     * This early return used to be unconditional, and it inverted the whole
-     * mechanic. Compaction is a property of the ROCK, not of the charge in it
-     * (§2.2: a fracture propagates +1 COMPACTION along the grain line, not a
-     * chip) — so a drained cell can be compacted, and driving a wave through
-     * rock you have already emptied, so it comes back richer, is the INTENDED
-     * use. Emptied rock in the path is the target, not the wall.
-     *
-     * Bailing here meant the opposite: strike the head, head is empty, nothing
-     * happens at all — no compaction, no propagation, the wave silently dead.
-     * It is most of why a live driver measured mean wave length 0.76.
-     *
-     * WITH-grain still refuses. That one is the HARVEST verb, and a face you
-     * could compact by tapping empty rock with the cheap fast stroke would open
-     * every gate for free. Across is the aiming verb, it costs 1.8x the time,
-     * and it is the one the spec ties to propagation.
-     */
-    if (strike === 'across') {
-      const grain = applyStrike(state, mods, ctx, cell, strike);
-      return { dust: D(0), charge: 0, crit: false, fractured: [], grain };
-    }
-    return { dust, charge, crit: false, fractured: [] };
-  }
+  if (charge <= 0) return { dust, charge, crit: false, fractured: [] };
 
   let totalDust = dust;
   const fractured: number[] = [];
@@ -588,13 +554,13 @@ export function manualChip(
   // AFFINITY (v21): the equipped tool learns the shell it works — a small capped
   // bonus through the modifier pipeline (dropRate), never dustYield (pillar 2).
   logImplementUse(equippedTool(state), currentShell(state).id, 1);
-  // THE GRAIN LAYER RESOLVES LAST, and only on a swing that actually took
-  // something. Compaction is a record of work done to the rock; a swing that
-  // found nothing did no work, and a face you can compact by tapping empty
-  // cells would let a player walk every gate open for free.
-  const grain = applyStrike(state, mods, ctx, cell, strike);
+  // COMPACTION RESOLVES LAST, and only on a swing that actually took something.
+  // It is a record of work done to the rock; a swing that found nothing did no
+  // work, and a face you can compact by tapping empty cells would let a player
+  // walk every deep-entry gate open for free.
+  const compaction = applyChipCompaction(state, ctx, cell);
   ctx.emit({ type: 'chip', cell, dust: totalDust, charge, crit, manual: true });
-  return { dust: totalDust, charge, crit, fractured, grain };
+  return { dust: totalDust, charge, crit, fractured, compaction };
 }
 
 /**
@@ -671,10 +637,9 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     // ...and so is a pocket. A sweep is a fast pass across the face; it is
     // exactly the gesture an ore is supposed to be immune to.
     if (state.face.ore?.[cell]) continue;
-    // A SWEEP IS ALWAYS WITH THE GRAIN, and it seeds nothing at all. The gesture
-    // is a fast pass for ergonomics; letting it drive compaction would make the
-    // cheapest input in the game the way you open the deep-entry gates, and the
-    // whole point of across-grain is that the gates cost aim and time.
+    // A SWEEP COMPACTS NOTHING. The gesture is a fast pass for ergonomics, and
+    // letting it pack the rock would make the cheapest input in the game the way
+    // you open the deep-entry gates — those cost attention, one cell at a time.
     const before = state.face.cells[cell] ?? 0;
     const sigMult = runChipMult(state, mods, ctx, cell, true);
     const r = harvestCell(state, mods, cell, 1, D(sigMult));
@@ -779,9 +744,9 @@ export function applyFieldSize(state: GameState, mods: ModifierCache): void {
   state.face.cells = next;
   state.face.ore = nextOre;
   state.face.oreDug = nextDug;
-  // GRAIN AND COMPACTION MOVE WITH THE ROCK, by the same coordinate
-  // remap and for the same reason: a wider grid renumbers every row, so an
-  // index copy would slide the whole field sideways one cell per row and a
-  // player's half-built wave would be pointing at nothing.
-  remapBand(state, w, h, remap);
+  // COMPACTION MOVES WITH THE ROCK, by the same coordinate remap and for the
+  // same reason as the pockets: a wider grid renumbers every row, so an index
+  // copy would slide the whole board sideways one cell per row and a player's
+  // worked seam would land somewhere they never touched.
+  remapCompaction(state, w, h, remap);
 }
