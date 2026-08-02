@@ -677,8 +677,31 @@ function RackShelf({
               data-held={held.length}
               title={held.length === 0
                 ? `No ${PART_DEFS[t].name} cast. ${PART_DEFS[t].governs}`
-                : `${held.length} cast — best ${materialDef(best!.materialId).name} ${best!.purity}`}
-              onClick={() => onWant(t === want ? null : t)}
+                : seated
+                  ? `${held.length} cast — tap to choose a different one`
+                  : `Seat the best ${PART_DEFS[t].name} — ${materialDef(best!.materialId).name} ${best!.purity}`}
+              /**
+               * TAPPING A SLOT SEATS THE PART. It used to only open a filtered
+               * list, so on a rack holding exactly one Head — the overwhelmingly
+               * common case early — the tap appeared to do nothing: the slot
+               * already showed what you had, and the thing it revealed was a
+               * list of one you then had to tap again. Two taps to seat the only
+               * candidate, and the first of them looked like a no-op.
+               *
+               * Now the first tap seats the best of that type AND opens the
+               * list, so choosing a different one is still one tap away and
+               * nothing is hidden. A slot that is already seated only opens the
+               * list — re-seating what is already on the bench would be the
+               * no-op this is fixing, in the other direction.
+               */
+              onClick={() => {
+                if (t === want) { onWant(null); return; }
+                onWant(t);
+                if (!seated && best) {
+                  const r = dispatch({ type: 'benchPlace', partId: best.id });
+                  setNote(r.ok ? null : (r.reason ?? null));
+                }
+              }}
             >
               <div style={{ fontSize: 7, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#6a6055' }}>
                 {PART_DEFS[t].name.slice(0, 4)}
@@ -1253,7 +1276,9 @@ function ModLibrary({ state }: { state: GameState }) {
   );
 }
 
-function CrucibleBar({ state, want }: { state: GameState; want: PartType | null }) {
+function CrucibleBar({
+  state, want, onWant,
+}: { state: GameState; want: PartType | null; onWant: (t: PartType | null) => void }) {
   const c = state.casting.crucible;
   const q = queued(c);
   const [target, setTarget] = useState<string>('');
@@ -1262,8 +1287,22 @@ function CrucibleBar({ state, want }: { state: GameState; want: PartType | null 
   const [layers, setLayers] = useState(1);
   const [note, setNote] = useState<string | null>(null);
 
-  // The mould the rack filter is asking for wins, so tapping an empty seat on
-  // the tool lands you on the right mould without a second decision.
+  /**
+   * THE RACK FILTER SUGGESTS A MOULD; IT NO LONGER OVERRULES ONE.
+   *
+   * This read `want ?? part`, which is a LATCH, not a default: once `want` was
+   * non-null — set by tapping a rack slot or an empty seat on the tool diagram,
+   * and never cleared by pouring — every mould tab still called `setPart(t)`
+   * and every one of those calls was then discarded, because `want` won on the
+   * next render. The tabs looked alive, highlighted nothing, and poured the
+   * part the RACK was filtered to. That is the reported "after pressing a mould
+   * button the other mould tabs stop accepting clicks": they were accepting
+   * them and the answer was being thrown away.
+   *
+   * `want` is now only the OPENING position — an explicit tap on a mould tab
+   * clears it (below) and from then on the player's choice is the one on
+   * screen. Nothing is lost: tapping a seat still lands you on the right mould.
+   */
   const chosenPart = want ?? part;
   const shapes = shapesFor(chosenPart);
   const chosenShape = shape && shapes.some((s) => s.id === shape) ? shape : defaultShape(chosenPart);
@@ -1347,7 +1386,13 @@ function CrucibleBar({ state, want }: { state: GameState; want: PartType | null 
                 color: t === chosenPart ? '#e0b054' : '#8a7f70',
               }}
               data-testid={`mould-part-${t}`}
-              onClick={() => { setPart(t); setShape(null); }}
+              /* These are a tab set and said so only in a border colour, which
+                 is invisible to a screen reader and to any check that is not a
+                 screenshot. */
+              aria-pressed={t === chosenPart}
+              /* AN EXPLICIT TAP WINS. Clearing `want` is the whole fix — without
+                 it this setPart is written and immediately overruled. */
+              onClick={() => { onWant(null); setPart(t); setShape(null); setNote(null); }}
             >
               {PART_DEFS[t].name.slice(0, 4)}
             </button>
@@ -1364,6 +1409,7 @@ function CrucibleBar({ state, want }: { state: GameState; want: PartType | null 
                 color: s.id === chosenShape ? '#e0b054' : '#8a7f70',
               }}
               data-testid={`mould-shape-${s.id}`}
+              aria-pressed={s.id === chosenShape}
               title={s.blurb}
               onClick={() => setShape(s.id)}
             >
@@ -1527,7 +1573,16 @@ function TheStation({ state }: { state: GameState }) {
       </div>
 
       <RackShelf state={state} want={want} onWant={setWant} />
-      <CrucibleBar state={state} want={want} />
+      <CrucibleBar state={state} want={want} onWant={setWant} />
+
+      {/* CONDITION IS PRIMARY (§37). Repairing the pick is a thing you do
+          often and under pressure — a tool near breaking is the reason you
+          came to this screen. It was three levels down (open "The tool in
+          full", scroll past shape, living, craft, class, balance, instability,
+          season, level, at-the-face) and the re-seat button with it, which
+          makes the game's most routine maintenance action a drill-down. It
+          sits above the drawers now, in the room it belongs to. */}
+      {built && <Durability state={state} tool={built} />}
 
       {/* ── SECONDARY, tucked. Nothing lost; it is just not in the way. ── */}
       <div className="mt-2 space-y-1.5" data-testid="station-secondary">
@@ -1568,7 +1623,8 @@ function TheStation({ state }: { state: GameState }) {
             <SeasonCard state={state} />
             <LevelCard state={state} tool={built} />
             <AtTheFace state={state} tool={built} />
-            <Durability state={state} tool={built} />
+            {/* Durability moved OUT of this drawer and above it — see §37 note
+                at the mount site. It is not duplicated here. */}
             <CoherenceReadout tool={built} testid="tool-coherence" />
             <RawStats tool={built} testid="tool-stats" />
             <BiographyCard state={state} />
@@ -1778,8 +1834,8 @@ export function CastingPanel() {
   if (!state.forge.built) {
     return (
       <div className="panel p-4 text-center text-xs italic text-cave-400">
-        Sand moulds stacked against a cold wall, and a tub with nothing in it. The Forge has to
-        be standing before anything gets poured here.
+        Sand moulds stacked against a cold wall, and a tub with nothing in it. The floor has to
+        be opened before anything gets poured here.
       </div>
     );
   }
@@ -2552,7 +2608,12 @@ function ModBench({ state }: { state: GameState }) {
       {/* ── 2. WHAT IT ADDS UP TO ────────────────────────────────────── */}
       {stacks.length > 0 && <StackTotal cache={cache} state={state} />}
       <SynergyCard state={state} />
-      <InstabilityCard state={state} />
+      {/* INSTABILITY LIVES IN "THE TOOL IN FULL", AND ONLY THERE. It was drawn
+          here as well, so a player with the Modifiers drawer and the tool
+          drawer both open saw the same number, bar and explanation twice and
+          had no way to tell whether they were two readings or one. It is a
+          property of the TOOL, not of the modifier list, so it belongs with the
+          tool. */}
 
       {/* ── 3. THE WORKBENCH ─────────────────────────────────────────── */}
       <div className="mt-2 border-t border-cave-800 pt-1.5">

@@ -315,6 +315,17 @@ export function defaultCastingState(): CastingState {
  * (the standing reach rule — a mechanic works in every shell or it is not
  * finished).
  */
+/**
+ * THE ONE GATE, AND IT IS NOT A TIER. Audited this pass: nothing in the casting
+ * path reads a forge TIER — not `castingUnlocked`, not `chargeCrucible`,
+ * `castPart`, `benchPlace`, `meltBack` or `buildTool`. `castingToolTier` is
+ * derived FROM a built tool and only ever feeds the depth wall (§LAW 1's
+ * hardness key); it never gates the floor that makes the tool.
+ *
+ * `forge.built` is the storage bit, kept because it is in every save and in
+ * `SURVIVES_BREACH`. What it MEANS is "the Casting Floor is open" — the
+ * upgrade that sets it is named that now.
+ */
 export function castingUnlocked(state: GameState): boolean {
   return state.forge.built;
 }

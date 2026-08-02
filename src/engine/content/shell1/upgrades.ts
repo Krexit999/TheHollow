@@ -175,9 +175,27 @@ export function registerShell1Upgrades(): void {
       if (s.drills.units.length === 0) s.drills.units.push(newDrill(defaultDrillName(0)));
     },
   });
+  /**
+   * THE CASTING FLOOR'S OWN UNLOCK — re-homed off the retired Forge.
+   *
+   * The Forge TAB was retired at A.71 and casting became the station that
+   * replaced it, but this row went on being called "Raise the Forge" and the
+   * flag it sets (`forge.built`) went on being the only thing `castingUnlocked`
+   * reads. So the door to the new station was still the old station's name, and
+   * a player who bought it was told they had built a room that no longer exists.
+   *
+   * THE ID AND THE FLAG DO NOT MOVE — `forgeBuild` / `state.forge.built` are in
+   * every save, in `SURVIVES_BREACH`, and in `recursionSys`. Renaming the STORAGE
+   * would be a migration for no gain. What moves is what the row SAYS it opens,
+   * which is the part that was lying. Same currency, same 15, same visibility
+   * rule: nothing about pacing moves.
+   *
+   * LAW 3: this shows a DESTINATION (a named place you can go), not a
+   * requirement list and not "unlock tier 2 to continue".
+   */
   registerUpgrade({
     id: 'forgeBuild',
-    name: 'Raise the Forge',
+    name: 'Open the Casting Floor',
     currency: 'CONV',
     baseCost: D(15),
     ratio: 1,
@@ -186,7 +204,7 @@ export function registerShell1Upgrades(): void {
     // Appears once the loam has given up something worth working.
     visible: (s) => s.materials.totalDrops >= 1 && !s.forge.built,
     description: () =>
-      'An anvil, a quench-barrel, and a chimney borrowed from the Kiln. The ore you keep finding wants shaping.',
+      'Sand moulds, a crucible, and a chimney borrowed from the Kiln. The ore you keep finding wants shaping.',
     onPurchase: (s) => {
       s.forge.built = true;
     },

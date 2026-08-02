@@ -23,7 +23,7 @@ import { SystemHeader } from './components/SystemHeader';
 import { PanelErrorBoundary } from './components/ErrorBoundary';
 import { SYSTEM_COPY } from './systemCopy';
 import { SpiralPanel, RelicsPanel } from './components/longtail';
-import { Compendium, CompendiumButton } from './components/Compendium';
+import { Compendium } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 import { RollPanel } from './components/roll';
 
@@ -294,7 +294,11 @@ export function App() {
       </nav>
 
       <Compendium />
-      <CompendiumButton variant="fab" />
+      {/* THE FAB IS GONE. On desktop it pinned itself to bottom-left directly
+          under the Chip / Sweep / Skim pill, so the two read as one control
+          strip and the Compendium sat in the middle of the mining verbs. The
+          header's ❦ is the way in and always was; this was a second door onto
+          the same room, standing in the wrong doorway. */}
       <OfflineModal />
       <DisclosureGate />
       <Toasts />

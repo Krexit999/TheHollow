@@ -108,7 +108,30 @@ export function rerollRoll(state: GameState, rng: () => number = Math.random): v
   r.rolls += 1;
 }
 
+/**
+ * WHAT A STATION IS HOLDING — and it ROLLS IT if nobody has yet.
+ *
+ * This used to be `state.roll?.rolled[id] ?? { seam:'', feature:'nothing',
+ * hazard:0 }` — a silent empty fallback that is indistinguishable, to every
+ * caller, from a station that genuinely holds nothing. That is the same bug
+ * shape as the hazard-0 read one layer up: the Standoff asked The Ashfall for
+ * its intensity, got 0 because nothing had populated the table yet, and printed
+ * "Hazard 0" over a fight running at intensity 1.
+ *
+ * Adding `ensureRoll` to the engine tick fixed the symptom and left the cause:
+ * this reader was still correct only because of tick ORDERING, which is exactly
+ * the kind of invariant that holds until someone moves a mount. It rolls for
+ * itself now, so a cold state returns real contents rather than a plausible
+ * zero, and the guarantee is local instead of ambient.
+ *
+ * `ensureRoll` only fills what is MISSING, so this cannot re-roll a station
+ * that already has contents — calling it on every read is idempotent, and the
+ * §1.1 re-roll stays exclusively `rerollRoll`'s job.
+ */
 export function contentsOf(state: GameState, id: string): RolledContents {
+  const held = state.roll?.rolled[id];
+  if (held) return held;
+  ensureRoll(state);
   return state.roll?.rolled[id] ?? { seam: '', feature: 'nothing', hazard: 0 };
 }
 
