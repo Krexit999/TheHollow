@@ -14,6 +14,7 @@ import { applyFieldSize, manualChip, sweep } from './systems/face';
 import { resetCompaction } from './systems/compaction';
 import { buildCrusher, crush } from './systems/crusher';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
+import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
@@ -158,6 +159,25 @@ export function handleAction(
 
     case 'dismissStandoff':
       return dismissStandoff(state, ctx);
+
+    case 'beginSample':
+      return beginSample(state, ctx, action.stationId);
+
+    /**
+     * THE BENCH IS BUILT FROM CAST PARTS, like every other machine in the
+     * bootstrap (§5) — never bought with currency. Dearer at every tier.
+     */
+    case 'buildAssayBench': {
+      const b = ensureAssayBench(state);
+      if (b.tier >= MAX_BENCH_TIER) return { ok: false, reason: 'At its last tier' };
+      const cost = 2 + b.tier;
+      const rack = state.casting.rack ?? [];
+      if (rack.length < cost) return { ok: false, reason: `Wants ${cost} cast parts` };
+      rack.splice(0, cost);
+      b.tier += 1;
+      ctx.dirty();
+      return { ok: true, data: { tier: b.tier } };
+    }
 
     case 'setKilnFeeding': {
       if (!state.kiln.built) return { ok: false, reason: 'No kiln' };

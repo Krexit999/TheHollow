@@ -96,7 +96,13 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'quillrest', depth: 98, name: 'Quillrest', type: 'wreck', wreck: 'THE READING',
-    seams: ['umberjade', 'wormsteel'],
+    // MILLSTONE is here so the trap is FINDABLE rather than merely possible.
+    // It rolls out of the rarity table anywhere past depth 70, but a material
+    // that only ever arrives by chance cannot be named by the Assay Bench —
+    // and a trap the information system cannot warn you about is a gotcha,
+    // which §16.3 is explicit it must not be. Seaming it here means the Bench
+    // can read "Millstone · dense · brittle" off the row before you dig it.
+    seams: ['umberjade', 'wormsteel', 'millstone'],
     line: 'Someone sat down here to write and did not get up.',
   },
   {

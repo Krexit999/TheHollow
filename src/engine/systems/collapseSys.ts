@@ -18,6 +18,7 @@ import { grantXP } from './xp';
 import { runFaceReset } from '../signatures';
 import { resetCompaction } from './compaction';
 import { rerollRoll } from './roll';
+import { clearSamples } from './assayBench';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
 
@@ -163,6 +164,18 @@ export function doCollapse(
   // fix for the ladder being consumed in one pass — 7-11 Collapses per Loam arc
   // against 15 stations would otherwise walk the same rows forty-plus times.
   rerollRoll(state);
+  /**
+   * EVERY SAMPLE IS NOW STALE, so the fog closes back over the Roll. This is
+   * not a punishment for having read it — the reading was TRUE and it paid for
+   * the run it was taken in. The contents it described have just been replaced,
+   * so keeping the fog burnt would be showing the player last run's answer with
+   * this run's confidence, which is worse than showing nothing.
+   *
+   * The BENCH TIER survives, because that is a machine and machines are not
+   * what a Collapse takes. The ASSAY CALL re-rolls with the stations (it is
+   * keyed to `roll.rolls`), so it moves on its own the moment this returns.
+   */
+  clearSamples(state);
 
   grantXP(state, mods, ctx, cores.mul(8));
 

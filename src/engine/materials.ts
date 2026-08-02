@@ -254,6 +254,25 @@ export const MATERIALS: MaterialDef[] = [
   M('weepstone', 'Weepstone', 'loam', 'aberrant', ['#2e3438', '#50646c', '#89a8b0'], 7, 'aberrant',
     'It is wet when you find it and it is wet in a sealed box. Best not to hold it long.'),
 
+  /**
+   * MILLSTONE — LOAM'S TRAP MATERIAL (§16.3), and it is not a gotcha.
+   *
+   * `flawless` purity, so it assays superb and the numbers are real: it genuinely
+   * has the best Core magnitude in the shell. And it is `brittle`, which is the
+   * one trait a Core must not have — the part whose whole job is holding the
+   * tool together. So the material that looks perfect for the seat is the
+   * material that wrecks it, and the Assay says `brittle` out loud before you
+   * pour, so nobody is ambushed.
+   *
+   * IT EXISTS FROM ERA I ON PURPOSE. The answer is the Still — distil the
+   * brittle out and it becomes the best Core stone in Loam. The Still is a long
+   * way off, which means the lesson is sitting in the Hold waiting for the
+   * machine that teaches it, rather than arriving with it. That is the whole
+   * design of a trap material: the problem is authored years before the tool.
+   */
+  M('millstone', 'Millstone', 'loam', 'flawless', ['#39322b', '#6b5c4c', '#a89a86'], 8, 'soft',
+    'Grey and close-grained and heavier than it looks — the best seat-stone in the loam, if it would only stop cracking.'),
+
   // ---- DEEP ENTRY (Proof #1) ------------------------------------------------
   // These come out of COMPACTION, not out of the rarity table. They are marked
   // `source: 'deep'` for exactly the reason combat materials are marked at all:
@@ -558,7 +577,13 @@ export function rollRarity(depth: number, rng: () => number = Math.random): Mate
  * Roll a single drop for a shell at a depth. Assumes the drop CHANCE already
  * passed — this only decides what fell out.
  */
-export function rollDrop(shellId: string, depth: number, rng: () => number = Math.random): RolledDrop {
+export function rollDrop(
+  shellId: string,
+  depth: number,
+  rng: () => number = Math.random,
+  /** THE ASSAY CALL: which material this run's band favours, or null. */
+  favoured: string | null = null,
+): RolledDrop {
   const kindRoll = rng();
   if (kindRoll < GEODE_SHARE) return { kind: 'geode' };
   if (depth >= 60 && kindRoll < GEODE_SHARE + GEM_SHARE) {
@@ -572,9 +597,46 @@ export function rollDrop(shellId: string, depth: number, rng: () => number = Mat
   // Combat-only materials never come out of the rock, and neither do WORKED
   // ones — those are made at a bench, not found in a seam.
   const pool = MATERIALS.filter((m) => m.shellId === shellId && m.rarity === rarity && !m.source && !m.worked);
-  const def = pool[Math.floor(rng() * pool.length)] ?? FALLBACK_DROP;
+  const def = pickFavoured(pool, favoured, rng) ?? FALLBACK_DROP;
   return { kind: 'material', materialId: def.id, purity: rollPurity(def.rarity, rng) };
 }
+
+/**
+ * THE ASSAY CALL'S THUMB ON THE SCALE (§40.3), and it is a REDISTRIBUTION, not
+ * a faucet.
+ *
+ * The favoured material is drawn with extra weight from the SAME pool, on the
+ * SAME roll, at the SAME rarity that was already decided above. It cannot
+ * change whether a drop happens, how many drop, or what rarity is rolled — only
+ * which of the equally-likely candidates comes up. Every unit of weight it
+ * gains is a unit some sibling loses.
+ *
+ * PILLAR 2: drops are outside the income path already, and this is outside the
+ * drop RATE as well. There is no path from here to cellCap, cellRegen or
+ * chipYield, and a test drives the Call across every material and reads dpsMax.
+ */
+function pickFavoured(
+  pool: MaterialDef[],
+  favoured: string | null,
+  rng: () => number,
+): MaterialDef | undefined {
+  if (pool.length === 0) return undefined;
+  if (!favoured || !pool.some((m) => m.id === favoured)) {
+    return pool[Math.floor(rng() * pool.length)];
+  }
+  const weights = pool.map((m) => (m.id === favoured ? CALL_DROP_WEIGHT : 1));
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = rng() * total;
+  for (let i = 0; i < pool.length; i++) {
+    r -= weights[i]!;
+    if (r <= 0) return pool[i];
+  }
+  return pool[pool.length - 1];
+}
+
+/** How much likelier the favoured stone is than any one sibling. Mirrors
+ *  `CALL_WEIGHT` in assayBench.ts; kept here so `rollDrop` stays pure. */
+export const CALL_DROP_WEIGHT = 2.5;
 
 /** The seam's floor: when a (shell, rarity) pool is empty, fall back to the
  *  first MINEABLE material — never MATERIALS[0], which is a worked material

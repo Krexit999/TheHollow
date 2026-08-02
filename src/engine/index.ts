@@ -31,6 +31,7 @@ import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
 import { tickPlant } from './systems/plant';
 import { ensureRoll } from './systems/roll';
+import { ensureCall, tickAssayBench } from './systems/assayBench';
 import { tickDrills } from './systems/drills';
 import { tickAlloys } from './systems/drillAlloys';
 import { checkPrizeDrills } from './systems/prizeDrills';
@@ -152,6 +153,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     // that was really running at intensity 1. A system that is only correct
     // when a particular panel is on screen is not a system.
     ensureRoll(state);
+    // THE CALL is keyed to the re-roll counter, so this only rolls when the
+    // stations do. THE BENCH finishes a sample when its clock runs out.
+    ensureCall(state);
+    tickAssayBench(state, ctx);
     tickFace(state, mods, ctx, dt);
     runFaceTick(state, mods, ctx, dt); // signature mechanics (chain timeouts...)
     tickDrills(state, mods, ctx, dt);

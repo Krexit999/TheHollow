@@ -49,8 +49,10 @@ describe('the taxonomy', () => {
   it('~90 mineable materials + combat-only extras, unique ids, six gems', () => {
     expect(MATERIALS.length).toBeGreaterThanOrEqual(88);
     expect(new Set(MATERIALS.map((m) => m.id)).size).toBe(MATERIALS.length);
-    // 15 mineable in Loam; the Deepwrought carry the rest (unminable).
-    expect(materialsOfShell('loam').filter((m) => !m.source)).toHaveLength(15);
+    // 16 mineable in Loam; the Deepwrought carry the rest (unminable).
+    // Was 15 before MILLSTONE, the shell's trap material (§16.3) — the best
+    // Core magnitude in Loam wearing the one trait a Core must not have.
+    expect(materialsOfShell('loam').filter((m) => !m.source)).toHaveLength(16);
     expect(materialsOfShell('loam').filter((m) => m.source === 'combat').length).toBeGreaterThanOrEqual(5);
     expect(GEMS).toHaveLength(6);
     // Every shell got its share of the declaration.

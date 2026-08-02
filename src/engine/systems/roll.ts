@@ -28,6 +28,7 @@ import {
   FEATURE_LABEL, ROLL_FEATURES, loamRoll, type RollFeature, type StationDef, type StationType,
 } from '../content/shell1/roll';
 import { currentShell } from '../shells';
+import { isSampled } from './assayBench';
 
 /** How many stations ahead are fully legible (§1: "the next three"). */
 export const LEGIBLE_AHEAD = 3;
@@ -192,6 +193,9 @@ export interface RollRow {
   type: StationType;
   /** Name, depth, hardness, seam and type are all readable. */
   legible: boolean;
+  /** Legible because the ASSAY BENCH burnt the fog off it, rather than because
+   *  it is near the lamp — so the panel can say WHY it can read this row. */
+  sampled: boolean;
   /** The player has already been this deep this run. */
   behind: boolean;
   /** The next station down — the one the descent is working toward. */
@@ -223,10 +227,16 @@ export function rollRows(state: GameState): RollRow[] {
       if (ahead < LEGIBLE_AHEAD) legible = true;
       ahead += 1;
     }
+    // THE BENCH BURNS FOG (§9.3). A sampled station reads as though it were
+    // under the lamp — which is the whole product the Bench sells. It is a
+    // separate flag as well as an OR into `legible` so the row can say why.
+    const sampled = isSampled(state, def.id);
+    if (sampled) legible = true;
     return {
       def,
       type: typeOf(state, def),
       legible,
+      sampled,
       behind,
       current,
       contents: contentsOf(state, def.id),

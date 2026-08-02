@@ -315,6 +315,23 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   wormsteel: ['springy', 'tough'], palegold: ['charged', 'dense'], chthonite: ['dense', 'warm'],
   starmarl: ['charged', 'trueseated'], sablequartz: ['trueseated', 'keen'],
   weepstone: ['charged', 'warm', 'hollow'],
+  /**
+   * THE TRAP (§16.3): ONE RUINOUS TRAIT, not one trait.
+   *
+   * `dense` is exactly what a Core wants — it is why the stone looks like the
+   * answer — and `brittle` is the one trait a Core must not have. So the trap
+   * is not "this material is bad in a way you cannot see"; it is "this material
+   * is genuinely the best seat-stone in the shell AND it will crack", and both
+   * halves are true and both are printed. The Still takes the brittle out and
+   * leaves the dense, which is the whole tutorial.
+   *
+   * (First written with `brittle` alone, on a reading of §16.3's "one trait
+   * that ruins you" as a trait COUNT. The traits suite caught it against the
+   * 2-3 invariant, and the invariant is right: a single-trait material has
+   * nothing to make it tempting, and a trap nobody wants to fall into is not a
+   * trap.)
+   */
+  millstone: ['dense', 'brittle'],
   // ---- DEEP ENTRY (Proof #1): what compaction does to a material's character.
   // Graveclay is dense-and-tough; driven down past 14 it also becomes
   // TRUESEATED — the same stone, holding harder. Deepgrave is what the last two

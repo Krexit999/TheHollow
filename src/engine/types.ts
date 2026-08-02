@@ -647,6 +647,9 @@ export interface GameState {
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
+  /** THE ASSAY BENCH (§9.3) + THE ASSAY CALL (§40.3): fog burnt off the Roll,
+   *  and which material the band favours this run. */
+  assayBench?: import('./systems/assayBench').AssayBenchState;
   collapse: {
     count: number;
     /** Core tree node levels, keyed by node id. */
@@ -1060,6 +1063,8 @@ export type GameAction =
   | { type: 'beginStandoff' }
   | { type: 'exchange'; stance: import('./systems/standoff').Stance }
   | { type: 'dismissStandoff' }
+  | { type: 'beginSample'; stationId: string }
+  | { type: 'buildAssayBench' }
   /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
   | { type: 'workOre'; cell: number; seconds: number }
   | { type: 'setHuntOres'; on: boolean }

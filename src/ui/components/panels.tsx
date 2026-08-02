@@ -36,6 +36,7 @@ import { Select } from './Select';
 import { PlantPanel, CrusherPanel } from './plant';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
+import { AssayBenchPanel, AssayCallStrip } from './assayBench';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
 import { OpticsCard } from './glassmere';
@@ -261,6 +262,8 @@ export function DigPanel() {
       {/* THE VERBS, off the canvas and into the room under it. They were a
           floating pill drawn over the rock; plain HTML here, nothing cut. */}
       <FaceVerbs />
+      {/* What the band favours today — the reason to go now rather than later. */}
+      <AssayCallStrip />
       <FieldStats state={state as GameState} m={m} />
       {/* THE ROLL MOVED TO THE SHAFT SCREEN. Down here it was one card among
           ten, capped at a 280px scroller, and the floor — the thing §1 says is
@@ -339,6 +342,8 @@ export function KilnPanel() {
           Kiln, so a separate room for it would be a room about one number. */}
       <PlantPanel />
       <CrusherPanel />
+      {/* A Surge machine, so it sits with the plant that feeds it. */}
+      <AssayBenchPanel />
       <div className="panel overflow-hidden p-4">
         {/* The kiln itself — it should visibly run. */}
         <div className="relative mx-auto h-28 w-40">

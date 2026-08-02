@@ -150,6 +150,14 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * is the number that makes "wants both" mean something.
    */
   refinery: { flow: 4.0, surge: 7 },
+  /**
+   * THE ASSAY BENCH IS PURE SURGE, and that is the point of putting it here at
+   * all. A sample is one hard pull and then nothing — the Crusher's shape, not
+   * the Kiln's — so a Draught plant finds reading the Roll expensive and a
+   * Reservoir plant finds it cheap. §3's claim doing work in a system that is
+   * not a machine, which is the test of whether the claim was real.
+   */
+  assayBench: { flow: 0, surge: 9 },
 };
 
 export function demandOf(machineId: string): Demand {

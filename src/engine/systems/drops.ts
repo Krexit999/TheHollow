@@ -31,6 +31,7 @@ import { logToolDeed } from './heirloom';
 import { skillRank } from '../content/shell1/skillTree';
 import { grantXP } from './xp';
 import { currentShell } from '../shells';
+import { assayCall } from './assayBench';
 
 export const ASSAY_BASE_SECONDS = 20;
 export const ASSAY_BOOST_CHIPS = 80;
@@ -124,6 +125,8 @@ export function rollForDrop(
   applyDrop(state, ctx, rollDrop(
     currentShell(state).id,
     state.depth + oreDepthBonus,
+    Math.random,
+    assayCall(state),
   ));
 }
 
@@ -164,7 +167,7 @@ export function rollForOre(
   let n = Math.floor(rolls);
   if (Math.random() < rolls - n) n += 1;
   for (let i = 0; i < n; i++) {
-    applyDrop(state, ctx, rollDrop(currentShell(state).id, state.depth + depthBonus));
+    applyDrop(state, ctx, rollDrop(currentShell(state).id, state.depth + depthBonus, Math.random, assayCall(state)));
   }
 }
 
