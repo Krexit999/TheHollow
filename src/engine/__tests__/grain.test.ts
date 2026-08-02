@@ -12,7 +12,7 @@ import type { Engine, EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import {
   ACROSS_COMPACTION, ACROSS_DUST_MULT, ACROSS_TIME_MULT, COMPACTION_SHOW_AT,
-  DEEP_GATES, FRONT_COMPACTION, GRAIN_E, MAX_COMPACTION, TERMINAL_GATE,
+  DEEP_GATES, FRONT_COMPACTION, GRAIN_E, GRAIN_W, MAX_COMPACTION, TERMINAL_GATE,
   WITH_COMPACTION, compactionAt, ensureBand, faceReport, generateGrain, grainAt, grainNext,
   rerollBand, resetChipLog, seedCompaction, strikeTimeMult,
 } from '../systems/grain';
@@ -224,6 +224,50 @@ describe('the persistent front', () => {
     for (let i = 0; i < 600; i++) tickFace(s(), m, nullCtx, 0.1); // a minute away
     expect(s().face.front!.alive).toBe(true);
     expect(s().face.front!.cell).toBe(head);
+  });
+
+  /**
+   * A FRACTURE CANNOT CROSS ITS OWN PATH — the fix for the bug a player found
+   * by looking at the grid and asking the obvious question.
+   *
+   * Two neighbours can point at each other, and on the shipped field 98% of
+   * boards contain such a pair; 100% of walks eventually enter a cycle. Without
+   * this rule no wave ever ends, and the front-length metric happily reported
+   * 9.41 while measuring a wave bouncing between the same two squares.
+   */
+  it('a wave ENDS — it never walks forever, on any field', () => {
+    for (let trial = 0; trial < 200; trial++) {
+      const { s, m } = fresh();
+      const st = s();
+      ensureBand(st);
+      // Drive one wave as hard as a player possibly could.
+      let guard = 0;
+      while (st.face.front?.alive !== false && guard++ < 500) {
+        const head = st.face.front?.alive ? st.face.front.cell : 0;
+        st.face.cells[head] = cellCap(st, m);
+        manualChip(st, m, nullCtx, head, 'across');
+      }
+      expect(guard).toBeLessThan(500);
+      expect(st.face.front!.alive).toBe(false);
+      // A wave can never be longer than the board it is crossing.
+      expect(st.face.front!.hops).toBeLessThanOrEqual(st.face.cells.length);
+    }
+  });
+
+  it('two cells facing each other do not ping-pong forever', () => {
+    const { s, m } = fresh();
+    const st = s();
+    ensureBand(st);
+    // Cell 0 points east, cell 1 points west: the degenerate case, and the one
+    // the player spotted from the grid.
+    st.face.grain = st.face.cells.map(() => GRAIN_E);
+    st.face.grain[1] = GRAIN_W;
+    st.face.cells[0] = cellCap(st, m);
+    manualChip(st, m, nullCtx, 0, 'across');   // 0 -> 1
+    expect(st.face.front!.cell).toBe(1);
+    st.face.cells[1] = cellCap(st, m);
+    manualChip(st, m, nullCtx, 1, 'across');   // 1 would go back to 0
+    expect(st.face.front!.alive).toBe(false);
   });
 
   it('the wave clamps at the ceiling rather than running the number away', () => {

@@ -546,7 +546,7 @@ export interface GameState {
      * Dies on the grid edge, on a locked cell, or when the player starts another
      * one elsewhere. `trail` is the last few hops, for the renderer's wake.
      */
-    front?: { cell: number; hops: number; alive: boolean; trail: number[] };
+    front?: { cell: number; hops: number; alive: boolean; trail: number[]; path: number[] };
   };
 
   /** Signature techniques — per-technique last-used play-seconds. */

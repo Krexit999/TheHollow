@@ -321,7 +321,9 @@ export interface ChipLogEntry {
 export interface FrontDeath {
   t: number;
   hops: number;
-  cause: 'edge' | 'abandoned';
+  /** `closed` — the grain led it back onto its own path. `edge` — off the
+   *  board. `abandoned` — the player started another one somewhere else. */
+  cause: 'edge' | 'closed' | 'abandoned';
 }
 
 let chipLog: ChipLogEntry[] = [];
@@ -397,7 +399,7 @@ export function applyStrike(
         abandoned = true;
         frontDeaths.push({ t, hops: live.hops, cause: 'abandoned' });
       }
-      state.face.front = { cell, hops: 0, alive: true, trail: [] };
+      state.face.front = { cell, hops: 0, alive: true, trail: [], path: [cell] };
     }
     const front = state.face.front!;
     if (continued) front.cell = cell;
@@ -405,13 +407,33 @@ export function applyStrike(
     // thing being watched, and a cascade resolves it before it reads.
     const step = grainNext(state, cell);
     if (step < 0) {
-      // The only way a wave ends on its own: it runs off the board.
+      // A wave runs off the board.
       front.alive = false;
       frontDeaths.push({ t, hops: front.hops, cause: 'edge' });
+    } else if (front.path.includes(step)) {
+      /**
+       * A FRACTURE CANNOT CROSS ITS OWN PATH.
+       *
+       * WITHOUT THIS, NO WAVE EVER ENDS. Measured on the shipped field: 98% of
+       * boards contain at least one pair of cells pointing at each other, and
+       * 100% of walks eventually enter a cycle — usually a two-cell ping-pong.
+       * A player reported it by looking at the grid and asking the obvious
+       * question, which is a better instrument than the mean-front-length
+       * number, because that number was happily reporting 9.41 while measuring
+       * a wave bouncing between the same two squares forever.
+       *
+       * The rule is here rather than in the generator on purpose. Making the
+       * field acyclic would mean forbidding two neighbours from facing each
+       * other, which flattens the currents into something combed and fake. A
+       * field is allowed to fold back on itself; a CRACK is not.
+       */
+      front.alive = false;
+      frontDeaths.push({ t, hops: front.hops, cause: 'closed' });
     } else {
       const cb = comp[step] ?? 0;
       comp[step] = Math.min(MAX_COMPACTION, cb + FRONT_COMPACTION);
       front.trail = [...front.trail, front.cell].slice(-TRAIL_LEN);
+      front.path.push(step);
       front.cell = step;
       front.hops += 1;
       waveCells.push(step);
@@ -529,6 +551,7 @@ export interface FaceReport {
   maxFrontLength: number;
   frontsAbandoned: number;
   frontsRunOut: number;
+  frontsClosed: number;
   firstWaveDeepDropSec: number | null;
   firstHandDeepDropSec: number | null;
   chipsPerMinByBucket: { bucket: string; chipsPerMin: number }[];
@@ -578,6 +601,7 @@ export function faceReport(state: GameState): FaceReport {
   const maxFrontLength = lengths.length > 0 ? Math.max(...lengths) : 0;
   const frontsAbandoned = frontDeaths.filter((d) => d.cause === 'abandoned').length;
   const frontsRunOut = frontDeaths.filter((d) => d.cause === 'edge').length;
+  const frontsClosed = frontDeaths.filter((d) => d.cause === 'closed').length;
 
   const firstWave = chipLog.find((e) => e.waveReached && e.deepDrop);
   const firstHand = chipLog.find((e) => !e.waveReached && e.deepDrop);
@@ -595,7 +619,7 @@ export function faceReport(state: GameState): FaceReport {
   }
   lines.push('');
   lines.push(`front length      mean ${meanFrontLength.toFixed(2)}   max ${maxFrontLength}`);
-  lines.push(`fronts            abandoned ${frontsAbandoned}   ran off the board ${frontsRunOut}`);
+  lines.push(`fronts            abandoned ${frontsAbandoned}   ran off the board ${frontsRunOut}   closed on themselves ${frontsClosed}`);
   lines.push(`first deep-entry  wave-reached ${secs(firstWaveDeepDropSec)}   hand-struck ${secs(firstHandDeepDropSec)}`);
   lines.push('');
   lines.push('chips/min by bucket');
@@ -610,6 +634,7 @@ export function faceReport(state: GameState): FaceReport {
     maxFrontLength,
     frontsAbandoned,
     frontsRunOut,
+    frontsClosed,
     firstWaveDeepDropSec,
     firstHandDeepDropSec,
     chipsPerMinByBucket,

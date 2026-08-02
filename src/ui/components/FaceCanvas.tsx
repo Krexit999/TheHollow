@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { FaceView } from '../face/FaceView';
 import { dispatch, useGame } from '../store';
 import { SWEEP_COST_PER_CELL } from '../../engine/systems/face';
+import { COMPACTION_SHOW_AT } from '../../engine/systems/grain';
 import { availableTechniques } from '../../engine/techniques';
 import type { GameState } from '../../engine';
 
@@ -73,26 +74,60 @@ export function FaceCanvas({ active = true }: { active?: boolean }) {
 function GrainStrikeBar() {
   const strike = useGame((s) => s.grainStrike);
   const setStrike = useGame((s) => s.setGrainStrike);
+  const state = useGame((s) => s.state);
+  useGame((s) => s.rev);
   const opts: { id: 'with' | 'across'; label: string; hint: string }[] = [
     { id: 'with', label: 'With', hint: 'Along the grain. Fast, ordinary pay, the rock barely tightens.' },
-    { id: 'across', label: 'Across', hint: 'Against the grain. Slower and worth more per swing, packs the rock hard, and drives the fracture on a cell.' },
+    { id: 'across', label: 'Across', hint: 'Against the grain. Slower, and worth LESS by the second — what it buys is packed rock and a fracture that travels.' },
   ];
+
+  /**
+   * THE LINE THAT SAYS WHY.
+   *
+   * The player report was "it doesn't show any benefit", and the game genuinely
+   * did not: two buttons, a number in a corner, and nothing joining them to the
+   * seams they open. This is one line of LIVE ENGINE STATE — how much of the
+   * face is worked, and what the fracture is doing right now — which is most of
+   * the answer to that report. Read out of the state rather than tracked here,
+   * so it cannot drift away from what is true (pillar 8).
+   */
+  let worked = 0;
+  const comp = state?.face.compaction;
+  if (comp) for (const c of comp) if (c >= COMPACTION_SHOW_AT) worked += 1;
+  const front = state?.face.front;
+  const hops = front?.alive ? front.hops : 0;
+
   return (
-    <div className="pointer-events-auto flex items-stretch gap-1 rounded-lg border border-cave-700 bg-black/70 p-1 lg:rounded-full lg:bg-cave-900/90 lg:shadow-2xl">
-      <span className="hidden self-center px-2 text-[10px] uppercase tracking-wide text-cave-400 lg:inline">Grain</span>
-      {opts.map((o) => (
-        <button
-          key={o.id}
-          className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
-            strike === o.id ? 'bg-[#7fd4ff]/20 text-[#bfe8ff]' : 'text-cave-300 hover:bg-cave-800'
-          }`}
-          title={o.hint}
-          aria-pressed={strike === o.id}
-          onClick={() => setStrike(o.id)}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div className="pointer-events-none flex w-full flex-col items-center gap-1">
+      <div className="pointer-events-auto flex items-stretch gap-1 rounded-lg border border-cave-700 bg-black/70 p-1 lg:rounded-full lg:bg-cave-900/90 lg:shadow-2xl">
+        <span className="hidden self-center px-2 text-[10px] uppercase tracking-wide text-cave-400 lg:inline">Grain</span>
+        {opts.map((o) => (
+          <button
+            key={o.id}
+            className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
+              strike === o.id ? 'bg-[#7fd4ff]/20 text-[#bfe8ff]' : 'text-cave-300 hover:bg-cave-800'
+            }`}
+            title={o.hint}
+            aria-pressed={strike === o.id}
+            onClick={() => setStrike(o.id)}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div className="max-w-[340px] rounded bg-black/60 px-2 py-0.5 text-center text-[10px] leading-tight text-cave-400">
+        {hops > 0 ? (
+          <span className="text-[#bfe8ff]">
+            Fracture running · {hops} {hops === 1 ? 'square' : 'squares'} — strike its head to drive it on
+          </span>
+        ) : strike === 'across' ? (
+          <span>Packs the rock toward richer seams, and opens a fracture that travels</span>
+        ) : worked > 0 ? (
+          <span>{worked} {worked === 1 ? 'square' : 'squares'} worked into seam — deeper rock drops rarer stone</span>
+        ) : (
+          <span>Work ACROSS the grain to pack the rock into seams</span>
+        )}
+      </div>
     </div>
   );
 }

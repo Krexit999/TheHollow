@@ -44,7 +44,7 @@ function measure(gen: () => number[], trials = 400): { coh: number; dom: number;
       let cell = start, hops = 0;
       const seen = new Set<number>();
       for (;;) {
-        if (seen.has(cell)) break; // a loop counts as "keeps going"
+        if (seen.has(cell)) break; // THE WAVE CANNOT CROSS ITS OWN PATH
         seen.add(cell);
         const x = cell % W, y = Math.floor(cell / W);
         const d = g[cell]!;
@@ -126,9 +126,9 @@ console.log(row('one arrow (the ceiling)', measure(() =>
   new Array<number>(W * H).fill(1))));
 console.log(row('SHIPPED generateGrain', measure(() => generateGrain(W, H))));
 console.log('');
-for (const seedsPer of [12, 6, 4]) {
-  for (const branch of [0.18, 0.3, 0.45]) {
-    for (const edgeTurn of [0, 0.5, 0.75, 0.9]) {
+for (const seedsPer of [24, 12, 6]) {
+  for (const branch of [0.04, 0.08, 0.14, 0.22]) {
+    for (const edgeTurn of [0, 0.25, 0.5, 0.75]) {
       console.log(row(
         `seed/${seedsPer} branch ${branch} edge ${edgeTurn}`,
         measure(() => candidate(W, H, seedsPer, branch, edgeTurn)),

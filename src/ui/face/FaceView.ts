@@ -15,8 +15,10 @@ import {
 } from 'pixi.js';
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import {
-  COMPACTION_SHOW_AT, MAX_COMPACTION, TERMINAL_GATE, compactionAt, grainAt, strikeTimeMult,
+  COMPACTION_SHOW_AT, DEEP_GATES, MAX_COMPACTION, TERMINAL_GATE,
+  compactionAt, grainAt, strikeTimeMult,
 } from '../../engine/systems/grain';
+import { materialDef } from '../../engine/materials';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
 import {
@@ -213,6 +215,25 @@ interface TileEntry {
    *  load-bearing is not going to be a bar. One per tile, updated only when the
    *  gate above opens. */
   label: Text | null;
+}
+
+/** A deep-entry drop, named. Throw-safe: a def that has gone missing must not
+ *  take the render path down with it (the A.36 lesson). */
+function deepDropLabel(materialId: string): string {
+  try {
+    return materialDef(materialId).name.toUpperCase();
+  } catch {
+    return 'DEEP FIND';
+  }
+}
+
+/** Which gate this strike crossed, if any. Deepest first, so a single strike
+ *  that jumps two gates names the better one. */
+function gateCrossed(before: number, after: number): number | null {
+  for (const g of DEEP_GATES) {
+    if (before < g.at && after >= g.at) return g.at;
+  }
+  return null;
 }
 
 interface Particle {
@@ -460,7 +481,7 @@ export class FaceView {
      * The desktop layout pins the controls to the viewport corner instead, so it
      * reserves nothing. `640` is Tailwind's `lg` boundary for this component.
      */
-    const controlsReserve = width < 640 ? 96 : 0;
+    const controlsReserve = width < 640 ? 118 : 0;
     const usable = height - controlsReserve;
     const size = Math.min(
       (width - pad * 2) / this.faceW,
@@ -1251,12 +1272,27 @@ export class FaceView {
       // A CELL DYING IS THE LOUDEST THING ON THE FACE. It has to be, or the
       // telegraph was decoration: the player must never be able to lock a cell
       // and not notice it happened.
-      // THE CELL REACHING THE DEEPEST GATE is the moment worth marking — it is
-      // the one that starts paying the terminal material. Fires on the strike
-      // that crosses the line, not every strike above it.
-      if (grain.compactionBefore < TERMINAL_GATE && grain.compactionAfter >= TERMINAL_GATE) {
-        this.spawnPop(x, y, 'DEEP', true);
-        this.addShake(6);
+      /**
+       * SAY WHAT IT WAS FOR, ON THE CELL IT CAME OUT OF.
+       *
+       * The player report was "it doesn't show any benefit", and it was exactly
+       * right: the number went up, a ring turned gold, and nothing anywhere
+       * connected that to the reason you were paying 1.8x the time. The gates
+       * were real and invisible. So a deep-entry drop now names itself where it
+       * happened — and when the WAVE found it, it names itself on the cell the
+       * wave reached, which is the whole feature saying its own name.
+       */
+      for (const id of grain.deepDrops) {
+        const from = grain.waveCells.length > 0 ? this.cellCenter(grain.waveCells[0]!) : { x, y };
+        this.spawnPop(from.x, from.y, deepDropLabel(id), true);
+      }
+      // CROSSING A GATE is the other half: the moment this cell started paying
+      // a table it was not paying before. Fires on the strike that crosses it,
+      // not on every strike above it.
+      const gate = gateCrossed(grain.compactionBefore, grain.compactionAfter);
+      if (gate !== null) {
+        this.spawnPop(x, y, `SEAM ${gate}`, gate === TERMINAL_GATE);
+        this.addShake(gate === TERMINAL_GATE ? 6 : 3);
       }
     }
     this.addShake(data.crit ? 7 : 1.5 + intensity * 3 + data.fractured.length);
