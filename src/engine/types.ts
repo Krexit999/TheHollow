@@ -641,6 +641,8 @@ export interface GameState {
   /** THE ASSAY BENCH (§9.3) + THE ASSAY CALL (§40.3): fog burnt off the Roll,
    *  and which material the band favours this run. */
   assayBench?: import('./systems/assayBench').AssayBenchState;
+  /** SHOP FORKS (§40.2): how many of each forked row's levels went PACKED. */
+  shop?: import('./systems/shopFork').ShopState;
   collapse: {
     count: number;
     /** Core tree node levels, keyed by node id. */
@@ -929,7 +931,7 @@ export interface FeedEntry {
 
 export type GameAction =
   | { type: 'chip'; cell: number }
-  | { type: 'buyUpgrade'; id: string; count?: number | 'max' }
+  | { type: 'buyUpgrade'; id: string; count?: number | 'max'; branch?: import('./systems/shopFork').Branch }
   | { type: 'setKilnFeeding'; feeding: boolean }
   | { type: 'upgradeDrill'; index: number }
   | { type: 'descend' }

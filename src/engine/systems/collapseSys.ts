@@ -19,6 +19,7 @@ import { runFaceReset } from '../signatures';
 import { resetCompaction } from './compaction';
 import { rerollRoll } from './roll';
 import { clearSamples } from './assayBench';
+import { clampPacked, holdFloor } from './shopFork';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
 
@@ -130,6 +131,9 @@ export function doCollapse(
     state.upgrades[def.id] = Math.min(level, retained);
   }
   state.qol.carryUpgradeId = null;
+  // The fall clamped every row to its floor; the PACKED tally is a subset of a
+  // level count and must not outlive the levels it counts.
+  clampPacked(state);
 
   // Shell-local currencies wash away.
   for (const cur of allCurrencies()) {
@@ -158,7 +162,10 @@ export function doCollapse(
   // THE WORK GOES BACK WITH THE ROCK. Compaction to zero: what you packed into
   // this band came down with it, which is what makes it a run-length project
   // rather than a permanent ratchet.
-  resetCompaction(state);
+  // HOLD (the Roots fork): the fall leaves your packed rock packed, to a floor
+  // capped at the FIRST gate — never the terminal one, or the Collapse becomes
+  // a way of banking the deepest table instead of the thing that takes work back.
+  resetCompaction(state, holdFloor(state));
   // THE RE-ROLL (§1.1). Names, depths, types, hardness and every permanent
   // record are untouched; what the stations HOLD comes up fresh. This is the
   // fix for the ladder being consumed in one pass — 7-11 Collapses per Loam arc

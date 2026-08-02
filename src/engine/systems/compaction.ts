@@ -24,6 +24,7 @@
 import type { EngineCtx, GameState } from '../types';
 import { applyDrop } from './drops';
 import { sealed } from '../laws';
+import { biteBonus, settleMult } from './shopFork';
 
 /** The ceiling on the counter. A cell climbs to here and stops; it keeps
  *  working forever, it is simply as deep as it goes. */
@@ -116,7 +117,17 @@ export function applyChipCompaction(
   ensureCompaction(state);
   const comp = state.face.compaction!;
   const before = comp[cell] ?? 0;
-  comp[cell] = Math.min(MAX_COMPACTION, before + CHIP_COMPACTION);
+  /**
+   * BITE (the Blade fork's packed side) packs harder — and it must stay a WHOLE
+   * number. `FaceView.drawTile` gates its redraw on compaction being discrete;
+   * a fractional count would fail the equality check every frame and repaint
+   * all 36 tiles forever. So a fractional bonus is resolved as a PROBABILITY of
+   * one extra point, which is honest in expectation and integer by
+   * construction — the same treatment the drill bay gives fractional rolls.
+   */
+  const bite = biteBonus(state);
+  const extra = Math.floor(bite) + (Math.random() < bite - Math.floor(bite) ? 1 : 0);
+  comp[cell] = Math.min(MAX_COMPACTION, before + CHIP_COMPACTION + extra);
   const after = comp[cell] ?? 0;
   const deepDrops: string[] = [];
   const drop = rollDeepEntry(state, ctx, after);
@@ -129,7 +140,10 @@ export function rollDeepEntry(state: GameState, ctx: EngineCtx, compaction: numb
   if (sealed(state, 'sealDrops')) return null;
   for (const gate of DEEP_GATES) {
     if (compaction < gate.at) continue;
-    if (Math.random() >= gate.chance) return null;
+    // SETTLE (the Soil fork's packed side) improves the answer at whatever gate
+    // you are standing on. It NEVER opens a gate you have not reached — the
+    // `continue` above is untouched — so it changes what you get, not where.
+    if (Math.random() >= Math.min(1, gate.chance * settleMult(state))) return null;
     applyDrop(state, ctx, {
       kind: 'material',
       materialId: gate.materialId,
@@ -144,8 +158,15 @@ export function rollDeepEntry(state: GameState, ctx: EngineCtx, compaction: numb
  * THE COLLAPSE TAKES THE WORK BACK. Called from the reset that already existed
  * (collapseSys / breach / pressure) rather than being a reset of its own.
  */
-export function resetCompaction(state: GameState): void {
-  state.face.compaction = new Array<number>(state.face.cells.length).fill(0);
+/**
+ * `floor` is HOLD (the Roots fork's packed side): compaction the fall leaves
+ * behind. Zero everywhere except the Collapse — a Breach is a new world and a
+ * flood is the rock going with it, and neither is a thing your shop can argue
+ * with.
+ */
+export function resetCompaction(state: GameState, floor = 0): void {
+  const keep = Math.max(0, Math.min(MAX_COMPACTION, Math.floor(floor)));
+  state.face.compaction = new Array<number>(state.face.cells.length).fill(keep);
 }
 
 /** Called by applyFieldSize: a wider grid renumbers every row, so compaction is

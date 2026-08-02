@@ -28,6 +28,7 @@ import { defaultRollState } from './systems/roll';
 import { defaultPlantState } from './systems/plant';
 import { defaultStandoffState } from './systems/standoff';
 import { defaultAssayBenchState } from './systems/assayBench';
+import { defaultShopState } from './systems/shopFork';
 
 export function defaultShellState(): GameState['shell'] {
   return {
@@ -110,6 +111,7 @@ export function initialState(nowMs: number): GameState {
     plant: defaultPlantState(),
     standoff: defaultStandoffState(),
     assayBench: defaultAssayBenchState(),
+    shop: defaultShopState(),
     delver: { xp: D(0), level: 1, skillPoints: 1, skills: {} },
     achievements: { unlocked: {} },
     stats: {

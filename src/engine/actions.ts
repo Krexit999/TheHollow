@@ -15,6 +15,7 @@ import { resetCompaction } from './systems/compaction';
 import { buildCrusher, crush } from './systems/crusher';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
+import { ensureShop, isForked } from './systems/shopFork';
 import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
@@ -125,6 +126,12 @@ export function handleAction(
       }
       for (const m of def.materialCosts ?? []) consumeMaterial(state, m.id, m.count * count);
       state.upgrades[action.id] = level + count;
+      // THE FORK (§40.2). Only Blade/Soil/Roots read this; every other row
+      // ignores `branch` entirely and behaves exactly as it always has.
+      if (isForked(action.id) && action.branch === 'packed') {
+        const sh = ensureShop(state);
+        sh.packed[action.id] = (sh.packed[action.id] ?? 0) + count;
+      }
       state.stats.upgradesBought += count;
       def.onPurchase?.(state, count);
       ctx.dirty();

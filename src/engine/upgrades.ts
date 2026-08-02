@@ -7,6 +7,7 @@
  * onPurchase hooks, never engine special-cases.
  */
 import { D, Decimal, log10D } from './decimal';
+import { incomeLevels } from './systems/shopFork';
 import type { GameState } from './types';
 
 export interface UpgradeDef {
@@ -130,8 +131,21 @@ export function maxAffordable(def: UpgradeDef, level: number, budget: Decimal): 
 }
 
 /** Convenience: "the Blade stat" etc. for formulas that name upgrade levels. */
+/**
+ * WHAT THE LOCKED FORMULAS READ — and the one place the SHOP FORK lands.
+ *
+ * A forked row (Blade / Soil / Roots) owns its levels as before; `incomeLevels`
+ * subtracts the ones bought down the PACKED side, which feed compaction instead
+ * (systems/shopFork.ts). Every other row is untouched — `packedLevels` is 0 for
+ * anything unforked, so this is `upgradeLevel` verbatim for them.
+ *
+ * Putting the fork HERE rather than at each formula is deliberate: `cellCap`,
+ * `cellRegen` and `chipYield` all go through `stat`, so there is exactly one
+ * seam and no way for a packed level to leak into the ceiling through a formula
+ * somebody forgot to update.
+ */
 export function stat(state: GameState, id: string): number {
-  return upgradeLevel(state, id);
+  return incomeLevels(state, id);
 }
 
 export const Dcost = D; // re-export sugar for content files
