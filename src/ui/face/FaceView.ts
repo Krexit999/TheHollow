@@ -15,7 +15,7 @@ import {
 } from 'pixi.js';
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import {
-  COMPACTION_SHOW_AT, MAX_COMPACTION, TERMINAL_GATE, compactionAt, gateCrossed,
+  MAX_COMPACTION, TERMINAL_GATE, compactionAt, gateCrossed,
 } from '../../engine/systems/compaction';
 import { materialDef } from '../../engine/materials';
 import { guardPixiRender } from '../pixiGuard';
@@ -206,10 +206,6 @@ interface TileEntry {
   /** WORKED ROCK. Joins the redraw gate: compaction is already an integer, so
    *  it cannot force a repaint every frame. */
   compaction: number;
-  /** The compaction digit. A Graphics cannot draw text, and a number this
-   *  load-bearing is not going to be a bar. One per tile, updated only when the
-   *  gate above opens. */
-  label: Text | null;
 }
 
 /** A deep-entry drop, named. Throw-safe: a def that has gone missing must not
@@ -481,14 +477,6 @@ export class FaceView {
       const x = i % this.faceW;
       const y = Math.floor(i / this.faceW);
       tile.g.position.set(this.gridX + x * this.cellSize, this.gridY + y * this.cellSize);
-      // The compaction digit sits in the tile's top-right corner, clear of the
-      // compaction wash and clear of the pocket rim around the edge.
-      // It scales with the tile so a 380px face and a desktop one read the same.
-      if (tile.label) {
-        const m = Math.max(1.5, this.cellSize * 0.05);
-        tile.label.position.set(this.cellSize - m - 1, m + 1);
-        tile.label.style.fontSize = Math.max(9, Math.round(this.cellSize * 0.24));
-      }
       tile.band = -1; // force redraw at new size
     });
     this.drawBackdrop();
@@ -527,27 +515,11 @@ export class FaceView {
     this.tiles = state.face.cells.map(() => {
       const g = new Graphics();
       this.tileLayer.addChild(g);
-      // The compaction digit rides the tile's own Graphics, so it moves and
-      // resizes with it and needs no separate layout pass.
-      const label = new Text({
-        text: '',
-        style: new TextStyle({
-          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-          fontWeight: '800',
-          fontSize: 11,
-          fill: 0xbfc6d4,
-          stroke: { color: 0x000000, width: 3 },
-        }),
-      });
-      label.anchor.set(1, 0);
-      label.eventMode = 'none';
-      g.addChild(label);
       // oreId starts as a string no def can ever have, so the first paint of a
       // plain cell still counts as a change and the gate does not swallow it.
       return {
         g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, rotBand: -1, burnBand: -1,
         oreId: '?', digBand: -1, compaction: -1,
-        label,
       };
     });
     this.layout();
@@ -897,14 +869,15 @@ export class FaceView {
       g.roundRect(m + 3.5, m + 3.5, w - 7, w - 7, r * 0.8).stroke({ width: 1, color: 0xffe3a8, alpha: 0.55 });
     }
 
-    // THE NUMBER, from the first deep-entry gate up. Below 8 there is nothing it
-    // could tell you that the wash does not; at 8 it starts naming which table
-    // this cell is rolling on.
-    if (tile.label) {
-      tile.label.text = tile.compaction >= COMPACTION_SHOW_AT ? String(tile.compaction) : '';
-      tile.label.style.fill = tile.compaction >= TERMINAL_GATE ? 0xffe3a8
-        : tile.compaction >= 14 ? 0xe8d9ff : 0xbfc6d4;
-    }
+    // NO DIGIT. Every worked cell used to carry its compaction count in the
+    // corner from 8 up, which on a face that is mostly worked rock is 30-odd
+    // numbers on screen at once — the player's word was that they "pop up", and
+    // a grid of two-digit counters is a spreadsheet, not a rock face.
+    //
+    // NOTHING IS LOST. The wash above already deepens with the count, and the
+    // gold ring already says the terminal gate is rung — those are the two
+    // things the number was actually being read for. The exact integer belongs
+    // in a readout, not stamped on all thirty-six cells.
   }
 
   // -------------------------------------------------------------------------

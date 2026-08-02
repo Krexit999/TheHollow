@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { FaceView } from '../face/FaceView';
-import { dispatch, useGame } from '../store';
-import { SWEEP_COST_PER_CELL } from '../../engine/systems/face';
-import { availableTechniques } from '../../engine/techniques';
-import type { GameState } from '../../engine';
+import { useGame } from '../store';
 
 export function FaceCanvas({ active = true }: { active?: boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -43,111 +40,13 @@ export function FaceCanvas({ active = true }: { active?: boolean }) {
   return (
     <div
       className="relative h-full w-full overflow-hidden rounded-xl border border-cave-700 bg-cave-950"
-      aria-label="The mining face — press and hold to chip, or switch to sweep"
+      aria-label="The mining face — press and hold to chip"
     >
       <div
         ref={hostRef}
         className="absolute inset-0 cursor-crosshair"
         style={{ touchAction: 'none' }}
       />
-      <FaceTools />
-    </div>
-  );
-}
-
-/** The Face's own controls: how a press reads and the sweep bar. A dumb renderer
- *  of engine state — the mode is UI-only. Pointer-events isolated so it never
- *  eats a chip. */
-function FaceTools() {
-  const mode = useGame((s) => s.faceMode);
-  const setFaceMode = useGame((s) => s.setFaceMode);
-  const armedTechnique = useGame((s) => s.armedTechnique);
-  const armTechnique = useGame((s) => s.armTechnique);
-  const state = useGame((s) => s.state);
-  useGame((s) => s.rev);
-  if (!state) return null;
-
-  const stamina = state.face.stamina;
-  const staminaMax = state.face.staminaMax || 100;
-  const staminaPct = Math.round((stamina / staminaMax) * 100);
-  const sweepCells = Math.floor(stamina / SWEEP_COST_PER_CELL);
-
-  const modes: { id: 'chip' | 'sweep'; label: string; hint: string }[] = [
-    { id: 'chip', label: 'Chip', hint: 'Press and hold to keep chipping' },
-    { id: 'sweep', label: 'Sweep', hint: 'Drag to clear a swathe, for stamina' },
-  ];
-
-  // SIGNATURE TECHNIQUES (Part B) — the verb the rock grants. Nothing renders
-  // for shells whose signature has no technique yet (pillar 5: no locked list).
-  const techniques = availableTechniques(state as GameState);
-
-  return (
-    /* Phone: centred along the bottom of the face. Desktop: pinned to the
-       viewport's bottom-left stack, just above the Compendium button, so it
-       never drifts to the middle as the face grows wider. */
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-1 p-1.5 lg:fixed lg:inset-x-auto lg:bottom-[56px] lg:left-4 lg:items-start lg:p-0">
-      {mode === 'sweep' && (
-        <div className="pointer-events-auto flex w-full max-w-xs items-center gap-2 rounded-md border border-cave-700 bg-black/70 px-2 py-1 lg:w-52 lg:rounded-full lg:bg-cave-900/90 lg:shadow-2xl">
-          <span className="text-[10px] uppercase tracking-wide text-cave-400">Sweep</span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-cave-800">
-            <div className="h-full rounded-full bg-lamp-400 transition-[width]" style={{ width: `${staminaPct}%` }} />
-          </div>
-          <span className="tnum text-[10px] text-lamp-300">{sweepCells} cells</span>
-        </div>
-      )}
-      {/* Desktop: a pill that matches the Compendium button it sits above, so the
-          corner reads as one stack of floating controls rather than a stray box.
-          Phone keeps the 44px touch targets. */}
-      <div className="pointer-events-auto flex items-stretch gap-1 rounded-lg border border-cave-700 bg-black/70 p-1 lg:rounded-full lg:bg-cave-900/90 lg:shadow-2xl">
-        {modes.map((m) => (
-          <button
-            key={m.id}
-            className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
-              mode === m.id ? 'bg-lamp-500/25 text-lamp-200' : 'text-cave-300 hover:bg-cave-800'
-            }`}
-            title={m.hint}
-            aria-pressed={mode === m.id}
-            onClick={() => setFaceMode(m.id)}
-          >
-            {m.label}
-          </button>
-        ))}
-        {techniques.map((t) => {
-          const cooling = t.readyInSec > 0;
-          if (!t.def.targeted) {
-            // A global verb (Skim): one press performs it.
-            const pool = t.def.id === 'skim' ? state.face.seepPool : 0;
-            return (
-              <button
-                key={t.def.id}
-                className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
-                  pool >= 1 ? 'text-[#9fd8c0] hover:bg-cave-800' : 'text-cave-500'
-                }`}
-                title={t.def.describe(state as GameState, t.strength)}
-                disabled={cooling}
-                onClick={() => dispatch({ type: 'useTechnique', id: t.def.id })}
-              >
-                {t.def.name}{t.def.id === 'skim' && pool >= 1 ? ` ${Math.floor(pool)}` : ''}
-              </button>
-            );
-          }
-          // A targeted verb (Poleshift): arm it, then tap the cell.
-          const armed = armedTechnique === t.def.id && mode === 'technique';
-          return (
-            <button
-              key={t.def.id}
-              className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
-                armed ? 'bg-lamp-500/25 text-lamp-200' : cooling ? 'text-cave-500' : 'text-cave-300 hover:bg-cave-800'
-              }`}
-              title={t.def.describe(state as GameState, t.strength)}
-              aria-pressed={armed}
-              onClick={() => armTechnique(armed ? null : t.def.id)}
-            >
-              {cooling ? `${t.def.name} ${Math.ceil(t.readyInSec)}s` : t.def.name}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
