@@ -578,8 +578,8 @@ export class FaceView {
     // enough not to repaint the tile every frame while somebody holds on it.
     const oreId = gstate.face.ore?.[i] ?? '';
     const digBand = oreId ? Math.round(digProgress(gstate, i) * 12) : 0;
-    // THE GRAIN. Every one of these is already discrete, so they cost the gate
-    // nothing — a face nobody is chipping still repaints zero tiles per frame.
+    // COMPACTION is an integer, so it costs the gate nothing — a face nobody is
+    // chipping still repaints zero tiles per frame.
     const compaction = compactionAt(gstate, i);
     if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
       && rotBand === tile.rotBand && burnBand === tile.burnBand
@@ -869,15 +869,9 @@ export class FaceView {
       g.roundRect(m, m, w, w, r).fill({ color: theme.popFill, alpha: tile.flash * 0.45 });
     }
 
-    // ------------------------------------------------------------------
-    // THE GRAIN (Proof #1). Drawn LAST and over everything, because it is the
-    // only new pixel and the whole feature rests on being able to read it —
-    // §6's own words. Four things, in the order the player needs them:
-    //   the TICK        — which way this rock runs. Always visible.
-    //   the COMPACTION  — a darkening, plus the number once it starts paying.
-    //   the TELEGRAPH   — one more across-chip kills this cell.
-    //   the FRONT       — the live head, and a wake behind it.
-    // ------------------------------------------------------------------
+    // WORKED ROCK, drawn LAST and over everything: a darkening that deepens
+    // with the count, a gold ring at the deepest gate, and the number once it
+    // starts paying.
     this.drawCompaction(tile, g, m, w, r);
   }
 

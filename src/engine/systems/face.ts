@@ -451,7 +451,6 @@ export function manualChip(
   const crit = Math.random() < critChance;
   // Signature mechanics (polarity chains, carried growth...) compose here.
   const sigMult = runChipMult(state, mods, ctx, cell, true);
-  // ACROSS THE GRAIN PAYS 1.3x AND COSTS 1.8x THE TIME. That is not a buff
   const mult = D(sigMult).mul(crit ? 3 : 1);
 
   // Read BEFORE the swing takes it: the ability meters' `onFull` rule asks
