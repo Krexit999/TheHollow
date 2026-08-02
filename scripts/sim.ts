@@ -106,6 +106,10 @@ interface Args {
    * number it produces is labelled as an emulation of an unbuilt mechanic.
    */
   holdEmulate: boolean;
+  /** A.75 drill axes: what every machine in the bay is set to. Defaults are the
+   *  unconfigured bay, so an arm without these flags is the old sim exactly. */
+  drillBehaviour: 'fullest' | 'sweep' | 'chain';
+  drillBar: number;
   /**
    * THE HAND. `fullest` is the greedy policy every prior run used; it spreads
    * strokes across the whole board, which is the worst possible model for a
@@ -161,6 +165,8 @@ function parseArgs(): Args {
     seed: get('seed') !== undefined ? Number(get('seed')) : null,
     hand: (get('hand') ?? 'fullest') as Args['hand'],
     holdEmulate: argv.includes('--hold-emulate'),
+    drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
+    drillBar: Number(get('drill-bar') ?? 0),
   };
 }
 
@@ -188,6 +194,8 @@ let forkPackedBuys = 0;
 const forkTrack = { t45: 0, t110: 0, t150: 0, packedPeak: 0 };
 /** Set by main. See `Args.holdEmulate` — this emulates an UNBUILT mechanic. */
 let holdEmulate = false;
+/** Set by main when either A.75 drill-axis flag is off its default. */
+let drillAxes: { behaviour: 'fullest' | 'sweep' | 'chain'; bar: number } | null = null;
 
 // ---------------------------------------------------------------------------
 // THE INCOME INSTRUMENT (A.44 A0) — what a frontier minute is actually short of
@@ -1259,6 +1267,9 @@ function main(): void {
   if (args.seed !== null) Math.random = mulberry32(args.seed);
   HOLD_TUNING.cap = args.holdCap;
   holdEmulate = args.holdEmulate;
+  if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
+    drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };
+  }
   if (args.fork !== 'income') {
     const rows: readonly string[] = args.forkRow === 'all'
       ? ['blade', 'soil', 'roots'] : [args.forkRow];
@@ -1644,6 +1655,14 @@ function main(): void {
       (args.policy === 'idle' && sec <= 120); // idle still has to bootstrap
     if (active) chipHand(engine, 2, args.hand);
     else if (args.policy === 'balanced' && sec % 300 === 0) chipHand(engine, 40, args.hand);
+    // A.75: set the axes on every machine, including ones bought mid-run. Cheap
+    // — it writes only when a drill does not already carry the setting.
+    if (drillAxes && sec % 30 === 0) {
+      for (const u of s.drills.units) {
+        if (drillAxes.behaviour !== 'fullest') u.behavior = drillAxes.behaviour;
+        if (drillAxes.bar > 0) u.minCharge = drillAxes.bar;
+      }
+    }
     if (forkTrack.t45 === 0 && s.maxDepthRecord >= 45) forkTrack.t45 = sec;
     if (forkTrack.t110 === 0 && s.maxDepthRecord >= 110) forkTrack.t110 = sec;
     if (forkTrack.t150 === 0 && s.maxDepthRecord >= 150) forkTrack.t150 = sec;
@@ -1933,6 +1952,9 @@ function main(): void {
       holdCap: args.holdCap, holdEmulate: args.holdEmulate,
       hand: args.hand, sec: totalSec,
       depth: s.maxDepthRecord, ...forkTrack,
+      behaviour: args.drillBehaviour, bar: args.drillBar,
+      dust: Math.round(s.totals['dust']?.toNumber() ?? 0),
+      strikes: s.stats.drillStrikes, drills: s.drills.units.length,
       collapses: s.collapse.count, tier: equippedTool(s).tier,
       tools: s.stats.toolsForged, packedBuys: forkPackedBuys, deep,
     })}`);

@@ -269,6 +269,31 @@ export function handleAction(
       return { ok: true };
     }
 
+    // HOW IT HUNTS (t1) and WHAT IT WAITS FOR (t2). Both store NOTHING at their
+    // default, so a bay nobody has opened carries no fields and behaves exactly
+    // as it did before either existed.
+    case 'setDrillBehaviour': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      if (action.behavior === 'fullest') delete drill.behavior;
+      else drill.behavior = action.behavior;
+      ctx.dirty();
+      return { ok: true };
+    }
+
+    case 'setDrillFilter': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      // Capped below 1: a bar AT full cap would be a machine that can never
+      // strike on a face whose cells sit a hair under cap, i.e. a setting whose
+      // only outcome is a dead drill.
+      const bar = Math.max(0, Math.min(0.9, action.minCharge));
+      if (bar <= 0) delete drill.minCharge;
+      else drill.minCharge = bar;
+      ctx.dirty();
+      return { ok: true };
+    }
+
     // ORES. The hold gesture sends seconds of work; the engine decides when
     // that is enough. Completing OPENS it here rather than in `workOre`, so
     // there is exactly one place a pocket can pay out and it is the same one

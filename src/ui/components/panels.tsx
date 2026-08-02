@@ -13,6 +13,7 @@ import { kilnRate, kilnEfficiency, KILN_DUST_PER_BRICK, overstokeActive, oversto
 import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '../../engine/content/kilnFuel';
 import {
   drillInterval, drillPower, MAX_DRILLS, BOUGHT_DRILLS, PRIZE_POWER, drillPriority,
+  drillBehaviour, type DrillBehaviour,
   type DrillPriority,
 } from '../../engine/systems/drills';
 import {
@@ -501,6 +502,27 @@ export const PRIORITY_LABEL: Record<DrillPriority, string> = {
   rock: 'rock only',
 };
 
+/**
+ * HOW IT HUNTS — the third axis. Copy says what the machine DOES, never what it
+ * is worth: all three are preferences over charge the field already made, so
+ * none of them is a bigger number and none should read as one (LAW 8).
+ */
+export const BEHAVIOUR_LABEL: Record<DrillBehaviour, string> = {
+  fullest: 'fullest',
+  sweep: 'sweep',
+  chain: 'chain',
+};
+
+const BEHAVIOUR_BLURB: Record<DrillBehaviour, string> = {
+  fullest: 'Takes the richest rock it can reach. It will cross the face for a better cell and leave the poor ones standing.',
+  sweep: 'Walks its squares in order, one along per strike. It does not care which is richest — it cares that none is missed.',
+  chain: 'Stays beside its own last cell and works a patch out before it moves on.',
+};
+
+/** t2 — the bar it will not go under. Fractions of a full cell. */
+const BAR_STEPS = [0, 0.35, 0.6, 0.85] as const;
+const BAR_LABEL = ['takes any', 'a third', 'half full', 'nearly full'] as const;
+
 const PRIORITY_BLURB: Record<DrillPriority, string> = {
   both: 'Works the fullest rock it can reach, and takes a pocket once it is worth the trip — about seven-tenths full.',
   oresFirst: 'Goes for pockets at a THIRD full instead of seven-tenths, and gets first refusal on them. More pockets, less in each — a trade, not a bargain.',
@@ -535,6 +557,7 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
   const box = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
   const prio = drillPriority(state, unit);
+  const behaviour = drillBehaviour(unit);
 
   /**
    * BRING ITSELF INTO VIEW. The painter renders at the BOTTOM of the room,
@@ -676,6 +699,48 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
         ))}
       </div>
       <p className="mt-1 text-[10px] leading-snug text-cave-500">{PRIORITY_BLURB[prio]}</p>
+
+      {/* HOW IT HUNTS — axis three, applied immediately like priority. */}
+      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">And it hunts</div>
+      <div className="mt-1 grid grid-cols-3 gap-1">
+        {(['fullest', 'sweep', 'chain'] as DrillBehaviour[]).map((b) => (
+          <button
+            key={b}
+            data-testid={`behaviour-${b}`}
+            aria-pressed={behaviour === b}
+            className={`rounded border px-1.5 py-1 text-[10px] ${
+              behaviour === b ? 'border-[#9ad4e8]/60 bg-[#9ad4e8]/10 text-[#9ad4e8]' : 'border-cave-800 text-cave-300 hover:bg-cave-800'
+            }`}
+            onClick={() => dispatch({ type: 'setDrillBehaviour', index, behavior: b })}
+          >
+            {BEHAVIOUR_LABEL[b]}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] leading-snug text-cave-500">{BEHAVIOUR_BLURB[behaviour]}</p>
+
+      {/* t2 — THE BAR. A filter, not a bonus: it can only ever take less. */}
+      <div className="mt-2 text-[10px] uppercase tracking-widest text-cave-500">And it waits for</div>
+      <div className="mt-1 grid grid-cols-4 gap-1">
+        {BAR_STEPS.map((v, i) => (
+          <button
+            key={v}
+            data-testid={`bar-${i}`}
+            aria-pressed={(unit.minCharge ?? 0) === v}
+            className={`rounded border px-1 py-1 text-[10px] ${
+              (unit.minCharge ?? 0) === v ? 'border-[#9ad4e8]/60 bg-[#9ad4e8]/10 text-[#9ad4e8]' : 'border-cave-800 text-cave-300 hover:bg-cave-800'
+            }`}
+            onClick={() => dispatch({ type: 'setDrillFilter', index, minCharge: v })}
+          >
+            {BAR_LABEL[i]}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[10px] leading-snug text-cave-500">
+        {(unit.minCharge ?? 0) === 0
+          ? 'Strikes whatever it finds, however thin.'
+          : 'Stands idle rather than take a thin cell. Fewer strikes, more in each — and rock left standing for your own hand.'}
+      </p>
 
       <button className="btn btn-warm mt-2 w-full py-1 text-[11px]" data-testid="route-done" onClick={done}>
         Done
@@ -1086,17 +1151,23 @@ export function DrillsPanel() {
                 <button
                   data-testid={`route-${i}`}
                   className={`shrink-0 rounded border px-1.5 py-0.5 text-[9px] uppercase tracking-wider ${
-                    zoned > 0 || unit.priority
+                    zoned > 0 || unit.priority || unit.behavior || unit.minCharge
                       ? 'border-[#9ad4e8]/50 bg-[#9ad4e8]/10 text-[#9ad4e8]'
                       : 'border-cave-700 text-cave-400 hover:bg-cave-800'
                   }`}
-                  title="Choose which squares this drill works, and what it prefers"
+                  title="Choose which squares this drill works, how it hunts them, and what it prefers"
                   onClick={() => (routing === i ? closeRouting() : setRouting(i))}
                 >
                   {routing === i ? 'Editing' : 'Routing'}
                 </button>
+                {/* ALL THREE AXES ON THE ROW, so the list answers "what is this
+                    machine set to" without opening twenty-four pickers. The bar
+                    only appears when it is set — a default that prints itself
+                    is noise. */}
                 <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500" data-testid={`route-state-${i}`}>
-                  {zoned > 0 ? `${zoned} squares` : 'whole face'} · {PRIORITY_LABEL[prio]}
+                  {zoned > 0 ? `${zoned} squares` : 'whole face'} · {BEHAVIOUR_LABEL[drillBehaviour(unit)]}
+                  {' · '}{PRIORITY_LABEL[prio]}
+                  {unit.minCharge ? ` · waits ${Math.round(unit.minCharge * 100)}%` : ''}
                 </span>
               </div>
 

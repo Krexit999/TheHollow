@@ -104,6 +104,46 @@ export function drillPriority(state: GameState, drill: DrillState): DrillPriorit
   return drill.priority ?? (state.drills.huntOres === false ? 'rock' : 'both');
 }
 
+/**
+ * HOW IT HUNTS — the third axis, and §20.1's "head" reduced to the part of it
+ * that was ever a capability.
+ *
+ * A.52 shipped five heads as `{power, speed, wear, draw}` multipliers each
+ * carrying a targeting rule, and A.53 reversed the whole layer for putting a
+ * configuration screen on the idle layer. The multipliers were the chore AND
+ * the pillar-2 risk (`power` and `speed` are literally `drillPower` and
+ * `drillInterval` terms). The TARGETING RULE was the only part that answered
+ * "what does this machine do differently", so that is what ships, on the
+ * routing screen that already exists, next to where and what-it-prefers.
+ *
+ *   FULLEST  greedy on charge x bite. The default, and every drill until now.
+ *   SWEEP    marches the zone in order, one cell along per strike. It does not
+ *            care which cell is richest; it cares that none is skipped.
+ *   CHAIN    stays with its own last cell's neighbours and works a patch out
+ *            before moving on.
+ *
+ * ALL THREE ARE PREFERENCES OVER CHARGE THE FIELD HAS ALREADY MADE, so none can
+ * move `dpsMax`: they change WHICH cell a machine empties, never how much the
+ * rock produced. FOLLOW is not here — it followed a fracture line and grain was
+ * cut (bd9f3ae). MARKED is not here — it wants PRY, which does not exist yet,
+ * and shipping the name against no mechanism is the deceptive stub PILLARS
+ * warns about.
+ */
+export type DrillBehaviour = 'fullest' | 'sweep' | 'chain';
+
+export function drillBehaviour(drill: DrillState): DrillBehaviour {
+  return drill.behavior ?? 'fullest';
+}
+
+/**
+ * AUTOMATION t2 — the bar this machine will not go under, as CHARGE not a
+ * fraction. A drill under its bar does not strike at all; it waits for the rock
+ * to come back. Always a reduction, never a gain (see `DrillState.minCharge`).
+ */
+export function drillBar(state: GameState, mods: ModifierCache, drill: DrillState): number {
+  return (drill.minCharge ?? 0) * cellCap(state, mods);
+}
+
 /** Cheap membership test for a drill's zone. `null` when it works everywhere. */
 export function zoneSet(drill: DrillState): Set<number> | null {
   const z = drill.zone;
@@ -151,20 +191,68 @@ function crowdOut(state: GameState, crowd: number[], cell: number): void {
 
 function pickTarget(
   state: GameState, skip: (i: number) => boolean, zone: Set<number> | null, rotted: boolean,
-  crowd?: number[],
+  crowd?: number[], drill?: DrillState, bar = 0,
 ): number {
   const cells = state.face.cells;
   const ore = state.face.ore;
+  /** One gate, so SWEEP and CHAIN cannot drift out of step with FULLEST about
+   *  what counts as a legal cell. */
+  const allowed = (i: number): boolean => {
+    if (skip(i)) return false;
+    if (zone && !zone.has(i)) return false;
+    // A pocket is never an ordinary target: it will not come away in one bite.
+    if (ore?.[i]) return false;
+    // t2: under its own bar this machine waits rather than nibbles.
+    return (cells[i] ?? 0) >= bar;
+  };
+  const score = (i: number): number => {
+    let v = rotted ? cells[i]! * rotBite(state, i) : cells[i]!;
+    if (crowd) v *= 1 - (crowd[i] ?? 0);
+    return v;
+  };
+  const behaviour = drill ? drillBehaviour(drill) : 'fullest';
+
+  if (behaviour === 'sweep') {
+    /**
+     * MARCH. From just past its own last cell, take the first legal one going
+     * forward and wrap — so the machine walks its zone in order instead of
+     * chasing the richest rock, and a player watching sees an arm crossing the
+     * face rather than a lump in the corner. Crowding is not consulted: the
+     * whole point is that the route is fixed.
+     */
+    const n = cells.length;
+    const from = ((drill?.lastCell ?? -1) + 1) % Math.max(1, n);
+    for (let k = 0; k < n; k++) {
+      const i = (from + k) % n;
+      if (allowed(i) && (cells[i] ?? 0) > 0) return i;
+    }
+    return -1;
+  }
+
+  if (behaviour === 'chain') {
+    /**
+     * STAY LOCAL. The best legal NEIGHBOUR of the last cell, so the machine
+     * works a patch out rather than teleporting to whatever is fullest. Falls
+     * through to the greedy scan when the patch is exhausted — a drill that
+     * cornered itself and then idled would be a rule that punishes the player
+     * for choosing it.
+     */
+    let best = -1;
+    let bestScore = 0;
+    for (const i of neighbors(state, drill?.lastCell ?? 0)) {
+      if (!allowed(i)) continue;
+      const v = score(i);
+      if (v > bestScore) { bestScore = v; best = i; }
+    }
+    if (best >= 0) return best;
+  }
+
   let best = -1;
   let bestScore = -1;
   for (let i = 0; i < cells.length; i++) {
-    if (skip(i)) continue;
-    if (zone && !zone.has(i)) continue;
-    // A pocket is never an ordinary target: it will not come away in one bite.
-    if (ore?.[i]) continue;
-    let score = rotted ? cells[i]! * rotBite(state, i) : cells[i]!;
-    if (crowd) score *= 1 - (crowd[i] ?? 0);
-    if (score > bestScore) { bestScore = score; best = i; }
+    if (!allowed(i)) continue;
+    const v = score(i);
+    if (v > bestScore) { bestScore = v; best = i; }
   }
   return best;
 }
@@ -323,8 +411,10 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
     while (drill.timer >= interval && strikes < 4) {
       drill.timer -= interval;
       strikes++;
-      const target = pickTarget(state, skip, zone, rotted, crowd);
-      if (target < 0) continue; // every cell vined or out of zone — it idles
+      // ...and its own bar (t2). A machine that finds nothing over the bar
+      // waits: the timer has already been spent, so waiting is a real cost.
+      const target = pickTarget(state, skip, zone, rotted, crowd, drill, drillBar(state, mods, drill));
+      if (target < 0) continue; // vined, out of zone, or nothing over its bar
       if (crowd) crowdOut(state, crowd, target);
 
       // THE SECOND BITE (A.48 relic power). Deliberately NOT the 'Two Hands'

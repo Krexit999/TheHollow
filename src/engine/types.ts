@@ -170,6 +170,26 @@ export interface DrillState {
   /** What this machine would rather be doing. Absent = follow the bay-wide
    *  hunt switch, i.e. exactly the old behaviour. */
   priority?: 'both' | 'oresFirst' | 'ores' | 'rock';
+  /**
+   * HOW IT HUNTS (A.75). The third routing axis, and the honest remains of
+   * §20.1's "head": A.52's heads were `power/speed/wear/draw` multipliers with a
+   * targeting rule attached, and the targeting rule was the only part that was
+   * a capability. So the rule ships and the multipliers do not.
+   *
+   * Absent = `fullest` = the greedy scorer every drill has always used, byte
+   * for byte, so an untouched bay is unchanged.
+   */
+  behavior?: 'fullest' | 'sweep' | 'chain';
+  /**
+   * AUTOMATION t2 — THE FILTER. A fraction of cell cap below which this machine
+   * will not take a cell: it WAITS instead of nibbling. Absent = 0 = takes
+   * whatever is best, which is the old behaviour.
+   *
+   * It can only ever harvest LESS than no filter at all, which is what makes it
+   * pillar-2 safe by construction — it is a bar, not a bonus. What it buys is
+   * bite SHAPE (fewer, fuller strikes) and rock left standing for the hand.
+   */
+  minCharge?: number;
 
   // ── PER-ABILITY COUNTERS ─────────────────────────────────────────────────
   /** LONGLENS: strokes banked toward the big one. */
@@ -1046,6 +1066,8 @@ export type GameAction =
    *  face, which is the shape every drill ships with. */
   | { type: 'setDrillZone'; index: number; cells: number[] }
   | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
+  | { type: 'setDrillBehaviour'; index: number; behavior: 'fullest' | 'sweep' | 'chain' }
+  | { type: 'setDrillFilter'; index: number; minCharge: number }
   /** THE PLANT (§3, §15.4). A machine tier is built from cast parts, never
    *  bought with currency; a batch is fired by hand and costs Surge. */
   | { type: 'buildCrusher' }
