@@ -29,6 +29,7 @@ import { handleAction } from './actions';
 import { allCraftSystems } from './craft';
 import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
+import { tickPlant } from './systems/plant';
 import { tickDrills } from './systems/drills';
 import { tickAlloys } from './systems/drillAlloys';
 import { checkPrizeDrills } from './systems/prizeDrills';
@@ -146,6 +147,9 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     runFaceTick(state, mods, ctx, dt); // signature mechanics (chain timeouts...)
     tickDrills(state, mods, ctx, dt);
     tickKiln(state, mods, ctx, dt);
+    // THE PLANT last: the Surge bank refills after the machines have drawn on
+    // it this step, so a batch fired this tick cannot be paid for twice.
+    tickPlant(state, dt);
     for (const cs of allCraftSystems()) {
       if (cs.unlocked(state)) cs.tick(state, mods, ctx, dt);
     }

@@ -12,6 +12,7 @@ import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } f
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
 import { resetCompaction } from './systems/compaction';
+import { buildCrusher, crush } from './systems/crusher';
 import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
@@ -138,6 +139,12 @@ export function handleAction(
       ctx.emit({ type: 'purchase', id: action.id, levels: count });
       return { ok: true, data: { levels: count, cost } };
     }
+
+    case 'buildCrusher':
+      return buildCrusher(state, ctx);
+
+    case 'crush':
+      return crush(state, ctx, action.materialId, action.band);
 
     case 'setKilnFeeding': {
       if (!state.kiln.built) return { ok: false, reason: 'No kiln' };

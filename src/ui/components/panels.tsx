@@ -34,6 +34,7 @@ import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
 import { RollPanel } from './roll';
+import { PlantPanel, CrusherPanel } from './plant';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
 import { OpticsCard } from './glassmere';
@@ -325,6 +326,10 @@ export function KilnPanel() {
 
   return (
     <div className="space-y-2">
+      {/* THE PLANT lives with the converter chain it powers — the Hearth IS the
+          Kiln, so a separate room for it would be a room about one number. */}
+      <PlantPanel />
+      <CrusherPanel />
       <div className="panel overflow-hidden p-4">
         {/* The kiln itself — it should visibly run. */}
         <div className="relative mx-auto h-28 w-40">

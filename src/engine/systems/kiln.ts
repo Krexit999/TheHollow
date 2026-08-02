@@ -16,6 +16,7 @@ import type { EngineCtx, GameState } from '../types';
 import { grantXP } from './xp';
 import { chipCurrencyId, convCurrencyId } from '../shells';
 import { lawFlag, sealed } from '../laws';
+import { flowSatisfaction } from './plant';
 import { materialCount, consumeMaterial } from './forge';
 import {
   kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC, OVERSTOKE_COOLDOWN_SEC, OVERSTOKE_COST_SECONDS,
@@ -98,7 +99,16 @@ export function tickKiln(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
   let fed = false;
   const chipId = chipCurrencyId(state);
   if (kiln.feeding) {
-    const want = kilnRate(state, mods).mul(dt);
+    /**
+     * THE KILN IS PURE FLOW (§3.1). It runs continuously and never spikes, so
+     * sustained draw is exactly what it wants and a Surge bank does nothing for
+     * it. Starved of Flow it does not stop — it runs SLOW, proportionally, and
+     * keeps working. That is the half of the contrast the Crusher does not have.
+     *
+     * PILLAR 2: this scales how fast the Kiln eats Dust the field already grew.
+     * It cannot reach cap, regen or yield, so the ceiling does not move.
+     */
+    const want = kilnRate(state, mods).mul(dt).mul(flowSatisfaction(state, 'kiln'));
     const have = getCurrency(state, chipId);
     const eat = Decimal.min(want, have);
     if (eat.gt(0)) {

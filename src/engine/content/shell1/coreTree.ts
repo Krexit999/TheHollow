@@ -6,6 +6,7 @@
 import { D, Decimal } from '../../decimal';
 import { registerModifier } from '../../modifiers';
 import type { GameState } from '../../types';
+import { FLOW_PER_RANK, SURGE_PER_RANK } from '../../systems/plant';
 
 export interface CoreNodeDef {
   id: string;
@@ -83,6 +84,31 @@ export const CORE_NODES: CoreNodeDef[] = [
     name: 'Overseer',
     maxLevel: 10,
     description: (l) => `The bay runs a tighter shift. Drills strike +12% faster per level (now +${12 * l}%).`,
+  },
+  /**
+   * THE PLANT'S TWO CAPACITIES (§3.3) — and this is the pair that fixes the
+   * Core tree's fake choice.
+   *
+   * It was capability-versus-number: "a thing you could not do before" against
+   * "the same thing, 10% faster", which is not a decision anybody agonises
+   * over. These are TWO CAPABILITIES, and which one you want depends on the
+   * plant you are running and the shell you are standing in. Flow buys a Kiln
+   * that never slows; Surge buys a Crusher that fires when you tell it to.
+   * Neither is better. They are good at different machines.
+   */
+  {
+    id: 'flowCapacity',
+    name: 'Draught',
+    maxLevel: 10,
+    description: (l) =>
+      `Wider throat, steadier pull. +${FLOW_PER_RANK} Flow per level (now +${(FLOW_PER_RANK * l).toFixed(1)}/s). Flow is what a Kiln runs on — it never spikes, it just never stops.`,
+  },
+  {
+    id: 'surgeCapacity',
+    name: 'Reservoir',
+    maxLevel: 10,
+    description: (l) =>
+      `A deeper bank to empty in one go. +${SURGE_PER_RANK} Surge capacity per level (now +${SURGE_PER_RANK * l}). Surge is what a Crusher fires on — it does nothing, then everything at once.`,
   },
   // ---- Tranche 2: the Echo-scarred ring (opens after the first Breach). ----
   // The macro-tuning pass found the ladder saturating mid-Ferrite (Blade

@@ -641,6 +641,9 @@ export interface GameState {
    * clearance and looting never do.
    */
   roll?: RollState;
+  /** THE PLANT (§3): the Surge bank, machine tiers, and what Flow each machine
+   *  actually got last tick. Flow CAPACITY is derived, never stored. */
+  plant?: import('./systems/plant').PlantState;
   collapse: {
     count: number;
     /** Core tree node levels, keyed by node id. */
@@ -792,6 +795,8 @@ export type GameEvent =
   | { type: 'fracture'; cells: number[] }
   /** A named station was passed for the first time — cleared, or looted. */
   | { type: 'stationReached'; id: string; depth: number }
+  | { type: 'machineBuilt'; machineId: string; tier: number }
+  | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
   | { type: 'purchase'; id: string; levels: number }
@@ -1044,6 +1049,10 @@ export type GameAction =
    *  face, which is the shape every drill ships with. */
   | { type: 'setDrillZone'; index: number; cells: number[] }
   | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
+  /** THE PLANT (§3, §15.4). A machine tier is built from cast parts, never
+   *  bought with currency; a batch is fired by hand and costs Surge. */
+  | { type: 'buildCrusher' }
+  | { type: 'crush'; materialId: string; band: PurityBand }
   /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
   | { type: 'workOre'; cell: number; seconds: number }
   | { type: 'setHuntOres'; on: boolean }
