@@ -33,6 +33,7 @@ import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
+import { RollPanel } from './roll';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
 import { OpticsCard } from './glassmere';
@@ -252,6 +253,9 @@ export function DigPanel() {
   return (
     <div className="space-y-2">
       <FieldStats state={state as GameState} m={m} />
+      {/* THE ROLL sits with the face, not behind a tab: it is the ladder you
+          are standing on, not a menu you go and consult. */}
+      <RollPanel />
       <InHandStrip state={state as GameState} />
       <ToolAbilityStrip state={state as GameState} />
       {spammable && (

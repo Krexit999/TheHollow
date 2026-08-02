@@ -251,7 +251,16 @@ describe('transmutation makes the 132 a graph', () => {
         if (!entry.endsWith('.ts')) continue;
         // traits.ts names every material, but a trait is a PROPERTY, not a
         // consumer — a material having a trait does not mean anything wants it.
-        if (p.endsWith('materials.ts') || p.endsWith('chains.ts') || p.endsWith('traits.ts')) continue;
+        //
+        // THE ROLL is the same case and it caught this test out: a station's
+        // seam pool NAMES the stone you might find there and consumes nothing.
+        // Listing sablequartz at DEEPGRAVE made it read as un-orphaned and
+        // stripped `slagToClay` of the only justification it had, while nothing
+        // about the economy had changed. A text scan cannot tell "wanted by a
+        // system" from "mentioned in a list"; the exclusion list is where that
+        // distinction is kept.
+        if (p.endsWith('materials.ts') || p.endsWith('chains.ts') || p.endsWith('traits.ts')
+          || p.endsWith(join('shell1', 'roll.ts'))) continue;
         parts.push(readFileSync(p, 'utf8'));
       }
     };

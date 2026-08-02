@@ -3,6 +3,7 @@
  */
 import type { Decimal } from './decimal';
 import type { MaterialRarity, PurityBand, RolledDrop } from './materials';
+import type { RollState } from './systems/roll';
 
 // ---------------------------------------------------------------------------
 // Materials, tools, assay (Phase 3)
@@ -634,6 +635,12 @@ export interface GameState {
    *  an export/import — handwritten notes are the worst thing to lose silently. */
   qol: QolState;
 
+  /**
+   * THE ROLL (§1). What each station is holding this run, and what the player
+   * has permanently done to the road. Contents re-roll at every Collapse;
+   * clearance and looting never do.
+   */
+  roll?: RollState;
   collapse: {
     count: number;
     /** Core tree node levels, keyed by node id. */
@@ -783,6 +790,8 @@ export function defaultQolState(): QolState {
 export type GameEvent =
   | { type: 'chip'; cell: number; dust: Decimal; charge: number; crit: boolean; manual: boolean }
   | { type: 'fracture'; cells: number[] }
+  /** A named station was passed for the first time — cleared, or looted. */
+  | { type: 'stationReached'; id: string; depth: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
   | { type: 'purchase'; id: string; levels: number }

@@ -11,6 +11,7 @@ import { descendCost } from '../prestigeMath';
 import { grantXP } from './xp';
 import { D } from '../decimal';
 import { requiredTier } from './forge';
+import { markReached } from './roll';
 
 /**
  * WHAT ONE TIER SHORT COSTS AT THE STAIR, compounding per tier. Three was the
@@ -172,6 +173,18 @@ function finishDescend(state: GameState, mods: ModifierCache, ctx: EngineCtx): A
       ctx.dirty(); // mastery gates may have opened
     }
     grantXP(state, mods, ctx, D(1.5 * state.depth));
+  }
+  /**
+   * THE ROAD IS MARKED BY WALKING IT (§1). Every station at or above the new
+   * depth is passed: a WALL the tool could actually answer is CLEARED, a WRECK
+   * is LOOTED, and both are permanent through Collapse and Breach.
+   *
+   * The tier is passed in rather than re-read inside, because clearing a wall
+   * has to mean BREAKING it. Squeezing past under-tier is possible — the wall
+   * is a price, not a door (A.70) — and paying the fare is not the same thing.
+   */
+  for (const id of markReached(state, state.depth, effectiveToolTier(state))) {
+    ctx.emit({ type: 'stationReached', id, depth: state.depth });
   }
   ctx.dirty(); // Depth Pressure modifier changed
   ctx.emit({ type: 'descend', depth: state.depth });

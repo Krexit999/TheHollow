@@ -24,6 +24,7 @@ import { defaultKeystonesState } from './systems/keystones';
 import { defaultRefineryState } from './systems/refinery';
 import { defaultCastingState } from './systems/casting';
 import { defaultShaftState } from './systems/shaftSys';
+import { defaultRollState } from './systems/roll';
 
 export function defaultShellState(): GameState['shell'] {
   return {
@@ -105,6 +106,7 @@ export function initialState(nowMs: number): GameState {
     shaft: defaultShaftState(),
     qol: defaultQolState(),
     collapse: { count: 0, nodes: {}, lastRun: null, runStartAt: 0, traces: [] },
+    roll: defaultRollState(),
     delver: { xp: D(0), level: 1, skillPoints: 1, skills: {} },
     achievements: { unlocked: {} },
     stats: {
