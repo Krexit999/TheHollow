@@ -15,8 +15,7 @@ import {
 } from 'pixi.js';
 import { cellCap, type ChipResult } from '../../engine/systems/face';
 import {
-  COMPACTION_SHOW_AT, MAX_COMPACTION, TELEGRAPH_FROM, compactionAt, grainAt, isLocked,
-  strikeTimeMult,
+  COMPACTION_SHOW_AT, MAX_COMPACTION, TERMINAL_GATE, compactionAt, grainAt, strikeTimeMult,
 } from '../../engine/systems/grain';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
@@ -208,7 +207,6 @@ interface TileEntry {
    *  front marker is 0/1/2 — so none of them can force a repaint per frame. */
   grainDir: number;
   compaction: number;
-  lockedTile: boolean;
   /** 0 none · 1 in the wake · 2 the head. */
   frontMark: number;
   /** The compaction digit. A Graphics cannot draw text, and a number this
@@ -541,7 +539,7 @@ export class FaceView {
       // plain cell still counts as a change and the gate does not swallow it.
       return {
         g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, rotBand: -1, burnBand: -1,
-        oreId: '?', digBand: -1, grainDir: -1, compaction: -1, lockedTile: false, frontMark: -1,
+        oreId: '?', digBand: -1, grainDir: -1, compaction: -1, frontMark: -1,
         label,
       };
     });
@@ -577,7 +575,6 @@ export class FaceView {
     // nothing — a face nobody is chipping still repaints zero tiles per frame.
     const grainDir = grainAt(gstate, i);
     const compaction = compactionAt(gstate, i);
-    const lockedTile = isLocked(gstate, i);
     const live = gstate.face.front;
     const frontMark = live?.alive
       ? (live.cell === i ? 2 : live.trail.includes(i) ? 1 : 0)
@@ -586,10 +583,9 @@ export class FaceView {
       && rotBand === tile.rotBand && burnBand === tile.burnBand
       && oreId === tile.oreId && digBand === tile.digBand
       && grainDir === tile.grainDir && compaction === tile.compaction
-      && lockedTile === tile.lockedTile && frontMark === tile.frontMark && tile.flash <= 0) return;
+      && frontMark === tile.frontMark && tile.flash <= 0) return;
     tile.grainDir = grainDir;
     tile.compaction = compaction;
-    tile.lockedTile = lockedTile;
     tile.frontMark = frontMark;
     tile.band = band;
     tile.crackStage = crackStage;
@@ -898,21 +894,6 @@ export class FaceView {
   private drawGrain(
     tile: TileEntry, g: Graphics, m: number, w: number, r: number, ratio: number,
   ): void {
-    // A LOCKED CELL IS UNMISTAKABLE AND DEAD. It has already drawn as ordinary
-    // rock above; this puts it out. Read it from across the room: the slab goes
-    // to near-black, the grout gap widens into a fracture, and a hard X sits on
-    // it. No grain tick — there is nothing left to aim along.
-    if (tile.lockedTile) {
-      g.roundRect(m, m, w, w, r).fill({ color: 0x08070a, alpha: 0.92 });
-      g.roundRect(m, m, w, w, r).stroke({ width: 1.5, color: 0x2a2228, alpha: 0.9 });
-      const in2 = w * 0.28;
-      const stroke = { width: Math.max(2, w * 0.055), color: 0x6b5560, alpha: 0.9 };
-      g.moveTo(m + in2, m + in2).lineTo(m + w - in2, m + w - in2).stroke(stroke);
-      g.moveTo(m + w - in2, m + in2).lineTo(m + in2, m + w - in2).stroke(stroke);
-      if (tile.label) tile.label.text = '';
-      return;
-    }
-
     const cx = m + w / 2;
     const cy = m + w / 2;
 
@@ -926,16 +907,14 @@ export class FaceView {
       g.roundRect(m, m, w, w, r).fill({ color: 0x2b2733, alpha: 0.10 + t * 0.42 });
     }
 
-    // THE TELEGRAPH. A cell at 18+ dies to the next across-grain take, and §5
-    // is explicit that this must be a CELL STATE and not a popup — if the
-    // player can say "that's not fair", the telegraph failed and that is a
-    // build defect. So it is the loudest thing on the tile: a hot fracture ring
-    // biting into the slab, at full opacity, on a cell that is otherwise going
-    // dark. It is also the richest cell on the board (Deepgrave drops at 20),
-    // and that collision is the entire tension of the system.
-    if (tile.compaction >= TELEGRAPH_FROM) {
-      g.roundRect(m + 1, m + 1, w - 2, w - 2, r).stroke({ width: Math.max(2, w * 0.06), color: 0xd8523c, alpha: 0.95 });
-      g.roundRect(m + 3.5, m + 3.5, w - 7, w - 7, r * 0.8).stroke({ width: 1, color: 0xffb08c, alpha: 0.7 });
+    // THE DEEPEST GATE, RUNG. This ring used to be a hot red warning — the
+    // cell was one across-grain strike from dead — and it is now the exact
+    // opposite reading on the exact same cells: this is the rock you worked all
+    // the way down, and it pays the terminal material on every chip. Warm gold,
+    // because it is good news now.
+    if (tile.compaction >= TERMINAL_GATE) {
+      g.roundRect(m + 1, m + 1, w - 2, w - 2, r).stroke({ width: Math.max(2, w * 0.055), color: 0xe0b25a, alpha: 0.9 });
+      g.roundRect(m + 3.5, m + 3.5, w - 7, w - 7, r * 0.8).stroke({ width: 1, color: 0xffe3a8, alpha: 0.55 });
     }
 
     // THE TICK. Length is 40% of the tile, so a run of them reads as a current
@@ -971,7 +950,7 @@ export class FaceView {
     // naming which table this cell is rolling on.
     if (tile.label) {
       tile.label.text = tile.compaction >= COMPACTION_SHOW_AT ? String(tile.compaction) : '';
-      tile.label.style.fill = tile.compaction >= TELEGRAPH_FROM ? 0xffd2c4
+      tile.label.style.fill = tile.compaction >= TERMINAL_GATE ? 0xffe3a8
         : tile.compaction >= 14 ? 0xe8d9ff : 0xbfc6d4;
     }
   }
@@ -1272,16 +1251,12 @@ export class FaceView {
       // A CELL DYING IS THE LOUDEST THING ON THE FACE. It has to be, or the
       // telegraph was decoration: the player must never be able to lock a cell
       // and not notice it happened.
-      if (grain.locked) {
-        this.spawnPop(x, y, 'DEAD', true);
-        this.spawnShards(x, y, 18, false);
-        this.addShake(11);
-      } else if (grain.lockHeld) {
-        // THE LAST QUARTER OF THE FACE DOES NOT COME AWAY. Said out loud,
-        // because a strike that visibly should have killed a cell and didn't is
-        // a rule the player would otherwise only learn as confusion.
-        this.spawnPop(x, y, 'IT HOLDS', false);
-        this.addShake(5);
+      // THE CELL REACHING THE DEEPEST GATE is the moment worth marking — it is
+      // the one that starts paying the terminal material. Fires on the strike
+      // that crosses the line, not every strike above it.
+      if (grain.compactionBefore < TERMINAL_GATE && grain.compactionAfter >= TERMINAL_GATE) {
+        this.spawnPop(x, y, 'DEEP', true);
+        this.addShake(6);
       }
     }
     this.addShake(data.crit ? 7 : 1.5 + intensity * 3 + data.fractured.length);

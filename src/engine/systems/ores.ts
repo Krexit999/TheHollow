@@ -142,12 +142,6 @@ function spawnable(state: GameState): number[] {
   for (let i = 0; i < ore.length; i++) {
     if (ore[i]) continue;
     if ((state.growth.stage[i] ?? 0) > 0) continue;
-    // NOTHING GROWS IN DEAD ROCK. A pocket spawning on a locked cell was
-    // workable — the X drew over it, the hold gesture still ran, and the pocket
-    // still paid its guaranteed rolls even though `harvestCell` correctly gave
-    // up no charge. So a locked cell was the best rock on the board: free
-    // material, no charge cost, forever. Reported from a live session.
-    if (state.face.locked?.[i]) continue;
     out.push(i);
   }
   return out;
@@ -171,7 +165,6 @@ function veinFrom(state: GameState, seed: number, size: number, rng: () => numbe
     if (y < h - 1) opts.push(from + w);
     const next = opts[Math.floor(rng() * opts.length)];
     if (next === undefined || taken.has(next) || ore[next] || (state.growth.stage[next] ?? 0) > 0) continue;
-    if (state.face.locked?.[next]) continue; // a vein does not run through dead rock
     taken.add(next);
     out.push(next);
   }
@@ -197,7 +190,6 @@ export function plantOre(
   if (cell < 0 || cell >= ore.length) return false;
   if (ore[cell]) return false;
   if ((state.growth.stage[cell] ?? 0) > 0) return false;
-  if (state.face.locked?.[cell]) return false; // nothing grows in dead rock
   if (oreCount(state) >= Math.floor(ore.length * ORE_CAP_SHARE)) return false;
   const lean = mods.get(state, 'oreRarity').toNumber();
   const def = rollOreType(currentShell(state).id, state.depth, lean);
@@ -314,11 +306,6 @@ export function openOre(
 ): { charge: number; oreId: string } | null {
   const def = oreAt(state, cell);
   if (!def) return null;
-  // ...and it never PAYS OUT from dead rock. `harvestCell` already refused the
-  // charge, but the pocket's GUARANTEED rolls do not go through it — so a
-  // locked cell with a pocket on it was free material at no charge cost, which
-  // is precisely the exploit that was reported.
-  if (state.face.locked?.[cell]) return null;
 
   const share = by === 'hand' ? 1 : DRILL_ORE_SHARE;
   const sig = runChipMult(state, mods, ctx, cell, by === 'hand');
@@ -383,11 +370,6 @@ export function workOre(
 ): ActionResult {
   const def = oreAt(state, cell);
   if (!def) return { ok: false, reason: 'No pocket there' };
-  // BELT TO THE BRACES ABOVE. Nothing should be able to put a pocket on a
-  // locked cell any more, but this is the gesture that was exploitable and a
-  // stale pocket on a save written before the spawn fix would still be sitting
-  // there. Dead rock refuses the hold as it refuses everything else.
-  if (state.face.locked?.[cell]) return { ok: false, reason: 'That rock is dead' };
   const dug = digArray(state);
   const before = dug[cell] ?? 0;
   /**

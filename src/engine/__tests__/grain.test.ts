@@ -12,13 +12,13 @@ import type { Engine, EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
 import {
   ACROSS_COMPACTION, ACROSS_DUST_MULT, ACROSS_TIME_MULT, COMPACTION_SHOW_AT,
-  DEEP_GATES, FRONT_COMPACTION, GRAIN_E, LOCK_THRESHOLD, MAX_COMPACTION, TELEGRAPH_FROM,
+  DEEP_GATES, FRONT_COMPACTION, GRAIN_E, MAX_COMPACTION, TERMINAL_GATE,
   WITH_COMPACTION, compactionAt, ensureBand, faceReport, generateGrain, grainAt, grainNext,
-  isLocked, liveCount, liveFloor, rerollBand, resetChipLog, seedCompaction, strikeTimeMult,
-  wouldExceedSafety,
+  rerollBand, resetChipLog, seedCompaction, strikeTimeMult,
 } from '../systems/grain';
-import { openOre, plantOre, tickOres, workOre } from '../systems/ores';
-import { applyFieldSize, cellCap, dpsMax, harvestCell, manualChip, tickFace } from '../systems/face';
+import {
+  applyFieldSize, cellCap, cellRegen, chipYield, dpsMax, manualChip, tickFace,
+} from '../systems/face';
 import { materialDef, rollDrop } from '../materials';
 import { tickDrills, newDrill, grainModeOf } from '../systems/drills';
 
@@ -226,153 +226,76 @@ describe('the persistent front', () => {
     expect(s().face.front!.cell).toBe(head);
   });
 
-  it('THE FRONT CANNOT LOCK A CELL — only a strike the player aimed can', () => {
+  it('the wave clamps at the ceiling rather than running the number away', () => {
     const { s, m } = fresh();
     flattenGrainEast(s());
     setComp(s(), 1, MAX_COMPACTION);
     manualChip(s(), m, nullCtx, 0, 'across');
-    expect(isLocked(s(), 1)).toBe(false);
-    expect(compactionAt(s(), 1)).toBe(MAX_COMPACTION); // clamped, not killed
+    expect(compactionAt(s(), 1)).toBe(MAX_COMPACTION);
   });
 });
 
-describe('lock, and its recovery', () => {
-  it('locks at exactly the telegraphed band and not one below it', () => {
-    const { s, m } = fresh();
-    // 17 + 3 = 20, which is NOT past the threshold: this cell survives.
-    setComp(s(), 0, TELEGRAPH_FROM - 1);
-    manualChip(s(), m, nullCtx, 0, 'across');
-    expect(isLocked(s(), 0)).toBe(false);
-    // 18 + 3 = 21, which is: this one dies. The telegraph band and the lethal
-    // band are the SAME set of numbers, which is what makes "that's not fair"
-    // impossible to say honestly.
-    const { s: s2, m: m2 } = fresh();
-    setComp(s2(), 0, TELEGRAPH_FROM);
-    manualChip(s2(), m2, nullCtx, 0, 'across');
-    expect(isLocked(s2(), 0)).toBe(true);
-  });
 
-  it('WITH-grain work above the threshold is safe at any compaction', () => {
-    const { s, m } = fresh();
-    setComp(s(), 0, LOCK_THRESHOLD + 5);
-    for (let i = 0; i < 30; i++) {
-      s().face.cells[0] = cellCap(s(), m);
-      manualChip(s(), m, nullCtx, 0, 'with');
-    }
-    expect(isLocked(s(), 0)).toBe(false);
-  });
-
-  it('a locked cell gives nothing to ANY verb, and stops regenerating', () => {
-    const { s, m } = fresh();
-    setComp(s(), 0, LOCK_THRESHOLD);
-    manualChip(s(), m, nullCtx, 0, 'across');
-    expect(isLocked(s(), 0)).toBe(true);
-    expect(s().face.cells[0]).toBe(0);
-    // The funnel every verb in the game harvests through.
-    expect(harvestCell(s(), m, 0, 1, { mul: () => 1 } as never).charge).toBe(0);
-    for (let i = 0; i < 100; i++) tickFace(s(), m, nullCtx, 0.1);
-    expect(s().face.cells[0]).toBe(0);
-    // ...and the displayed ceiling tells the truth about it.
-    const { s: clean, m: cm } = fresh();
-    expect(dpsMax(s(), m).lt(dpsMax(clean(), cm))).toBe(true);
-  });
-
-  it('a Collapse re-rolls the band: fresh grain, no compaction, no locks', () => {
-    const { engine, s, m } = fresh();
-    setComp(s(), 0, LOCK_THRESHOLD);
-    manualChip(s(), m, nullCtx, 0, 'across');
-    expect(isLocked(s(), 0)).toBe(true);
-    rerollBand(s());
-    expect(isLocked(s(), 0)).toBe(false);
-    expect(compactionAt(s(), 0)).toBe(0);
-    expect(s().face.front).toBeUndefined();
-    // ...and the same thing is reachable as a dev hook without a descent.
-    setComp(s(), 3, LOCK_THRESHOLD);
-    manualChip(s(), m, nullCtx, 3, 'across');
-    engine.dispatch({ type: 'debug', op: 'rerollBand' });
-    expect(s().face.locked!.some(Boolean)).toBe(false);
-  });
-
+describe('working a cell only ever makes it deeper', () => {
   /**
-   * THE BUG A LIVE SESSION FOUND, AND IT WAS THE WORST KIND.
+   * THE LOCK IS GONE, AND THESE ARE THE TESTS THAT KEEP IT GONE.
    *
-   * Killing every cell left no income, so no depth, so no Collapse, so no
-   * re-roll — and the Collapse was the ONLY recovery. The save was over, with
-   * nothing on screen to say so. These are the tests that stop it coming back.
+   * The first cut killed a cell taken across the grain above 20. A live session
+   * killed the rule: a player who read the warning simply stopped pressing
+   * Across and the risk evaporated; a player who did not wrecked the board and
+   * — because the only recovery was a Collapse a dead board could not pay for —
+   * bricked the save outright. Punish-the-uninformed, then nothing.
    */
-  it('THE BOARD CANNOT BE KILLED — a live floor always survives', () => {
+  it('no amount of across-grain work can stop a cell working', () => {
     const { s, m } = fresh();
     const st = s();
     ensureBand(st);
-    const floor = liveFloor(st);
-    // Drive every cell to the edge, then try to kill all of them, twice over.
-    for (let pass = 0; pass < 3; pass++) {
-      for (let c = 0; c < st.face.cells.length; c++) {
-        setComp(st, c, LOCK_THRESHOLD);
-        st.face.cells[c] = cellCap(st, m);
-        manualChip(st, m, nullCtx, c, 'across');
-      }
+    for (let i = 0; i < 60; i++) {
+      st.face.cells[0] = cellCap(st, m);
+      const r = manualChip(st, m, nullCtx, 0, 'across');
+      expect(r.charge).toBeGreaterThan(0); // it never stops giving
     }
-    expect(liveCount(st)).toBeGreaterThanOrEqual(floor);
-    expect(floor).toBeGreaterThan(0);
+    expect(compactionAt(st, 0)).toBe(MAX_COMPACTION);
   });
 
-  it('a held lock reports itself rather than failing silently', () => {
+  it('the face has no notion of a dead cell left in it', () => {
     const { s, m } = fresh();
     const st = s();
     ensureBand(st);
     for (let c = 0; c < st.face.cells.length; c++) {
-      setComp(st, c, LOCK_THRESHOLD);
+      setComp(st, c, MAX_COMPACTION);
       st.face.cells[c] = cellCap(st, m);
       manualChip(st, m, nullCtx, c, 'across');
     }
-    // By now the floor is holding. One more strike on a live cell must say so.
-    const alive = st.face.locked!.findIndex((l) => !l);
-    st.face.cells[alive] = cellCap(st, m);
-    setComp(st, alive, LOCK_THRESHOLD);
-    const r = manualChip(st, m, nullCtx, alive, 'across');
-    expect(r.grain?.lockHeld).toBe(true);
-    expect(r.grain?.locked).toBe(false);
-    expect(isLocked(st, alive)).toBe(false);
+    expect(st.face.locked).toBeUndefined();
+    // ...and the ceiling is still the whole board, because all of it is alive.
+    expect(dpsMax(st, m).toNumber()).toBeCloseTo(
+      chipYield(st, m).toNumber() * st.face.cells.length * cellRegen(st, m), 6,
+    );
   });
 
-  it('"Abandon the dig" really does clear the rock', () => {
-    // The live report came in as "I reset all progress and the cells stayed
-    // locked". Erasing everything must give back a face with nothing dead on
-    // it, through the same action the button dispatches.
-    const { engine, s, m } = fresh();
+  it('a save carrying dead cells from the lock build is cleaned on load', () => {
+    // One build shipped with locks in it. Nothing reads the array now, so a
+    // save from that window would carry cells no code could ever revive.
+    const { s, m } = fresh();
     const st = s();
     ensureBand(st);
-    setComp(st, 0, LOCK_THRESHOLD);
-    st.face.cells[0] = cellCap(st, m);
-    manualChip(st, m, nullCtx, 0, 'across');
-    expect(isLocked(st, 0)).toBe(true);
-    engine.dispatch({ type: 'hardReset' });
-    const after = engine.getState() as GameState;
-    ensureBand(after);
-    expect(after.face.locked!.some(Boolean)).toBe(false);
-    expect(after.face.compaction!.every((c) => c === 0)).toBe(true);
-    expect(liveCount(after)).toBe(after.face.cells.length);
+    (st.face as { locked?: boolean[] }).locked = st.face.cells.map(() => true);
+    tickFace(st, m, nullCtx, 0.1);
+    expect(st.face.locked).toBeUndefined();
+    expect(manualChip(st, m, nullCtx, 0, 'with').charge).toBeGreaterThan(0);
   });
 
-  it('a board that was ALREADY bricked comes back on load', () => {
-    // The floor above cannot help a save killed before it existed, and that
-    // save cannot reach its own recovery. Loading one repairs it.
-    const { s } = fresh();
+  it('a Collapse is what takes compaction away, and it takes all of it', () => {
+    // With nothing permanent to recover FROM, the re-roll is what makes
+    // compaction a run-length project instead of a one-way ratchet.
+    const { s, m } = fresh();
     const st = s();
-    ensureBand(st);
-    st.face.locked = st.face.cells.map(() => true);
-    st.face.compaction = st.face.cells.map((_, i) => 20 + (i % 5));
-    ensureBand(st);
-    expect(liveCount(st)).toBeGreaterThanOrEqual(liveFloor(st));
-    // The rock that comes back is the rock that was worked LEAST.
-    const revived = st.face.locked!.map((l, i) => ({ l, i })).filter((x) => !x.l);
-    for (const { i } of revived) expect(st.face.compaction![i]).toBeLessThanOrEqual(LOCK_THRESHOLD);
-  });
-
-  it('the threshold is ONE constant, so the Patient mark lands as one line', () => {
-    expect(LOCK_THRESHOLD).toBe(20);
-    expect(TELEGRAPH_FROM).toBe(LOCK_THRESHOLD - ACROSS_COMPACTION + 1);
+    for (let c = 0; c < st.face.cells.length; c++) setComp(st, c, MAX_COMPACTION);
+    rerollBand(st);
+    expect(st.face.compaction!.every((c) => c === 0)).toBe(true);
+    expect(st.face.front).toBeUndefined();
+    void m;
   });
 });
 
@@ -380,9 +303,9 @@ describe('deep entry', () => {
   it('the three gates sit at 8, 14 and 20, deepest first', () => {
     expect(DEEP_GATES.map((g) => g.at)).toEqual([20, 14, 8]);
     expect(DEEP_GATES.map((g) => g.materialId)).toEqual(['deepgrave', 'graveclaydeep', 'umberjade']);
-    // The terminal material drops exactly where across-chipping starts killing
-    // cells. The richest cell on the board is always one wrong strike from dead.
-    expect(DEEP_GATES[0]!.at).toBe(LOCK_THRESHOLD);
+    // The renderer rings the deepest gate, so the two must be the same number
+    // or the board says a cell is worth the most one strike before it is.
+    expect(TERMINAL_GATE).toBe(DEEP_GATES[0]!.at);
   });
 
   it('the number appears on the chip where it starts paying', () => {
@@ -413,81 +336,38 @@ describe('the drills work the grain without a parallel system', () => {
     const { s, m } = fresh();
     const st = s();
     st.drills.bayBuilt = true;
-    st.drills.units = [{ ...newDrill('Bess'), grainMode: 'across', grainUnsafe: true }];
+    st.drills.units = [{ ...newDrill('Bess'), grainMode: 'across' }];
     for (let i = 0; i < 4000; i++) tickDrills(st, m, nullCtx, 0.1);
-    expect(st.face.locked!.some(Boolean)).toBe(false);
-    // It did do the work it was set to do.
+    // It did the work it was set to do, and the rock is all still working.
     expect(Math.max(...st.face.compaction!)).toBeGreaterThan(0);
+    expect(st.face.locked).toBeUndefined();
   });
 
-  it('the safety keeps a drill off cells it would push past the line', () => {
-    const { s } = fresh();
-    setComp(s(), 0, LOCK_THRESHOLD);
-    expect(wouldExceedSafety(s(), 0, FRONT_COMPACTION)).toBe(true);
-    setComp(s(), 1, LOCK_THRESHOLD - FRONT_COMPACTION);
-    expect(wouldExceedSafety(s(), 1, FRONT_COMPACTION)).toBe(false);
-  });
-
-  it('seedCompaction clamps at the threshold — the hard floor under the safety', () => {
+  it('seedCompaction clamps at the ceiling', () => {
     const { s } = fresh();
     for (let i = 0; i < 200; i++) seedCompaction(s(), 0, FRONT_COMPACTION);
-    expect(compactionAt(s(), 0)).toBe(LOCK_THRESHOLD);
+    expect(compactionAt(s(), 0)).toBe(MAX_COMPACTION);
   });
 
-  it('drills route around dead rock', () => {
+  it('the drills never collect the gates they open', () => {
+    // A machine parked on a deep cell rolling the terminal material every
+    // stroke is a faucet wearing a drop table's clothes. The bay makes the
+    // gates REACHABLE; the payout is the player's.
     const { s, m } = fresh();
     const st = s();
-    setComp(st, 0, LOCK_THRESHOLD);
-    manualChip(st, m, nullCtx, 0, 'across');
-    expect(isLocked(st, 0)).toBe(true);
     st.drills.bayBuilt = true;
-    st.drills.units = [newDrill('Bess')];
-    const held = st.face.cells[0];
-    for (let i = 0; i < 400; i++) tickDrills(st, m, nullCtx, 0.1);
-    expect(st.face.cells[0]).toBe(held); // never touched
+    st.drills.units = [{ ...newDrill('Bess'), grainMode: 'across' }];
+    for (let c = 0; c < st.face.cells.length; c++) setComp(st, c, MAX_COMPACTION);
+    const before = st.materials.totalDrops;
+    for (let i = 0; i < 2000; i++) tickDrills(st, m, nullCtx, 0.1);
+    // Drills still roll the ORDINARY drop table; what they never do is take a
+    // deep-entry material, so nothing from the gates can appear in the stacks.
+    void before;
+    expect(st.materials.stacks['deepgrave']).toBeUndefined();
+    expect(st.materials.stacks['graveclaydeep']).toBeUndefined();
   });
 });
 
-describe('dead rock is dead to the pockets too', () => {
-  /** The other half of the live report: a pocket spawned behind the X, the
-   *  hold gesture still worked it, and it still paid its guaranteed rolls —
-   *  so a locked cell was the most profitable rock on the board. */
-  function killCell(st: GameState, m: ModifierCache, cell: number): void {
-    setComp(st, cell, LOCK_THRESHOLD);
-    st.face.cells[cell] = cellCap(st, m);
-    manualChip(st, m, nullCtx, cell, 'across');
-  }
-
-  it('a pocket never spawns on a locked cell', () => {
-    const { s, m } = fresh();
-    const st = s();
-    killCell(st, m, 0);
-    expect(isLocked(st, 0)).toBe(true);
-    for (let i = 0; i < 3000; i++) tickOres(st, m, nullCtx, 0.5);
-    expect(st.face.ore?.[0] ?? '').toBe('');
-  });
-
-  it('planting one on dead rock is refused', () => {
-    const { s, m } = fresh();
-    const st = s();
-    killCell(st, m, 0);
-    expect(plantOre(st, m, nullCtx, 0)).toBe(false);
-  });
-
-  it('a pocket left on a cell that dies goes with it', () => {
-    const { s, m } = fresh();
-    const st = s();
-    ensureBand(st);
-    setComp(st, 0, LOCK_THRESHOLD);
-    st.face.cells[0] = cellCap(st, m);
-    manualChip(st, m, nullCtx, 0, 'across');
-    st.face.ore = st.face.cells.map(() => '');
-    // ...and if one somehow survives on dead rock, no verb will touch it.
-    st.face.ore[0] = 'seam';
-    expect(workOre(st, nullCtx, 0, 5).ok).toBe(false);
-    expect(openOre(st, m, nullCtx, 0, 'hand', 1)).toBeNull();
-  });
-});
 
 describe('the band survives the face changing shape', () => {
   it('a wider face keeps grain, compaction and locks on the SAME rock', () => {
@@ -538,6 +418,5 @@ describe('the shape heals rather than migrating', () => {
     tickFace(st, m, nullCtx, 0.1);
     expect(st.face.grain).toHaveLength(st.face.cells.length);
     expect(st.face.compaction).toHaveLength(st.face.cells.length);
-    expect(st.face.locked).toHaveLength(st.face.cells.length);
   });
 });

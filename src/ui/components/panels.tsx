@@ -693,23 +693,6 @@ function RoutePicker({ index, onClose }: { index: number; onClose: () => void })
         ))}
       </div>
       <p className="mt-1 text-[10px] leading-snug text-cave-500">{GRAIN_MODE_BLURB[gmode]}</p>
-      {gmode !== 'with' && (
-        <label className="mt-1.5 flex items-center gap-2 text-[10px] leading-snug text-cave-400">
-          <input
-            type="checkbox"
-            data-testid="grain-safety"
-            checked={!unit.grainUnsafe}
-            onChange={(e) => dispatch({ type: 'setDrillGrainSafety', index, safe: e.target.checked })}
-          />
-          <span>
-            Stop short of killing a cell.
-            {unit.grainUnsafe
-              ? ' OFF — it will pack rock right to the line and leave it there.'
-              : ' On. It packs rock toward the deep seams and never past them.'}
-          </span>
-        </label>
-      )}
-
       <button className="btn btn-warm mt-2 w-full py-1 text-[11px]" data-testid="route-done" onClick={done}>
         Done
       </button>

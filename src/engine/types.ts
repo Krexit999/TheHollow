@@ -179,12 +179,6 @@ export interface DrillState {
    *            still while you are away is worse than one that mines badly.
    */
   grainMode?: 'with' | 'across' | 'follow';
-  /**
-   * THE SAFETY, DEFAULT ON. An `across` drill will not take a cell past the
-   * lock threshold. A drill that locks your board while you are away is a
-   * rage-quit, not a tradeoff — turning this off is an explicit choice.
-   */
-  grainUnsafe?: boolean;
 
   // ── PER-ABILITY COUNTERS ─────────────────────────────────────────────────
   /** LONGLENS: strokes banked toward the big one. */
@@ -534,8 +528,12 @@ export interface GameState {
      *  deep-entry drop gates at 8/14/20; above 20 an across-grain take kills the
      *  cell. Not income — it moves what drops, never how much charge grew. */
     compaction?: number[];
-    /** Terminal for the arc. Unworkable, no charge, no drops, drills route
-     *  around it, the front dies on it. Cleared only by a Collapse. */
+    /**
+     * DEAD. One build killed a cell taken across the grain above 20, and the
+     * rule was cut — see the header of systems/grain.ts for why. The field
+     * stays declared only so `ensureBand` can recognise a save from that window
+     * and delete it; nothing reads it, and nothing ever writes it again.
+     */
     locked?: boolean[];
     /** The §45.1 fallback: one direction for the whole band instead of one per
      *  cell. Coarser, still directional, vastly less to parse at 380px. */
@@ -819,8 +817,6 @@ export type GameEvent =
   | { type: 'fracture'; cells: number[] }
   /** THE FRONT ADVANCED one cell along the grain. `cell` is what it entered. */
   | { type: 'fractureFront'; cell: number; hops: number }
-  /** A cell died to an across-grain take above the lock threshold. */
-  | { type: 'cellLocked'; cell: number; compaction: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
   | { type: 'purchase'; id: string; levels: number }
@@ -1080,7 +1076,6 @@ export type GameAction =
   | { type: 'setDrillZone'; index: number; cells: number[] }
   | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
   | { type: 'setDrillGrainMode'; index: number; mode: 'with' | 'across' | 'follow' }
-  | { type: 'setDrillGrainSafety'; index: number; safe: boolean }
   /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
   | { type: 'workOre'; cell: number; seconds: number }
   | { type: 'setHuntOres'; on: boolean }
