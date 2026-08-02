@@ -84,6 +84,41 @@ export const FRONT_COMPACTION = 1;
 /** How far back the head's wake is remembered, for the renderer's trail. */
 export const TRAIL_LEN = 6;
 
+/**
+ * THE ROCK WILL NOT LET YOU KILL ALL OF IT.
+ *
+ * A share of the face that can never be locked. Not a softening of §5 — the
+ * design says "do not soften this" and 75% of the board is still killable, which
+ * is a wrecked run by any measure.
+ *
+ * IT EXISTS BECAUSE THE RECOVERY WAS REACHABLE ONLY THROUGH THE THING IT WAS
+ * RECOVERING. Lock recovery is the Collapse; the Collapse needs depth 26; depth
+ * costs Dust; Dust comes from live rock. Kill every cell and all four of those
+ * are gone at once — no income, no depth, no Collapse, no re-roll. The save is
+ * finished, with no error and nothing on screen to say so. A player found this
+ * in a live session and the report was "now i cant do anything", which is
+ * exactly right.
+ *
+ * A quarter of the face at the pillar-2 ceiling is a slow, miserable climb back.
+ * That is the intended punishment. Being unable to play is not.
+ */
+export const LIVE_FLOOR_SHARE = 0.25;
+
+/** How many cells are still workable. */
+export function liveCount(state: GameState): number {
+  const locked = state.face.locked;
+  if (!locked) return state.face.cells.length;
+  let n = 0;
+  for (let i = 0; i < locked.length; i++) if (!locked[i]) n += 1;
+  return n;
+}
+
+/** The fewest live cells the face is ever allowed to have. Always at least one,
+ *  so a one-cell face (THE ONE CELL challenge) cannot be killed either. */
+export function liveFloor(state: GameState): number {
+  return Math.max(1, Math.ceil(state.face.cells.length * LIVE_FLOOR_SHARE));
+}
+
 // --- grain field generation (the highest-leverage knob in the proof) --------
 
 /**
@@ -164,6 +199,34 @@ export function ensureBand(state: GameState, rng: () => number = Math.random): v
   }
   if (f.bandGrain === undefined) f.bandGrain = GRAIN_E;
   if (f.grainScope !== 'band') f.grainScope = 'cell';
+
+  /**
+   * AND A SAVE THAT IS ALREADY DEAD COMES BACK.
+   *
+   * The floor above stops a board being killed from here on, but it does
+   * nothing for the save that was killed before it existed — and that save
+   * cannot reach its own recovery, so it would stay dead forever with no way to
+   * tell the difference between "bricked" and "very hard". Every load repairs
+   * the board back up to the floor, cheapest rock first: the cells that were
+   * worked LEAST are the ones that come back.
+   *
+   * This can only ever fire on a board that is already below a floor it should
+   * never have been below, so it is inert on every save written since.
+   */
+  const floor = liveFloor(state);
+  let live = liveCount(state);
+  if (live < floor) {
+    const order = f.locked!
+      .map((l, i) => ({ i, l, c: f.compaction![i] ?? 0 }))
+      .filter((x) => x.l)
+      .sort((a, b) => a.c - b.c);
+    for (const { i } of order) {
+      if (live >= floor) break;
+      f.locked![i] = false;
+      f.compaction![i] = LOCK_THRESHOLD;
+      live += 1;
+    }
+  }
 }
 
 /**
@@ -345,6 +408,10 @@ export interface GrainStrikeResult {
   compactionBefore: number;
   compactionAfter: number;
   locked: boolean;
+  /** The strike would have killed this cell and the live-rock floor stopped it.
+   *  The renderer says so out loud — a lock that silently does not happen is a
+   *  rule the player can only learn by being confused. */
+  lockHeld: boolean;
   /** Cells the front entered on this strike (0 or 1 of them). */
   waveCells: number[];
   frontCell: number;
@@ -384,15 +451,30 @@ export function applyStrike(
   let locked = false;
 
   // --- the struck cell ------------------------------------------------------
+  let lockHeld = false;
   if (strike === 'across') {
     const next = before + ACROSS_COMPACTION;
     if (next > LOCK_THRESHOLD) {
-      // IT LOCKS. Not clamped, not warned about after the fact — the cell was
-      // showing a telegraph the whole time it sat at 18+.
       comp[cell] = Math.min(MAX_COMPACTION, next);
-      state.face.locked![cell] = true;
-      state.face.cells[cell] = 0;
-      locked = true;
+      if (liveCount(state) - 1 < liveFloor(state)) {
+        // THE ROCK HOLDS. This is the last quarter of the face and it does not
+        // come away — see LIVE_FLOOR_SHARE. The strike still happened and the
+        // cell is still ruined; it simply refuses to die, because the only
+        // recovery from a dead board is a Collapse a dead board cannot pay for.
+        lockHeld = true;
+      } else {
+        // IT LOCKS. Not clamped, not warned about after the fact — the cell was
+        // showing a telegraph the whole time it sat at 18+.
+        state.face.locked![cell] = true;
+        state.face.cells[cell] = 0;
+        // A POCKET DIES WITH THE ROCK IT SAT IN. Leaving it would put a workable
+        // pocket on a dead cell, which is the other half of the bug this fixes.
+        if (state.face.ore?.[cell]) {
+          state.face.ore[cell] = '';
+          if (state.face.oreDug) state.face.oreDug[cell] = 0;
+        }
+        locked = true;
+      }
     } else {
       comp[cell] = next;
     }
@@ -477,6 +559,7 @@ export function applyStrike(
     compactionBefore: before,
     compactionAfter: after,
     locked,
+    lockHeld,
     waveCells,
     frontCell: front?.alive ? front.cell : -1,
     frontHops: front?.alive ? front.hops : 0,

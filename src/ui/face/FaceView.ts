@@ -1276,6 +1276,12 @@ export class FaceView {
         this.spawnPop(x, y, 'DEAD', true);
         this.spawnShards(x, y, 18, false);
         this.addShake(11);
+      } else if (grain.lockHeld) {
+        // THE LAST QUARTER OF THE FACE DOES NOT COME AWAY. Said out loud,
+        // because a strike that visibly should have killed a cell and didn't is
+        // a rule the player would otherwise only learn as confusion.
+        this.spawnPop(x, y, 'IT HOLDS', false);
+        this.addShake(5);
       }
     }
     this.addShake(data.crit ? 7 : 1.5 + intensity * 3 + data.fractured.length);

@@ -14,8 +14,10 @@ import {
   ACROSS_COMPACTION, ACROSS_DUST_MULT, ACROSS_TIME_MULT, COMPACTION_SHOW_AT,
   DEEP_GATES, FRONT_COMPACTION, GRAIN_E, LOCK_THRESHOLD, MAX_COMPACTION, TELEGRAPH_FROM,
   WITH_COMPACTION, compactionAt, ensureBand, faceReport, generateGrain, grainAt, grainNext,
-  isLocked, rerollBand, resetChipLog, seedCompaction, strikeTimeMult, wouldExceedSafety,
+  isLocked, liveCount, liveFloor, rerollBand, resetChipLog, seedCompaction, strikeTimeMult,
+  wouldExceedSafety,
 } from '../systems/grain';
+import { openOre, plantOre, tickOres, workOre } from '../systems/ores';
 import { applyFieldSize, cellCap, dpsMax, harvestCell, manualChip, tickFace } from '../systems/face';
 import { materialDef, rollDrop } from '../materials';
 import { tickDrills, newDrill, grainModeOf } from '../systems/drills';
@@ -291,6 +293,83 @@ describe('lock, and its recovery', () => {
     expect(s().face.locked!.some(Boolean)).toBe(false);
   });
 
+  /**
+   * THE BUG A LIVE SESSION FOUND, AND IT WAS THE WORST KIND.
+   *
+   * Killing every cell left no income, so no depth, so no Collapse, so no
+   * re-roll — and the Collapse was the ONLY recovery. The save was over, with
+   * nothing on screen to say so. These are the tests that stop it coming back.
+   */
+  it('THE BOARD CANNOT BE KILLED — a live floor always survives', () => {
+    const { s, m } = fresh();
+    const st = s();
+    ensureBand(st);
+    const floor = liveFloor(st);
+    // Drive every cell to the edge, then try to kill all of them, twice over.
+    for (let pass = 0; pass < 3; pass++) {
+      for (let c = 0; c < st.face.cells.length; c++) {
+        setComp(st, c, LOCK_THRESHOLD);
+        st.face.cells[c] = cellCap(st, m);
+        manualChip(st, m, nullCtx, c, 'across');
+      }
+    }
+    expect(liveCount(st)).toBeGreaterThanOrEqual(floor);
+    expect(floor).toBeGreaterThan(0);
+  });
+
+  it('a held lock reports itself rather than failing silently', () => {
+    const { s, m } = fresh();
+    const st = s();
+    ensureBand(st);
+    for (let c = 0; c < st.face.cells.length; c++) {
+      setComp(st, c, LOCK_THRESHOLD);
+      st.face.cells[c] = cellCap(st, m);
+      manualChip(st, m, nullCtx, c, 'across');
+    }
+    // By now the floor is holding. One more strike on a live cell must say so.
+    const alive = st.face.locked!.findIndex((l) => !l);
+    st.face.cells[alive] = cellCap(st, m);
+    setComp(st, alive, LOCK_THRESHOLD);
+    const r = manualChip(st, m, nullCtx, alive, 'across');
+    expect(r.grain?.lockHeld).toBe(true);
+    expect(r.grain?.locked).toBe(false);
+    expect(isLocked(st, alive)).toBe(false);
+  });
+
+  it('"Abandon the dig" really does clear the rock', () => {
+    // The live report came in as "I reset all progress and the cells stayed
+    // locked". Erasing everything must give back a face with nothing dead on
+    // it, through the same action the button dispatches.
+    const { engine, s, m } = fresh();
+    const st = s();
+    ensureBand(st);
+    setComp(st, 0, LOCK_THRESHOLD);
+    st.face.cells[0] = cellCap(st, m);
+    manualChip(st, m, nullCtx, 0, 'across');
+    expect(isLocked(st, 0)).toBe(true);
+    engine.dispatch({ type: 'hardReset' });
+    const after = engine.getState() as GameState;
+    ensureBand(after);
+    expect(after.face.locked!.some(Boolean)).toBe(false);
+    expect(after.face.compaction!.every((c) => c === 0)).toBe(true);
+    expect(liveCount(after)).toBe(after.face.cells.length);
+  });
+
+  it('a board that was ALREADY bricked comes back on load', () => {
+    // The floor above cannot help a save killed before it existed, and that
+    // save cannot reach its own recovery. Loading one repairs it.
+    const { s } = fresh();
+    const st = s();
+    ensureBand(st);
+    st.face.locked = st.face.cells.map(() => true);
+    st.face.compaction = st.face.cells.map((_, i) => 20 + (i % 5));
+    ensureBand(st);
+    expect(liveCount(st)).toBeGreaterThanOrEqual(liveFloor(st));
+    // The rock that comes back is the rock that was worked LEAST.
+    const revived = st.face.locked!.map((l, i) => ({ l, i })).filter((x) => !x.l);
+    for (const { i } of revived) expect(st.face.compaction![i]).toBeLessThanOrEqual(LOCK_THRESHOLD);
+  });
+
   it('the threshold is ONE constant, so the Patient mark lands as one line', () => {
     expect(LOCK_THRESHOLD).toBe(20);
     expect(TELEGRAPH_FROM).toBe(LOCK_THRESHOLD - ACROSS_COMPACTION + 1);
@@ -366,6 +445,47 @@ describe('the drills work the grain without a parallel system', () => {
     const held = st.face.cells[0];
     for (let i = 0; i < 400; i++) tickDrills(st, m, nullCtx, 0.1);
     expect(st.face.cells[0]).toBe(held); // never touched
+  });
+});
+
+describe('dead rock is dead to the pockets too', () => {
+  /** The other half of the live report: a pocket spawned behind the X, the
+   *  hold gesture still worked it, and it still paid its guaranteed rolls —
+   *  so a locked cell was the most profitable rock on the board. */
+  function killCell(st: GameState, m: ModifierCache, cell: number): void {
+    setComp(st, cell, LOCK_THRESHOLD);
+    st.face.cells[cell] = cellCap(st, m);
+    manualChip(st, m, nullCtx, cell, 'across');
+  }
+
+  it('a pocket never spawns on a locked cell', () => {
+    const { s, m } = fresh();
+    const st = s();
+    killCell(st, m, 0);
+    expect(isLocked(st, 0)).toBe(true);
+    for (let i = 0; i < 3000; i++) tickOres(st, m, nullCtx, 0.5);
+    expect(st.face.ore?.[0] ?? '').toBe('');
+  });
+
+  it('planting one on dead rock is refused', () => {
+    const { s, m } = fresh();
+    const st = s();
+    killCell(st, m, 0);
+    expect(plantOre(st, m, nullCtx, 0)).toBe(false);
+  });
+
+  it('a pocket left on a cell that dies goes with it', () => {
+    const { s, m } = fresh();
+    const st = s();
+    ensureBand(st);
+    setComp(st, 0, LOCK_THRESHOLD);
+    st.face.cells[0] = cellCap(st, m);
+    manualChip(st, m, nullCtx, 0, 'across');
+    st.face.ore = st.face.cells.map(() => '');
+    // ...and if one somehow survives on dead rock, no verb will touch it.
+    st.face.ore[0] = 'seam';
+    expect(workOre(st, nullCtx, 0, 5).ok).toBe(false);
+    expect(openOre(st, m, nullCtx, 0, 'hand', 1)).toBeNull();
   });
 });
 
