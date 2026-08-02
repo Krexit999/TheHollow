@@ -67,9 +67,20 @@ export const TERMINAL_GATE = DEEP_GATES[0]!.at;
  */
 export function ensureCompaction(state: GameState): void {
   const n = state.face.cells.length;
-  const f = state.face;
-  if (!Array.isArray(f.compaction) || f.compaction.length !== n) {
-    f.compaction = new Array<number>(n).fill(0);
+  const f = state.face as unknown as Record<string, unknown>;
+  if (!Array.isArray(state.face.compaction) || state.face.compaction.length !== n) {
+    state.face.compaction = new Array<number>(n).fill(0);
+  }
+  /**
+   * AND A SAVE FROM THE GRAIN BUILD SHEDS WHAT IT WAS CARRYING.
+   *
+   * Nothing reads these any more, so leaving them changes no behaviour — which
+   * is exactly why it would have been missed. They persist in player data and
+   * in every exported save string, so a cut that stops at the code is not a
+   * cut. Deleted on load, the same way the grain layer used to delete `locked`.
+   */
+  for (const dead of ['grain', 'grainGen', 'grainScope', 'bandGrain', 'front', 'locked']) {
+    if (f[dead] !== undefined) delete f[dead];
   }
 }
 

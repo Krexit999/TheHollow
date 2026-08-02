@@ -140,14 +140,30 @@ describe('the array survives the face changing shape', () => {
 });
 
 describe('nothing named grain survives', () => {
-  it('the face state carries no grain, front or lock', () => {
+  const DEAD = ['grain', 'grainGen', 'grainScope', 'bandGrain', 'front', 'locked'];
+
+  it('a fresh face carries none of it', () => {
     const { s, m } = fresh();
     const st = s();
     tickFace(st, m, nullCtx, 0.1);
     manualChip(st, m, nullCtx, 0);
     const face = st.face as unknown as Record<string, unknown>;
-    for (const key of ['grain', 'grainGen', 'grainScope', 'bandGrain', 'front', 'locked']) {
-      expect(face[key], key).toBeUndefined();
-    }
+    for (const key of DEAD) expect(face[key], key).toBeUndefined();
+  });
+
+  it('and a SAVE FROM THE GRAIN BUILD sheds all of it on load', () => {
+    // The version above passes on a state that never had the keys, which is no
+    // test at all — a live save planted with them is what caught this.
+    const { s, m } = fresh();
+    const st = s();
+    const face = st.face as unknown as Record<string, unknown>;
+    face['grain'] = new Array(36).fill(1);
+    face['grainGen'] = 2;
+    face['grainScope'] = 'cell';
+    face['bandGrain'] = 1;
+    face['locked'] = new Array(36).fill(false);
+    face['front'] = { cell: 3, hops: 2, alive: true, trail: [1, 2], path: [1, 2, 3] };
+    tickFace(st, m, nullCtx, 0.1);
+    for (const key of DEAD) expect(face[key], key).toBeUndefined();
   });
 });
