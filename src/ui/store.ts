@@ -74,9 +74,9 @@ interface UIStore {
   /** Glassmere: while true, tapping the face cycles a mirror instead of chipping. */
   opticsMode: boolean;
   /** THE FACE CLUSTER (v20): what a press on the face does — chip (default),
-   *  tag a cell for drills to skip, or drag a stamina-costed sweep. UI-only.
+   *  or arm a signature technique for the next tap. UI-only.
    *  'technique' (Part B): the next tap performs the armed signature verb. */
-  faceMode: 'chip' | 'sweep' | 'technique';
+  faceMode: 'chip' | 'technique';
   /** Which targeted technique a face tap performs while faceMode='technique'. */
   armedTechnique: string | null;
   /** The bulk-buy multiplier, persisted across sessions (localStorage). */
@@ -110,7 +110,7 @@ interface UIStore {
   setRunSummaryOpen: (open: boolean) => void;
   markFresh: (tab: TabId) => void;
   setOpticsMode: (on: boolean) => void;
-  setFaceMode: (m: 'chip' | 'sweep' | 'technique') => void;
+  setFaceMode: (m: 'chip' | 'technique') => void;
   armTechnique: (id: string | null) => void;
   setBulkMode: (m: BulkMode) => void;
   setNumberFormat: (m: NumberFormat) => void;

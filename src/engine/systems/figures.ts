@@ -9,9 +9,10 @@
  * is a gesture the hand makes on the face, not a board arrangement.
  *
  * PILLAR 2 (the one that constrains this): a Figure must not raise throughput. So it
- * pays what is NOT income-bound — Delver XP, a bonus DROP roll, and a refill of sweep
- * STAMINA — never Dust and never a yield multiplier. It changes engagement, not the
- * ceiling. (A dust/Y bonus would have raised `dpsMax`; XP+drops+stamina do not.)
+ * pays what is NOT income-bound — Delver XP and a bonus DROP roll — never Dust and
+ * never a yield multiplier. It changes engagement, not the ceiling. (A dust/Y bonus
+ * would have raised `dpsMax`; XP and drops do not.) A third channel, a sweep-stamina
+ * refill, went when SWEEP did.
  *
  * PILLAR 5: the face may glow at a cell that is ONE chip from completing a figure
  * (`figureHintCells`), but the glow names a POSITION, never a shape. Discovery stays
@@ -51,7 +52,6 @@ export function figureDef(id: string): FigureDef | undefined {
 // a session-long accumulation.
 const WINDOW_SEC = 3.5;
 const TRAIL_MAX = 9;
-const STAMINA_REWARD = 25;
 
 function nowSec(state: GameState): number {
   return state.stats.playTimeSec;
@@ -152,12 +152,18 @@ export function recordChipForFigures(state: GameState, mods: ModifierCache, ctx:
   const fig = detectFigure(state.face.w, state.face.h, set, cell);
   if (!fig) return null;
 
-  // Ceiling-free payout: XP, a bonus drop roll, a stamina refill. No Dust, no Y.
+  // Ceiling-free payout: XP and a bonus drop roll. No Dust, no Y.
+  //
+  // IT USED TO PAY A STAMINA REFILL AS WELL, and that channel is gone with
+  // SWEEP — stamina existed only to meter the sweep gesture, so a refill now
+  // tops up nothing. This is a real reduction in what a figure pays and it is
+  // NOT compensated here: the other two channels are the ones that were doing
+  // the work, and inventing a third to replace it would be re-adding a system
+  // to preserve a hook, which is the thing the cut is against.
   const first = !state.figures.found.includes(fig.id);
   if (first) state.figures.found.push(fig.id);
   grantXP(state, mods, ctx, D(6 * fig.scale * (1 + 0.06 * state.depth)));
   rollForDrop(state, mods, ctx, BASE_CAP * 2 * fig.scale, 1.5);
-  state.face.stamina = Math.min(state.face.staminaMax, state.face.stamina + STAMINA_REWARD * fig.scale);
   // A figure is a completed gesture — clear the trail so the next one is fresh.
   state.face.recentChips.length = 0;
   ctx.emit({ type: 'figure', id: fig.id, name: fig.name, first });

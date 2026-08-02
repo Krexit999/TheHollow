@@ -13,13 +13,13 @@
  *  - A technique never has a currency cost. The cooldown IS the cost; a verb
  *    you must buy is a purchase, not a technique.
  *  - Pillar 1: techniques are pure ACTIVE upside. Nothing an idle player had
- *    is moved behind one (Skim's guarantee is tested, not promised).
+ *    is moved behind one (the idle leak's rate is tested, not promised).
  *  - Pillar 5: no locked list. A technique appears when its signature is
  *    active, never before.
  *
  * Shells III–VII: STUBBED by ruling — the registry accommodates growth /
  * refraction / pressure / absence techniques; none is registered until the
- * creative pass lands. Loam (Skim) and Ferrite (Poleshift) are the reference
+ * creative pass lands. Ferrite (Poleshift) is the reference
  * implementations.
  */
 import type { ModifierCache } from './modifiers';
@@ -31,7 +31,7 @@ export interface TechniqueDef {
   /** The signature that grants it — active signature (native or carried). */
   signatureId: string;
   name: string;
-  /** The verb, imperative, as the button says it: "Skim", "Shift the pole". */
+  /** The verb, imperative, as the button says it: "Shift the pole". */
   verb: string;
   flavor: string;
   /** Says what it does at the given strength — rule 5, computed not vague. */

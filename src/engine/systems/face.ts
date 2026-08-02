@@ -26,7 +26,6 @@ import { growLivingParts } from './casting';
 import { noteBioWork } from './toolBio';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
-import { registerTechnique } from '../techniques';
 import { masteryLevel } from './mastery';
 import { lawNum, sealed, challengeNum } from '../laws';
 import { oreDef, oreRichness } from '../content/ores';
@@ -38,11 +37,11 @@ import {
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
 
-// SWEEP STAMINA (v20). The one new tracked value, scoped to the sweep gesture.
-// It regenerates fast (full in ~20s), never gates ordinary chipping, and an idle
-// player is entirely unaffected — stamina just sits full while you idle.
-export const STAMINA_REGEN = 5; // per second
-export const SWEEP_COST_PER_CELL = 6; // ~16 cells per full bar
+// SWEEP AND ITS STAMINA ARE CUT. Sweep was a drag that cleared a swathe for a
+// resource that gated nothing else, which made it a faster tap rather than a
+// different verb. Grain briefly gave it and SKIM distinct jobs (§2.4 — SKIM
+// with-grain, HOLD across); grain is cut, and neither verb has had a job since.
+// ONE CHIP VERB.
 
 export function cellCap(state: GameState, mods: ModifierCache): number {
   return BASE_CAP * (1 + 0.5 * stat(state, 'roots')) * mods.get(state, 'cap').toNumber();
@@ -101,18 +100,14 @@ export function dpsMax(state: GameState, mods: ModifierCache): Decimal {
 export const SEEP_EFFICIENCY = 0.15;
 
 /**
- * SKIM — Loam's TECHNIQUE (the verb-per-signature layer). While seepage runs,
- * a pool banks EXTRA seep — half the leak's rate again — up to a tenth of the
- * face's full storage. Skimming collects the pool by hand. The idle leak is
- * UNTOUCHED: a player who never skims earns exactly what they always did
- * (folds.test asserts this equivalence); the pool cap self-paces the verb.
+ * SKIM IS CUT, AND SEEPAGE IS NOT.
+ *
+ * Skim was the verb that collected a side-pool seepage banked on top of its
+ * leak. The leak was always the real mechanic — it is what lets a fully idle
+ * player forge past the hardness walls (pillar 1) — and the pool existed only
+ * to give the verb something to do. With the verb gone the pool has no reader,
+ * so both go; SEEPAGE, the signature, is untouched and still carries on Breach.
  */
-export const SKIM_POOL_RATIO = 0.5;
-export const SKIM_POOL_CAP_FRACTION = 0.1;
-
-export function skimPoolCap(state: GameState, mods: ModifierCache): number {
-  return state.face.w * state.face.h * cellCap(state, mods) * SKIM_POOL_CAP_FRACTION;
-}
 
 /** The current seep strength: native 1, carried 0.4×memory, else 0. */
 export function seepStrength(state: GameState): number {
@@ -175,18 +170,7 @@ export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
       // lets a fully idle player forge past the hardness walls instead of
       // deadlocking at them (pillar 1).
       rollForDrop(state, mods, ctx, collected, 1);
-      // SKIM's pool banks on top — the leak above is byte-for-byte unchanged.
-      state.face.seepPool = Math.min(
-        skimPoolCap(state, mods),
-        state.face.seepPool + collected * SKIM_POOL_RATIO,
-      );
     }
-  }
-
-  // Sweep stamina regenerates toward full. It gates nothing an idle player needs
-  // (ordinary chipping ignores it), so filling offline is a pure convenience.
-  if (state.face.stamina < state.face.staminaMax) {
-    state.face.stamina = Math.min(state.face.staminaMax, state.face.stamina + STAMINA_REGEN * dt);
   }
 }
 
@@ -204,30 +188,9 @@ export function registerSeepage(): void {
       voidTick: (s, _m, _dt, strength) => 0.5 * strength * (1 + 0.08 * masteryLevel(s, 'loam')),
     },
   });
-  registerTechnique({
-    id: 'skim',
-    signatureId: 'seepage',
-    name: 'Skim',
-    verb: 'Skim the pool',
-    flavor: 'The loam gives more than the channels catch. Cup your hands.',
-    describe: (_s, strength) => {
-      const pct = Math.round(SKIM_POOL_RATIO * 100);
-      return `Seepage banks an extra ${pct}% of its leak into a pool (at ×${strength.toFixed(2)} strength). Skimming collects it by hand — the idle leak itself is never touched.`;
-    },
-    cooldownSec: 0, // the pool cap self-paces the verb
-    targeted: false,
-    perform: (state, mods, ctx, _strength) => {
-      const pool = state.face.seepPool;
-      if (pool < 1) return { ok: false, reason: 'Nothing worth cupping yet' };
-      state.face.seepPool = 0;
-      const paid = chipYield(state, mods).mul(pool);
-      addCurrency(state, chipCurrencyId(state), paid);
-      // A skim is harvest, like the leak it rides on.
-      rollForDrop(state, mods, ctx, pool, 1);
-      ctx.emit({ type: 'skimmed', charge: pool, paid });
-      return { ok: true, data: { charge: pool, paid } };
-    },
-  });
+  // SEEPAGE REGISTERS NO TECHNIQUE. Skim was Loam's verb and it is cut; the
+  // signature keeps its leak and its voidTick hook, which is everything that
+  // made it worth carrying.
 }
 
 export interface ChipResult {
@@ -548,7 +511,7 @@ export function manualChip(
   // economy, which is exactly why it is the only stat allowed a multiplier.
   rollForDrop(state, mods, ctx, charge + splashCharge, tool.dropWeight);
   // FIGURES (v20): a chip that completes a traced shape pays a ceiling-free bonus
-  // (XP + a drop roll + stamina) and records the figure in the Codex. Never Dust.
+  // (XP + a drop roll) and records the figure in the Codex. Never Dust.
   recordChipForFigures(state, mods, ctx, cell);
   // AFFINITY (v21): the equipped tool learns the shell it works — a small capped
   // bonus through the modifier pipeline (dropRate), never dustYield (pillar 2).
@@ -614,62 +577,6 @@ wireHandHarvest((state, mods, ctx, cell, share) => {
   grantXP(state, mods, ctx, D(0.7 * (1 + 0.08 * state.depth) * (r.charge / BASE_CAP)));
 });
 
-/**
- * THE SWEEP (v20). A drag chips a swathe of cells at once for stamina. It is
- * pure ERGONOMICS — each cell is harvested exactly as a manual chip would harvest
- * it (regen-bound charge, same yield), so the sweep can never take more than the
- * field produced (pillar 2). Stamina caps how MANY cells one gesture clears, never
- * the throughput; a player with no stamina still chips normally, one cell a tap.
- * Returns what was cleared.
- */
-export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cells: number[]): { dust: Decimal; swept: number[] } {
-  let dust = D(0);
-  const swept: number[] = [];
-  const affordable = Math.floor(state.face.stamina / SWEEP_COST_PER_CELL);
-  const seen = new Set<number>();
-  for (const cell of cells) {
-    if (swept.length >= affordable) break;
-    if (cell < 0 || cell >= state.face.cells.length || seen.has(cell)) continue;
-    seen.add(cell);
-    // A cultivated (vined) cell is left for its own harvest, like the drills do.
-    if ((state.growth.stage[cell] ?? 0) > 0) continue;
-    // ...and so is a pocket. A sweep is a fast pass across the face; it is
-    // exactly the gesture an ore is supposed to be immune to.
-    if (state.face.ore?.[cell]) continue;
-    // A SWEEP COMPACTS NOTHING. The gesture is a fast pass for ergonomics, and
-    // letting it pack the rock would make the cheapest input in the game the way
-    // you open the deep-entry gates — those cost attention, one cell at a time.
-    const before = state.face.cells[cell] ?? 0;
-    const sigMult = runChipMult(state, mods, ctx, cell, true);
-    const r = harvestCell(state, mods, cell, 1, D(sigMult));
-    if (r.charge <= 0) continue;
-    dust = dust.add(r.dust);
-    swept.push(cell);
-    void before;
-  }
-  if (swept.length > 0) {
-    state.face.stamina = Math.max(0, state.face.stamina - swept.length * SWEEP_COST_PER_CELL);
-    // A sweep is nine swings in one gesture, so it is nine swings of wear. The
-    // sweep is ergonomics, not a way to mine for free — and it does NOT get the
-    // tool's reach on top, because a swathe that also splashed would be reach
-    // twice over.
-    spendToolUse(state, swept.length);
-    gainToolXp(state, swept.length, ctx);
-    gainModXp(state, ctx, swept.length);
-    growLivingParts(state, ctx, swept.length);
-    noteBioWork(state, swept.length, swept.length);
-    // ONE GESTURE, ONE TICK OF THE METER. A sweep is nine swings of WEAR because
-    // the rock does not care how the arm moved, but it is one motion of the arm
-    // — charging nine would make the sweep the way you farm abilities instead of
-    // the way you clear rock quickly.
-    advanceToolCharges(state, mods, ctx, swept[swept.length - 1]!, false);
-    state.stats.manualChips += swept.length;
-    grantXP(state, mods, ctx, D(0.5 * swept.length * (1 + 0.08 * state.depth)));
-    rollForDrop(state, mods, ctx, swept.length * 2, 1);
-    ctx.emit({ type: 'chip', cell: swept[swept.length - 1]!, dust, charge: swept.length, crit: false, manual: true });
-  }
-  return { dust, swept };
-}
 
 /** Field dimensions for an expansion level: 6x6 -> 7x6 -> 7x7 -> ... */
 export function fieldDims(expandLevel: number): { w: number; h: number } {

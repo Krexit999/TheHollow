@@ -288,15 +288,6 @@ describe('durability is decided by the build, not the depth', () => {
     expect(st().casting.wear).toBe(held);
   });
 
-  it('a sweep is nine swings of wear, not one', () => {
-    hold('marl');
-    fillFace();
-    st().face.stamina = 100;
-    engine.dispatch({ type: 'sweep', cells: [0, 1, 2, 3, 4] });
-    const per = wearPerUse(toolOf('marl'));
-    expect(st().casting.wear / per).toBeGreaterThan(4.5);
-  });
-
   /**
    * THE INVARIANT IS THE HALVING, NOT THE ABSOLUTE.
    *
@@ -606,14 +597,6 @@ describe('a tool you have mined with is better than the same tool fresh', () => 
     st().face.cells = st().face.cells.map(() => 0);
     for (let i = 0; i < 30; i++) engine.dispatch({ type: 'chip', cell: i % 36 });
     expect(st().casting.xp).toBe(0);
-  });
-
-  it('a sweep counts the cells it swept', () => {
-    hold('marl');
-    fillFace();
-    st().face.stamina = 100;
-    engine.dispatch({ type: 'sweep', cells: [0, 1, 2, 3, 4] });
-    expect(st().casting.xp).toBe(5);
   });
 
   it('levels arrive on a rising curve, and the readout matches it', () => {

@@ -1,6 +1,7 @@
 /**
  * THE FACE CLUSTER (Phase, v20) — the Face at the engine level: FIGURES traced
- * in the rock and sweep stamina. The pillar guarantees the UI leans on: a figure
+ * in the rock. (Sweep stamina was the other half and is cut.) The pillar
+ * guarantees the UI leans on: a figure
  * never mints income (pillar 2), the hint is a position not a shape (pillar 5),
  * and an idle player is untouched (pillar 1).
  */
@@ -10,7 +11,6 @@ import type { Engine, EngineCtx, GameState } from '../types';
 import { getCurrency } from '../resources';
 import { ModifierCache } from '../modifiers';
 import { detectFigure, figureHintCells, recordChipForFigures } from '../systems/figures';
-import { tickFace, SWEEP_COST_PER_CELL, STAMINA_REGEN } from '../systems/face';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 
 const nullCtx: EngineCtx = { emit() {}, dirty() {} };
@@ -52,11 +52,10 @@ describe('figures — detection', () => {
 });
 
 describe('figures — pillar 2 (never income) and pillar 5 (position not shape)', () => {
-  it('a completed figure pays XP and stamina but NOT one grain of currency', () => {
+  it('a completed figure pays XP but NOT one grain of currency', () => {
     const { engine, s } = fresh();
     const state = s();
     const mods = new ModifierCache();
-    state.face.stamina = 10;
     state.stats.playTimeSec = 0;
     state.face.recentChips = [{ cell: 0, at: 0 }, { cell: 1, at: 0 }];
     const dustBefore = getCurrency(state, 'dust').toString();
@@ -66,9 +65,9 @@ describe('figures — pillar 2 (never income) and pillar 5 (position not shape)'
     expect(state.figures.found).toContain('furrow');
     // The whole point: no dust minted by the figure.
     expect(getCurrency(state, 'dust').toString()).toBe(dustBefore);
-    // But it DID reward the ceiling-free things.
+    // But it DID reward the ceiling-free things. (A stamina refill was a third
+    // channel here; it went with SWEEP, which is the only thing stamina metered.)
     expect(state.delver.xp.toString()).not.toBe(xpBefore);
-    expect(state.face.stamina).toBeGreaterThan(10);
     expect(engine).toBeTruthy();
   });
 
@@ -93,53 +92,17 @@ describe('figures — pillar 2 (never income) and pillar 5 (position not shape)'
   });
 });
 
-describe('sweep + stamina — pillar 1 (idle unaffected) and pillar 2 (ceiling)', () => {
-  it('a sweep clears as many cells as stamina allows, and no more', () => {
-    const { engine, s } = fresh();
-    const state = s();
-    state.face.stamina = 2 * SWEEP_COST_PER_CELL + 1; // enough for exactly 2 cells
-    for (let i = 0; i < state.face.cells.length; i++) state.face.cells[i] = 8;
-    const r = engine.dispatch({ type: 'sweep', cells: [0, 1, 2, 3] });
-    expect(r.ok).toBe(true);
-    expect((r.data as { swept: number[] }).swept.length).toBe(2);
-    expect(state.face.stamina).toBeLessThan(SWEEP_COST_PER_CELL); // spent
-  });
-
-  it('ordinary chipping never depends on stamina (pillar 1)', () => {
-    const { engine, s } = fresh();
-    s().face.stamina = 0;
-    const r = engine.dispatch({ type: 'chip', cell: 0 });
-    expect(r.ok).toBe(true);
-  });
-
-  it('stamina regenerates and an idle face is otherwise unchanged', () => {
-    const { s } = fresh();
-    const state = s();
-    const mods = new ModifierCache();
-    state.face.stamina = 0;
-    tickFace(state, mods, nullCtx, 3);
-    expect(state.face.stamina).toBeCloseTo(3 * STAMINA_REGEN, 3);
-  });
-
-  it('a sweep only takes what a cell holds — it cannot exceed the field (pillar 2)', () => {
-    const { engine, s } = fresh();
-    const state = s();
-    state.face.stamina = 100;
-    for (let i = 0; i < state.face.cells.length; i++) state.face.cells[i] = 0; // empty field
-    const r = engine.dispatch({ type: 'sweep', cells: [0, 1, 2] });
-    expect(r.ok).toBe(false); // nothing to take
-  });
-});
-
 describe('save v20', () => {
-  it('migrates a v19 save by adding face marks/stamina and the figures Codex', () => {
+  it('migrates a v19 save by adding face marks and the figures Codex', () => {
     const payload = { version: 19, savedAtMs: 0, state: { face: { w: 6, h: 6, cells: [] } } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
     expect(SAVE_VERSION).toBeGreaterThanOrEqual(20);
     const st = out.state as { face: Record<string, unknown>; figures: unknown };
     expect(st.face['marks']).toEqual([]);
-    expect(st.face['stamina']).toBe(100);
+    // stamina is no longer written: SWEEP is cut, so the migration has nothing
+    // to seed. An old save carrying the field is harmless — nothing reads it.
+    expect(st.face['stamina']).toBeUndefined();
     expect(st.figures).toEqual({ found: [] });
   });
 });

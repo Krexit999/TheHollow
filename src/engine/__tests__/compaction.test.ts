@@ -13,7 +13,7 @@ import {
   CHIP_COMPACTION, COMPACTION_SHOW_AT, DEEP_GATES, MAX_COMPACTION, TERMINAL_GATE,
   compactionAt, ensureCompaction, gateCrossed, resetCompaction,
 } from '../systems/compaction';
-import { applyFieldSize, cellCap, manualChip, sweep, tickFace } from '../systems/face';
+import { applyFieldSize, cellCap, manualChip, tickFace } from '../systems/face';
 import { materialDef, rollDrop } from '../materials';
 import { tickDrills, newDrill } from '../systems/drills';
 
@@ -38,14 +38,6 @@ describe('working a cell packs it', () => {
     st.face.cells[0] = 0;
     manualChip(st, m, nullCtx, 0);
     expect(compactionAt(st, 0)).toBe(0);
-  });
-
-  it('a SWEEP packs nothing — it is ergonomics, not attention', () => {
-    const { s, m } = fresh();
-    const st = s();
-    ensureCompaction(st);
-    sweep(st, m, nullCtx, [0, 1, 2, 3, 4]);
-    expect(st.face.compaction!.every((c) => c === 0)).toBe(true);
   });
 
   it('it climbs to a ceiling and stops, and the cell keeps working', () => {

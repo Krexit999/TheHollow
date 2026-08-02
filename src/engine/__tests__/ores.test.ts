@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import type { EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
-import { applyFieldSize, cellCap, dpsMax, manualChip, sweep, tickFace } from '../systems/face';
+import { applyFieldSize, cellCap, dpsMax, manualChip, tickFace } from '../systems/face';
 import { newDrill, tickDrills } from '../systems/drills';
 import {
   DRILL_ORE_SHARE, DRILL_ORE_SPEED, ORE_CAP_SHARE, ORE_DROUGHT_SEC, ORE_DROUGHT_SHARE,
@@ -154,15 +154,6 @@ describe('a pocket will not come away with one swing', () => {
     expect(isOre(s, 4)).toBe(true);
   });
 
-  it('a sweep passes over it too — the fast gesture is the one it resists', () => {
-    const { s } = fresh();
-    const m = mods();
-    put(s, 2);
-    s.face.cells = s.face.cells.map((_, i) => cellCapAt(s, m, i));
-    const r = sweep(s, m, ctx, [0, 1, 2, 3]);
-    expect(r.swept).not.toContain(2);
-    expect(r.swept).toContain(0);
-  });
 });
 
 // ---------------------------------------------------------------------------

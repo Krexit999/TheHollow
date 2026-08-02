@@ -3,7 +3,7 @@
  *
  *   A  no compaction digit on any cell, at any compaction, including 26
  *   B  no floating verb pill over the canvas
- *   C  the verbs are still reachable, as plain HTML under the face
+ *   C  one chip verb: SWEEP and SKIM are gone from the page and the engine
  *
  * A is read off the PIXI SCENE GRAPH, not off a screenshot: "I cannot see a
  * number" in a 380px capture is not the same claim as "no Text object is
@@ -11,7 +11,7 @@
  *
  *   npx tsx scripts/verify-face-declutter.ts [port]
  */
-import { chromium, type Page } from 'playwright';
+import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
 const URL = `http://localhost:${process.argv[2] ?? '5173'}`;
@@ -89,7 +89,7 @@ async function main(): Promise<void> {
     return { max: Math.max(...c), atTerminal: c.filter((n) => n >= 20).length };
   });
   check(stillSignals.max >= 20, 'the rock really is worked to the terminal gate',
-    `max ${stillSignals.max}, ${stillSignals.atTerminal} cells at/над 20`);
+    `max ${stillSignals.max}, ${stillSignals.atTerminal} cells at/above 20`);
   await page.screenshot({ path: `${OUT}/A-no-digits.png` });
   console.log('  shot A-no-digits');
 
@@ -107,34 +107,40 @@ async function main(): Promise<void> {
   check((overlay?.buttons.length ?? 1) === 0, 'the face host holds no buttons at all',
     JSON.stringify(overlay?.buttons));
 
-  // ── C. THE VERBS ARE STILL REACHABLE ────────────────────────────────────
-  console.log('C — the verbs live under the face, in plain HTML');
-  const verbs = await page.evaluate(() => {
-    const el = document.querySelector('[data-testid="face-verbs"]');
-    if (!el) return null;
+  // ── C. THERE IS ONE CHIP VERB ───────────────────────────────────────────
+  // This check has INVERTED. It used to assert Sweep and Skim were still
+  // reachable after the pill came off the canvas; both verbs are now cut
+  // outright, so it asserts they are gone — from the whole document, not just
+  // from the face.
+  console.log('C — one chip verb: no Sweep, no Skim, anywhere');
+  const anyVerb = await page.evaluate(() => {
+    const all = [...document.querySelectorAll('button')].map((b) => b.textContent?.trim() ?? '');
     return {
-      onCanvas: el.closest('canvas') !== null,
-      buttons: [...el.querySelectorAll('button')].map((b) => b.textContent?.trim()),
-      text: (el as HTMLElement).innerText.replace(/\s+/g, ' ').trim().slice(0, 60),
+      sweep: all.filter((t) => /sweep/i.test(t)),
+      skim: all.filter((t) => /skim/i.test(t)),
+      verbRow: !!document.querySelector('[data-testid="face-verbs"]'),
     };
   });
-  console.log(`      ${JSON.stringify(verbs)}`);
-  check(verbs !== null, 'the verb row exists');
-  check((verbs?.buttons ?? []).includes('Chip'), 'Chip is reachable');
-  check((verbs?.buttons ?? []).includes('Sweep'), 'Sweep is reachable — not cut');
-  const skim = (verbs?.buttons ?? []).find((b) => /Skim/.test(b ?? ''));
-  check(!!skim, 'Skim is reachable — not cut', skim ?? 'absent');
+  console.log(`      ${JSON.stringify(anyVerb)}`);
+  check(anyVerb.sweep.length === 0, 'no SWEEP button anywhere on the page', anyVerb.sweep.join(','));
+  check(anyVerb.skim.length === 0, 'no SKIM button anywhere on the page', anyVerb.skim.join(','));
+  // In Loam the verb row renders nothing at all — the shell has no technique.
+  check(!anyVerb.verbRow, 'and Loam shows no verb row at all — it grants none');
 
-  // ...and switching to Sweep still works from here.
-  await page.locator('[data-testid="verb-sweep"]').click({ timeout: 5000 });
-  await page.waitForTimeout(500);
-  const sweptOn = await page.evaluate(() => {
-    const ui = (window as unknown as Record<string, { getState: () => { faceMode: string } }>)['__ui']!;
-    return ui.getState().faceMode;
+  // The engine refuses the dead actions rather than silently accepting them.
+  const dead = await page.evaluate(() => {
+    const e = (window as unknown as Record<string, never>)['__engine'] as unknown as
+      { dispatch: (a: unknown) => { ok: boolean } };
+    return {
+      sweep: e.dispatch({ type: 'sweep', cells: [0, 1, 2] }).ok,
+      skim: e.dispatch({ type: 'useTechnique', id: 'skim' }).ok,
+    };
   });
-  check(sweptOn === 'sweep', 'and pressing Sweep really changes the mode', sweptOn);
-  await page.screenshot({ path: `${OUT}/C-verbs-under-face.png` });
-  console.log('  shot C-verbs-under-face');
+  console.log(`      stale dispatches: ${JSON.stringify(dead)}`);
+  check(dead.sweep === false, 'a stale `sweep` dispatch is refused');
+  check(dead.skim === false, 'a stale `skim` technique is refused');
+  await page.screenshot({ path: `${OUT}/C-one-verb.png` });
+  console.log('  shot C-one-verb');
 
   const overflow = await page.evaluate(() =>
     Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));

@@ -278,11 +278,10 @@ export class FaceView {
   private magnetLayer = new Graphics();
   private beamLayer = new Graphics();
   private heatLayer = new Graphics();
-  // THE FACE CLUSTER (v20): marks, sweep trail, and the pillar-5 figure hint.
+  // THE FACE CLUSTER (v20): marks and the pillar-5 figure hint.
   private markLayer = new Graphics();
   private lastPx = 0;
   private lastPy = 0;
-  private sweepCells: number[] = [];
   private hintPhase = 0;
 
   private get theme(): FaceTheme {
@@ -345,11 +344,7 @@ export class FaceView {
       if (this.pointerDown) this.onDrag(e.globalX, e.globalY);
     });
     const up = () => {
-      if (this.pointerDown && useGame.getState().faceMode === 'sweep' && this.sweepCells.length > 0) {
-        this.engine.dispatch({ type: 'sweep', cells: this.sweepCells.slice() });
-      }
       this.pointerDown = false;
-      this.sweepCells = [];
       // Letting go stops the dig where it stands. The progress KEEPS (the
       // engine never decays it), so a slip costs nothing and coming back to a
       // half-open pocket is a normal thing to do.
@@ -452,19 +447,15 @@ export class FaceView {
     if (width < FaceView.MIN_HOST_PX || height < FaceView.MIN_HOST_PX) return;
     const pad = 18;
     /**
-     * THE CONTROLS SIT ON THE FACE, SO THE FACE HAS TO GET OUT OF THE WAY.
+     * NOTHING SITS ON THE FACE ANY MORE, so nothing is reserved.
      *
-     * On phone the Chip/Sweep bar (and now the With/Across bar above it) is
-     * absolutely positioned across the bottom of this same box, with its buttons
-     * pointer-active. It was already covering the bottom row; adding a second
-     * bar covered two, and those cells could not be TAPPED at all — a 380px
-     * screenshot is what found it, which is why the brief asks for one.
-     *
-     * The desktop layout pins the controls to the viewport corner instead, so it
-     * reserves nothing. `640` is Tailwind's `lg` boundary for this component.
+     * This used to hold back 118px on phone for the Chip/Sweep bar, which was
+     * absolutely positioned across the bottom of this same box with its buttons
+     * pointer-active — it covered the bottom rows and those cells could not be
+     * tapped at all. The bar came off the canvas, and then SWEEP and SKIM were
+     * cut outright, so the reserve is now 118px of dead space above the rock.
      */
-    const controlsReserve = width < 640 ? 118 : 0;
-    const usable = height - controlsReserve;
+    const usable = height;
     const size = Math.min(
       (width - pad * 2) / this.faceW,
       (usable - pad * 2 - 14) / this.faceH,
@@ -1008,7 +999,6 @@ export class FaceView {
   /** A press begins: what it does depends on the face mode. */
   private onPress(px: number, py: number): void {
     const ui = useGame.getState();
-    if (ui.faceMode === 'sweep') { this.sweepCells = []; this.addSweep(px, py); return; }
     // TECHNIQUE (Part B): the armed signature verb lands on the tapped cell.
     if (ui.faceMode === 'technique' && ui.armedTechnique) {
       const cell = this.cellAt(px, py);
@@ -1029,35 +1019,16 @@ export class FaceView {
   /** A drag continues in the current mode. */
   private onDrag(px: number, py: number): void {
     const mode = useGame.getState().faceMode;
-    if (mode === 'sweep') { this.addSweep(px, py); return; }
     if (mode === 'technique') return; // a verb is a tap, never a drag
     this.chipAt(px, py);
   }
 
-  private addSweep(px: number, py: number): void {
-    const cell = this.cellAt(px, py);
-    if (cell < 0 || this.sweepCells.includes(cell)) return;
-    this.sweepCells.push(cell);
-  }
-
-  /** The sweep trail and the pillar-5 figure hint — on one layer. */
+  /** The pillar-5 figure hint. */
   private drawFaceOverlay(state: Readonly<ReturnType<Engine['getState']>>, dt: number): void {
     const g = this.markLayer;
     g.clear();
     const s = this.cellSize;
     const mode = useGame.getState().faceMode;
-    const n = this.faceW * this.faceH;
-
-    // The sweep swathe under the finger.
-    if (mode === 'sweep' && this.pointerDown) {
-      for (const cell of this.sweepCells) {
-        if (cell < 0 || cell >= n) continue;
-        const { x, y } = this.cellCenter(cell);
-        const half = s * 0.42;
-        g.roundRect(x - half, y - half, half * 2, half * 2, s * 0.12)
-          .fill({ color: 0xffd98a, alpha: 0.18 }).stroke({ width: 1.5, color: 0xffd98a, alpha: 0.6 });
-      }
-    }
 
     // FIGURE HINT (pillar 5): a faint glow at cells one chip from completing a
     // figure. A POSITION, never a shape name. Static under reduced motion.

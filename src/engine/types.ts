@@ -477,18 +477,9 @@ export interface GameState {
     h: number;
     /** Charge per cell, row-major. Plain numbers: cell charge stays small. */
     cells: number[];
-    /** Sweep stamina 0..staminaMax. Regenerates fast, never gates ordinary
-     *  chipping, an idle player is unaffected. Part 1's one new tracked value. */
-    stamina: number;
-    staminaMax: number;
     /** Recent manual chips (cell + play-seconds), the trail FIGURES read. Tiny,
      *  self-expiring; a stale trail from a reloaded save just doesn't match. */
     recentChips: { cell: number; at: number }[];
-    /** SKIM (Loam's technique): extra seep the pool banks for the hand, in
-     *  charge units. Strictly ON TOP of the idle leak — an untouched pool
-     *  changes nothing an idle player earns (tested, not promised). */
-    seepPool: number;
-
     /**
      * ORES — richer pockets in the rock, parallel to `cells`. `''` is plain
      * rock; anything else is an OreDef id. An ore raises that cell's CAP and
@@ -891,7 +882,6 @@ export type GameEvent =
   | { type: 'relicFused'; relicId: string; rarity: string }
   | { type: 'confluenceFound'; id: string; name: string }
   | { type: 'techniqueUsed'; id: string; cell?: number }
-  | { type: 'skimmed'; charge: number; paid: Decimal }
   | { type: 'poleShifted'; cell: number; sign: number }
   | { type: 'keystonePlaced'; shellId: string; leg: 'craft' | 'buy' }
   | { type: 'refined'; materialId: string; from: number; to: number; band: string }
@@ -1035,7 +1025,6 @@ export type GameAction =
   | { type: 'setNote'; entryId: string; note: string }
   | { type: 'markRead'; entryId: string; sig: number }
   // --- THE FACE CLUSTER (v20) --------------------------------------------
-  | { type: 'sweep'; cells: number[] }
   // --- THE FACE CLUSTER (v21) — Drill Bay -------------------------------
   | { type: 'renameDrill'; index: number; name: string }
   | {

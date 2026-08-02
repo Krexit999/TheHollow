@@ -102,9 +102,9 @@ export const CONCEPT_PAGES: ConceptPage[] = [
   {
     id: 'techniques', title: 'Signature techniques', group: 'How it works',
     summary: 'The verb each rock grants — carried down, like the mechanic it belongs to.',
-    keywords: ['technique', 'verb', 'skim', 'poleshift', 'signature', 'skill', 'active'],
+    keywords: ['technique', 'verb', 'poleshift', 'signature', 'skill', 'active'],
     paragraphs: [
-      'Every shell\'s signature grants a TECHNIQUE — something your hands can do that only that rock makes possible. Loam\'s seepage banks a pool you can skim. Ferrite\'s iron will flip a cell\'s sign if you insist. Deeper shells keep their own counsel until you stand in them.',
+      'Some signatures grant a TECHNIQUE — something your hands can do that only that rock makes possible. Ferrite\'s iron will flip a cell\'s sign if you insist. Loam grants none: its seepage is a leak that pays you whether you are standing there or not, and there is nothing to add to it by hand. Deeper shells keep their own counsel until you stand in them.',
       'A technique has no price. Its cooldown is its cost: a verb you must buy would be a purchase, and this is a skill.',
       'When you Breach, the technique comes down with its signature — weaker in the only way a verb can be weaker: it recovers more slowly. Native rock answers fast; carried rock answers eventually.',
       'None of this touches what an idle player earns. A technique is what your hands add on top; the leak, the drills, and the ceiling never depended on it and never will.',
@@ -403,8 +403,8 @@ export const SYSTEM_ESSAYS: Record<string, string[]> = {
   dig: [
     'Everything in this game is downstream of the face. Every currency, every machine, every reset layer is ultimately a way of making these cells worth more or refill faster.',
     'The four numbers on the Field card are the whole economy: capacity, regen, yield, and the ceiling they multiply into. When you are unsure what to buy, buy the one that moves the ceiling most.',
-    'The hand has more than a tap. HOLD to chip a cell without hammering it. And SWEEP is a drag that clears a swathe for stamina, which fills fast on its own and gates nothing but the sweep. Neither lifts the ceiling; they only change how the hand reaches it.',
-    'And the rock answers a deliberate hand. Strike cells into certain shapes and the face gives something back — never Dust, which would be income the ceiling forbids, but XP, a better roll at a drop, and your sweep-arm returned. What the shapes are is not written anywhere; the face will glow faintly a beat before one closes, and the rest you find by doing. The Codex keeps the ones you have cut.',
+    'There is one verb at the face: you chip. HOLD to keep chipping a cell without hammering it. Nothing else the hand does lifts the ceiling, and nothing else needs to.',
+    'And the rock answers a deliberate hand. Strike cells into certain shapes and the face gives something back — never Dust, which would be income the ceiling forbids, but XP and a better roll at a drop. What the shapes are is not written anywhere; the face will glow faintly a beat before one closes, and the rest you find by doing. The Codex keeps the ones you have cut.',
   ],
   kiln: [
     'The converter is the spine of the early economy: it turns the thing you gather into the thing you build with. Every shell has one under a different name, and the pattern never changes.',

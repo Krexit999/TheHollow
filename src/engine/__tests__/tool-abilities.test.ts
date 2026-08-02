@@ -481,7 +481,7 @@ describe('the meter does both jobs', () => {
     expect(s.casting.hand!.fits![0]!.ch).toBe(0);
   });
 
-  it('a sweep is one motion of the arm, so it charges once', () => {
+  it('a multi-cell reach is one motion of the arm, so it charges once', () => {
     const s = st();
     hold(loudStone());
     fillFace(s);

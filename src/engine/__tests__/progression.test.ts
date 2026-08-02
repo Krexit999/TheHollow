@@ -2,7 +2,7 @@
  * PROGRESSION & DIFFERENTIATION, Part B — the framework and the Ferrite
  * reference, tested for the RULED properties:
  *  - techniques: verbs with cooldowns, carried = slower never weaker-locked,
- *    SKIM's idle-equivalence guarantee (pillar 1 as an assertion);
+ *    the idle leak's rate (pillar 1 as an assertion);
  *  - keystones: the gate holds, both legs pay, stubs gate nothing, a placed
  *    stone survives every reset layer;
  *  - the Ferrite band: discovery-gated, spine-priced, behavioral rows really
@@ -12,9 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { D } from '../decimal';
 import { createEngine } from '../index';
 import type { GameState } from '../types';
-import { ModifierCache } from '../modifiers';
 import { availableTechniques, techniqueCooldown, techniqueDef } from '../techniques';
-import { skimPoolCap, SEEP_EFFICIENCY } from '../systems/face';
+import { SEEP_EFFICIENCY } from '../systems/face';
 import { chainTimeoutSec, chainBreakPenalty, chainCap, magnetBias } from '../systems/polarity';
 import { addMaterial, materialCount, TOOL_RECIPES } from '../systems/forge';
 import { MATERIALS, materialDef } from '../materials';
@@ -28,25 +27,30 @@ const fresh = () => {
 };
 
 describe('signature techniques — the verb layer', () => {
-  it('loam grants Skim natively; ferrite grants Poleshift; stubs grant nothing', () => {
+  it('LOAM GRANTS NO VERB — Skim is cut; ferrite still grants Poleshift', () => {
     const { s } = fresh();
-    expect(availableTechniques(s).map((t) => t.def.id)).toEqual(['skim']);
+    // Loam's signature is SEEPAGE and seepage is a leak, not a verb. Skim was
+    // the hand that collected a pool banked beside it; both are gone.
+    expect(availableTechniques(s).map((t) => t.def.id)).toEqual([]);
     s.shell.current = 'ferrite';
     s.shell.signatures = ['seepage'];
-    const ids = availableTechniques(s).map((t) => t.def.id).sort();
-    expect(ids).toEqual(['poleshift', 'skim']); // carried skim + native poleshift
+    // Carrying seepage down carries no verb with it, because it has none.
+    expect(availableTechniques(s).map((t) => t.def.id).sort()).toEqual(['poleshift']);
     s.shell.current = 'verdance';
     s.shell.signatures = ['seepage', 'polarity'];
     // growth has no technique yet (stubbed by ruling) — carried verbs only
-    expect(availableTechniques(s).map((t) => t.def.id).sort()).toEqual(['poleshift', 'skim']);
+    expect(availableTechniques(s).map((t) => t.def.id).sort()).toEqual(['poleshift']);
   });
 
-  it('SKIM: the pool banks EXTRA and the idle leak is untouched (pillar 1)', () => {
+  it('THE IDLE LEAK PAYS ITS DOCUMENTED RATE (pillar 1)', () => {
+    // This was the SKIM test, and the half worth keeping is the half that was
+    // never about Skim: seepage is the only income a pre-machine idle player
+    // has, so its arithmetic is pillar 1's floor. The pool assertions went with
+    // the verb; the leak's are unchanged, and they must be — cutting a verb is
+    // not allowed to move what an idle player earns.
     const { engine, s } = fresh();
-    const mods = new ModifierCache();
     // A full fresh face: all regen overflows. 50 idle seconds must pay the
-    // DOCUMENTED leak — 36 cells × 0.08 regen × 10% — with the pool banking
-    // half that again ON TOP, in charge units, never subtracting from it.
+    // DOCUMENTED leak — 36 cells × 0.08 regen × SEEP_EFFICIENCY.
     //
     // ORES ARE HELD OFF for this one, and the reason is worth stating because
     // it is a real interaction and not test scaffolding: a pocket has a bigger
@@ -62,19 +66,9 @@ describe('signature techniques — the verb layer', () => {
     const expectedLeak = 36 * 0.08 * 50 * SEEP_EFFICIENCY; // = 14.4 at yield 1
     expect(gained).toBeGreaterThan(expectedLeak * 0.95);
     expect(gained).toBeLessThan(expectedLeak * 1.3); // yield mods only, no theft
-    // Half the leak again, in charge units (± the small regen bonuses that
-    // wake up over 50s — achievements etc. raise overflow slightly).
-    expect(s.face.seepPool).toBeGreaterThanOrEqual(expectedLeak * 0.5 * 0.95);
-    expect(s.face.seepPool).toBeLessThanOrEqual(expectedLeak * 0.5 * 1.15);
-    expect(s.face.seepPool).toBeLessThanOrEqual(skimPoolCap(s, mods) + 1e-9);
-    // Skimming pays the pool ON TOP, at chip yield.
-    const mid = s.currencies['dust']!.toNumber();
-    const pool = s.face.seepPool;
-    const r = engine.dispatch({ type: 'useTechnique', id: 'skim' });
-    expect(r.ok).toBe(true);
-    expect(s.face.seepPool).toBe(0);
-    expect(s.currencies['dust']!.toNumber() - mid).toBeGreaterThanOrEqual(pool * 0.99);
-    expect(pool).toBeGreaterThan(1);
+    // ...and there is no verb left to ask for it. A stale save that still
+    // dispatches one must be refused, not silently swallowed.
+    expect(engine.dispatch({ type: 'useTechnique', id: 'skim' }).ok).toBe(false);
   });
 
   it('POLESHIFT: flips the tapped sign, cooldown enforced, carried waits longer', () => {
@@ -95,12 +89,22 @@ describe('signature techniques — the verb layer', () => {
     expect(engine.dispatch({ type: 'useTechnique', id: 'poleshift' }).ok).toBe(false);
   });
 
-  it('a technique is active play: The Unattended seals it', () => {
-    const { engine, s } = fresh();
-    s.spiral.activeChallenge = { id: 'unattended', startedAtPlaySec: 0 };
-    const r = engine.dispatch({ type: 'useTechnique', id: 'skim' });
-    expect(r.ok).toBe(false);
-  });
+  /**
+   * DELETED: 'a technique is active play: The Unattended seals it'.
+   *
+   * It asserted that setting `spiral.activeChallenge` to 'unattended' makes
+   * `useTechnique` refuse. It never tested that. `sealed()` reads the
+   * `challengeLaws` map, and NOTHING IN THE CODEBASE CALLS
+   * `registerChallengeLaws` — the map is empty, so every challenge seal in the
+   * game is permanently false. The old test passed because it fired SKIM on a
+   * fresh engine, where the pool is 0 and the verb refuses with "Nothing worth
+   * cupping yet". Swapping in Poleshift, which has no such precondition, is
+   * what exposed it.
+   *
+   * NOT FIXED HERE: unregistered challenge laws are a separate defect with a
+   * far wider blast radius than a verb cut, and re-pointing this test at some
+   * other refusal would put a green tick back over the same hole.
+   */
 });
 
 describe('keystones — the breach gate', () => {

@@ -168,7 +168,7 @@ export function Toasts() {
           fresh.push({
             key: entry.seq,
             title: `A figure in the rock: ${ev.name}`,
-            body: 'You cut a shape into the face and it answered — XP, a better chance at a drop, and your sweep-arm back. The Codex keeps it.',
+            body: 'You cut a shape into the face and it answered — XP and a better chance at a drop. The Codex keeps it.',
             color: '#e6c15a',
           });
         }

@@ -295,7 +295,7 @@ export function App() {
 
       <Compendium />
       {/* THE FAB IS GONE. On desktop it pinned itself to bottom-left directly
-          under the Chip / Sweep / Skim pill, so the two read as one control
+          under the face verb pill, so the two read as one control
           strip and the Compendium sat in the middle of the mining verbs. The
           header's ❦ is the way in and always was; this was a second door onto
           the same room, standing in the wrong doorway. */}

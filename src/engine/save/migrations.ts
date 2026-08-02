@@ -456,16 +456,17 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
 
   // v20 — THE FACE CLUSTER. The Face gains marks (cells drills route around),
-  // sweep stamina (the one new tracked value, starts full), a chip trail (empty),
-  // and a FIGURES Codex (empty). An established save gets full stamina and no
-  // marks/figures, so the Face behaves exactly as before until the player tags a
-  // cell, sweeps, or traces a shape.
+  // a chip trail (empty) and a FIGURES Codex (empty). An established save gets
+  // no marks/figures, so the Face behaves exactly as before until the player
+  // tags a cell or traces a shape.
+  //
+  // It used to seed sweep STAMINA here too. SWEEP is cut, so there is nothing
+  // to seed; an old save that still carries the field is harmless because
+  // nothing reads it, and stripping it would be a migration that buys nothing.
   19: (p) => {
     const state = p.state as Record<string, unknown>;
     const face = (state['face'] ??= {}) as Record<string, unknown>;
     face['marks'] ??= [];
-    face['stamina'] ??= 100;
-    face['staminaMax'] ??= 100;
     face['recentChips'] ??= [];
     state['figures'] ??= { found: [] };
     return { ...p, version: 20, state };

@@ -10,7 +10,7 @@ import { doSpiral, gridSlotCost, licenceCost } from './systems/spiral';
 import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from './systems/relics';
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
-import { applyFieldSize, manualChip, sweep } from './systems/face';
+import { applyFieldSize, manualChip } from './systems/face';
 import { resetCompaction } from './systems/compaction';
 import { buildCrusher, crush } from './systems/crusher';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
@@ -95,14 +95,6 @@ export function handleAction(
       const result = manualChip(state, mods, ctx, action.cell);
       if (result.charge <= 0) return { ok: false, reason: 'Nothing to chip', data: result };
       return { ok: true, data: result };
-    }
-
-    case 'sweep': {
-      // A sweep is active chipping, so The Unattended seals it like the tap.
-      if (sealed(state, 'sealHand')) return { ok: false, reason: 'Not this run' };
-      const r = sweep(state, mods, ctx, action.cells);
-      if (r.swept.length === 0) return { ok: false, reason: 'Nothing to sweep', data: r };
-      return { ok: true, data: r };
     }
 
     case 'buyUpgrade': {
@@ -886,6 +878,18 @@ export function handleAction(
       return { ok: true };
     }
   }
+  /**
+   * AN UNKNOWN ACTION IS REFUSED, NOT A CRASH.
+   *
+   * The switch is exhaustive over `GameAction`, so TypeScript proves nothing
+   * reaches here — but the type is a compile-time claim and `dispatch` is a
+   * runtime door. Cutting SWEEP found this: with `case 'sweep'` gone, the
+   * function fell off the end and returned `undefined`, and `dispatch` then
+   * read `result.ok` and threw. Anything holding a stale action — an old queued
+   * dispatch, a replayed log, a driver, a save from before a cut — took the
+   * engine down instead of being told no.
+   */
+  return { ok: false, reason: `No such action: ${(action as { type: string }).type}` };
 }
 
 export { MAX_DRILLS };

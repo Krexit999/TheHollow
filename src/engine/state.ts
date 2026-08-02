@@ -75,10 +75,7 @@ export function initialState(nowMs: number): GameState {
       w: START_W,
       h: START_H,
       cells: new Array(START_W * START_H).fill(BASE_CAP),
-      stamina: 100,
-      staminaMax: 100,
       recentChips: [],
-      seepPool: 0,
       // COMPACTION is not seeded here: `ensureCompaction` builds it on the
       // first tick, which is the same code path a save written before it
       // existed takes — so the fresh-game shape and the migrated shape are

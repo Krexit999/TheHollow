@@ -1,29 +1,24 @@
 /**
- * THE FACE'S VERBS — a plain HTML row in the Dig panel.
+ * THE FACE'S SIGNATURE VERBS — a plain HTML row in the Dig panel.
  *
- * These used to be a floating pill drawn OVER the canvas, bottom-centre on a
- * phone and bottom-left on desktop. The player's word for it was "the chip
- * sweep skim thing", and they asked for it gone: a control strip parked on top
- * of the rock is in the way of the rock, and on desktop it stacked with the
- * Compendium button into a pile of floating chrome in one corner.
+ * THERE IS ONE CHIP VERB NOW. Chip and Sweep were a mode toggle between a tap
+ * and a drag that did the same thing at a different rate, and SKIM collected a
+ * pool that existed to give Skim something to collect. Grain briefly gave the
+ * pair distinct jobs (§2.4 — SKIM with-grain, HOLD across); grain is cut, and
+ * neither verb had a job after it. All three are gone: the actions, the
+ * stamina, the pool, the mode switching.
  *
- * SO THE BAR IS OFF THE CANVAS — BUT THE VERBS ARE NOT CUT. Sweep is a real
- * action with a stamina cost and Skim is Loam's signature technique; deleting
- * the only way to reach either would be deleting two mechanics under cover of a
- * UI complaint. They live here instead, in the room directly under the face,
- * as plain HTML like every other panel in the game.
- *
- * If the verbs themselves should go, that is a separate decision and a much
- * larger one — it reaches the signature layer.
+ * WHAT IS LEFT IS THE TECHNIQUE FRAMEWORK, and it is left because POLESHIFT
+ * (Ferrite) still uses it — a targeted verb you arm here and then land on a
+ * cell. In Loam this component renders NOTHING, which is correct: the shell no
+ * longer has a verb beyond the tap.
  */
-import { dispatch, useGame } from '../store';
-import { SWEEP_COST_PER_CELL } from '../../engine/systems/face';
+import { useGame, dispatch } from '../store';
 import { availableTechniques } from '../../engine/techniques';
 import type { GameState } from '../../engine';
 
 export function FaceVerbs() {
   const mode = useGame((s) => s.faceMode);
-  const setFaceMode = useGame((s) => s.setFaceMode);
   const armedTechnique = useGame((s) => s.armedTechnique);
   const armTechnique = useGame((s) => s.armTechnique);
   const state = useGame((s) => s.state);
@@ -31,62 +26,29 @@ export function FaceVerbs() {
   if (!state) return null;
   const st = state as GameState;
 
-  const stamina = st.face.stamina;
-  const staminaMax = st.face.staminaMax || 100;
-  const sweepCells = Math.floor(stamina / SWEEP_COST_PER_CELL);
   const techniques = availableTechniques(st);
+  // No verb, no panel. A row reading "Chip" with one button in it is furniture.
+  if (techniques.length === 0) return null;
 
   return (
     <div className="panel p-2.5" data-testid="face-verbs">
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-cave-400">
-          How you work it
-        </span>
-        {mode === 'sweep' && (
-          <span className="tnum text-[10px] text-lamp-300" data-testid="sweep-budget">
-            {sweepCells} cells of stamina
-          </span>
-        )}
+      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-cave-400">
+        What the rock grants
       </div>
-
       <div className="flex flex-wrap gap-1">
-        <button
-          className={`min-h-[36px] flex-1 rounded-md px-2 text-xs font-semibold transition-colors ${
-            mode === 'chip' ? 'bg-lamp-500/25 text-lamp-200' : 'text-cave-300 hover:bg-cave-800'
-          }`}
-          aria-pressed={mode === 'chip'}
-          data-testid="verb-chip"
-          onClick={() => setFaceMode('chip')}
-        >
-          Chip
-        </button>
-        <button
-          className={`min-h-[36px] flex-1 rounded-md px-2 text-xs font-semibold transition-colors ${
-            mode === 'sweep' ? 'bg-lamp-500/25 text-lamp-200' : 'text-cave-300 hover:bg-cave-800'
-          }`}
-          aria-pressed={mode === 'sweep'}
-          data-testid="verb-sweep"
-          onClick={() => setFaceMode('sweep')}
-        >
-          Sweep
-        </button>
         {techniques.map((t) => {
           const cooling = t.readyInSec > 0;
           if (!t.def.targeted) {
-            // A global verb (Skim): one press performs it.
-            const pool = t.def.id === 'skim' ? st.face.seepPool : 0;
             return (
               <button
                 key={t.def.id}
-                className={`min-h-[36px] flex-1 rounded-md px-2 text-xs font-semibold transition-colors ${
-                  pool >= 1 ? 'text-[#9fd8c0] hover:bg-cave-800' : 'text-cave-500'
-                }`}
+                className="min-h-[36px] flex-1 rounded-md px-2 text-xs font-semibold text-cave-300 transition-colors hover:bg-cave-800 disabled:opacity-50"
                 title={t.def.describe(st, t.strength)}
                 disabled={cooling}
                 data-testid={`verb-${t.def.id}`}
                 onClick={() => dispatch({ type: 'useTechnique', id: t.def.id })}
               >
-                {t.def.name}{t.def.id === 'skim' && pool >= 1 ? ` ${Math.floor(pool)}` : ''}
+                {cooling ? `${t.def.name} ${Math.ceil(t.readyInSec)}s` : t.def.name}
               </button>
             );
           }
@@ -108,20 +70,6 @@ export function FaceVerbs() {
           );
         })}
       </div>
-
-      {mode === 'sweep' && (
-        <div className="mt-1.5">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-cave-800">
-            <div
-              className="h-full rounded-full bg-lamp-400 transition-[width]"
-              style={{ width: `${Math.round((stamina / staminaMax) * 100)}%` }}
-            />
-          </div>
-          <div className="mt-0.5 text-[9px] leading-snug text-cave-500">
-            Drag across the face to clear a swathe. It spends stamina, not charge.
-          </div>
-        </div>
-      )}
     </div>
   );
 }
