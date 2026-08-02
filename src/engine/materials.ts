@@ -27,8 +27,14 @@ export interface MaterialDef {
   palette: [string, string, string];
   facets: number;
   shimmer: Shimmer;
-  /** 'combat' materials cannot be mined — the Deepwrought drop them. */
-  source?: 'combat';
+  /**
+   * MATERIALS THAT DO NOT COME OUT OF THE RARITY TABLE.
+   *   'combat' — the Deepwrought drop them.
+   *   'deep'   — the compaction gates drop them (systems/grain.ts).
+   * Both pools in this file filter on `!m.source`, so one flag keeps a material
+   * out of ordinary chips AND out of cracked geodes.
+   */
+  source?: 'combat' | 'deep';
   /**
    * WORKED materials are made, never found: refinery byproducts, salvage
    * residue, transmutation intermediates, tempering media. rollDrop filters
@@ -124,7 +130,11 @@ const M = (
   shimmer: Shimmer,
   flavor?: string,
   worked?: boolean,
-): MaterialDef => ({ id, name, shellId, rarity, palette, facets, shimmer, flavor, ...(worked ? { worked } : {}) });
+  source?: 'combat' | 'deep',
+): MaterialDef => ({
+  id, name, shellId, rarity, palette, facets, shimmer, flavor,
+  ...(worked ? { worked } : {}), ...(source ? { source } : {}),
+});
 
 export const MATERIALS: MaterialDef[] = [
   // ================= WORKED MATERIALS (Phase 16) ==========================
@@ -243,6 +253,21 @@ export const MATERIALS: MaterialDef[] = [
     "Black quartz that drinks lamplight. Sable named it, or it named her."),
   M('weepstone', 'Weepstone', 'loam', 'aberrant', ['#2e3438', '#50646c', '#89a8b0'], 7, 'aberrant',
     'It is wet when you find it and it is wet in a sealed box. Best not to hold it long.'),
+
+  // ---- DEEP ENTRY (Proof #1) ------------------------------------------------
+  // These come out of COMPACTION, not out of the rarity table. They are marked
+  // `source: 'deep'` for exactly the reason combat materials are marked at all:
+  // the pools in rollDrop and crackGeodeRolls filter on `!m.source`, so a
+  // material that must be EARNED by working a cell down cannot leak into an
+  // ordinary chip or a cracked geode. Umberjade is not here — it already
+  // existed at `pure`, and the 8-gate gives you a second way to find one rather
+  // than a second material that means the same thing.
+  M('graveclaydeep', 'Deep Graveclay', 'loam', 'flawless', ['#241f1d', '#463f3a', '#736760'], 6, 'none',
+    'The same clay, from far enough down that it has forgotten how to be soft. It holds a shape the way a grudge holds a name.',
+    false, 'deep'),
+  M('deepgrave', 'Deepgrave', 'loam', 'starred', ['#141318', '#2e2a36', '#585067'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. Cold in a way that has nothing to do with temperature.',
+    false, 'deep'),
 
   // ======================= SHELL II — FERRITE (14, dormant) ================
   M('ironbloom', 'Ironbloom', 'ferrite', 'common', ['#3a3230', '#6b5a52', '#a08a7c'], 5, 'none'),

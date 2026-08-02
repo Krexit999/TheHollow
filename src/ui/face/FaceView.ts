@@ -14,6 +14,10 @@ import {
   Sprite,
 } from 'pixi.js';
 import { cellCap, type ChipResult } from '../../engine/systems/face';
+import {
+  COMPACTION_SHOW_AT, MAX_COMPACTION, TELEGRAPH_FROM, compactionAt, grainAt, isLocked,
+  strikeTimeMult,
+} from '../../engine/systems/grain';
 import { guardPixiRender } from '../pixiGuard';
 import { figureHintCells } from '../../engine/systems/figures';
 import {
@@ -199,6 +203,18 @@ interface TileEntry {
    *  ring's step. Both join the redraw gate — see drawTile. */
   oreId: string;
   digBand: number;
+  /** THE GRAIN (Proof #1). All four join the redraw gate: grain never changes
+   *  in place, compaction is already an integer, lock is terminal, and the
+   *  front marker is 0/1/2 — so none of them can force a repaint per frame. */
+  grainDir: number;
+  compaction: number;
+  lockedTile: boolean;
+  /** 0 none · 1 in the wake · 2 the head. */
+  frontMark: number;
+  /** The compaction digit. A Graphics cannot draw text, and a number this
+   *  load-bearing is not going to be a bar. One per tile, updated only when the
+   *  gate above opens. */
+  label: Text | null;
 }
 
 interface Particle {
@@ -434,18 +450,40 @@ export class FaceView {
     const { width, height } = this.app.screen;
     if (width < FaceView.MIN_HOST_PX || height < FaceView.MIN_HOST_PX) return;
     const pad = 18;
+    /**
+     * THE CONTROLS SIT ON THE FACE, SO THE FACE HAS TO GET OUT OF THE WAY.
+     *
+     * On phone the Chip/Sweep bar (and now the With/Across bar above it) is
+     * absolutely positioned across the bottom of this same box, with its buttons
+     * pointer-active. It was already covering the bottom row; adding a second
+     * bar covered two, and those cells could not be TAPPED at all — a 380px
+     * screenshot is what found it, which is why the brief asks for one.
+     *
+     * The desktop layout pins the controls to the viewport corner instead, so it
+     * reserves nothing. `640` is Tailwind's `lg` boundary for this component.
+     */
+    const controlsReserve = width < 640 ? 96 : 0;
+    const usable = height - controlsReserve;
     const size = Math.min(
       (width - pad * 2) / this.faceW,
-      (height - pad * 2 - 14) / this.faceH,
+      (usable - pad * 2 - 14) / this.faceH,
       72,
     );
     this.cellSize = Math.max(20, size);
     this.gridX = Math.max(0, (width - this.cellSize * this.faceW) / 2);
-    this.gridY = Math.max(0, (height - this.cellSize * this.faceH) / 2 + 4);
+    this.gridY = Math.max(0, (usable - this.cellSize * this.faceH) / 2 + 4);
     this.tiles.forEach((tile, i) => {
       const x = i % this.faceW;
       const y = Math.floor(i / this.faceW);
       tile.g.position.set(this.gridX + x * this.cellSize, this.gridY + y * this.cellSize);
+      // The compaction digit sits in the tile's top-right corner, clear of the
+      // grain tick through the middle and of the pocket rim around the edge.
+      // It scales with the tile so a 380px face and a desktop one read the same.
+      if (tile.label) {
+        const m = Math.max(1.5, this.cellSize * 0.05);
+        tile.label.position.set(this.cellSize - m - 1, m + 1);
+        tile.label.style.fontSize = Math.max(9, Math.round(this.cellSize * 0.24));
+      }
       tile.band = -1; // force redraw at new size
     });
     this.drawBackdrop();
@@ -484,9 +522,28 @@ export class FaceView {
     this.tiles = state.face.cells.map(() => {
       const g = new Graphics();
       this.tileLayer.addChild(g);
+      // The compaction digit rides the tile's own Graphics, so it moves and
+      // resizes with it and needs no separate layout pass.
+      const label = new Text({
+        text: '',
+        style: new TextStyle({
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          fontWeight: '800',
+          fontSize: 11,
+          fill: 0xbfc6d4,
+          stroke: { color: 0x000000, width: 3 },
+        }),
+      });
+      label.anchor.set(1, 0);
+      label.eventMode = 'none';
+      g.addChild(label);
       // oreId starts as a string no def can ever have, so the first paint of a
       // plain cell still counts as a change and the gate does not swallow it.
-      return { g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, rotBand: -1, burnBand: -1, oreId: '?', digBand: -1 };
+      return {
+        g, band: -1, crackStage: -1, flash: 0, vine: -1, fruitBand: -1, rotBand: -1, burnBand: -1,
+        oreId: '?', digBand: -1, grainDir: -1, compaction: -1, lockedTile: false, frontMark: -1,
+        label,
+      };
     });
     this.layout();
   }
@@ -516,9 +573,24 @@ export class FaceView {
     // enough not to repaint the tile every frame while somebody holds on it.
     const oreId = gstate.face.ore?.[i] ?? '';
     const digBand = oreId ? Math.round(digProgress(gstate, i) * 12) : 0;
+    // THE GRAIN. Every one of these is already discrete, so they cost the gate
+    // nothing — a face nobody is chipping still repaints zero tiles per frame.
+    const grainDir = grainAt(gstate, i);
+    const compaction = compactionAt(gstate, i);
+    const lockedTile = isLocked(gstate, i);
+    const live = gstate.face.front;
+    const frontMark = live?.alive
+      ? (live.cell === i ? 2 : live.trail.includes(i) ? 1 : 0)
+      : 0;
     if (band === tile.band && crackStage === tile.crackStage && vine === tile.vine && fruitBand === tile.fruitBand
       && rotBand === tile.rotBand && burnBand === tile.burnBand
-      && oreId === tile.oreId && digBand === tile.digBand && tile.flash <= 0) return;
+      && oreId === tile.oreId && digBand === tile.digBand
+      && grainDir === tile.grainDir && compaction === tile.compaction
+      && lockedTile === tile.lockedTile && frontMark === tile.frontMark && tile.flash <= 0) return;
+    tile.grainDir = grainDir;
+    tile.compaction = compaction;
+    tile.lockedTile = lockedTile;
+    tile.frontMark = frontMark;
     tile.band = band;
     tile.crackStage = crackStage;
     tile.vine = vine;
@@ -801,6 +873,107 @@ export class FaceView {
     if (tile.flash > 0) {
       g.roundRect(m, m, w, w, r).fill({ color: theme.popFill, alpha: tile.flash * 0.45 });
     }
+
+    // ------------------------------------------------------------------
+    // THE GRAIN (Proof #1). Drawn LAST and over everything, because it is the
+    // only new pixel and the whole feature rests on being able to read it —
+    // §6's own words. Four things, in the order the player needs them:
+    //   the TICK        — which way this rock runs. Always visible.
+    //   the COMPACTION  — a darkening, plus the number once it starts paying.
+    //   the TELEGRAPH   — one more across-chip kills this cell.
+    //   the FRONT       — the live head, and a wake behind it.
+    // ------------------------------------------------------------------
+    this.drawGrain(tile, g, m, w, r, ratio);
+  }
+
+  /**
+   * THE GRAIN TICK IS THE ONLY NEW PIXEL, and it carries the mitigation for
+   * "grain is fiddly, not tactical". It is a LINE WITH A HEAD, not an arrow
+   * glyph: at a 55px tile on a 380px screen an arrowhead is four pixels of mush,
+   * while a bar that is thick at one end reads as direction from across the room.
+   *
+   * Drawn in a cool bone-white against warm rock so it never competes with
+   * charge for the same channel — charge is the warmth, grain is the mark.
+   */
+  private drawGrain(
+    tile: TileEntry, g: Graphics, m: number, w: number, r: number, ratio: number,
+  ): void {
+    // A LOCKED CELL IS UNMISTAKABLE AND DEAD. It has already drawn as ordinary
+    // rock above; this puts it out. Read it from across the room: the slab goes
+    // to near-black, the grout gap widens into a fracture, and a hard X sits on
+    // it. No grain tick — there is nothing left to aim along.
+    if (tile.lockedTile) {
+      g.roundRect(m, m, w, w, r).fill({ color: 0x08070a, alpha: 0.92 });
+      g.roundRect(m, m, w, w, r).stroke({ width: 1.5, color: 0x2a2228, alpha: 0.9 });
+      const in2 = w * 0.28;
+      const stroke = { width: Math.max(2, w * 0.055), color: 0x6b5560, alpha: 0.9 };
+      g.moveTo(m + in2, m + in2).lineTo(m + w - in2, m + w - in2).stroke(stroke);
+      g.moveTo(m + w - in2, m + in2).lineTo(m + in2, m + w - in2).stroke(stroke);
+      if (tile.label) tile.label.text = '';
+      return;
+    }
+
+    const cx = m + w / 2;
+    const cy = m + w / 2;
+
+    // COMPACTION AS DENSITY. A cool grey-violet wash that deepens with the
+    // count — deliberately NOT the warm channel, which belongs to charge, and
+    // deliberately subtractive: worked rock should look tighter and colder, not
+    // more valuable. Below the display threshold this is the ONLY signal, which
+    // is what keeps the opening face quiet.
+    if (tile.compaction > 0) {
+      const t = Math.min(1, tile.compaction / MAX_COMPACTION);
+      g.roundRect(m, m, w, w, r).fill({ color: 0x2b2733, alpha: 0.10 + t * 0.42 });
+    }
+
+    // THE TELEGRAPH. A cell at 18+ dies to the next across-grain take, and §5
+    // is explicit that this must be a CELL STATE and not a popup — if the
+    // player can say "that's not fair", the telegraph failed and that is a
+    // build defect. So it is the loudest thing on the tile: a hot fracture ring
+    // biting into the slab, at full opacity, on a cell that is otherwise going
+    // dark. It is also the richest cell on the board (Deepgrave drops at 20),
+    // and that collision is the entire tension of the system.
+    if (tile.compaction >= TELEGRAPH_FROM) {
+      g.roundRect(m + 1, m + 1, w - 2, w - 2, r).stroke({ width: Math.max(2, w * 0.06), color: 0xd8523c, alpha: 0.95 });
+      g.roundRect(m + 3.5, m + 3.5, w - 7, w - 7, r * 0.8).stroke({ width: 1, color: 0xffb08c, alpha: 0.7 });
+    }
+
+    // THE TICK. Length is 40% of the tile, so a run of them reads as a current
+    // rather than as scattered dashes.
+    const len = w * 0.2;
+    const dir = tile.grainDir;
+    const dx = dir === 1 ? 1 : dir === 3 ? -1 : 0;
+    const dy = dir === 2 ? 1 : dir === 0 ? -1 : 0;
+    const tail = { x: cx - dx * len, y: cy - dy * len };
+    const head = { x: cx + dx * len, y: cy + dy * len };
+    const bright = 0xdfe4ee;
+    // The shadow underneath is what makes it survive a fully-charged cell,
+    // which is the brightest thing the tile ever is.
+    g.moveTo(tail.x, tail.y + 1).lineTo(head.x, head.y + 1)
+      .stroke({ width: Math.max(2.4, w * 0.075), color: 0x000000, alpha: 0.5 });
+    g.moveTo(tail.x, tail.y).lineTo(head.x, head.y)
+      .stroke({ width: Math.max(1.4, w * 0.045), color: bright, alpha: 0.55 + ratio * 0.2 });
+    // The head end thickens: direction without an arrowhead.
+    g.circle(head.x, head.y, Math.max(1.8, w * 0.055)).fill({ color: bright, alpha: 0.9 });
+
+    // THE FRONT. A wake of dimming pips behind, and a hard ring on the head —
+    // the wave has to be WATCHABLE or nobody will believe they steered it.
+    if (tile.frontMark === 1) {
+      g.circle(cx, cy, Math.max(2, w * 0.1)).fill({ color: 0x7fd4ff, alpha: 0.35 });
+    } else if (tile.frontMark === 2) {
+      g.roundRect(m, m, w, w, r).stroke({ width: Math.max(2, w * 0.055), color: 0x7fd4ff, alpha: 0.95 });
+      g.circle(cx, cy, Math.max(3, w * 0.14)).fill({ color: 0xd8f2ff, alpha: 0.9 });
+      g.circle(cx, cy, Math.max(5.5, w * 0.24)).stroke({ width: 1.5, color: 0x7fd4ff, alpha: 0.7 });
+    }
+
+    // THE NUMBER, from the first deep-entry gate up (decision 4). Below 8 there
+    // is nothing it could tell you that the wash does not; at 8 it starts
+    // naming which table this cell is rolling on.
+    if (tile.label) {
+      tile.label.text = tile.compaction >= COMPACTION_SHOW_AT ? String(tile.compaction) : '';
+      tile.label.style.fill = tile.compaction >= TELEGRAPH_FROM ? 0xffd2c4
+        : tile.compaction >= 14 ? 0xe8d9ff : 0xbfc6d4;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1057,8 +1230,13 @@ export class FaceView {
     const now = performance.now();
     const until = this.cellCooldown.get(cell) ?? 0;
     if (now < until) return;
-    this.cellCooldown.set(cell, now + 170);
-    const result = this.engine.dispatch({ type: 'chip', cell });
+    // ACROSS THE GRAIN IS SLOW IN THE HAND. The multiplier comes from the
+    // engine (`strikeTimeMult`) rather than being a number in this file: the
+    // rate half of the WITH/ACROSS trade is a game rule, and a renderer that
+    // owned it could be tuned out of agreement with the dust half.
+    const strike = useGame.getState().grainStrike;
+    this.cellCooldown.set(cell, now + 170 * strikeTimeMult(strike));
+    const result = this.engine.dispatch({ type: 'chip', cell, strike });
     const data = result.data as ChipResult | undefined;
     if (!result.ok || !data || data.charge <= 0) return;
     this.onChip(cell, data);
@@ -1076,6 +1254,29 @@ export class FaceView {
       this.spawnShards(c.x, c.y, 3, false);
       const ft = this.tiles[f];
       if (ft) ft.flash = 0.7;
+    }
+    // THE WAVE MOVING IS THE THING THE PLAYER IS BUYING, so it gets its own
+    // feedback rather than sharing the chip's. Shards where the fracture
+    // ARRIVED (one cell ahead of the hand — that gap is the whole read), and a
+    // heavier shake as the run gets longer, so a wave five cells deep feels
+    // like more than one cell deep even though each hop costs the same tap.
+    const grain = data.grain;
+    if (grain) {
+      for (const wc of grain.waveCells) {
+        const c = this.cellCenter(wc);
+        this.spawnShards(c.x, c.y, 4, false);
+        const wt = this.tiles[wc];
+        if (wt) wt.flash = 0.85;
+      }
+      if (grain.waveCells.length > 0) this.addShake(1.5 + Math.min(6, grain.frontHops * 0.7));
+      // A CELL DYING IS THE LOUDEST THING ON THE FACE. It has to be, or the
+      // telegraph was decoration: the player must never be able to lock a cell
+      // and not notice it happened.
+      if (grain.locked) {
+        this.spawnPop(x, y, 'DEAD', true);
+        this.spawnShards(x, y, 18, false);
+        this.addShake(11);
+      }
     }
     this.addShake(data.crit ? 7 : 1.5 + intensity * 3 + data.fractured.length);
   }

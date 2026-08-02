@@ -315,6 +315,13 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   wormsteel: ['springy', 'tough'], palegold: ['charged', 'dense'], chthonite: ['dense', 'warm'],
   starmarl: ['charged', 'trueseated'], sablequartz: ['trueseated', 'keen'],
   weepstone: ['charged', 'warm', 'hollow'],
+  // ---- DEEP ENTRY (Proof #1): what compaction does to a material's character.
+  // Graveclay is dense-and-tough; driven down past 14 it also becomes
+  // TRUESEATED — the same stone, holding harder. Deepgrave is what the last two
+  // compaction points leave: trueseated and dense, and brittle with it, because
+  // rock that has been worked to the edge of dying does not bend.
+  graveclaydeep: ['dense', 'tough', 'trueseated'],
+  deepgrave: ['trueseated', 'dense', 'brittle'],
   chitinshard: ['tough', 'springy'], gravemote: ['light', 'hollow'], taproot: ['springy', 'charged'],
   marrowglass: ['brittle', 'keen'], wormsilk: ['springy', 'light'], burrowertooth: ['keen', 'dense'],
   refineslag: ['dense', 'brittle'], salvagedust: ['light', 'hollow'], temperash: ['warm', 'hollow'],

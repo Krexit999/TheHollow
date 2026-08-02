@@ -31,6 +31,10 @@ import { masteryLevel } from './mastery';
 import { lawNum, sealed, challengeNum } from '../laws';
 import { oreDef, oreRichness } from '../content/ores';
 import type { ReachPattern } from '../content/forgeParts';
+import {
+  ACROSS_DUST_MULT, applyStrike, anyLocked, ensureBand, isLocked, refuseLocked, remapBand,
+  type GrainStrikeResult, type StrikeMode,
+} from './grain';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -63,7 +67,13 @@ export function chipYield(state: GameState, mods: ModifierCache): Decimal {
 /** Hard ceiling on income: W * H * regen * Y. Shown in the UI, used offline. */
 export function dpsMax(state: GameState, mods: ModifierCache): Decimal {
   const { w, h } = state.face;
-  return chipYield(state, mods).mul(w * h * cellRegen(state, mods));
+  // OVER LIVE ROCK ONLY. A locked cell (Proof #1) has no charge and grows none,
+  // so counting it would make the displayed ceiling a number the field cannot
+  // reach — and pillar 2's whole value is that this figure is TRUE. With no
+  // locks on the board this is `w * h` exactly, which is every save that has
+  // never chipped across the grain.
+  const dead = state.face.locked?.reduce<number>((n, l) => (l ? n + 1 : n), 0) ?? 0;
+  return chipYield(state, mods).mul((w * h - dead) * cellRegen(state, mods));
 }
 
 /**
@@ -121,6 +131,9 @@ export function seepStrength(state: GameState): number {
 
 /** Refill cells from below; with Seepage active, full cells leak. */
 export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: number): void {
+  // THE BAND EXISTS BY THE TIME ANYTHING ELSE ASKS. Every save reaches the grain
+  // layer through here first — one length check per tick, and no migration.
+  ensureBand(state);
   const base = cellCap(state, mods);
   const regen = cellRegen(state, mods) * dt;
   const cells = state.face.cells;
@@ -132,9 +145,15 @@ export function tickFace(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
   // THE HOLLOW: there is no rock. Only RECONSTRUCTED cells regen — each is a
   // real cell with the real ceiling (pillar 2 binds cell by rebuilt cell).
   const rebuilt = currentShell(state).id === 'hollow' ? new Set(state.hollow.rebuilt) : null;
+  // LOCKED ROCK DOES NOT REFILL — and the array is only consulted when there is
+  // something in it, the same trick the pockets use. Locks are rare and this
+  // loop runs every cell every 100ms step; a per-cell question here was the one
+  // thing measurable in a two-hour warp last time somebody added one.
+  const locks = anyLocked(state) ? state.face.locked : undefined;
   let overflow = 0;
   for (let i = 0; i < cells.length; i++) {
     if (rebuilt && !rebuilt.has(i)) continue; // absence does not regenerate
+    if (locks?.[i]) continue; // dead rock
     // A POCKET HOLDS MORE, and that is the entire mechanism. REGEN IS NOT
     // TOUCHED here — the loop still adds exactly `regen` to every cell — so
     // `dpsMax = W·H·regen·Y` cannot move. A richer cell just takes longer to
@@ -230,6 +249,13 @@ export interface ChipResult {
   crit: boolean;
   /** Cells splashed by Fault Lines. */
   fractured: number[];
+  /**
+   * WHAT THE GRAIN LAYER DID (Proof #1). Absent when nothing came away, so a
+   * refused swing reads the same as it always did. Distinct from `fractured`
+   * above, which is Fault Lines' splash — a one-shot neighbour hit with no
+   * position and no memory. The FRONT is a live thing on the board.
+   */
+  grain?: GrainStrikeResult;
 }
 
 /**
@@ -248,6 +274,11 @@ export function harvestCell(
   // charge ABOVE the floor can be taken — income stays regen-bound while no
   // cell ever goes dark under the law. A pocket's floor rides its own richer
   // cap, so the law means the same proportion of the rock wherever it applies.
+  // A LOCKED CELL GIVES NOTHING TO ANYTHING. Enforced at the funnel rather than
+  // at each verb: every hand swing, sweep, drill strike, ability figure and
+  // signature effect in the game harvests through this one function, so one
+  // check here is the whole guarantee. Cheap — `locked` is a plain array read.
+  if (state.face.locked?.[cell] === true) return { dust: D(0), charge: 0 };
   const floor = cellCap(state, mods) * oreRichness(state.face.ore?.[cell]) * lawNum(state, 'regenFloorShare');
   const held = state.face.cells[cell] ?? 0;
   const charge = Math.min(held * fraction, Math.max(0, held - floor));
@@ -399,8 +430,19 @@ export function reachPattern(
  * may fracture into neighbors (Fault Lines core node), and REACHES past it if
  * the player is carrying a tool. Grants XP.
  */
-export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx, cell: number): ChipResult {
+export function manualChip(
+  state: GameState, mods: ModifierCache, ctx: EngineCtx, cell: number,
+  /** HOW the player chose to strike, not a property of the cell. Defaults to
+   *  'with', which is the pre-grain behaviour exactly. */
+  strike: StrikeMode = 'with',
+): ChipResult {
   if (cell < 0 || cell >= state.face.cells.length) {
+    return { dust: D(0), charge: 0, crit: false, fractured: [] };
+  }
+  // A LOCKED CELL IS DEAD ROCK. Checked before anything else, because a locked
+  // cell must refuse identically to every verb — the hand, the sweep, the
+  // drills, the abilities — and this is the funnel the hand comes through.
+  if (refuseLocked(state, cell)) {
     return { dust: D(0), charge: 0, crit: false, fractured: [] };
   }
   // A POCKET WILL NOT COME AWAY WITH ONE SWING. This refusal is what makes an
@@ -437,7 +479,12 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   const crit = Math.random() < critChance;
   // Signature mechanics (polarity chains, carried growth...) compose here.
   const sigMult = runChipMult(state, mods, ctx, cell, true);
-  const mult = D(sigMult).mul(crit ? 3 : 1);
+  // ACROSS THE GRAIN PAYS 1.3x AND COSTS 1.8x THE TIME. That is not a buff
+  // dressed as a choice: 1.3 / 1.8 = 0.72, so an across-chipping player earns
+  // dust STRICTLY SLOWER than a with-chipping one. The mode is bought out of
+  // the ceiling and paid back in compaction — which moves the drop table, not
+  // the income (pillar 2).
+  const mult = D(sigMult).mul(crit ? 3 : 1).mul(strike === 'across' ? ACROSS_DUST_MULT : 1);
 
   // Read BEFORE the swing takes it: the ability meters' `onFull` rule asks
   // whether the rock you hit was nearly full, and after the harvest it never is.
@@ -539,8 +586,13 @@ export function manualChip(state: GameState, mods: ModifierCache, ctx: EngineCtx
   // AFFINITY (v21): the equipped tool learns the shell it works — a small capped
   // bonus through the modifier pipeline (dropRate), never dustYield (pillar 2).
   logImplementUse(equippedTool(state), currentShell(state).id, 1);
+  // THE GRAIN LAYER RESOLVES LAST, and only on a swing that actually took
+  // something. Compaction is a record of work done to the rock; a swing that
+  // found nothing did no work, and a face you can compact by tapping empty
+  // cells would let a player walk every gate open for free.
+  const grain = applyStrike(state, mods, ctx, cell, strike);
   ctx.emit({ type: 'chip', cell, dust: totalDust, charge, crit, manual: true });
-  return { dust: totalDust, charge, crit, fractured };
+  return { dust: totalDust, charge, crit, fractured, grain };
 }
 
 /**
@@ -617,6 +669,11 @@ export function sweep(state: GameState, mods: ModifierCache, ctx: EngineCtx, cel
     // ...and so is a pocket. A sweep is a fast pass across the face; it is
     // exactly the gesture an ore is supposed to be immune to.
     if (state.face.ore?.[cell]) continue;
+    // A SWEEP IS ALWAYS WITH THE GRAIN, and it seeds nothing. The gesture is a
+    // fast pass for ergonomics; letting it drive compaction would make the
+    // cheapest input in the game the way you open the deep-entry gates, and the
+    // whole point of across-grain is that the gates cost aim and time.
+    if (isLocked(state, cell)) continue;
     const before = state.face.cells[cell] ?? 0;
     const sigMult = runChipMult(state, mods, ctx, cell, true);
     const r = harvestCell(state, mods, cell, 1, D(sigMult));
@@ -721,4 +778,9 @@ export function applyFieldSize(state: GameState, mods: ModifierCache): void {
   state.face.cells = next;
   state.face.ore = nextOre;
   state.face.oreDug = nextDug;
+  // GRAIN, COMPACTION AND LOCKS MOVE WITH THE ROCK, by the same coordinate
+  // remap and for the same reason: a wider grid renumbers every row, so an
+  // index copy would slide the whole field sideways one cell per row and a
+  // player's half-built wave would be pointing at nothing.
+  remapBand(state, w, h, remap);
 }

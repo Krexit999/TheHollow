@@ -55,6 +55,48 @@ export function FaceCanvas({ active = true }: { active?: boolean }) {
   );
 }
 
+/**
+ * HOW THE NEXT SWING MEETS THE GRAIN (Proof #1, decision 3).
+ *
+ * ONE PERSISTENT TOGGLE PLUS A TAP. The alternative — a four-way strike
+ * selector, where you pick a direction and the cell's grain decides which mode
+ * you landed in — is more expressive and is deliberately NOT built: it is two
+ * gestures per chip at 380px, on a verb the player performs several thousand
+ * times, and the expressiveness it buys is a mode the toggle already gives you
+ * in one tap. If the toggle plays flat, that alternative is the next thing to
+ * try; this is the note, not a second implementation.
+ *
+ * The cost is stated ON the button rather than in a tooltip, because ACROSS is
+ * a WORSE way to earn dust (1.3x pay for 1.8x time) and a player who discovers
+ * that by watching their income drop has been tricked, not taught.
+ */
+function GrainStrikeBar() {
+  const strike = useGame((s) => s.grainStrike);
+  const setStrike = useGame((s) => s.setGrainStrike);
+  const opts: { id: 'with' | 'across'; label: string; hint: string }[] = [
+    { id: 'with', label: 'With', hint: 'Along the grain. Fast, ordinary pay, the rock barely tightens.' },
+    { id: 'across', label: 'Across', hint: 'Against the grain. Slower and worth more per swing, packs the rock hard, and drives the fracture on a cell.' },
+  ];
+  return (
+    <div className="pointer-events-auto flex items-stretch gap-1 rounded-lg border border-cave-700 bg-black/70 p-1 lg:rounded-full lg:bg-cave-900/90 lg:shadow-2xl">
+      <span className="hidden self-center px-2 text-[10px] uppercase tracking-wide text-cave-400 lg:inline">Grain</span>
+      {opts.map((o) => (
+        <button
+          key={o.id}
+          className={`min-h-[44px] min-w-[64px] rounded-md px-2 text-xs font-semibold transition-colors lg:min-h-0 lg:min-w-0 lg:rounded-full lg:px-3 lg:py-1.5 ${
+            strike === o.id ? 'bg-[#7fd4ff]/20 text-[#bfe8ff]' : 'text-cave-300 hover:bg-cave-800'
+          }`}
+          title={o.hint}
+          aria-pressed={strike === o.id}
+          onClick={() => setStrike(o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** The Face's own controls: how a press reads and the sweep bar. A dumb renderer
  *  of engine state — the mode is UI-only. Pointer-events isolated so it never
  *  eats a chip. */
@@ -95,6 +137,7 @@ function FaceTools() {
           <span className="tnum text-[10px] text-lamp-300">{sweepCells} cells</span>
         </div>
       )}
+      {mode === 'chip' && <GrainStrikeBar />}
       {/* Desktop: a pill that matches the Compendium button it sits above, so the
           corner reads as one stack of floating controls rather than a stray box.
           Phone keeps the 44px touch targets. */}

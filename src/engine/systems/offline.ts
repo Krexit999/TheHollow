@@ -54,7 +54,16 @@ export function applyOfflineProgress(
   const cellsBefore = [...cells];
   let chargeFilled = 0;
   const fill = regen * seconds;
+  // DEAD ROCK DOES NOT REFILL WHILE YOU ARE AWAY EITHER (Proof #1). This is not
+  // a change to what offline PAYS — the efficiency, the rate and the formula are
+  // untouched. It is the online rule applied consistently: without it a locked
+  // cell would quietly bank charge nobody can ever take, and the seep and drill
+  // accounting below would pay you for harvesting it.
+  const locks = state.face.locked;
+  let live = 0;
   for (let i = 0; i < cells.length; i++) {
+    if (locks?.[i]) { cells[i] = 0; continue; }
+    live += 1;
     const before = cells[i]!;
     const after = Math.min(cap, before + fill);
     chargeFilled += after - before;
@@ -69,7 +78,7 @@ export function applyOfflineProgress(
   let harvestedCharge = 0; // pillar-2 numerator, charge domain
   const throughput = drillThroughput(state, mods); // charge/sec the bay wants
   if (state.drills.bayBuilt && throughput > 0) {
-    const ceiling = cells.length * regen; // pillar 2: the hard ceiling
+    const ceiling = live * regen; // pillar 2: the hard ceiling, over LIVE rock
     const chargePerSec = Math.min(throughput, ceiling);
     const harvested = chargePerSec * seconds * eff;
     dust = chipYield(state, mods).mul(harvested);
@@ -83,7 +92,9 @@ export function applyOfflineProgress(
     const strength = seepStrength(state);
     if (strength > 0) {
       let overflow = 0;
-      for (const before of cellsBefore) {
+      for (let i = 0; i < cellsBefore.length; i++) {
+        if (locks?.[i]) continue; // dead rock produces nothing to leak
+        const before = cellsBefore[i]!;
         const fillSec = Math.max(0, (cap - before) / Math.max(regen, 1e-9));
         overflow += regen * Math.max(0, seconds - fillSec);
       }

@@ -48,6 +48,7 @@ import { allUpgrades, stat } from '../upgrades';
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { applyFieldSize, cellCap } from './face';
 import { runFaceReset } from '../signatures';
+import { rerollBand } from './grain';
 import { chipCurrencyId, currentShell } from '../shells';
 import { lawFlag, sealed, challengeNum } from '../laws';
 import { masteryLevel } from './mastery';
@@ -332,6 +333,7 @@ export function floodRun(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   applyFieldSize(state, mods);
   state.face.cells = new Array(state.face.w * state.face.h).fill(cellCap(state, mods));
   runFaceReset(state, 'collapse'); // signatures treat a flood as a collapse
+  rerollBand(state); // ...and so does the grain layer: new rock, no dead cells
   ctx.emit({ type: 'flood', depth: depthLost });
 }
 

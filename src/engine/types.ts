@@ -169,6 +169,22 @@ export interface DrillState {
   /** What this machine would rather be doing. Absent = follow the bay-wide
    *  hunt switch, i.e. exactly the old behaviour. */
   priority?: 'both' | 'oresFirst' | 'ores' | 'rock';
+  /**
+   * HOW IT WORKS THE GRAIN (Proof #1). Absent = 'with', which is the old
+   * behaviour exactly: fast, shallow, seeds nothing.
+   *   with   — the safe default.
+   *   across — slower (x1.8 interval), seeds compaction toward the gates.
+   *   follow — chases and extends the live fracture front; falls back to
+   *            `with` when there is no front, because a machine that stands
+   *            still while you are away is worse than one that mines badly.
+   */
+  grainMode?: 'with' | 'across' | 'follow';
+  /**
+   * THE SAFETY, DEFAULT ON. An `across` drill will not take a cell past the
+   * lock threshold. A drill that locks your board while you are away is a
+   * rage-quit, not a tradeoff — turning this off is an explicit choice.
+   */
+  grainUnsafe?: boolean;
 
   // ── PER-ABILITY COUNTERS ─────────────────────────────────────────────────
   /** LONGLENS: strokes banked toward the big one. */
@@ -501,6 +517,38 @@ export interface GameState {
     /** Ore types actually opened. The discovery record — nothing is listed
      *  before one has come out of the rock (pillar 5). Survives a Breach. */
     oreSeen?: string[];
+
+    /**
+     * THE GRAIN (Proof #1). Three arrays parallel to `cells`, all of them
+     * created lazily and repaired on read (systems/grain.ts `ensureBand`), so a
+     * save written before this existed needs no migration.
+     *
+     * Plain numbers and booleans on purpose: break_infinity is for CURRENCY.
+     * None of these ever approaches 1e15 — compaction is capped at 26.
+     */
+    /** Direction the rock runs in, per cell. 0=N 1=E 2=S 3=W. A VECTOR, not an
+     *  axis: propagation gets exactly one successor, so a wave is a path. Drawn
+     *  at band generation in RUNS, and never changes in place. */
+    grain?: number[];
+    /** 0-26. Persists until the band re-rolls at a Collapse. Opens the
+     *  deep-entry drop gates at 8/14/20; above 20 an across-grain take kills the
+     *  cell. Not income — it moves what drops, never how much charge grew. */
+    compaction?: number[];
+    /** Terminal for the arc. Unworkable, no charge, no drops, drills route
+     *  around it, the front dies on it. Cleared only by a Collapse. */
+    locked?: boolean[];
+    /** The §45.1 fallback: one direction for the whole band instead of one per
+     *  cell. Coarser, still directional, vastly less to parse at 380px. */
+    grainScope?: 'cell' | 'band';
+    bandGrain?: number;
+    /**
+     * THE LIVE FRACTURE FRONT. One at a time. Walks the grain field one cell per
+     * across-grain chip, applying +1 compaction to each cell it enters, and
+     * PERSISTS ACROSS PAUSES — it is a position on the board, not a combo timer.
+     * Dies on the grid edge, on a locked cell, or when the player starts another
+     * one elsewhere. `trail` is the last few hops, for the renderer's wake.
+     */
+    front?: { cell: number; hops: number; alive: boolean; trail: number[] };
   };
 
   /** Signature techniques — per-technique last-used play-seconds. */
@@ -769,6 +817,10 @@ export function defaultQolState(): QolState {
 export type GameEvent =
   | { type: 'chip'; cell: number; dust: Decimal; charge: number; crit: boolean; manual: boolean }
   | { type: 'fracture'; cells: number[] }
+  /** THE FRONT ADVANCED one cell along the grain. `cell` is what it entered. */
+  | { type: 'fractureFront'; cell: number; hops: number }
+  /** A cell died to an across-grain take above the lock threshold. */
+  | { type: 'cellLocked'; cell: number; compaction: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
   | { type: 'purchase'; id: string; levels: number }
@@ -904,7 +956,13 @@ export interface FeedEntry {
 // ---------------------------------------------------------------------------
 
 export type GameAction =
-  | { type: 'chip'; cell: number }
+  /** `strike` is HOW the player chose to hit, not a property of the cell. The
+   *  engine resolves with-or-across against that cell's grain. Absent = 'with',
+   *  so every existing caller (tests, sims, the Shaft) keeps its old behaviour
+   *  byte for byte. */
+  | { type: 'chip'; cell: number; strike?: 'with' | 'across' }
+  /** The §6 fallback and the §5 dev hook, both runtime and both testable. */
+  | { type: 'setGrainScope'; scope: 'cell' | 'band' }
   | { type: 'buyUpgrade'; id: string; count?: number | 'max' }
   | { type: 'setKilnFeeding'; feeding: boolean }
   | { type: 'upgradeDrill'; index: number }
@@ -1021,6 +1079,8 @@ export type GameAction =
    *  face, which is the shape every drill ships with. */
   | { type: 'setDrillZone'; index: number; cells: number[] }
   | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
+  | { type: 'setDrillGrainMode'; index: number; mode: 'with' | 'across' | 'follow' }
+  | { type: 'setDrillGrainSafety'; index: number; safe: boolean }
   /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
   | { type: 'workOre'; cell: number; seconds: number }
   | { type: 'setHuntOres'; on: boolean }
@@ -1032,6 +1092,9 @@ export type GameAction =
   | { type: 'debug'; op: 'grant'; currency: string; amount: number }
   | { type: 'debug'; op: 'warp'; seconds: number }
   | { type: 'debug'; op: 'giveAll' }
+  /** §5's dev hook: re-roll the band without a full Collapse run, so lock
+   *  recovery is testable in seconds rather than in a whole descent. */
+  | { type: 'debug'; op: 'rerollBand' }
   /** UNLOCK EVERYTHING — every shell reached, every room open, every structure
    *  raised. A dev-build shortcut past the whole progression, so any system can
    *  be looked at without playing to it. */

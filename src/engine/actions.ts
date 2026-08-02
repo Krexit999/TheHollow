@@ -11,6 +11,7 @@ import { equipRelic, fuseRelics, toggleRelicLock, renderRelic, RARITIES } from '
 import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } from './upgrades';
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
+import { ensureBand, refuseLocked, rerollBand } from './systems/grain';
 import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
@@ -88,9 +89,22 @@ export function handleAction(
       if (sealed(state, 'sealHand')) {
         return { ok: false, reason: 'Not this run. The shaft works without you — that was the promise' };
       }
-      const result = manualChip(state, mods, ctx, action.cell);
-      if (result.charge <= 0) return { ok: false, reason: 'Nothing to chip', data: result };
+      const result = manualChip(state, mods, ctx, action.cell, action.strike ?? 'with');
+      if (result.charge <= 0) {
+        // Name the refusal a locked cell earns. "Nothing to chip" would read as
+        // an empty cell, which is a thing that fixes itself in a few seconds —
+        // this one does not fix itself until the shaft comes down.
+        if (refuseLocked(state, action.cell)) {
+          return { ok: false, reason: 'That rock is dead. Nothing comes out of it until the shaft falls', data: result };
+        }
+        return { ok: false, reason: 'Nothing to chip', data: result };
+      }
       return { ok: true, data: result };
+    }
+    case 'setGrainScope': {
+      ensureBand(state);
+      state.face.grainScope = action.scope;
+      return { ok: true };
     }
 
     case 'sweep': {
@@ -225,6 +239,23 @@ export function handleAction(
       const drill = state.drills.units[action.index];
       if (!drill) return { ok: false, reason: 'No such drill' };
       drill.priority = action.priority;
+      ctx.dirty();
+      return { ok: true };
+    }
+    case 'setDrillGrainMode': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      drill.grainMode = action.mode;
+      ctx.dirty();
+      return { ok: true };
+    }
+    case 'setDrillGrainSafety': {
+      const drill = state.drills.units[action.index];
+      if (!drill) return { ok: false, reason: 'No such drill' };
+      // Stored as the NEGATIVE so that safe is the ABSENT state: every drill
+      // nobody has touched is safe, including every drill in every save written
+      // before this existed.
+      if (action.safe) delete drill.grainUnsafe; else drill.grainUnsafe = true;
       ctx.dirty();
       return { ok: true };
     }
@@ -668,6 +699,14 @@ export function handleAction(
     case 'debug': {
       if (action.op === 'grant') {
         addCurrency(state, action.currency, D(action.amount));
+        ctx.dirty();
+        return { ok: true };
+      }
+      if (action.op === 'rerollBand') {
+        // §5's dev hook. The REAL recovery is the Collapse — collapseSys calls
+        // the same function — and this exists only so lock behaviour can be
+        // tested in seconds instead of across a whole descent.
+        rerollBand(state);
         ctx.dirty();
         return { ok: true };
       }

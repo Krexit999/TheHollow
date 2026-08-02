@@ -7,6 +7,7 @@ import { IndexedDBStorage } from './platform/idb';
 import { PersistenceController } from './platform/persistence';
 import { startLoop } from './platform/loop';
 import { bindEngine, useGame } from './ui/store';
+import { faceReport } from './engine/systems/grain';
 
 async function boot(): Promise<void> {
   const engine = createEngine({ nowMs: Date.now() });
@@ -20,7 +21,17 @@ async function boot(): Promise<void> {
     // drive UI navigation (__ui.getState().setTab('kiln')) without brittle
     // role selectors.
     const dev = window as unknown as Record<string, unknown>;
-    dev['__engine'] = engine;
+    // THE GRAIN'S TWO HOOKS (Proof #1 §5, §9), hung off the same object rather
+    // than added to the Engine interface — they are instrumentation, and the
+    // engine's public surface is not the place to keep a measuring tape.
+    //   __engine.faceReport()   the six metrics that answer the question.
+    //   __engine.rerollBand()   lock recovery without a full Collapse run.
+    //   __ui.getState().setGrainScope('band')  the §6 per-band fallback.
+    dev['__engine'] = Object.assign(engine, {
+      faceReport: () => faceReport(engine.getState()).text,
+      faceReportData: () => faceReport(engine.getState()),
+      rerollBand: () => engine.dispatch({ type: 'debug', op: 'rerollBand' }),
+    });
     dev['__ui'] = useGame;
   }
 

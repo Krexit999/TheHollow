@@ -44,6 +44,9 @@ import {
   DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, oreAt, openOre, plantOre,
 } from './ores';
 import { oreRichness } from '../content/ores';
+import {
+  ACROSS_TIME_MULT, FRONT_COMPACTION, isLocked, seedCompaction, wouldExceedSafety,
+} from './grain';
 
 /** Twenty-four rails, and A.56 split how you fill them: `BOUGHT_DRILLS` come
  *  off the shop at a steep escalating curve, the rest are PRIZES from other
@@ -53,7 +56,18 @@ export const BOUGHT_DRILLS = 16;
 export const DRILL_BASE_INTERVAL = 2.0;
 
 export function drillInterval(state: GameState, mods: ModifierCache, drill: DrillState): number {
-  return DRILL_BASE_INTERVAL / (1 + 0.04 * drill.level) / mods.get(state, 'drillSpeed').toNumber();
+  const base = DRILL_BASE_INTERVAL / (1 + 0.04 * drill.level) / mods.get(state, 'drillSpeed').toNumber();
+  // ACROSS THE GRAIN IS SLOW, for the machine exactly as for the hand — and the
+  // machine gets NO dust bonus for it, because the thing it is buying is
+  // compaction on cells the player will come back and finish. A bay set to
+  // `across` earns strictly less dust than one set to `with`; what it buys is
+  // reach into the deep-entry gates, which is drop-table and not income.
+  return base * (grainModeOf(drill) === 'across' ? ACROSS_TIME_MULT : 1);
+}
+
+/** Absent = 'with', which is what every drill did before the grain existed. */
+export function grainModeOf(drill: DrillState): 'with' | 'across' | 'follow' {
+  return drill.grainMode ?? 'with';
 }
 
 /**
@@ -152,6 +166,10 @@ function crowdOut(state: GameState, crowd: number[], cell: number): void {
 function pickTarget(
   state: GameState, skip: (i: number) => boolean, zone: Set<number> | null, rotted: boolean,
   crowd?: number[],
+  /** THE SAFETY, per drill. An `across` machine refuses any cell its next
+   *  strike would push past the lock threshold — a board killed while the
+   *  player was away is a rage-quit, not a tradeoff. */
+  unsafe?: (i: number) => boolean,
 ): number {
   const cells = state.face.cells;
   const ore = state.face.ore;
@@ -160,6 +178,7 @@ function pickTarget(
   for (let i = 0; i < cells.length; i++) {
     if (skip(i)) continue;
     if (zone && !zone.has(i)) continue;
+    if (unsafe?.(i)) continue;
     // A pocket is never an ordinary target: it will not come away in one bite.
     if (ore?.[i]) continue;
     let score = rotted ? cells[i]! * rotBite(state, i) : cells[i]!;
@@ -243,8 +262,11 @@ function worthTheTrip(p: DrillPriority): number {
 export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: number): void {
   if (!state.drills.bayBuilt || state.drills.units.length === 0) return;
   // A drill never works a cultivated (vined) cell — the Growth automation law
-  // leaves those for their own harvest.
-  const skip = (i: number): boolean => (state.growth.stage[i] ?? 0) > 0;
+  // leaves those for their own harvest — and it never works DEAD ROCK. Locked
+  // cells are added to the same predicate rather than to each call site,
+  // because this closure is what `pickTarget`, the second hand and
+  // `openPockets` all consult; one line here is every route around a lock.
+  const skip = (i: number): boolean => (state.growth.stage[i] ?? 0) > 0 || isLocked(state, i);
   const shellId = currentShell(state).id;
   const offered = openPockets(state, mods, skip);
   const capNow = cellCap(state, mods);
@@ -319,12 +341,34 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
 
     drill.timer += dt;
     const interval = drillInterval(state, mods, drill);
+    // ── THE GRAIN MODE (Proof #1) ────────────────────────────────────────────
+    // Three behaviours on the existing dropdown, built ON TOP of the existing
+    // claiming, crowding and zone routing rather than beside it: the mode picks
+    // a preferred cell and decides what the strike SEEDS, and everything else
+    // — pockets, priority, crowd-out, the second hand — runs exactly as before.
+    const grainMode = grainModeOf(drill);
+    const seeds = grainMode !== 'with';
+    const unsafe = seeds && !drill.grainUnsafe
+      ? (i: number): boolean => wouldExceedSafety(state, i, FRONT_COMPACTION)
+      : undefined;
     let strikes = 0;
     while (drill.timer >= interval && strikes < 4) {
       drill.timer -= interval;
       strikes++;
-      const target = pickTarget(state, skip, zone, rotted, crowd);
-      if (target < 0) continue; // every cell vined or out of zone — it idles
+      // FOLLOW: chase the live front's head and extend it. It DIES WITH THE
+      // FRONT in the sense that matters — the chasing stops — but the machine
+      // falls back to ordinary targeting rather than standing still, because a
+      // drill that idles while you are away is worse than one that mines badly.
+      let target = -1;
+      if (grainMode === 'follow') {
+        const head = state.face.front;
+        if (head?.alive && !skip(head.cell) && (!zone || zone.has(head.cell))
+          && !state.face.ore?.[head.cell] && !unsafe?.(head.cell)) {
+          target = head.cell;
+        }
+      }
+      if (target < 0) target = pickTarget(state, skip, zone, rotted, crowd, unsafe);
+      if (target < 0) continue; // every cell vined, dead, unsafe or out of zone
       if (crowd) crowdOut(state, crowd, target);
 
       // THE SECOND BITE (A.48 relic power). Deliberately NOT the 'Two Hands'
@@ -356,6 +400,13 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
 
       for (const hit of handCells) {
         strike(state, mods, ctx, drill, hit, power * rotBite(state, hit), d);
+        // A SEEDING MACHINE LEAVES COMPACTION AND COLLECTS NOTHING. `seedCompaction`
+        // clamps at the lock threshold, so even with the safety off a drill can
+        // drive a cell to the edge and never over it — only a strike the player
+        // aimed can kill rock. And the deep-entry gates are hand-only (grain.ts):
+        // a machine parked on a cell at 20 would otherwise roll the terminal
+        // material every stroke, which is a faucet wearing a drop table's clothes.
+        if (seeds) seedCompaction(state, hit, FRONT_COMPACTION);
       }
 
       // THE METER. Every fitted ability advances, and anything that fills FIRES

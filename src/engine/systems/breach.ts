@@ -26,6 +26,7 @@ import { faceWhole } from './absence';
 import { keystoneSatisfied } from './keystones';
 import { grantXP } from './xp';
 import { clearOres } from './ores';
+import { rerollBand } from './grain';
 import { START_H, START_W } from '../state';
 
 /** Upgrades that are cross-shell infrastructure and survive the fall. */
@@ -139,6 +140,7 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   applyFieldSize(state, mods);
   state.face.cells = new Array(state.face.w * state.face.h).fill(cellCap(state, mods));
   runFaceReset(state, 'breach');
+  rerollBand(state); // a fresh face means fresh grain and no dead rock
 
   addToolMark(state, 'breach'); // the tool carried through — a mark it keeps (heirloom)
   grantXP(state, mods, ctx, D(500));
