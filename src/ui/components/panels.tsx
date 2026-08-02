@@ -34,6 +34,7 @@ import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
 import { PlantPanel, CrusherPanel } from './plant';
+import { StandoffPanel } from './standoff';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
 import { OpticsCard } from './glassmere';
@@ -252,6 +253,10 @@ export function DigPanel() {
 
   return (
     <div className="space-y-2">
+      {/* THE STANDOFF sits at the top of the face and renders NOTHING unless
+          something is waiting where you are standing (§27.7 — danger is
+          texture, not a room you visit). */}
+      <StandoffPanel />
       <FieldStats state={state as GameState} m={m} />
       {/* THE ROLL MOVED TO THE SHAFT SCREEN. Down here it was one card among
           ten, capped at a 280px scroller, and the floor — the thing §1 says is

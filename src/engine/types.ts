@@ -644,6 +644,9 @@ export interface GameState {
   /** THE PLANT (§3): the Surge bank, machine tiers, and what Flow each machine
    *  actually got last tick. Flow CAPACITY is derived, never stored. */
   plant?: import('./systems/plant').PlantState;
+  /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
+   *  chosen for the NEXT one — which is the only moment it can be chosen. */
+  standoff?: import('./systems/standoff').StandoffState;
   collapse: {
     count: number;
     /** Core tree node levels, keyed by node id. */
@@ -1053,6 +1056,10 @@ export type GameAction =
    *  bought with currency; a batch is fired by hand and costs Surge. */
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
+  | { type: 'setDrillLine'; line: import('./systems/standoff').DrillLine }
+  | { type: 'beginStandoff' }
+  | { type: 'exchange'; stance: import('./systems/standoff').Stance }
+  | { type: 'dismissStandoff' }
   /** ORES: hand-work a pocket for `seconds`, and the bay-wide hunt toggle. */
   | { type: 'workOre'; cell: number; seconds: number }
   | { type: 'setHuntOres'; on: boolean }

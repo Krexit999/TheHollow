@@ -30,6 +30,7 @@ import { allCraftSystems } from './craft';
 import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
 import { tickPlant } from './systems/plant';
+import { ensureRoll } from './systems/roll';
 import { tickDrills } from './systems/drills';
 import { tickAlloys } from './systems/drillAlloys';
 import { checkPrizeDrills } from './systems/prizeDrills';
@@ -143,6 +144,14 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
   let refineAcc = 0;
 
   function step(dt: number): void {
+    // THE ROLL IS POPULATED BY THE ENGINE, not by whoever happens to render it.
+    // It used to be filled lazily by `rollRows` — which was fine only while the
+    // Roll panel was mounted on the Dig screen. The moment it moved to the
+    // Shaft screen, every OTHER consumer read an empty table: the Standoff read
+    // The Ashfall's hazard intensity as 0 and printed "Hazard 0" over a fight
+    // that was really running at intensity 1. A system that is only correct
+    // when a particular panel is on screen is not a system.
+    ensureRoll(state);
     tickFace(state, mods, ctx, dt);
     runFaceTick(state, mods, ctx, dt); // signature mechanics (chain timeouts...)
     tickDrills(state, mods, ctx, dt);

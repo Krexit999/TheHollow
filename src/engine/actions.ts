@@ -13,6 +13,7 @@ import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip, sweep } from './systems/face';
 import { resetCompaction } from './systems/compaction';
 import { buildCrusher, crush } from './systems/crusher';
+import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { descend, descendMany } from './systems/depthSys';
 import {
   climb, extendRail, installCache, removeCache, depositCache, collectCache,
@@ -145,6 +146,18 @@ export function handleAction(
 
     case 'crush':
       return crush(state, ctx, action.materialId, action.band);
+
+    case 'setDrillLine':
+      return setDrillLine(state, action.line);
+
+    case 'beginStandoff':
+      return beginStandoff(state, ctx);
+
+    case 'exchange':
+      return exchange(state, ctx, action.stance);
+
+    case 'dismissStandoff':
+      return dismissStandoff(state, ctx);
 
     case 'setKilnFeeding': {
       if (!state.kiln.built) return { ok: false, reason: 'No kiln' };

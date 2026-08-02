@@ -22,6 +22,7 @@ import { rollRows, floorRow, FEATURE_LABEL, type RollRow } from '../../engine/sy
 import { TYPE_LABEL } from '../../engine/content/shell1/roll';
 import { materialDef } from '../../engine/materials';
 import { effectiveToolTier } from '../../engine/systems/toolMining';
+import { DEEPWROUGHT_NAME } from '../../engine/systems/standoff';
 import type { GameState } from '../../engine';
 
 const TYPE_TONE: Record<string, string> = {
@@ -56,10 +57,15 @@ function contentsLine(row: RollRow, tier: number): { text: string; tone: string 
     return { text: 'too hard', tone: 'text-[#e0885a]' };
   }
   if (row.type === 'works') return { text: row.def.wreck ?? 'salvaged', tone: 'text-[#a8d8a0]' };
+  // §27.7: A HAZARD SHOWS ITS DEEPWROUGHT BEFORE YOU ARRIVE. Engaging is
+  // optional and the station's material usually is not, so the row has to name
+  // the thing rather than print an intensity number and let you find out.
+  if (row.def.type === 'hazard') {
+    return { text: `${DEEPWROUGHT_NAME} ${row.contents.hazard}`, tone: 'text-[#e0885a]' };
+  }
   const bits: string[] = [];
   if (row.contents.seam) bits.push(seamName(row.contents.seam));
   if (row.contents.feature !== 'nothing') bits.push(FEATURE_LABEL[row.contents.feature]);
-  if (row.contents.hazard > 0) bits.push(`dust ${row.contents.hazard}`);
   return { text: bits.length > 0 ? bits.join(' · ') : '—', tone: 'text-cave-400' };
 }
 

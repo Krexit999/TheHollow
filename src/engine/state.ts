@@ -26,6 +26,7 @@ import { defaultCastingState } from './systems/casting';
 import { defaultShaftState } from './systems/shaftSys';
 import { defaultRollState } from './systems/roll';
 import { defaultPlantState } from './systems/plant';
+import { defaultStandoffState } from './systems/standoff';
 
 export function defaultShellState(): GameState['shell'] {
   return {
@@ -109,6 +110,7 @@ export function initialState(nowMs: number): GameState {
     collapse: { count: 0, nodes: {}, lastRun: null, runStartAt: 0, traces: [] },
     roll: defaultRollState(),
     plant: defaultPlantState(),
+    standoff: defaultStandoffState(),
     delver: { xp: D(0), level: 1, skillPoints: 1, skills: {} },
     achievements: { unlocked: {} },
     stats: {
