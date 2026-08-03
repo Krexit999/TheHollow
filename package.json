@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "sim": "tsx scripts/sim.ts"
+    "sim": "tsx scripts/sim.ts",
+    "test:capture": "vitest run --reporter=verbose > sim-out/full-run.txt 2>&1 || (tail -60 sim-out/full-run.txt && exit 1)"
   },
   "dependencies": {
     "break_infinity.js": "^2.0.0",
