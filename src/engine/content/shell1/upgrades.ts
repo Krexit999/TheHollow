@@ -9,6 +9,7 @@ import { registerUpgrade, stat, upgradeLevel } from '../../upgrades';
 import type { GameState } from '../../types';
 import { newDrill, defaultDrillName, MAX_DRILLS } from '../../systems/drills';
 import { rigFound } from '../../systems/shoring';
+import { floodgateFound } from '../../systems/flood';
 import { ensureRoll } from '../../systems/roll';
 
 const hasKiln = (s: GameState) => s.kiln.built;
@@ -240,6 +241,29 @@ export function registerShell1Upgrades(): void {
     onPurchase: (s) => {
       ensureRoll(s);
       s.roll!.rig = true;
+    },
+  });
+  /**
+   * THE FLOODGATE (§36.1) — found in a wreck at a late station, raised with the
+   * shell purse, and then it never falls. Same shape as the Shoring Rig, and
+   * for the same reason: a machine the Roll shows you before you can have it.
+   *
+   * CURRENCY IS CONV, so it costs whatever the shell it is found in renders
+   * heat into — Ember in Cinder, which is the only shell that authors one.
+   */
+  registerUpgrade({
+    id: 'floodgate',
+    name: 'Raise the Floodgate',
+    currency: 'CONV',
+    baseCost: D(2500),
+    ratio: 1,
+    maxLevel: 1,
+    resetsOnCollapse: false,
+    visible: (s) => floodgateFound(s),
+    description: () => 'A sluice, a counterweight and a very long lever, all of it cast for one job. With it standing you can give a station the whole bank at once — and it will never be the same place again.',
+    onPurchase: (s) => {
+      ensureRoll(s);
+      s.roll!.floodgate = true;
     },
   });
   registerUpgrade({

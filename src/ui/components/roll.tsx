@@ -35,6 +35,8 @@ const TYPE_TONE: Record<string, string> = {
   hazard: 'text-[#e0b25a]',
   rest: 'text-cave-400',
   floor: 'text-lamp-400',
+  // A place that will take the heat, and has not yet.
+  flood: 'text-[#e0885a]',
 };
 
 function seamName(id: string): string {

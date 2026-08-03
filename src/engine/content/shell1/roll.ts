@@ -16,7 +16,12 @@
  * rather than adding a second gate beside them.
  */
 
-export type StationType = 'seam' | 'wall' | 'wreck' | 'works' | 'chamber' | 'hazard' | 'rest' | 'floor';
+/**
+ * FLOOD (A.89, §36.1) is a station that CAN be drowned, not one that has
+ * been. Once the Floodgate takes it, `typeOf` reads it as a HAZARD for the
+ * rest of the game — the same shape a looted WRECK reads as a WORKS.
+ */
+export type StationType = 'seam' | 'wall' | 'wreck' | 'works' | 'chamber' | 'hazard' | 'rest' | 'floor' | 'flood';
 
 export interface StationDef {
   id: string;
@@ -50,6 +55,11 @@ export interface StationDef {
    * So the re-roll never touches this, and `remainsAt` never reads `seams`.
    */
   remains?: string[];
+  /**
+   * FLOOD only (§36.1): the deep-stock pool a flooded station draws its one
+   * permanent seam from. Absent = it keeps drawing from .
+   */
+  floodSeams?: string[];
   /** One line the row can show when it is legible. */
   line?: string;
 }
@@ -220,6 +230,7 @@ export const TYPE_LABEL: Record<StationType, string> = {
   hazard: 'HAZARD',
   rest: 'REST',
   floor: 'FLOOR',
+  flood: 'FLOOD',
 };
 
 export function loamRoll(): StationDef[] {

@@ -18,6 +18,7 @@ import { loamRoll } from './shell1/roll';
 import { ferriteRoll } from './shell2/roll';
 import { verdanceRoll } from './shell3/roll';
 import { glassmereRoll } from './shell4/roll';
+import { cinderRoll } from './shell5/roll';
 import type { StationDef } from './shell1/roll';
 import { allShells } from '../shells';
 
@@ -35,6 +36,7 @@ const ROLLS: Record<string, () => StationDef[]> = {
   ferrite: ferriteRoll,
   verdance: verdanceRoll,
   glassmere: glassmereRoll,
+  cinder: cinderRoll,
 };
 
 /** Shells whose geography is written. The rest return `[]`. */
@@ -82,6 +84,7 @@ export const ROLL_SOURCES: Record<string, string> = {
   ferrite: 'shell2/roll.ts',
   verdance: 'shell3/roll.ts',
   glassmere: 'shell4/roll.ts',
+  cinder: 'shell5/roll.ts',
 };
 
 /**

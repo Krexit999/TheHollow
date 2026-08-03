@@ -436,9 +436,20 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   // ---- CINDER ----
   slagrock: ['dense', 'brittle'], ashgrit: ['warm', 'hollow'], charstone: ['warm', 'brittle'],
   emberflake: ['warm', 'light'], pyroclast: ['dense', 'warm'], obsidianheart: ['keen', 'brittle'],
-  brimshard: ['brittle', 'charged'], magmajade: ['warm', 'tough'], cindersteel: ['tough', 'warm'],
+  brimshard: ['brittle', 'charged'], magmajade: ['warm', 'tough'],
+  /**
+   * CINDERSTEEL WAS MAGMAJADE, bit for bit — same shell, same `pure`, same
+   * {warm, tough}. FIFTH for five, and the first that was PRE-EXISTING rather
+   * than created by making a shell reachable: two ordinary ores, neither an
+   * orphan, cloned since Phase 9 and invisible because nothing compared them.
+   * Steel is the one thing down here that takes an EDGE.
+   */
+  cindersteel: ['tough', 'keen'],
   pyrite: ['keen', 'charged'], heartflame: ['warm', 'charged'], ventglass: ['brittle', 'hollow'],
   coronaite: ['warm', 'charged', 'trueseated'], howlbasalt: ['dense', 'warm', 'brittle'],
+  /** CINDER DEEP-ENTRY, terminal. Three traits so it separates from coronaite
+   *  and howlbasalt rather than cloning either. */
+  slagglass: ['warm', 'trueseated', 'brittle'],
   emberplate: ['tough', 'warm'], charsinew: ['warm', 'springy'], magmaduct: ['warm', 'hollow'],
   pyregland: ['warm', 'charged'], smolderheart: ['warm', 'dense'],
   // ---- HOLLOW ----

@@ -59,6 +59,14 @@ export interface RollState {
    * shored band's contents are frozen, which is the price §1.1 names.
    */
   shored?: string[];
+  /**
+   * STATIONS DROWNED (§36.1). PERMANENT and IRREVERSIBLE — through every
+   * Collapse and every Breach. A flooded station reads as a HAZARD forever
+   * (`typeOf`) and its contents never re-roll again (`rerollRoll`).
+   */
+  flooded?: string[];
+  /** THE FLOODGATE is standing. Found at a wreck, raised with the shell purse. */
+  floodgate?: boolean;
   /** THE SHORING RIG is standing. Found at a wreck, raised with Brick. */
   rig?: boolean;
   /** How many times the contents have been re-rolled. Lets the UI (and a test)
@@ -108,6 +116,7 @@ export function ensureRoll(state: GameState, rng: () => number = Math.random): v
   r.cleared ??= [];
   r.looted ??= [];
   r.shored ??= [];
+  r.flooded ??= [];
   r.rolls ??= 0;
   for (const def of shellRoll(state)) {
     if (!r.rolled[def.id]) r.rolled[def.id] = rollOne(def, rng);
@@ -137,6 +146,13 @@ export function rerollRoll(state: GameState, rng: () => number = Math.random): v
      * later), and no station can end up permanently blank.
      */
     if (r.shored?.includes(def.id)) continue;
+    /**
+     * AND A DROWNED STATION NEVER ROLLS AGAIN (§36.1). Its one seam was drawn
+     * at the moment it flooded and that is the last time its contents moved —
+     * which is the whole product: a place the Bench never has to be re-asked
+     * and a Circuit row that stays true.
+     */
+    if (r.flooded?.includes(def.id)) continue;
     r.rolled[def.id] = rollOne(def, rng);
   }
   r.rolls += 1;
@@ -177,12 +193,25 @@ export function isCleared(state: GameState, id: string): boolean {
   return state.roll?.cleared.includes(id) ?? false;
 }
 
+/**
+ * DROWNED (§36.1). Lives here rather than in `flood.ts` because it is ROLL
+ * STATE and `typeOf` needs it — putting it in the system would make
+ * roll -> flood -> roll, and an ESM cycle is how a binding arrives undefined.
+ */
+export function isFlooded(state: GameState, id: string): boolean {
+  return state.roll?.flooded?.includes(id) ?? false;
+}
+
 export function isLooted(state: GameState, id: string): boolean {
   return state.roll?.looted.includes(id) ?? false;
 }
 
 /** What a station reads as NOW: a looted WRECK is a WORKS, forever. */
 export function typeOf(state: GameState, def: StationDef): StationType {
+  // A looted WRECK is a WORKS, forever. A drowned FLOOD is a HAZARD, forever —
+  // the same shape, and the reason  is the authored type rather than the
+  // state: the row tells you it CAN be drowned before you drown it (LAW 3).
+  if (def.type === 'flood') return isFlooded(state, def.id) ? 'hazard' : 'flood';
   return def.type === 'wreck' && isLooted(state, def.id) ? 'works' : def.type;
 }
 

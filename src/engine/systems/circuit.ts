@@ -178,10 +178,11 @@ export interface ReadDef {
   now: (state: GameState, mods: ModifierCache) => string;
 }
 
-const STATION_TYPES: StationType[] = ['seam', 'wall', 'wreck', 'works', 'chamber', 'hazard', 'rest', 'floor'];
+const STATION_TYPES: StationType[] = ['seam', 'wall', 'wreck', 'works', 'chamber', 'hazard', 'rest', 'floor', 'flood'];
 const STATION_LABEL: Record<StationType, string> = {
   seam: 'a seam', wall: 'a wall', wreck: 'a wreck', works: 'a works',
   chamber: 'a chamber', hazard: 'a hazard', rest: 'a rest', floor: 'the floor',
+  flood: 'a place that will take the heat',
 };
 
 /** Every material any station in this shell can be holding. */

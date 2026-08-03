@@ -12,6 +12,7 @@ import { HoldPanel } from './components/HoldPanel';
 import { CastingPanel } from './components/CastingPanel';
 import { RefineryPanel } from './components/refinery';
 import { ShoringPanel } from './components/shoring';
+import { FloodPanel } from './components/flood';
 import { CollapsePanel, DelverPanel } from './components/prestige';
 import { GridPanel, VaultPanel } from './components/meta';
 import { OfflineModal, Toasts } from './components/overlays';
@@ -59,6 +60,7 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
       {only('shaft') && <RollPanel />}
       {/* THE DRIFTS are a thing you do TO the Roll, so they live under it. */}
       {only('shaft') && <ShoringPanel />}
+      {only('shaft') && <FloodPanel />}
       {only('kiln') && <KilnPanel />}
       {only('drills') && <DrillsPanel />}
       {only('vents') && <VentsPanel />}

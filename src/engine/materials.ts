@@ -397,12 +397,30 @@ export const MATERIALS: MaterialDef[] = [
   M('truelight', 'Truelight', 'glassmere', 'starred', ['#1a2028', '#3c4c5c', '#7ea0bc'], 11, 'aberrant',
     'Comes out of a cell one strike from dead, and only out of one. It is not lit and it is not dark, and it is the same either way.',
     false, 'deep'),
-  // Cinder combat-only (Phase 9) — everything down here is partly furnace.
-  { id: 'emberplate', name: 'Emberplate', shellId: 'cinder', rarity: 'common', palette: ['#3a2a20', '#6e4630', '#b3714a'], facets: 5, shimmer: 'soft', source: 'combat', flavor: 'Armor shed still warm. It stays warm. Nobody knows what off is, down here.' },
-  { id: 'charsinew', name: 'Charsinew', shellId: 'cinder', rarity: 'common', palette: ['#2c2422', '#4e3c36', '#7e5e52'], facets: 4, shimmer: 'none', source: 'combat', flavor: 'Muscle that cooked and kept working. An example to us all, says Hob.' },
-  { id: 'magmaduct', name: 'Magmaduct', shellId: 'cinder', rarity: 'rich', palette: ['#3a221a', '#6e3a26', '#c25c38'], facets: 6, shimmer: 'soft', source: 'combat', flavor: 'A vein that carried fire instead of blood. Still carries a little.' },
-  { id: 'pyregland', name: 'Pyregland', shellId: 'cinder', rarity: 'pure', palette: ['#40261a', '#7a422a', '#d97a42'], facets: 7, shimmer: 'crystalline', source: 'combat', flavor: 'The organ that decides when to burn. It has never once decided no.' },
-  { id: 'smolderheart', name: "The Smolder's Heart", shellId: 'cinder', rarity: 'flawless', palette: ['#331e16', '#66301c', '#bf5426'], facets: 10, shimmer: 'crystalline', source: 'combat', flavor: 'It beats once a minute, and each beat is a decision not to erupt.' },
+  // ============== CINDER'S REMAINS (A.89) — re-sourced by PLACE ===========
+  //
+  // The fifth set, by the same mechanism. Everything down here is partly
+  // furnace, and four of the five lines said so without describing a kill.
+  { id: 'emberplate', name: 'Emberplate', shellId: 'cinder', rarity: 'common', palette: ['#3a2a20', '#6e4630', '#b3714a'], facets: 5, shimmer: 'soft', source: 'remains', flavor: 'Armor shed still warm. It stays warm. Nobody knows what off is, down here.' },
+  { id: 'charsinew', name: 'Charsinew', shellId: 'cinder', rarity: 'common', palette: ['#2c2422', '#4e3c36', '#7e5e52'], facets: 4, shimmer: 'none', source: 'remains', flavor: 'Muscle that cooked and kept working. An example to us all, says Hob.' },
+  { id: 'magmaduct', name: 'Magmaduct', shellId: 'cinder', rarity: 'rich', palette: ['#3a221a', '#6e3a26', '#c25c38'], facets: 6, shimmer: 'soft', source: 'remains', flavor: 'A vein that carried fire instead of blood. Still carries a little.' },
+  { id: 'pyregland', name: 'Pyregland', shellId: 'cinder', rarity: 'pure', palette: ['#40261a', '#7a422a', '#d97a42'], facets: 7, shimmer: 'crystalline', source: 'remains', flavor: 'The organ that decides when to burn. It has never once decided no.' },
+  // Was "It beats once a minute, and each beat is a decision not to erupt" under
+  // the name The Smolder's Heart — the Warden's, in your hand. Same correction
+  // as taproot, loadstarcore, plentyheart and the Unblinking's Tear: she has
+  // more than one, and the ones she is done with roll downhill.
+  { id: 'smolderheart', name: "The Smolder's Heart", shellId: 'cinder', rarity: 'flawless', palette: ['#331e16', '#66301c', '#bf5426'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'She grows one a season and sheds the last. It beats about once a minute, and each beat is a decision not to erupt.' },
+
+  // ============ CINDER DEEP-ENTRY (§16.2) — compaction 20 =================
+  //
+  // charstone (c>=8) and slagrock (c>=14) are BOTH Cinder's own commons and
+  // both already exist, so this shell needed only its TERMINAL — the same
+  // shape as Verdance. §19 also promises Slagglass out of the Crucible ('which
+  // is Seat V and also your vent stock'); that second source is not built, and
+  // this one does not pretend to be it.
+  M('slagglass', 'Slagglass', 'cinder', 'starred', ['#1c1210', '#3e2418', '#7a4426'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. Slag that cooled fast enough to stay honest about what was in it.',
+    false, 'deep'),
 
   // ================== SHELL VI — HOLLOW (Phase 10, live) ===================
   M('nothingstone', 'Nothingstone', 'hollow', 'common', ['#2a2834', '#4a4660', '#787292'], 4, 'none',

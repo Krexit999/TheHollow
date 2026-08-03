@@ -53,6 +53,7 @@ export const DEEP_GATES: DeepGate[] = [
  *   ferrite    wormsteel (Loam pure) · lodestonecored (new) · poleiron (new)
  *   verdance   sapstone (own common) · bindingclay (Loam rich) · thornwall (new)
  *   glassmere  weepstone (Loam aberrant) · truesilica (new) · truelight (new)
+ *   cinder     charstone (own common) · slagrock (own common) · slagglass (new)
  */
 export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
   loam: DEEP_GATES,
@@ -65,6 +66,13 @@ export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
     { at: 20, materialId: 'thornwall', chance: 0.06 },
     { at: 14, materialId: 'bindingclay', chance: 0.11 },
     { at: 8, materialId: 'sapstone', chance: 0.18 },
+  ],
+  // Cinder needed only its TERMINAL: charstone and slagrock are both its own
+  // commons and both already existed.
+  cinder: [
+    { at: 20, materialId: 'slagglass', chance: 0.06 },
+    { at: 14, materialId: 'slagrock', chance: 0.11 },
+    { at: 8, materialId: 'charstone', chance: 0.18 },
   ],
   glassmere: [
     { at: 20, materialId: 'truelight', chance: 0.06 },

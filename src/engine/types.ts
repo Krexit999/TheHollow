@@ -854,6 +854,8 @@ export type GameEvent =
   /** SHORING (§9.4): a band timbered, a band opened again, and the fall itself. */
   | { type: 'shored'; stationId: string; depth: number }
   | { type: 'unshored'; stationId: string }
+  /** THE FLOODGATE (§36.1): a station drowned, irreversibly. */
+  | { type: 'stationFlooded'; stationId: string; depth: number }
   | { type: 'drift'; depth: number }
   | { type: 'cacheInstalled'; depth: number }
   | { type: 'cacheDeposited'; materialId: string; qty: number }
@@ -1111,6 +1113,8 @@ export type GameAction =
    *  and it costs the same again rather than refunding. */
   | { type: 'shoreBand'; stationId: string }
   | { type: 'unshoreBand'; stationId: string }
+  /** THE FLOODGATE (§36.1). Irreversible on purpose — there is no undo. */
+  | { type: 'floodStation'; stationId: string }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

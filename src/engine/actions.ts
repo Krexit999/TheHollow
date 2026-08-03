@@ -15,6 +15,7 @@ import { resetCompaction } from './systems/compaction';
 import { buildCrusher, crush } from './systems/crusher';
 import { setRow as setCircuitRow, moveRow as moveCircuitRow } from './systems/circuit';
 import { shoreBand, unshoreBand } from './systems/shoring';
+import { floodStation } from './systems/flood';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -151,6 +152,9 @@ export function handleAction(
 
     case 'unshoreBand':
       return unshoreBand(state, ctx, action.stationId);
+
+    case 'floodStation':
+      return floodStation(state, ctx, action.stationId);
 
     case 'buildCrusher':
       return buildCrusher(state, ctx);
