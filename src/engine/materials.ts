@@ -368,11 +368,35 @@ export const MATERIALS: MaterialDef[] = [
     'Comes out of a cell one strike from dead, and only out of one. Wood that stopped being wood without ever agreeing to be stone.',
     false, 'deep'),
   // Glassmere combat-only (Phase 8).
-  { id: 'glasschitin', name: 'Glasschitin', shellId: 'glassmere', rarity: 'common', palette: ['#3a4048', '#6a7684', '#a8b8c8'], facets: 6, shimmer: 'crystalline', source: 'combat', flavor: 'Armor you can read a page through. The page argues back.' },
-  { id: 'coldsinew', name: 'Coldsinew', shellId: 'glassmere', rarity: 'common', palette: ['#38404a', '#5e6c7c', '#93a8ba'], facets: 5, shimmer: 'soft', source: 'combat', flavor: 'Muscle at four below. It flexes slowly and forever.' },
-  { id: 'lenswing', name: 'Lenswing', shellId: 'glassmere', rarity: 'rich', palette: ['#404452', '#707a94', '#b0bcd8'], facets: 7, shimmer: 'crystalline', source: 'combat', flavor: 'A wing that focuses what it flies through.' },
-  { id: 'prismheart', name: 'Prismheart', shellId: 'glassmere', rarity: 'pure', palette: ['#3c3a50', '#6c6890', '#a89ed0'], facets: 8, shimmer: 'crystalline', source: 'combat', flavor: 'It splits whatever light reaches it, including attention.' },
-  { id: 'unblinkingTear', name: "The Unblinking's Tear", shellId: 'glassmere', rarity: 'flawless', palette: ['#3a4456', '#68809c', '#a8cce8'], facets: 10, shimmer: 'crystalline', source: 'combat', flavor: 'It wept exactly once. You were there.' },
+  // ============== GLASSMERE'S REMAINS (A.89) — re-sourced by PLACE =========
+  //
+  // The fourth set, by the same mechanism as Loam's (A.84), Ferrite's (A.87) and
+  // Verdance's (A.88): bound to stations in `content/shell4/roll.ts`, substituted
+  // into a drop that already happened, never added to the rarity pool.
+  { id: 'glasschitin', name: 'Glasschitin', shellId: 'glassmere', rarity: 'common', palette: ['#3a4048', '#6a7684', '#a8b8c8'], facets: 6, shimmer: 'crystalline', source: 'remains', flavor: 'Armor you can read a page through. The page argues back.' },
+  { id: 'coldsinew', name: 'Coldsinew', shellId: 'glassmere', rarity: 'common', palette: ['#38404a', '#5e6c7c', '#93a8ba'], facets: 5, shimmer: 'soft', source: 'remains', flavor: 'Muscle at four below. It flexes slowly and forever.' },
+  { id: 'lenswing', name: 'Lenswing', shellId: 'glassmere', rarity: 'rich', palette: ['#404452', '#707a94', '#b0bcd8'], facets: 7, shimmer: 'crystalline', source: 'remains', flavor: 'A wing that focuses what it flies through.' },
+  { id: 'prismheart', name: 'Prismheart', shellId: 'glassmere', rarity: 'pure', palette: ['#3c3a50', '#6c6890', '#a89ed0'], facets: 8, shimmer: 'crystalline', source: 'remains', flavor: 'It splits whatever light reaches it, including attention.' },
+  // Was "It wept exactly once. You were there." — you, present at the death of
+  // the shell's Warden, in a game with no fighting. The same correction as
+  // `taproot`, `loadstarcore` and `plentyheart`: the Unblinking does not stop.
+  // It weeps, the cold keeps what it wept, and the tear is still out there.
+  { id: 'unblinkingTear', name: "The Unblinking's Tear", shellId: 'glassmere', rarity: 'flawless', palette: ['#3a4456', '#68809c', '#a8cce8'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'It weeps about once a decade and the cold keeps every one. This is not the first and will not be the last.' },
+
+  // =========== GLASSMERE DEEP-ENTRY (§16.2) — compaction 14 and 20 =========
+  //
+  // The ladder is weepstone (c>=8) / truesilica (c>=14) / Truelight (c>=20).
+  // `weepstone` ALREADY EXISTS as a Loam aberrant and §16.2 names it as
+  // Glassmere's first gate anyway — the `bindingclay` case exactly: a stone that
+  // is already in the game, given a second way to be found. The other two are
+  // written here, `source: 'deep'` so neither can enter a rarity pool, and the
+  // spine's own names are used because neither id was taken.
+  M('truesilica', 'Truesilica', 'glassmere', 'flawless', ['#4a5460', '#7e909c', '#c0d4e0'], 8, 'crystalline',
+    'Sand that agreed on a single direction all the way through. Cut it any way you like; it was already cut that way.',
+    false, 'deep'),
+  M('truelight', 'Truelight', 'glassmere', 'starred', ['#1a2028', '#3c4c5c', '#7ea0bc'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. It is not lit and it is not dark, and it is the same either way.',
+    false, 'deep'),
   // Cinder combat-only (Phase 9) — everything down here is partly furnace.
   { id: 'emberplate', name: 'Emberplate', shellId: 'cinder', rarity: 'common', palette: ['#3a2a20', '#6e4630', '#b3714a'], facets: 5, shimmer: 'soft', source: 'combat', flavor: 'Armor shed still warm. It stays warm. Nobody knows what off is, down here.' },
   { id: 'charsinew', name: 'Charsinew', shellId: 'cinder', rarity: 'common', palette: ['#2c2422', '#4e3c36', '#7e5e52'], facets: 4, shimmer: 'none', source: 'combat', flavor: 'Muscle that cooked and kept working. An example to us all, says Hob.' },

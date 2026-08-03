@@ -417,7 +417,22 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   beamiron: ['keen', 'dense'], starlens: ['trueseated', 'charged'], wavelength: ['charged', 'springy'],
   spectrum: ['charged', 'keen', 'trueseated'], unlight: ['hollow', 'charged', 'brittle'],
   glasschitin: ['brittle', 'tough'], coldsinew: ['springy', 'brittle'], lenswing: ['light', 'charged'],
-  prismheart: ['charged', 'keen'], unblinkingTear: ['trueseated', 'charged'],
+  prismheart: ['charged', 'keen'],
+  /**
+   * THE UNBLINKING'S TEAR WAS STARLENS, bit for bit — same shell, same
+   * `flawless`, same trueseated+charged, therefore the same head to three
+   * decimals. Fourth for four, and the fourth found the day its shell became
+   * reachable. (burrowertooth was duskflint A.84; scalebackplate was ironbloom
+   * A.87; mothspool was sporewood A.88.)
+   *
+   * A tear is a DROP held together by its own surface — it deforms and comes
+   * back, which a ground lens does not. `springy`.
+   */
+  unblinkingTear: ['trueseated', 'springy'],
+  /** GLASSMERE DEEP-ENTRY (§16.2 gives truesilica `trueseated`/`light`). The
+   *  terminal takes three so it separates from `starlens` and `spectrum`. */
+  truesilica: ['trueseated', 'light'],
+  truelight: ['trueseated', 'charged', 'light'],
   // ---- CINDER ----
   slagrock: ['dense', 'brittle'], ashgrit: ['warm', 'hollow'], charstone: ['warm', 'brittle'],
   emberflake: ['warm', 'light'], pyroclast: ['dense', 'warm'], obsidianheart: ['keen', 'brittle'],

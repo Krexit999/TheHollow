@@ -17,6 +17,7 @@
 import { loamRoll } from './shell1/roll';
 import { ferriteRoll } from './shell2/roll';
 import { verdanceRoll } from './shell3/roll';
+import { glassmereRoll } from './shell4/roll';
 import type { StationDef } from './shell1/roll';
 import { allShells } from '../shells';
 
@@ -33,6 +34,7 @@ const ROLLS: Record<string, () => StationDef[]> = {
   loam: loamRoll,
   ferrite: ferriteRoll,
   verdance: verdanceRoll,
+  glassmere: glassmereRoll,
 };
 
 /** Shells whose geography is written. The rest return `[]`. */
@@ -79,12 +81,25 @@ export const ROLL_SOURCES: Record<string, string> = {
   loam: 'shell1/roll.ts',
   ferrite: 'shell2/roll.ts',
   verdance: 'shell3/roll.ts',
+  glassmere: 'shell4/roll.ts',
 };
 
-/** True if this path is an authored Roll (or the registry itself). */
+/**
+ * AND THE OTHER SOURCE REGISTRIES. A deep-entry gate NAMES a stone you find,
+ * exactly as a seam pool does — it is not a consumer. The moment Glassmere's
+ * `weepstone` gate was written it read as one and stripped
+ * `weepstoneToLoamiron` of the only justification it had, which is the THIRD
+ * instance of one bug (filename A.84 → path pattern A.87 → registry A.88, and
+ * the registry only knew about Rolls). So the list is "things that name without
+ * wanting", and `content/deepEntry.ts` exists because the table had to be
+ * somewhere this list could point at.
+ */
+export const SOURCE_REGISTRIES = ['rolls.ts', 'deepEntry.ts'];
+
+/** True if this path names materials without wanting them. */
 export function isRollSource(path: string): boolean {
   const p = path.replace(/\\/g, '/');
-  return p.endsWith('content/rolls.ts')
+  return SOURCE_REGISTRIES.some((f) => p.endsWith(`content/${f}`))
     || Object.values(ROLL_SOURCES).some((rel) => p.endsWith(`content/${rel}`));
 }
 

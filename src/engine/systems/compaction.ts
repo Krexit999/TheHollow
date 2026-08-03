@@ -25,6 +25,7 @@ import type { EngineCtx, GameState } from '../types';
 import { applyDrop } from './drops';
 import { sealed } from '../laws';
 import { currentShell } from '../shells';
+import { DEEP_GATES, deepGatesFor } from '../content/deepEntry';
 import { biteBonus, settleMult } from './shopFork';
 import { note, noteTally, proven } from './reading';
 
@@ -43,61 +44,13 @@ export const COMPACTION_SHOW_AT = 8;
 /** What one hand chip packs into the cell it lands on. */
 export const CHIP_COMPACTION = 1;
 
-export interface DeepGate { at: number; materialId: string; chance: number }
-
 /**
- * THE GATES. Deepest one met wins; one roll, one material.
- *
- * These three chances are UNVERIFIED BALANCE — set to make the first find
- * reachable inside an hour, never sim-checked. The thing to watch is the late
- * board, where every cell sits at the top gate and every chip rolls the
- * terminal table; the Collapse wipe is what is supposed to bound that, and
- * nobody has measured whether it does.
+ * THE GATE TABLE MOVED TO `content/deepEntry.ts` (A.89) and is re-exported
+ * here so every existing importer is untouched. It is authored CONTENT — a
+ * list of stones you FIND — and the consumer audits have to be able to exclude
+ * it by registry, which they can only do for things the registry names.
  */
-export const DEEP_GATES: DeepGate[] = [
-  { at: 20, materialId: 'deepgrave', chance: 0.06 },
-  { at: 14, materialId: 'graveclaydeep', chance: 0.11 },
-  { at: 8, materialId: 'umberjade', chance: 0.18 },
-];
-
-/**
- * THE LADDER IS PER SHELL (§16.2), and it was not.
- *
- * `DEEP_GATES` was one flat list of three LOAM materials applied in every
- * world, so a Ferrite player packing a cell to 20 dug Deepgrave out of iron.
- * §16.2 gives each shell its own three at the same 8/14/20 rungs; Ferrite's are
- * **wormsteel / lodestone-cored / Poleiron**, and `wormsteel` is deliberately a
- * stone that already exists — the `umberjade` pattern, a second way to find
- * something rather than a second thing that means the same.
- *
- * THE OTHER FIVE SHELLS KEEP LOAM'S TABLE, knowingly and ledgered. Their three
- * are named in §16.2 and most of those materials are not in the registry, so
- * writing them is a materials pass per shell — and silently switching five
- * shells to "no deep drops at all" inside a phase scoped to one is exactly the
- * kind of quiet content change this project keeps finding after the fact. The
- * fallback is wrong and it is the same wrong it has always been.
- */
-export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
-  loam: DEEP_GATES,
-  ferrite: [
-    { at: 20, materialId: 'poleiron', chance: 0.06 },
-    { at: 14, materialId: 'lodestonecored', chance: 0.11 },
-    { at: 8, materialId: 'wormsteel', chance: 0.18 },
-  ],
-  // Verdance reuses TWO of its three: `sapstone` is its own common and
-  // `bindingclay` is a Loam rich, both already in the game. Only the terminal
-  // is new, because a terminal must come out of the deepest gate and nowhere
-  // else — see the note on `thornwall` in materials.ts.
-  verdance: [
-    { at: 20, materialId: 'thornwall', chance: 0.06 },
-    { at: 14, materialId: 'bindingclay', chance: 0.11 },
-    { at: 8, materialId: 'sapstone', chance: 0.18 },
-  ],
-};
-
-export function deepGatesFor(shellId: string): DeepGate[] {
-  return DEEP_GATES_BY_SHELL[shellId] ?? DEEP_GATES;
-}
+export { DEEP_GATES, DEEP_GATES_BY_SHELL, deepGatesFor, type DeepGate } from '../content/deepEntry';
 
 /** The deepest gate — what the renderer rings as "this one is worth the most". */
 export const TERMINAL_GATE = DEEP_GATES[0]!.at;
