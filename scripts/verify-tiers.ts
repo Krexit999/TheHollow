@@ -134,6 +134,42 @@ async function main(): Promise<void> {
   check(three.parts < two.parts && two.parts < one.parts, true, false,
     'each rung costs more cast parts than the last (2 / 3 / 5)');
 
+  console.log('C2 — two machines cast from DIFFERENT stone behave differently');
+  const cast = (mat: string): Promise<{ mixed: boolean; plainRefused: boolean; traits: string[] }> =>
+    page.evaluate((m) => {
+      const e = (window as unknown as Record<string, never>)['__engine'] as unknown as {
+        getState: () => never; dispatch: (a: unknown) => { ok: boolean };
+      };
+      const s = e.getState() as unknown as {
+        casting: { rack: { id: number; type: string; materialId: string; purity: number }[] };
+        plant?: { tiers: Record<string, number>; surge: number; builtOf?: Record<string, string[]> };
+        materials: { stacks: Record<string, Record<string, { count: number; puritySum: number }>> };
+      };
+      s.plant!.tiers = {}; s.plant!.builtOf = {};
+      s.casting.rack = Array.from({ length: 40 }, (_, i) => ({
+        id: 7000 + i, type: 'head', materialId: m, purity: 60,
+      }));
+      s.plant!.surge = 9999;
+      e.dispatch({ type: 'buildCrusher' });
+      s.plant!.surge = 9999;
+      // Four stones SPREAD across two bands: no band holds a full batch.
+      s.materials.stacks['marl'] = {
+        good: { count: 2, puritySum: 140 }, fair: { count: 2, puritySum: 100 },
+      };
+      const r = e.dispatch({ type: 'crush', materialId: 'marl', band: 'good' });
+      return {
+        mixed: r.ok,
+        plainRefused: !r.ok,
+        traits: s.plant!.builtOf?.['crusher'] ?? [],
+      };
+    }, mat);
+  const keen = await cast('duskflint');
+  const plain = await cast('marl');
+  console.log(`      keen-cast  built of ${JSON.stringify(keen.traits)} -> batch ${keen.mixed ? 'FIRED' : 'refused'}`);
+  console.log(`      plain-cast built of ${JSON.stringify(plain.traits)} -> batch ${plain.mixed ? 'FIRED' : 'refused'}`);
+  check(plain.mixed, false, true, 'a PLAIN-cast Crusher refuses a batch spread across bands');
+  check(keen.mixed, true, false, 'a KEEN-cast one takes it — same tier, different stone');
+
   console.log('C — pillar 2, both arms at the SAME depth');
   const readCeiling = (): Promise<string> => page.evaluate(() => {
     const el = [...document.querySelectorAll('div')]

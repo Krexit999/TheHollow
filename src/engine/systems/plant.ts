@@ -27,6 +27,7 @@
  */
 import type { GameState } from '../types';
 import { coreNodeLevel } from '../content/shell1/coreTree';
+import { traitsOf, type TraitId } from '../traits';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -82,16 +83,32 @@ export interface PlantState {
   /** Rolling record of what Flow was actually satisfied last tick, per machine —
    *  so the panel can say "the Kiln is at 40%" instead of implying it is fine. */
   served: Record<string, number>;
+  /**
+   * WHAT EACH MACHINE IS MADE OF (§11.2). Material ids of the cast parts spent
+   * building it, accumulated across its tiers.
+   *
+   * The tier ladder answers "what can this machine do"; this answers "what does
+   * THIS one do differently from the identical one you built out of other
+   * stone". Until A.83 the parts were spent and their materials discarded at
+   * the moment of consumption, so every Crusher in every save was the same
+   * Crusher — which made §11.2's whole claim ("a keen liner grinds finer")
+   * unrepresentable.
+   *
+   * Absent = a machine built before this existed. Those keep the plain
+   * behaviour, which is what they have always had.
+   */
+  builtOf?: Record<string, string[]>;
 }
 
 export function defaultPlantState(): PlantState {
-  return { surge: SURGE_FLOOR, tiers: {}, served: {} };
+  return { surge: SURGE_FLOOR, tiers: {}, served: {}, builtOf: {} };
 }
 
 export function ensurePlant(state: GameState): PlantState {
   const p = (state.plant ??= defaultPlantState());
   p.tiers ??= {};
   p.served ??= {};
+  p.builtOf ??= {};
   if (typeof p.surge !== 'number' || Number.isNaN(p.surge)) p.surge = SURGE_FLOOR;
   return p;
 }
@@ -265,6 +282,39 @@ export function retainsBand(state: GameState, machineId: string): boolean {
 
 export function emitsByproduct(state: GameState, machineId: string): boolean {
   return tierOf(state, machineId) >= 3;
+}
+
+/**
+ * EVERY MACHINE IS A TINKERS ITEM (§11.2) — what this one is MADE of.
+ *
+ * The traits of every cast part spent on it, unioned. A trait is present or it
+ * is not; nothing here counts how MANY keen parts went in, because a second
+ * keen liner making a machine "more keen" is the level track §15.4 forbids
+ * wearing a different hat. One keen part changes what the machine will do; two
+ * change nothing further.
+ */
+export function machineTraits(state: GameState, machineId: string): Set<TraitId> {
+  const out = new Set<TraitId>();
+  for (const id of ensurePlant(state).builtOf?.[machineId] ?? []) {
+    for (const t of traitsOf(id)) out.add(t);
+  }
+  return out;
+}
+
+/** Was this machine cast with any part carrying this trait? */
+export function builtWith(state: GameState, machineId: string, trait: TraitId): boolean {
+  return machineTraits(state, machineId).has(trait);
+}
+
+/**
+ * Record what a tier was paid for in. Called by each machine's build path, which
+ * is the only place parts are consumed — so there is one seam and a machine
+ * cannot acquire a trait it was not cast from.
+ */
+export function noteBuiltOf(state: GameState, machineId: string, materialIds: string[]): void {
+  const p = ensurePlant(state);
+  p.builtOf ??= {};
+  p.builtOf[machineId] = [...(p.builtOf[machineId] ?? []), ...materialIds];
 }
 
 export const TIER_CAPABILITY = [

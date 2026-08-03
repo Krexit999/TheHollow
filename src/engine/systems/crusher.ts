@@ -22,7 +22,10 @@
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { BANDS, bandOf, materialDef, type PurityBand } from '../materials';
 import { addMaterial, materialCount } from './forge';
-import { canFire, emitsByproduct, fire, retainsBand, tierOf, TIER_PART_COST, MAX_MACHINE_TIER, ensurePlant } from './plant';
+import {
+  canFire, emitsByproduct, fire, retainsBand, tierOf, TIER_PART_COST, MAX_MACHINE_TIER,
+  ensurePlant, builtWith, noteBuiltOf,
+} from './plant';
 
 /** Stone per batch. A batch is a real commitment, not a tap. */
 export const CRUSH_BATCH = 4;
@@ -72,13 +75,39 @@ export function buildCrusher(state: GameState, ctx: EngineCtx): ActionResult {
     return { ok: false, reason: `Needs ${cost} cast parts on the rack (you have ${rack.length})` };
   }
   const order = [...rack].sort((a, b) => (a.purity ?? 0) - (b.purity ?? 0));
-  const spend = new Set(order.slice(0, cost).map((p) => p.id));
+  const taken = order.slice(0, cost);
+  const spend = new Set(taken.map((p) => p.id));
   state.casting.rack = rack.filter((p) => !spend.has(p.id));
+  // §11.2: WHAT IT IS MADE OF IS REMEMBERED. Before this the parts were
+  // consumed and their materials thrown away in the same statement, so every
+  // Crusher ever built was the same Crusher.
+  noteBuiltOf(state, 'crusher', taken.map((p) => p.materialId));
   const plant = ensurePlant(state);
   plant.tiers['crusher'] = tierOf(state, 'crusher') + 1;
   ctx.dirty();
   ctx.emit({ type: 'machineBuilt', machineId: 'crusher', tier: plant.tiers['crusher']! });
   return { ok: true, data: { tier: plant.tiers['crusher'] } };
+}
+
+/**
+ * WHAT THE STONE IT WAS CAST FROM CHANGES (§11.2). Two capabilities, and both
+ * are about WHAT the machine will do rather than how much it returns:
+ *
+ *   KEEN       a keen liner cuts stone that does not match. The batch may be
+ *              assembled from MIXED bands instead of four of one — so a hold
+ *              full of odd singles becomes crushable at all.
+ *   TRUESEATED a true-seated frame does not let the byproduct fall with the
+ *              product. The byproduct comes out at the band that went IN, even
+ *              on a tier-I machine that drops the product a band.
+ *
+ * Neither changes `CRUSH_OUTPUT`. A keen Crusher does not return more; it
+ * returns from stock a plain one refuses to touch.
+ */
+export function grindsMixed(state: GameState): boolean {
+  return builtWith(state, 'crusher', 'keen');
+}
+export function holdsByproductBand(state: GameState): boolean {
+  return builtWith(state, 'crusher', 'trueseated');
 }
 
 export interface CrushPreview {
@@ -95,7 +124,13 @@ export function crushPreview(
   state: GameState, materialId: string, band: PurityBand,
 ): CrushPreview | null {
   if (!crusherBuilt(state)) return null;
-  const have = state.materials.stacks[materialId]?.[band]?.count ?? 0;
+  const perMat = state.materials.stacks[materialId] ?? {};
+  // A KEEN LINER CUTS WHAT DOES NOT MATCH: the batch may be made up across
+  // bands. A plain machine still wants four of one, which is the refusal a
+  // player feels before they ever cast a keen part.
+  const have = grindsMixed(state)
+    ? Object.values(perMat).reduce((n, s) => n + (s?.count ?? 0), 0)
+    : (perMat[band]?.count ?? 0);
   if (have < CRUSH_BATCH) return null;
   const outBand = retainsBand(state, 'crusher') ? band : bandBelow(band);
   return {
@@ -128,18 +163,41 @@ export function crush(
   }
 
   const perMat = state.materials.stacks[materialId]!;
-  const stack = perMat[band]!;
-  const avg = stack.count > 0 ? stack.puritySum / stack.count : 0;
-  stack.count -= preview.input;
-  stack.puritySum -= avg * preview.input;
-  if (stack.count <= 0) delete perMat[band];
+  /**
+   * TAKE THE BATCH. A plain machine takes four from the named band; a KEEN one
+   * fills up across bands, named band first, so the player's choice still leads
+   * and the rest is made up from whatever is short.
+   */
+  const order: PurityBand[] = grindsMixed(state)
+    ? [band, ...BANDS.filter((b) => b !== band)]
+    : [band];
+  let need = preview.input;
+  let sum = 0;
+  for (const b of order) {
+    const s = perMat[b];
+    if (!s || s.count <= 0 || need <= 0) continue;
+    const take = Math.min(need, s.count);
+    const a = s.puritySum / s.count;
+    s.count -= take;
+    s.puritySum -= a * take;
+    sum += a * take;
+    need -= take;
+    if (s.count <= 0) delete perMat[b];
+  }
+  const avg = preview.input > 0 ? sum / preview.input : 0;
 
   // TIER II RETAINS THE BAND. Tier I hands back stone one band poorer, which is
   // the capability made a consequence rather than a stat line.
   const outPurity = retainsBand(state, 'crusher') ? avg : midOf(bandBelow(bandOf(avg)));
   addMaterial(state, CRUSH_PRODUCT, outPurity, preview.output);
   if (preview.byproduct > 0) {
-    addMaterial(state, CRUSH_BYPRODUCT, outPurity, preview.byproduct);
+    // A TRUE-SEATED FRAME does not let the byproduct fall with the product: it
+    // comes out at the band that went IN, even where the product dropped one.
+    addMaterial(
+      state, CRUSH_BYPRODUCT,
+      holdsByproductBand(state) ? avg : outPurity,
+      preview.byproduct,
+    );
   }
 
   ctx.emit({
