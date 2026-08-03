@@ -130,7 +130,12 @@ async function main(): Promise<void> {
   const readCeiling = (): Promise<string> => page.evaluate(() => {
     const el = [...document.querySelectorAll('div')]
       .find((d) => d.textContent?.trim().startsWith('Field ceiling'));
-    const txt = (el?.parentElement?.innerText ?? '').split(/s+/).join(' ').trim();
+    // `/s+/` — a literal "s" — for the whole life of this script, so the label
+    // and the number stayed on separate lines and the capture below never
+    // matched. It survived only because the check compares whole innerText
+    // blocks; the same typo copied into a check that wanted the NUMBER returned
+    // 'unread' for both arms and passed as a pillar-2 proof reading nothing.
+    const txt = (el?.parentElement?.innerText ?? '').replace(/\s+/g, ' ').trim();
     return (/Field ceiling ([0-9.]+)/.exec(txt)?.[1]) ?? txt;
   });
   await page.evaluate(() => {

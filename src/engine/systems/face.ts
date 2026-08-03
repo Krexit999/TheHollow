@@ -33,6 +33,7 @@ import type { ReachPattern } from '../content/forgeParts';
 import {
   applyChipCompaction, ensureCompaction, remapCompaction, tickCompaction, type CompactionResult,
 } from './compaction';
+import { noteTally } from './reading';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -524,6 +525,16 @@ export function manualChip(
   // work, and a face you can compact by tapping empty cells would let a player
   // walk every deep-entry gate open for free.
   const compaction = applyChipCompaction(state, ctx, cell);
+  /**
+   * WHERE THE HAND LAST WAS. Written only on a MANUAL chip — a drill's stroke is
+   * not the hand — and read by the `handLed` proposition so a chaining machine
+   * can trail the player across the face. Also the `handLed` proof: a hand
+   * strike landing while a chaining machine is running.
+   */
+  state.face.lastHandCell = cell;
+  if (state.drills.units.some((u) => u.behavior === 'chain')) {
+    noteTally(state, 'chainWithHand');
+  }
   ctx.emit({ type: 'chip', cell, dust: totalDust, charge, crit, manual: true });
   return { dust: totalDust, charge, crit, fractured, compaction };
 }

@@ -18,6 +18,7 @@ import { chipCurrencyId, convCurrencyId } from '../shells';
 import { lawFlag, sealed } from '../laws';
 import { flowSatisfaction } from './plant';
 import { materialCount, consumeMaterial } from './forge';
+import { noteTally, proven } from './reading';
 import {
   kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC, OVERSTOKE_COOLDOWN_SEC, OVERSTOKE_COST_SECONDS,
 } from '../content/kilnFuel';
@@ -144,10 +145,25 @@ export function tickKiln(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
   const ramp = mods.get(state, 'kilnHeatRamp').toNumber();
   if (fed) {
     kiln.heat += (1 - kiln.heat) * (dt / KILN_HEAT_UP_TAU) * ramp * heatUp;
+  } else if (!kiln.feeding && proven(state, 'heldBreath')) {
+    /**
+     * A THROAT YOU CLOSE KEEPS ITS HEAT (proposition `heldBreath`). Normally a
+     * kiln cools identically whether it was shut deliberately or starved of
+     * Dust, which makes closing it a punishment for a decision. Proven, only
+     * STARVATION cools it: `kiln.feeding === false` is the player's own hand on
+     * the damper.
+     *
+     * PILLAR 2: heat scales how fast the Kiln eats Dust the field already grew
+     * (`kilnEfficiency`), which is conversion timing. It cannot reach cap,
+     * regen or yield, so the field ceiling is untouched.
+     */
   } else {
     kiln.heat -= kiln.heat * (dt / KILN_COOL_TAU) * cool;
   }
   kiln.heat = Math.max(0, Math.min(1, kiln.heat));
+  // The `heldBreath` proof: bank it hot, then shut it yourself. Counted here
+  // rather than in the action so it reads the heat the tick actually left.
+  if (!kiln.feeding && kiln.heat >= 0.75) noteTally(state, 'bankedHot');
 
   if (kiln.progress.gte(KILN_DUST_PER_BRICK)) {
     const bricks = kiln.progress.div(KILN_DUST_PER_BRICK).floor();

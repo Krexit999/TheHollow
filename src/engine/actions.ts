@@ -27,6 +27,8 @@ import { coreNodeAvailable, coreNodeCost, coreNodeDef, coreNodeLevel } from './c
 import { skillNodeDef, skillRank, spentSkillPoints, skillNodeUnlocked } from './content/shell1/skillTree';
 import { allCraftSystems } from './craft';
 import { craftTool, craftFromParts, discardTool, socketGem, consumeMaterial, materialCount, addMaterial } from './systems/forge';
+import { ensureReading, noteCount, note, noteTally } from './systems/reading';
+import { propositionById } from './content/shell1/reading';
 import { setSocket, type SocketFill } from './systems/toolSockets';
 import { forgeDrillAlloy, clearDrillAlloy, fireNow } from './systems/drillAlloys';
 import { digComplete, openOre, workOre } from './systems/ores';
@@ -196,6 +198,7 @@ export function handleAction(
     case 'overstoke': {
       const r = lightOverstoke(state, mods);
       if (!r.ok) return { ok: false, reason: r.reason };
+      note(state, ctx, 'firstOverstoke');
       ctx.dirty();
       return { ok: true };
     }
@@ -255,8 +258,16 @@ export function handleAction(
       const cells = [...new Set(action.cells)].filter((c) => c >= 0 && c < size);
       // A zone covering everything is not a zone — store nothing, so the drill
       // keeps working the whole face even after the grid widens.
+      const hadZone = (drill.zone?.length ?? 0) > 0;
       if (cells.length === 0 || cells.length >= size) delete drill.zone;
       else drill.zone = cells.sort((a, b) => a - b);
+      // THE DESK COUNTS MACHINES GIVEN A ZONE, not the act of painting — so
+      // re-painting one drill nine times is one, which is what makes the
+      // `zoneIsOrder` proof ("paint a zone on two machines") mean two machines.
+      if (!hadZone && (drill.zone?.length ?? 0) > 0) {
+        noteTally(state, 'routed');
+        note(state, ctx, 'firstRoute');
+      }
       ctx.dirty();
       return { ok: true, data: { cells: drill.zone?.length ?? 0 } };
     }
@@ -269,6 +280,24 @@ export function handleAction(
       return { ok: true };
     }
 
+    /**
+     * THE DESK. Choosing a question is the whole of the player's input to the
+     * Reading — proofs are behavioural, so there is no "submit". Refusing an
+     * unreachable or already-proved id keeps the panel honest rather than
+     * letting it hold a working row that can never resolve.
+     */
+    case 'workProposition': {
+      const r = ensureReading(state);
+      if (action.id === null) { r.working = null; ctx.dirty(); return { ok: true }; }
+      const def = propositionById(action.id);
+      if (!def) return { ok: false, reason: 'No such proposition' };
+      if (r.proven.includes(def.id)) return { ok: false, reason: 'Already proved' };
+      if (def.notes > noteCount(state)) return { ok: false, reason: 'Not enough notes yet' };
+      r.working = def.id;
+      ctx.dirty();
+      return { ok: true };
+    }
+
     // HOW IT HUNTS (t1) and WHAT IT WAITS FOR (t2). Both store NOTHING at their
     // default, so a bay nobody has opened carries no fields and behaves exactly
     // as it did before either existed.
@@ -276,7 +305,7 @@ export function handleAction(
       const drill = state.drills.units[action.index];
       if (!drill) return { ok: false, reason: 'No such drill' };
       if (action.behavior === 'fullest') delete drill.behavior;
-      else drill.behavior = action.behavior;
+      else { if (!drill.behavior) note(state, ctx, 'firstBehaviour'); drill.behavior = action.behavior; }
       ctx.dirty();
       return { ok: true };
     }
@@ -288,8 +317,14 @@ export function handleAction(
       // strike on a face whose cells sit a hair under cap, i.e. a setting whose
       // only outcome is a dead drill.
       const bar = Math.max(0, Math.min(0.9, action.minCharge));
+      const hadBar = (drill.minCharge ?? 0) > 0;
       if (bar <= 0) delete drill.minCharge;
       else drill.minCharge = bar;
+      // Machines given a bar, counted once each — the `patientBank` proof.
+      if (!hadBar && bar > 0) {
+        noteTally(state, 'barSet');
+        note(state, ctx, 'firstBar');
+      }
       ctx.dirty();
       return { ok: true };
     }

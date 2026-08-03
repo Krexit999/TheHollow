@@ -37,6 +37,7 @@ import { tickAlloys } from './systems/drillAlloys';
 import { checkPrizeDrills } from './systems/prizeDrills';
 import { checkLegendaryParts } from './systems/legendary';
 import { tickOres } from './systems/ores';
+import { tickReading } from './systems/reading';
 import { tickAssay } from './systems/drops';
 import { noticeConfluences } from './systems/confluence';
 import { tickAutoRefine } from './systems/refinery';
@@ -222,6 +223,9 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // ORES form on the slow beat too — a trickle, a cap, and a floor that
       // will not let the grid sit dead for a whole minute (systems/ores.ts).
       tickOres(state, mods, ctx, 1);
+      // THE DESK. Only the proposition being WORKED is evaluated, so this is one
+      // predicate call a second and never a passive drip (systems/reading.ts).
+      tickReading(state, ctx);
       checkAchievements(state, ctx);
       // A DRILL YOU DID NOT BUY. Checked right after the achievements, because
       // that is where three of the four sources come from (systems/prizeDrills).

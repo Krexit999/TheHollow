@@ -36,6 +36,7 @@ import { materialDef, bandOf, type PurityBand } from '../materials';
 import { traitsOf } from '../traits';
 import { DEEP_GATES } from './compaction';
 import type { StationDef } from '../content/shell1/roll';
+import { note, noteTally, proven } from './reading';
 
 // ---------------------------------------------------------------------------
 // The numbers
@@ -75,6 +76,9 @@ export interface AssayBenchState {
   /** Stations whose fog is burnt off. Cleared by a Collapse — the CONTENTS it
    *  read are re-rolled, so the reading is stale by definition. */
   sampled: string[];
+  /** Stations a fall left LEGIBLE but unread (proposition `readStays`). Absent
+   *  until the rule is proven — where a place is, without what it now holds. */
+  remembered?: string[];
   /** The material this run's band favours, and the run it was rolled for. */
   call: { materialId: string; rolls: number } | null;
 }
@@ -208,6 +212,10 @@ export function tickAssayBench(state: GameState, ctx: EngineCtx): void {
   const id = a.running.stationId;
   a.running = null;
   if (!a.sampled.includes(id)) a.sampled.push(id);
+  // Reading a place before you reach it is a novelty, and the `readStays` proof
+  // is this plus surviving a fall.
+  noteTally(state, 'sampled');
+  note(state, ctx, 'firstSample');
   ctx.emit({ type: 'assaySample', stationId: id } as never);
   ctx.dirty();
 }
@@ -215,8 +223,27 @@ export function tickAssayBench(state: GameState, ctx: EngineCtx): void {
 /** A Collapse re-rolls what stations hold, so every reading of them is stale. */
 export function clearSamples(state: GameState): void {
   const a = ensureAssayBench(state);
+  /**
+   * A PLACE YOU HAVE READ STAYS READ (proposition `readStays`).
+   *
+   * THE FOG CARRIES TWO THINGS AND THE RULE ONLY EARNS BACK ONE. A sample tells
+   * you WHERE a station is and WHAT it holds; the fall re-rolls the contents,
+   * so keeping the whole sample would show last run's answer with this run's
+   * confidence — worse than showing nothing, which is why `clearSamples` exists
+   * at all. So the station is REMEMBERED (it stays legible on the Roll, at its
+   * name and depth) while `isSampled` still reads false, and its contents go
+   * back under the fog with everything else.
+   */
+  if (proven(state, 'readStays') && a.sampled.length > 0) {
+    a.remembered = [...new Set([...(a.remembered ?? []), ...a.sampled])];
+  }
   a.sampled = [];
   a.running = null;
+}
+
+/** Stations that survived a fall as legible-but-unread. See `clearSamples`. */
+export function isRemembered(state: GameState, id: string): boolean {
+  return ensureAssayBench(state).remembered?.includes(id) ?? false;
 }
 
 // ---------------------------------------------------------------------------

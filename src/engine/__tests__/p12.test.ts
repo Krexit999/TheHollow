@@ -136,7 +136,7 @@ describe('save v12', () => {
     const payload = { version: 11, savedAtMs: 0, state: { seenSystems: ['dig'] } } as never;
     const out = runMigrations(payload);
     expect(out.version).toBe(SAVE_VERSION);
-    expect(SAVE_VERSION).toBe(47); // the speed-run cut strips dead fields
+    expect(SAVE_VERSION).toBe(48); // A.76 seeds the Reading desk
     const st = out.state as Record<string, unknown>;
     // The casting slices arrive on a save that predates them by twenty-seven
     // versions, which is the whole point of the chain. A returning player's

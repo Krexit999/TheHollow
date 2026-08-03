@@ -23,6 +23,7 @@ import type { ModifierCache } from '../modifiers';
 import { D } from '../decimal';
 import { cellCap, harvestCell } from './face';
 import { spendToolUse, toolEffect } from './toolMining';
+import { note, noteTally } from './reading';
 import { rollForOre } from './drops';
 import { runChipMult } from '../signatures';
 import { currentShell } from '../shells';
@@ -307,6 +308,12 @@ export function openOre(
   const def = oreAt(state, cell);
   if (!def) return null;
 
+  // A pocket opened by your OWN hands. The machines' tally lives at their own
+  // call site in `tickDrills`, so the two can never be confused for each other.
+  if (by === 'hand') {
+    noteTally(state, 'handPockets');
+    note(state, ctx, 'firstPocket');
+  }
   const share = by === 'hand' ? 1 : DRILL_ORE_SHARE;
   const sig = runChipMult(state, mods, ctx, cell, by === 'hand');
   const { charge } = harvestCell(state, mods, cell, share, D(sig));

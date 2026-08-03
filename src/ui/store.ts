@@ -29,7 +29,7 @@ export type TabId =
   | 'hold' | 'casting' | 'refinery' | 'runes' | 'brew' | 'relics' | 'museum'
   // The World
   | 'guild' | 'gear' | 'bestiary' | 'warrens' | 'observatory' | 'journal'
-  | 'wells' | 'expeditions'
+  | 'wells' | 'expeditions' | 'desk'
   // Progress
   | 'delver' | 'collapse' | 'rewrite' | 'parallel' | 'spiral'
   | 'grid' | 'vault';

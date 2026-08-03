@@ -25,6 +25,7 @@ import type { EngineCtx, GameState } from '../types';
 import { applyDrop } from './drops';
 import { sealed } from '../laws';
 import { biteBonus, settleMult } from './shopFork';
+import { note, noteTally, proven } from './reading';
 
 /** The ceiling on the counter. A cell climbs to here and stops; it keeps
  *  working forever, it is simply as deep as it goes. */
@@ -104,10 +105,29 @@ export const DECAY_TUNING = {
   enabled: true,
 };
 
-/** Points per second a cell at this compaction sheds while nobody works it. */
-export function decayRate(compaction: number): number {
+/** Points per second a cell at this compaction sheds while nobody works it.
+ *
+ *  `state` is optional so the pure shape of the curve can still be asserted
+ *  without one; passing it lets THE READING's `shallowHolds` apply. */
+export function decayRate(compaction: number, state?: GameState): number {
   if (compaction <= 0 || !DECAY_TUNING.enabled) return 0;
+  /**
+   * SHALLOW ROCK DOES NOT RELAX (proposition `shallowHolds`). Below the first
+   * gate the rock keeps what you put into it. Reach, not yield: it changes how
+   * long a board stays worked, never what a cell pays.
+   */
+  if (state && compaction < DEEP_GATES[DEEP_GATES.length - 1]!.at && proven(state, 'shallowHolds')) return 0;
   return DECAY_TUNING.atMax * Math.pow(compaction / MAX_COMPACTION, DECAY_TUNING.exponent);
+}
+
+/**
+ * WHERE THE DIGIT STARTS SHOWING on a cell. Normally the first gate, so the
+ * early face stays quiet; `gateSight` drops it to 1, so a player who has taken
+ * one cell to the bottom can afterwards feel a gate coming on every other.
+ * Information only — LAW 3's "show the destination" rather than the recipe.
+ */
+export function showCompactionFrom(state: GameState): number {
+  return proven(state, 'gateSight') ? 1 : COMPACTION_SHOW_AT;
 }
 
 /**
@@ -123,7 +143,7 @@ export function tickCompaction(state: GameState, dt: number): void {
     if (c <= 0) continue;
     // A long offline step can owe more than one point; pay the whole part
     // outright and roll for the remainder, so a big dt is not a free pass.
-    const owed = decayRate(c) * dt;
+    const owed = decayRate(c, state) * dt;
     const whole = Math.floor(owed);
     const lost = whole + (Math.random() < owed - whole ? 1 : 0);
     if (lost > 0) comp[i] = Math.max(0, c - lost);
@@ -198,6 +218,19 @@ export function applyChipCompaction(
   const extra = Math.floor(bite) + (Math.random() < bite - Math.floor(bite) ? 1 : 0);
   comp[cell] = Math.min(MAX_COMPACTION, before + CHIP_COMPACTION + extra);
   const after = comp[cell] ?? 0;
+  /**
+   * THE DESK LEARNS FROM THE ROCK. Novelty only: crossing your first gate is a
+   * note, taking one cell to the bottom is another, and neither can happen
+   * twice. The tally beside them is what the `gateSight` proof reads.
+   */
+  if (gateCrossed(before, after) !== null) {
+    noteTally(state, 'gates');
+    note(state, ctx, 'firstGate');
+  }
+  if (before < MAX_COMPACTION && after >= MAX_COMPACTION) {
+    noteTally(state, 'terminal');
+    note(state, ctx, 'terminalGate');
+  }
   const deepDrops: string[] = [];
   const drop = rollDeepEntry(state, ctx, after);
   if (drop) deepDrops.push(drop);

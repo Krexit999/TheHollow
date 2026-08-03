@@ -500,6 +500,9 @@ export interface GameState {
     /** Recent manual chips (cell + play-seconds), the trail FIGURES read. Tiny,
      *  self-expiring; a stale trail from a reloaded save just doesn't match. */
     recentChips: { cell: number; at: number }[];
+    /** The last cell the PLAYER struck. Absent until they strike one. Read by
+     *  the `handLed` proposition so a chaining machine can follow the hand. */
+    lastHandCell?: number;
     /**
      * ORES — richer pockets in the rock, parallel to `cells`. `''` is plain
      * rock; anything else is an OreDef id. An ore raises that cell's CAP and
@@ -563,6 +566,14 @@ export interface GameState {
      *  stacks integer). */
     fuelBurn?: number;
   };
+
+  /**
+   * THE READING (§10.1). Optional on the type because every save written before
+   * A.76 has none, and `ensureReading` heals it at the engine's entry points —
+   * the same self-healing pattern as `face.compaction`. The migration exists as
+   * well; nothing depends on it having run.
+   */
+  reading?: import('./systems/reading').ReadingState;
 
   drills: {
     bayBuilt: boolean;
@@ -810,6 +821,11 @@ export function defaultQolState(): QolState {
 // ---------------------------------------------------------------------------
 
 export type GameEvent =
+  /** THE READING. A note is a first-and-only-time observation; a proposition is
+   *  the sentence it eventually buys, and carries its rule so the toast can say
+   *  what changed rather than that something did. */
+  | { type: 'note'; id: string; text: string }
+  | { type: 'proposition'; id: string; rule: string }
   | { type: 'chip'; cell: number; dust: Decimal; charge: number; crit: boolean; manual: boolean }
   | { type: 'fracture'; cells: number[] }
   /** A named station was passed for the first time — cleared, or looted. */
@@ -1066,6 +1082,8 @@ export type GameAction =
    *  face, which is the shape every drill ships with. */
   | { type: 'setDrillZone'; index: number; cells: number[] }
   | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
+  /** THE READING: choose which question you are working. Null puts the desk down. */
+  | { type: 'workProposition'; id: string | null }
   | { type: 'setDrillBehaviour'; index: number; behavior: 'fullest' | 'sweep' | 'chain' }
   | { type: 'setDrillFilter'; index: number; minCharge: number }
   /** THE PLANT (§3, §15.4). A machine tier is built from cast parts, never

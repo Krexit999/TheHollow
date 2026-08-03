@@ -8,7 +8,7 @@
  */
 import type { SavePayload } from './codec';
 
-export const SAVE_VERSION = 47;
+export const SAVE_VERSION = 48;
 
 export type Migration = (payload: SavePayload) => SavePayload;
 
@@ -1094,6 +1094,24 @@ export const MIGRATIONS: Record<number, Migration> = {
     const forge = state['forge'] as Record<string, unknown> | undefined;
     if (forge) delete forge['gear'];
     return { ...p, version: 47, state };
+  },
+  /**
+   * A.76 — THE READING. Seeds the desk slice so a save from before it existed
+   * loads with an empty, well-formed one rather than `undefined`.
+   *
+   * NOTHING DEPENDS ON THIS HAVING RUN. `ensureReading` heals the slice at every
+   * engine entry point, the same way `ensureCompaction` does, so a save that
+   * somehow skips the chain still works. The migration exists so the save FORMAT
+   * has a version to reason about, not as the mechanism.
+   *
+   * No notes and no proofs are granted retroactively: notes come from novelty,
+   * and handing a returning player nine of them for work they did before the
+   * desk existed would make the first four questions arrive at once.
+   */
+  47: (p) => {
+    const state = { ...(p.state as Record<string, unknown>) };
+    state['reading'] ??= { notes: [], proven: [], working: null, tally: {} };
+    return { ...p, version: 48, state };
   },
 };
 

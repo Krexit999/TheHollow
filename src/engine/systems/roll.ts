@@ -28,7 +28,7 @@ import {
   FEATURE_LABEL, ROLL_FEATURES, loamRoll, type RollFeature, type StationDef, type StationType,
 } from '../content/shell1/roll';
 import { currentShell } from '../shells';
-import { isSampled } from './assayBench';
+import { isRemembered, isSampled } from './assayBench';
 
 /** How many stations ahead are fully legible (§1: "the next three"). */
 export const LEGIBLE_AHEAD = 3;
@@ -232,6 +232,10 @@ export function rollRows(state: GameState): RollRow[] {
     // separate flag as well as an OR into `legible` so the row can say why.
     const sampled = isSampled(state, def.id);
     if (sampled) legible = true;
+    // A PLACE YOU HAVE READ STAYS READ (proposition `readStays`). Legible, but
+    // NOT `sampled` — the fall re-rolled what it holds, and only where it is
+    // survived. See `clearSamples`.
+    if (isRemembered(state, def.id)) legible = true;
     return {
       def,
       type: typeOf(state, def),

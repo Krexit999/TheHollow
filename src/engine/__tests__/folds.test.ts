@@ -39,7 +39,8 @@ describe('the nav fold', () => {
    * Recorded here so the next change is a deliberate act rather than a drift.
    */
   it('the counted-system number matches the three surviving clusters', () => {
-    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(16);
+    // 17 since A.76: THE DESK joined the Progress cluster (the Reading).
+    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(17);
     expect(CLUSTERS.length).toBe(3);
   });
 });

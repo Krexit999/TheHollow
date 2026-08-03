@@ -258,7 +258,7 @@ describe('discovery changes nothing about the tool', () => {
 
 describe('the save', () => {
   it('is at v46 and hands nobody a modifier they did not earn', () => {
-    expect(SAVE_VERSION).toBe(47);
+    expect(SAVE_VERSION).toBe(48);
     const out = runMigrations({
       version: 45,
       state: { casting: { knownMods: ['longarm'], rack: [], tool: [] } },

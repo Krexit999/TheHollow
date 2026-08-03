@@ -19,6 +19,7 @@ import { runFaceReset } from '../signatures';
 import { resetCompaction } from './compaction';
 import { rerollRoll } from './roll';
 import { clearSamples } from './assayBench';
+import { note } from './reading';
 import { clampPacked, holdFloor } from './shopFork';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
@@ -149,6 +150,8 @@ export function doCollapse(
   state.kiln.progress = D(0);
 
   state.collapse.count += 1;
+  // The fall takes the face and leaves what you learned — which is the note.
+  note(state, ctx, 'firstCollapse');
   addCurrency(state, 'core', cores);
   state.shell.coresEarnedThisBreach = state.shell.coresEarnedThisBreach.add(cores);
 

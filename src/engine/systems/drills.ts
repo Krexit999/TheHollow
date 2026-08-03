@@ -41,8 +41,9 @@ import { relicRule } from './relicPowers';
 import { advanceCharges, rotBite, wireBurnHarvest, wireFireDeps, TOOL_CARRIER } from './drillAlloys';
 import { isHandCarrier, toolHit } from './toolAbilities';
 import {
-  DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, oreAt, openOre, plantOre,
+  DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, digProgress, oreAt, openOre, plantOre,
 } from './ores';
+import { note, noteTally, proven } from './reading';
 import { oreRichness } from '../content/ores';
 
 /** Twenty-four rails, and A.56 split how you fill them: `BOUGHT_DRILLS` come
@@ -231,6 +232,16 @@ function pickTarget(
 
   if (behaviour === 'chain') {
     /**
+     * A MACHINE FOLLOWS THE HAND (proposition `handLed`). Proven, a chaining
+     * machine works out from the cell YOU last struck rather than from its own
+     * last stroke — so the bay trails you across the face instead of wandering
+     * its own patch. Reach only: it changes which neighbour is chosen, never
+     * what the strike takes.
+     */
+    const seed = proven(state, 'handLed') && state.face.lastHandCell !== undefined
+      ? state.face.lastHandCell
+      : (drill?.lastCell ?? 0);
+    /**
      * STAY LOCAL. The best legal NEIGHBOUR of the last cell, so the machine
      * works a patch out rather than teleporting to whatever is fullest. Falls
      * through to the greedy scan when the patch is exhausted — a drill that
@@ -239,7 +250,7 @@ function pickTarget(
      */
     let best = -1;
     let bestScore = 0;
-    for (const i of neighbors(state, drill?.lastCell ?? 0)) {
+    for (const i of neighbors(state, seed)) {
       if (!allowed(i)) continue;
       const v = score(i);
       if (v > bestScore) { bestScore = v; best = i; }
@@ -291,6 +302,13 @@ function openPockets(
   for (let i = 0; i < ore.length; i++) {
     const id = ore[i];
     if (!id || claimedBy.has(i) || skip(i)) continue;
+    /**
+     * A POCKET YOU STARTED IS YOURS (proposition `pocketPatience`). Proven, the
+     * bay leaves alone any pocket the player has already broken ground on, so
+     * the work you put in is never finished out from under you. Nothing is
+     * created — the pocket still pays exactly what it held.
+     */
+    if (proven(state, 'pocketPatience') && digProgress(state, i) > 0) continue;
     // A MACHINE WILL NOT SPEND SIX SECONDS ON AN EMPTY POCKET. Without this the
     // sim's ore-heavy arm ran 0.82x of the control: pockets spawned faster than
     // they filled, and buying the spawn-rate upgrade made income go DOWN.
@@ -370,7 +388,15 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
       delete drill.oreCell;
       delete drill.oreProgress;
     }
-    if (drill.oreCell === undefined && offered && offered.length > 0 && priority !== 'rock') {
+    /**
+     * ORE IS NOT A DIFFERENT KIND OF ROCK (proposition `oreIsRock`). A machine
+     * set to `rock only` refuses every pocket — which is right on the open face
+     * and wrong inside a zone the player painted, where the instruction was
+     * "work THESE squares". Proven, a zoned machine takes a pocket that falls
+     * inside its own zone and still ignores every other.
+     */
+    const zonedOre = priority === 'rock' && zone !== null && proven(state, 'oreIsRock');
+    if (drill.oreCell === undefined && offered && offered.length > 0 && (priority !== 'rock' || zonedOre)) {
       // A zoned drill takes the best pocket INSIDE its zone and leaves the rest
       // for somebody who can reach them — and every machine applies its own bar
       // for how full is full enough.
@@ -393,6 +419,10 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
       drill.oreProgress = (drill.oreProgress ?? 0) + dt;
       if (drill.oreProgress >= need) {
         openOre(state, mods, ctx, cell, 'drill', DRILL_DROP_FACTOR, drill.name);
+        // What the machines took. The `pocketPatience` proof is exactly this
+        // number — you learn the rule by being on the wrong end of it five times.
+        noteTally(state, 'drillPockets');
+        note(state, ctx, 'firstDrillPocket');
         state.stats.drillStrikes += 1;
         logImplementUse(drill, shellId, 1);
         delete drill.oreCell;
@@ -413,8 +443,26 @@ export function tickDrills(state: GameState, mods: ModifierCache, ctx: EngineCtx
       strikes++;
       // ...and its own bar (t2). A machine that finds nothing over the bar
       // waits: the timer has already been spent, so waiting is a real cost.
-      const target = pickTarget(state, skip, zone, rotted, crowd, drill, drillBar(state, mods, drill));
-      if (target < 0) continue; // vined, out of zone, or nothing over its bar
+      /**
+       * A PAINTED SQUARE IS AN ORDER (proposition `zoneIsOrder`). Crowding is a
+       * soft discount that pushes machines apart on a flat face; proven, a
+       * machine working a zone the player drew stops consulting it, so a
+       * deliberately stacked zone stays stacked. Still only a preference over
+       * charge the field made — pillar 2 cannot see it.
+       */
+      const spread = zone && proven(state, 'zoneIsOrder') ? undefined : crowd;
+      const target = pickTarget(state, skip, zone, rotted, spread, drill, drillBar(state, mods, drill));
+      if (target < 0) {
+        /**
+         * A MACHINE THAT WAITS IS NOT RESTING (proposition `patientBank`).
+         * Normally the stroke is simply gone — the timer was decremented above
+         * and nothing was struck. Proven, the machine keeps what it was owed,
+         * so it fires the instant the rock comes back over its bar. It can
+         * never bank MORE than one stroke, so this is timing, not throughput.
+         */
+        if (proven(state, 'patientBank')) drill.timer = Math.min(interval, drill.timer + interval);
+        continue; // vined, out of zone, or nothing over its bar
+      }
       if (crowd) crowdOut(state, crowd, target);
 
       // THE SECOND BITE (A.48 relic power). Deliberately NOT the 'Two Hands'

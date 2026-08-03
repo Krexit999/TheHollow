@@ -78,6 +78,11 @@ export const CLUSTERS: ClusterDef[] = [
     glyph: '▲',
     systems: [
       { id: 'delver', label: 'Delver', visible: always },
+      // THE DESK opens on your FIRST NOTE, not before. An empty room with a
+      // locked list in it is exactly what LAW 3 forbids, and a note is
+      // guaranteed within the first minutes — the first deep gate, the first
+      // pocket, the first fall all write one.
+      { id: 'desk', label: 'The Desk', visible: (s) => (s.reading?.notes?.length ?? 0) > 0 },
       { id: 'collapse', label: 'Collapse', visible: (s) => s.maxDepthRecord >= 15 || s.collapse.count > 0 },
       { id: 'parallel', label: 'All Worlds', visible: (s) => s.recursion.count >= 1 || s.shell.current === 'aleph', codex: true },
       { id: 'spiral', label: 'The Spiral', visible: (s) => s.recursion.count >= 1 },

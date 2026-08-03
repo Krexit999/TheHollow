@@ -1954,6 +1954,10 @@ function main(): void {
       depth: s.maxDepthRecord, ...forkTrack,
       behaviour: args.drillBehaviour, bar: args.drillBar,
       dust: Math.round(s.totals['dust']?.toNumber() ?? 0),
+      // §10.2: the Reading is OFF the floor gates. The policy never dispatches
+      // `workProposition`, so this must read 0 on every arm — and the depth
+      // beside it is the proof that Loam clears anyway.
+      proofs: s.reading?.proven?.length ?? 0, notes: s.reading?.notes?.length ?? 0,
       strikes: s.stats.drillStrikes, drills: s.drills.units.length,
       collapses: s.collapse.count, tier: equippedTool(s).tier,
       tools: s.stats.toolsForged, packedBuys: forkPackedBuys, deep,
