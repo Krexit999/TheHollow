@@ -192,6 +192,10 @@ let forkPackedBuys = 0;
 /** PROGRESSION, not yield. Seconds to each of Loam's two hardness walls and its
  *  floor; zero means never reached inside the run. */
 const forkTrack = { t45: 0, t110: 0, t150: 0, packedPeak: 0 };
+/** SECONDS TO THE FIRST UNIT of each deep-entry material. Zero = never seen in
+ *  the whole arm, which is the reading that matters: a gate nothing reaches is
+ *  decorative, and a sink authored against it would starve for the wrong reason. */
+const deepFirst: Record<string, number> = { umberjade: 0, graveclaydeep: 0, deepgrave: 0 };
 /** Set by main. See `Args.holdEmulate` — this emulates an UNBUILT mechanic. */
 let holdEmulate = false;
 /** Set by main when either A.75 drill-axis flag is off its default. */
@@ -1663,6 +1667,9 @@ function main(): void {
         if (drillAxes.bar > 0) u.minCharge = drillAxes.bar;
       }
     }
+    for (const id of ['umberjade', 'graveclaydeep', 'deepgrave']) {
+      if (deepFirst[id] === 0 && materialCount(s, id) > 0) deepFirst[id] = sec;
+    }
     if (forkTrack.t45 === 0 && s.maxDepthRecord >= 45) forkTrack.t45 = sec;
     if (forkTrack.t110 === 0 && s.maxDepthRecord >= 110) forkTrack.t110 = sec;
     if (forkTrack.t150 === 0 && s.maxDepthRecord >= 150) forkTrack.t150 = sec;
@@ -1959,6 +1966,7 @@ function main(): void {
       // beside it is the proof that Loam clears anyway.
       proofs: s.reading?.proven?.length ?? 0, notes: s.reading?.notes?.length ?? 0,
       strikes: s.stats.drillStrikes, drills: s.drills.units.length,
+      deepFirst,
       collapses: s.collapse.count, tier: equippedTool(s).tier,
       tools: s.stats.toolsForged, packedBuys: forkPackedBuys, deep,
     })}`);
