@@ -425,6 +425,7 @@ export function transmute(
     // A miss. It still pays: slag is feedstock, so a failed attempt moves you.
     grantSlag(state, cost);
     state.refinery.attempts += 1;
+  state.refinery.attemptsRun = (state.refinery.attemptsRun ?? 0) + 1;
     ctx.dirty();
     // THE MISS NARROWS. A failure that says only "nothing happened" is what
     // turned this bench into a slot machine; the same one bit that priced the
@@ -437,6 +438,7 @@ export function transmute(
   addMaterial(state, chain.out, BAND_RANGES['fair'][0], chain.yield ?? 1);
   grantSlag(state, 1);
   state.refinery.attempts += 1;
+  state.refinery.attemptsRun = (state.refinery.attemptsRun ?? 0) + 1;
 
   const isNew = !state.refinery.found.includes(chain.id);
   if (isNew) {

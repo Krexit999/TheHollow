@@ -149,6 +149,9 @@ export function doCollapse(
     : state.kiln.heat * shape.heatKeep;
   state.kiln.progress = D(0);
 
+  // THE BENCH COUNTER SPLITS AT THE FALL. `attempts` is lifetime — the
+  // denominator the discovery analysis rests on; `attemptsRun` is this run.
+  state.refinery.attemptsRun = 0;
   state.collapse.count += 1;
   // The fall takes the face and leaves what you learned — which is the note.
   note(state, ctx, 'firstCollapse');

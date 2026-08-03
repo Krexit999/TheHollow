@@ -648,7 +648,13 @@ export interface GameState {
    *  Codex, permanent (survives Collapse), never listed in the Compendium. */
   figures: { found: string[] };
   /** THE REFINERY (v14): transmutation chains found, and bench counters. */
-  refinery: { found: string[]; attempts: number; refined: number };
+  /**
+   * `attempts` is a LIFETIME total and always has been — the denominator the
+   * discovery analysis at refinery.ts:289 rests on. `attemptsRun` is the one
+   * since the last Collapse. They were one number labelled "run", which showed
+   * historical data as current for the whole life of the bench.
+   */
+  refinery: { found: string[]; attempts: number; attemptsRun?: number; refined: number };
   /** THE NEW FORGE (v36), step 2: the crucible, the rack of cast parts, the
    *  tool station, and the one tool you grow. Coexists with `forge` (the old
    *  head/haft/binding bench) until that one is deliberately retired. */

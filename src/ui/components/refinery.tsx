@@ -161,7 +161,7 @@ export function RefineryPanel() {
         <div className="flex items-baseline justify-between">
           <span className="text-xs font-semibold uppercase tracking-wider text-[#9fc4dd]">The reaction bench</span>
           <span className="tnum text-[10px] text-cave-400">
-            {found.length} known · {state.refinery.attempts} run
+            {found.length} known · {state.refinery.attemptsRun ?? 0} this run · {state.refinery.attempts} all told
           </span>
         </div>
         {!canTransmute ? (
