@@ -259,8 +259,15 @@ describe('transmutation makes the 132 a graph', () => {
         // about the economy had changed. A text scan cannot tell "wanted by a
         // system" from "mentioned in a list"; the exclusion list is where that
         // distinction is kept.
+        //
+        // EXCLUDED BY PATH, NOT BY SHELL (A.87). This named `shell1/roll.ts`
+        // explicitly, so the moment Ferrite's Roll was written its seam pools
+        // read as consumers and `trueFromPolestar` lost the only justification
+        // it had — the identical failure the paragraph above describes, one
+        // shell later. Any `content/**/roll.ts` is a list of places, and a
+        // place is never a consumer.
         if (p.endsWith('materials.ts') || p.endsWith('chains.ts') || p.endsWith('traits.ts')
-          || p.endsWith(join('shell1', 'roll.ts'))) continue;
+          || /[\\/]content[\\/].*roll\.ts$/.test(p) || p.endsWith(join('content', 'rolls.ts'))) continue;
         parts.push(readFileSync(p, 'utf8'));
       }
     };

@@ -24,6 +24,7 @@
 import type { EngineCtx, GameState } from '../types';
 import { applyDrop } from './drops';
 import { sealed } from '../laws';
+import { currentShell } from '../shells';
 import { biteBonus, settleMult } from './shopFork';
 import { note, noteTally, proven } from './reading';
 
@@ -58,6 +59,36 @@ export const DEEP_GATES: DeepGate[] = [
   { at: 14, materialId: 'graveclaydeep', chance: 0.11 },
   { at: 8, materialId: 'umberjade', chance: 0.18 },
 ];
+
+/**
+ * THE LADDER IS PER SHELL (§16.2), and it was not.
+ *
+ * `DEEP_GATES` was one flat list of three LOAM materials applied in every
+ * world, so a Ferrite player packing a cell to 20 dug Deepgrave out of iron.
+ * §16.2 gives each shell its own three at the same 8/14/20 rungs; Ferrite's are
+ * **wormsteel / lodestone-cored / Poleiron**, and `wormsteel` is deliberately a
+ * stone that already exists — the `umberjade` pattern, a second way to find
+ * something rather than a second thing that means the same.
+ *
+ * THE OTHER FIVE SHELLS KEEP LOAM'S TABLE, knowingly and ledgered. Their three
+ * are named in §16.2 and most of those materials are not in the registry, so
+ * writing them is a materials pass per shell — and silently switching five
+ * shells to "no deep drops at all" inside a phase scoped to one is exactly the
+ * kind of quiet content change this project keeps finding after the fact. The
+ * fallback is wrong and it is the same wrong it has always been.
+ */
+export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
+  loam: DEEP_GATES,
+  ferrite: [
+    { at: 20, materialId: 'poleiron', chance: 0.06 },
+    { at: 14, materialId: 'lodestonecored', chance: 0.11 },
+    { at: 8, materialId: 'wormsteel', chance: 0.18 },
+  ],
+};
+
+export function deepGatesFor(shellId: string): DeepGate[] {
+  return DEEP_GATES_BY_SHELL[shellId] ?? DEEP_GATES;
+}
 
 /** The deepest gate — what the renderer rings as "this one is worth the most". */
 export const TERMINAL_GATE = DEEP_GATES[0]!.at;
@@ -240,7 +271,7 @@ export function applyChipCompaction(
 export function rollDeepEntry(state: GameState, ctx: EngineCtx, compaction: number): string | null {
   // THE THIN SEAM (challenge) seals every drop, this one included.
   if (sealed(state, 'sealDrops')) return null;
-  for (const gate of DEEP_GATES) {
+  for (const gate of deepGatesFor(currentShell(state).id)) {
     if (compaction < gate.at) continue;
     // SETTLE (the Soil fork's packed side) improves the answer at whatever gate
     // you are standing on. It NEVER opens a gate you have not reached — the

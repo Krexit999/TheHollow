@@ -107,10 +107,23 @@ export function ShoringPanel() {
   if (!state) return null;
   const st = state as GameState;
   const station = rigStation(st);
-  if (!station) return null;                  // a shell whose Roll authors no rig
-  if (!rigFound(st)) return null;             // LAW 3: you have not seen it yet
-
   const raised = shoringUnlocked(st);
+  /**
+   * THE RIG IS A TECHNIQUE, NOT A MACHINE YOU LEAVE BEHIND (A.87).
+   *
+   * This read `if (!rigStation(st)) return null` — the rig's own wreck must be
+   * in THIS shell — which was invisible while Loam was the only Roll and became
+   * a dead system the moment Ferrite got one: `state.roll.rig` survives the
+   * Breach (`breach.ts` never touches `state.roll`), so a player carries the
+   * technique down and would have found no panel to use it with. Shoring worked
+   * and was unreachable, which is this project's oldest failure shape.
+   *
+   * So: once the rig is RAISED it is shown wherever there are bands to timber.
+   * Before that, LAW 3 — nothing until you have walked to the wreck that holds
+   * it, in the shell that holds it.
+   */
+  if (bands(st).length === 0) return null;    // a shell with no authored Roll
+  if (!raised && (!station || !rigFound(st))) return null;
   const rigDef = allUpgrades().find((u) => u.id === 'shoringRig');
   const drift = driftDepth(st);
   const all = bands(st);
@@ -137,7 +150,7 @@ export function ShoringPanel() {
       {!raised ? (
         <>
           <p className="text-[10px] leading-snug text-cave-500">
-            The rig is still in the wreck at {station.name}. Standing, it timbers a band so
+            The rig is still in the wreck at {station?.name ?? 'the deep'}. Standing, it timbers a band so
             hard that the cave-in leaves it — and you drop straight through it, every time.
           </p>
           {rigDef && <div className="mt-1.5"><UpgradeRow def={rigDef} /></div>}

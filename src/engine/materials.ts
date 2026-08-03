@@ -16,7 +16,7 @@ import type { Bucket } from './modifiers';
 // Content, imported by the registry, and it is one-way: `roll.ts` is a pure
 // authored list with no imports of its own, so there is no cycle. The remains
 // need a geography (`remainsAt`), and this is where the geography lives.
-import { loamRoll } from './content/shell1/roll';
+import { authoredRoll } from './content/rolls';
 
 export type MaterialRarity = 'common' | 'rich' | 'pure' | 'flawless' | 'starred' | 'aberrant';
 
@@ -458,15 +458,41 @@ export const MATERIALS: MaterialDef[] = [
   // seams at DEEPGRAVE and nowhere shallower.
   { id: 'taproot', name: "Tapmother's Root", shellId: 'loam', rarity: 'flawless', palette: ['#33402c', '#5c744e', '#94b581'], facets: 9, shimmer: 'crystalline', source: 'remains', flavor: 'The Tapmother\'s roots run further down than she does. It is still growing, slowly.' },
 
-  // ============ COMBAT-ONLY (the Deepwrought drop these; unminable) ========
-  // 26 of these remain, across the six shells below. They are UNOBTAINABLE and
-  // ledgered as such — re-sourcing them is a shell-wide ruling, not this pass.
-  { id: 'scalebackplate', name: 'Scaleback Plate', shellId: 'ferrite', rarity: 'common', palette: ['#2c3138', '#4e5865', '#7f8fa3'], facets: 5, shimmer: 'none', source: 'combat', flavor: 'Armor that grew, was shed, and is now yours.' },
-  { id: 'ironsinew', name: 'Ironsinew', shellId: 'ferrite', rarity: 'rich', palette: ['#32302e', '#5c5754', '#948d87'], facets: 6, shimmer: 'soft', source: 'combat', flavor: 'Flexes once per day, whether you use it or not.' },
-  { id: 'voltgland', name: 'Voltgland', shellId: 'ferrite', rarity: 'rich', palette: ['#2c3440', '#4c6078', '#7f9fc2'], facets: 7, shimmer: 'soft', source: 'combat', flavor: 'Handle with dry gloves, or briefly.' },
-  { id: 'magnetheart', name: 'Magnetheart', shellId: 'ferrite', rarity: 'pure', palette: ['#28283a', '#4a4a6e', '#7f7fad'], facets: 8, shimmer: 'crystalline', source: 'combat', flavor: 'Still beating, in a way. Every compass in camp agrees.' },
-  { id: 'nullquill', name: 'Nullquill', shellId: 'ferrite', rarity: 'flawless', palette: ['#26262c', '#46464f', '#787883'], facets: 9, shimmer: 'crystalline', source: 'combat', flavor: 'Writes on polarity itself. Erases it too.' },
-  { id: 'loadstarcore', name: 'Loadstar Core', shellId: 'ferrite', rarity: 'flawless', palette: ['#2a3040', '#4e5f80', '#89a2ce'], facets: 10, shimmer: 'crystalline', source: 'combat', flavor: 'Cut from the Warden of the Ferrite floor. It points at YOU.' },
+  // =============== FERRITE'S REMAINS (A.87) — re-sourced by PLACE ==========
+  //
+  // These six were `source: 'combat'` and combat was cut, so they were
+  // obtainable by no route at all — six of the twenty-six this project has
+  // carried in the ledger since A.84 said re-sourcing them "needs authored
+  // Rolls in six shells and that is not a content pass, it's six". Ferrite's
+  // Roll is written, so Ferrite's six come off the list by the same mechanism
+  // Loam's did: bound to stations in `content/shell2/roll.ts`, substituted into
+  // a drop that already happened, never added to the rarity pool.
+  { id: 'scalebackplate', name: 'Scaleback Plate', shellId: 'ferrite', rarity: 'common', palette: ['#2c3138', '#4e5865', '#7f8fa3'], facets: 5, shimmer: 'none', source: 'remains', flavor: 'Armor that grew, was shed, and is now yours.' },
+  { id: 'ironsinew', name: 'Ironsinew', shellId: 'ferrite', rarity: 'rich', palette: ['#32302e', '#5c5754', '#948d87'], facets: 6, shimmer: 'soft', source: 'remains', flavor: 'Flexes once per day, whether you use it or not.' },
+  { id: 'voltgland', name: 'Voltgland', shellId: 'ferrite', rarity: 'rich', palette: ['#2c3440', '#4c6078', '#7f9fc2'], facets: 7, shimmer: 'soft', source: 'remains', flavor: 'Handle with dry gloves, or briefly.' },
+  { id: 'magnetheart', name: 'Magnetheart', shellId: 'ferrite', rarity: 'pure', palette: ['#28283a', '#4a4a6e', '#7f7fad'], facets: 8, shimmer: 'crystalline', source: 'remains', flavor: 'Still beating, in a way. Every compass in camp agrees.' },
+  { id: 'nullquill', name: 'Nullquill', shellId: 'ferrite', rarity: 'flawless', palette: ['#26262c', '#46464f', '#787883'], facets: 9, shimmer: 'crystalline', source: 'remains', flavor: 'Writes on polarity itself. Erases it too.' },
+  // Was "Cut from the Warden of the Ferrite floor" — a kill, in a game with no
+  // fighting, and the same line `taproot` carried before A.84 rewrote it. The
+  // Loadstar is not a thing you cut something out of; it is the floor, and the
+  // floor sheds. Seams at POLEIRON and nowhere shallower.
+  { id: 'loadstarcore', name: 'Loadstar Core', shellId: 'ferrite', rarity: 'flawless', palette: ['#2a3040', '#4e5f80', '#89a2ce'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'The Loadstar sheds these the way a magnet sheds filings, and just as unwillingly. It points at YOU.' },
+
+  // ============ FERRITE DEEP-ENTRY (§16.2) — compaction 14 and 20 ==========
+  //
+  // The ladder is wormsteel (c>=8) / lodestone-cored (c>=14) / Poleiron (c>=20).
+  // WORMSTEEL ALREADY EXISTS as a Loam `pure`, and the spine names it as
+  // Ferrite's first gate anyway — which is exactly the `umberjade` pattern one
+  // shell up: a stone that is already in the game, given a SECOND way to be
+  // found, rather than a second stone that means the same thing. The other two
+  // did not exist and are written here, `source: 'deep'` so neither can enter
+  // a rarity pool.
+  M('lodestonecored', 'Lodestone-Cored', 'ferrite', 'flawless', ['#232733', '#414a63', '#6e7c9e'], 7, 'crystalline',
+    'Ordinary rock with a needle of lodestone grown through the middle of it. Break it and both halves still know which way is down.',
+    false, 'deep'),
+  M('poleiron', 'Poleiron', 'ferrite', 'starred', ['#14161c', '#2a3040', '#4e5a78'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. It has a direction, and the direction is not one of the six.',
+    false, 'deep'),
 
   // ======================= SHELL VII — ALEPH (7, dormant) ==================
   M('axiomdust', 'Axiom Dust', 'aleph', 'rich', ['#38342a', '#6e664a', '#b8ab7c'], 6, 'soft'),
@@ -656,13 +682,16 @@ export const REMAINS_TUNING = { reach: REMAINS_REACH, share: REMAINS_SHARE };
  * place is necessary and never sufficient — Marrowglass is at Sinter Row and
  * Sinter Row is at depth 60, but pure does not open until 40 either way.
  *
- * Only Loam has an authored Roll, which is exactly why this pass fixes Loam and
- * ledgers the other six shells: remains need a geography to be in.
+ * REMAINS NEED A GEOGRAPHY TO BE IN, which is why A.84 fixed Loam and ledgered
+ * the rest. This asks `authoredRoll` now instead of testing for Loam by hand,
+ * so Ferrite's six are re-sourced by the same mechanism rather than by a second
+ * one, and the five shells still without a Roll return `[]` exactly as before.
  */
 export function remainsAt(shellId: string, depth: number): MaterialDef[] {
-  if (shellId !== 'loam') return [];
+  const stations = authoredRoll(shellId);
+  if (stations.length === 0) return [];
   const out: MaterialDef[] = [];
-  for (const st of loamRoll()) {
+  for (const st of stations) {
     if (Math.abs(st.depth - depth) > REMAINS_TUNING.reach) continue;
     for (const id of st.remains ?? []) {
       const def = MATERIALS.find((m) => m.id === id);

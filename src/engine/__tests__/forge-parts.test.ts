@@ -551,6 +551,25 @@ describe('same shape, different material, genuinely different part', () => {
   });
 
   /**
+   * AND NOR DO FERRITE'S (A.87). This rule was Loam-only because Loam was the
+   * only shell whose stone could all be dug; A.87 made Ferrite's six combat
+   * orphans minable and added two deep-entry stones, which is exactly the
+   * moment A.84 found `burrowertooth` to be a bit-for-bit clone of `duskflint`.
+   * A shell whose materials are reachable needs the check the reachable shell
+   * has.
+   */
+  it('no two mined Ferrite materials produce the same head', () => {
+    const seen = new Map<string, string>();
+    for (const m of inShell('ferrite')) {
+      const d = derivePart(makePart('head', m.id, 60));
+      const key = TOOL_STATS.map((s) => d.stats[s].toFixed(3)).join('|');
+      expect(seen.has(key), `${m.name} collides with ${seen.get(key)}`).toBe(false);
+      seen.set(key, m.name);
+    }
+    expect(seen.size).toBeGreaterThan(10);
+  });
+
+  /**
    * THE HONEST LIMIT OF RULING 1, stated rather than hidden.
    *
    * A SINGLE stat can invert across one shell step where the traits say it

@@ -52,7 +52,10 @@ function engineSource(dropChains = NO_CHAINS): string {
        * it, five stones would have "gained a consumer" by being written into a
        * place where they DROP.
        */
-      if (p.endsWith(join('shell1', 'roll.ts'))) continue;
+      // BY PATH, NOT BY SHELL (A.87). Naming `shell1` meant Ferrite's Roll read
+      // as a consumer the moment it was written, which would have quietly
+      // un-orphaned every stone in its seam pools.
+      if (/[\\/]content[\\/].*roll\.ts$/.test(p) || p.endsWith(join('content', 'rolls.ts'))) continue;
       // --no-chains: see the header. A chain must not vouch for itself.
       if (dropChains && p.endsWith('chains.ts')) continue;
       out.push(readFileSync(p, 'utf8'));

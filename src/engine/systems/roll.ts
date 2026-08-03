@@ -25,8 +25,8 @@
  */
 import type { GameState } from '../types';
 import {
-  FEATURE_LABEL, ROLL_FEATURES, loamRoll, type RollFeature, type StationDef, type StationType,
-} from '../content/shell1/roll';
+  FEATURE_LABEL, ROLL_FEATURES, authoredRoll, type RollFeature, type StationDef, type StationType,
+} from '../content/rolls';
 import { currentShell } from '../shells';
 import { isRemembered, isSampled } from './assayBench';
 import { grantWreckGear, wearing } from './gear';
@@ -70,9 +70,16 @@ export function defaultRollState(): RollState {
   return { rolled: {}, cleared: [], looted: [], rolls: 0 };
 }
 
-/** The Roll for the shell the player is standing in. Only Loam is authored. */
+/**
+ * The Roll for the shell the player is standing in.
+ *
+ * This used to be `currentShell(state).id === 'loam' ? loamRoll() : []` — one
+ * of the two hardcoded Loam tests that stopped three consecutive passes at the
+ * shell border. It asks the registry now (`content/rolls.ts`), so a shell is
+ * authored in one place and every system that reads geography picks it up.
+ */
 export function shellRoll(state: GameState): StationDef[] {
-  return currentShell(state).id === 'loam' ? loamRoll() : [];
+  return authoredRoll(currentShell(state).id);
 }
 
 // ---------------------------------------------------------------------------

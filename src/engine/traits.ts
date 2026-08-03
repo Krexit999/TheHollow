@@ -369,8 +369,25 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   rimeiron: ['dense', 'springy'], polarite: ['charged', 'keen'], voltglass: ['charged', 'brittle'],
   magnetile: ['dense', 'hollow'], nullsilver: ['trueseated', 'tough'], stormcore: ['charged', 'warm'],
   polestar: ['charged', 'trueseated'], gnashmetal: ['keen', 'dense', 'brittle'],
-  scalebackplate: ['tough', 'dense'], ironsinew: ['springy', 'tough'], voltgland: ['charged', 'warm'],
+  /**
+   * SCALEBACK PLATE WAS A BIT-FOR-BIT CLONE OF IRONBLOOM — same shell, same
+   * `common`, same `tough`+`dense`, therefore the same head down to three
+   * decimal places. Invisible while it could never drop; found the moment A.87
+   * made it minable, by the same check that found burrowertooth was duskflint
+   * at A.84. It is SHED plate, layered and overlapping rather than solid, so
+   * `springy` is both the fix and the honest reading.
+   */
+  scalebackplate: ['tough', 'springy'], ironsinew: ['springy', 'tough'], voltgland: ['charged', 'warm'],
   magnetheart: ['charged', 'dense'], nullquill: ['keen', 'hollow'], loadstarcore: ['charged', 'trueseated'],
+  /**
+   * FERRITE DEEP-ENTRY (§16.2). The spine gives lodestone-cored `charged` +
+   * `trueseated`, which is bit-for-bit `loadstarcore` at the same rarity — the
+   * clone A.84 found between burrowertooth and duskflint, waiting to happen
+   * again. A core is DENSE, so the third trait is both the fix and the obvious
+   * reading. Poleiron takes `keen` for the same separation from `polestar`.
+   */
+  lodestonecored: ['charged', 'trueseated', 'dense'],
+  poleiron: ['charged', 'trueseated', 'keen'],
   // ---- VERDANCE ----
   sporewood: ['light', 'springy'], mosscoal: ['warm', 'hollow'], sapstone: ['springy', 'charged'],
   barkiron: ['tough', 'dense'], chlorite: ['light', 'charged'], resinpearl: ['hollow', 'warm'],

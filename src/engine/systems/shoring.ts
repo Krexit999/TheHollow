@@ -40,7 +40,7 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import { descendCost } from '../prestigeMath';
 import { KILN_DUST_PER_BRICK } from './kiln';
 import { convCurrencyId, currentShell } from '../shells';
-import { getCurrency, spendCurrency } from '../resources';
+import { currencyDef, getCurrency, spendCurrency } from '../resources';
 import { ensureRoll, shellRoll } from './roll';
 import { noteBuiltOf } from './plant';
 import type { StationDef } from '../content/shell1/roll';
@@ -194,7 +194,11 @@ export function shoreBlocker(state: GameState, stationId: string): string | null
   const cost = shoreCost(state, stationId)!;
   const rack = state.casting.rack ?? [];
   if (rack.length < cost.parts) return `Needs ${cost.parts} cast parts (the rack has ${rack.length}).`;
-  if (getCurrency(state, convCurrencyId(state)).lt(cost.brick)) return 'Not enough Brick.';
+  // THE CURRENCY HAS A NAME PER SHELL. Hardcoding "Brick" printed "Not enough
+  // Brick" over a Ferrite panel whose purse says FLUX — the raw-key leak class
+  // A.36 fixed in the Museum, in reverse: a hardcoded label instead of a raw id.
+  const conv = currencyDef(convCurrencyId(state)).name;
+  if (getCurrency(state, convCurrencyId(state)).lt(cost.brick)) return `Not enough ${conv}.`;
   return null;
 }
 
@@ -210,7 +214,7 @@ export function shoreBand(state: GameState, ctx: EngineCtx, stationId: string): 
   const rack = state.casting.rack ?? [];
   const taken = [...rack].sort((a, b) => (a.purity ?? 0) - (b.purity ?? 0)).slice(0, cost.parts);
   if (!spendCurrency(state, convCurrencyId(state), cost.brick)) {
-    return { ok: false, reason: 'Not enough Brick.' };
+    return { ok: false, reason: `Not enough ${currencyDef(convCurrencyId(state)).name}.` };
   }
   const spend = new Set(taken.map((p) => p.id));
   state.casting.rack = rack.filter((p) => !spend.has(p.id));
@@ -240,7 +244,7 @@ export function unshoreBand(state: GameState, ctx: EngineCtx, stationId: string)
   const cost = shoreCost(state, stationId);
   if (!cost) return { ok: false, reason: 'Nothing to unshore there.' };
   if (!spendCurrency(state, convCurrencyId(state), cost.brick)) {
-    return { ok: false, reason: 'Not enough Brick to pull the props safely.' };
+    return { ok: false, reason: `Not enough ${currencyDef(convCurrencyId(state)).name} to pull the props safely.` };
   }
   ensureRoll(state);
   state.roll!.shored = (state.roll!.shored ?? []).filter((id) => id !== stationId);

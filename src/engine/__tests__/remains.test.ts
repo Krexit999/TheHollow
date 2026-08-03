@@ -33,7 +33,12 @@ import { traitsOf } from '../traits';
 
 ensureContentLoaded();
 
-const REMAINS = MATERIALS.filter((m) => m.source === 'remains');
+/**
+ * LOAM'S SIX. A.87 gave Ferrite's six the same treatment through the same
+ * mechanism, so `source === 'remains'` is no longer a synonym for "Loam's" —
+ * this file is about Loam and says so. Ferrite's are held by `ferrite-roll.test.ts`.
+ */
+const REMAINS = MATERIALS.filter((m) => m.source === 'remains' && m.shellId === 'loam');
 /** A fixed generator, so a failure is a failure and not a bad afternoon. */
 function seeded(seed: number): () => number {
   let a = seed >>> 0;
@@ -142,7 +147,9 @@ describe('4 — nothing was added to the rarity pool', () => {
   });
 
   it('a shell with no authored Roll has no remains at any depth', () => {
-    for (let d = 0; d <= 250; d += 10) expect(remainsAt('ferrite', d)).toEqual([]);
+    // Ferrite HAS one now (A.87), so the unauthored case has to be a shell
+    // that genuinely has no Roll — otherwise this passes for the wrong reason.
+    for (let d = 0; d <= 250; d += 10) expect(remainsAt('verdance', d)).toEqual([]);
   });
 });
 

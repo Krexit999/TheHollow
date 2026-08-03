@@ -136,7 +136,9 @@ describe('2 — the vocabulary is only what exists', () => {
   });
 
   it('a shell with no authored Roll offers no world reads', () => {
-    s.shell.current = 'ferrite';
+    // Ferrite has an authored Roll as of A.87, so the shell that proves the
+    // rule has to be one that genuinely does not.
+    s.shell.current = 'verdance';
     const ids = availableReads(s).map((r) => r.id);
     expect(ids).not.toContain('seam');
     expect(ids).not.toContain('station');
