@@ -394,7 +394,21 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   humusgold: ['charged', 'tough'], verdantine: ['springy', 'keen'], bloomsteel: ['tough', 'springy'],
   feralglass: ['brittle', 'keen'], heartwood: ['trueseated', 'springy'], springvein: ['springy', 'charged'],
   wildstar: ['charged', 'trueseated'], thornmind: ['keen', 'charged', 'brittle'],
-  throatroot: ['springy', 'tough'], mothspool: ['light', 'springy'], wireweed: ['springy', 'charged'],
+  /** VERDANCE DEEP-ENTRY, terminal. Three traits, so it separates from
+   *  `wildstar` (starred, charged+trueseated) and `heartwood` (trueseated+
+   *  springy) rather than cloning either — the check that found mothspool. */
+  thornwall: ['trueseated', 'springy', 'keen'],
+  /**
+   * MOTHSPOOL WAS SPOREWOOD, bit for bit — same shell, same `common`, same
+   * `light`+`springy`, therefore the same head to three decimal places. The
+   * third of these found the same way: invisible while the stone could never
+   * drop, obvious the moment the shell became reachable. (burrowertooth was
+   * duskflint at A.84; scalebackplate was ironbloom at A.87.)
+   *
+   * It is silk WOUND TIGHT ON A SPOOL, which is the opposite of springy — a
+   * wound spool holds its shape and does not give it back. `light` + `tough`.
+   */
+  throatroot: ['springy', 'tough'], mothspool: ['light', 'tough'], wireweed: ['springy', 'charged'],
   palefiber: ['light', 'hollow'], mawpith: ['hollow', 'warm'], plentyheart: ['warm', 'charged'],
   // ---- GLASSMERE ----
   silicash: ['light', 'hollow'], frostsand: ['brittle', 'light'], dimglass: ['hollow', 'brittle'],

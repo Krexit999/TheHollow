@@ -21,7 +21,10 @@ import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
 import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
-import { AUTHORED_SHELLS, allAuthoredStations, authoredRoll, stationById } from '../content/rolls';
+import {
+  AUTHORED_SHELLS, allAuthoredStations, anUnauthoredShell, authoredRoll, stationById,
+  unauthoredShells,
+} from '../content/rolls';
 import { contentsOf, ensureRoll, rerollRoll, rollRows, shellRoll } from '../systems/roll';
 import { deepGatesFor, DEEP_GATES_BY_SHELL, rollDeepEntry } from '../systems/compaction';
 import { shellDef } from '../shells';
@@ -66,10 +69,13 @@ beforeEach(() => {
 });
 
 describe('the fixture is real', () => {
-  it('two shells are authored, and Ferrite is the new one', () => {
-    expect(AUTHORED_SHELLS.sort()).toEqual(['ferrite', 'loam']);
+  it('Ferrite is authored, and a shell without a Roll returns nothing', () => {
+    // MEMBERSHIP, not the whole list: this asserted ['ferrite','loam'] and
+    // broke the moment Verdance was written — a test about A.87 failing
+    // because of A.88.
+    expect(AUTHORED_SHELLS).toContain('ferrite');
     expect(authoredRoll('ferrite').length).toBeGreaterThanOrEqual(15);
-    expect(authoredRoll('verdance')).toEqual([]);
+    expect(authoredRoll(anUnauthoredShell())).toEqual([]);
   });
 
   it('and `shellRoll` reads the registry, not a hardcoded shell', () => {
@@ -265,11 +271,14 @@ describe('3 — the deep-entry ladder is per shell (§16.2)', () => {
     expect([...got]).toEqual(['deepgrave']);
   });
 
-  it('the five unauthored shells keep Loam\'s table — knowingly, and ledgered', () => {
-    for (const id of ['verdance', 'glassmere', 'cinder', 'hollow', 'aleph']) {
+  it('every shell without its own table falls back to Loam\'s — knowingly, ledgered', () => {
+    // DERIVED, not listed. This named 'verdance' and A.88 gave it a table, so a
+    // test about A.87 failed because of A.88 — the same shape as naming a file.
+    for (const id of unauthoredShells()) {
       expect(DEEP_GATES_BY_SHELL[id], `${id} should have no entry yet`).toBeUndefined();
       expect(deepGatesFor(id)).toBe(deepGatesFor('loam'));
     }
+    expect(unauthoredShells().length, 'nothing falls back any more — delete this').toBeGreaterThan(0);
   });
 });
 
@@ -338,9 +347,10 @@ describe('5 — PILLAR 2: geography is not income', () => {
       m.invalidate();
       return Math.round(dpsMax(st, m).toNumber() * 1e6);
     };
-    // Ferrite (a Roll, 19 stations) against Verdance (no Roll at all).
-    expect(read('ferrite')).toBe(read('verdance'));
-    expect(shellRoll({ ...s, shell: { ...s.shell, current: 'verdance' } } as GameState)).toEqual([]);
+    // Ferrite (a Roll, 19 stations) against a shell with no Roll at all.
+    const none = anUnauthoredShell();
+    expect(read('ferrite')).toBe(read(none));
+    expect(shellRoll({ ...s, shell: { ...s.shell, current: none } } as GameState)).toEqual([]);
   });
 
   it('and a roll still returns exactly ONE stone', () => {

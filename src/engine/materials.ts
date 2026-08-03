@@ -331,13 +331,42 @@ export const MATERIALS: MaterialDef[] = [
   M('springvein', 'Springvein', 'verdance', 'flawless', ['#20362a', '#3c6a4e', '#66ab80'], 9, 'crystalline'),
   M('wildstar', 'Wildstar Bloom', 'verdance', 'starred', ['#2c3a24', '#527044', '#8fbf72'], 10, 'crystalline'),
   M('thornmind', 'Thornmind', 'verdance', 'aberrant', ['#2e2a30', '#565060', '#8f86a0'], 7, 'aberrant'),
-  // Verdance combat-only (Phase 7) — the Loom's fibers walk and bite.
-  { id: 'throatroot', name: 'Throatroot', shellId: 'verdance', rarity: 'common', palette: ['#3a2f20', '#66543a', '#96805a'], facets: 4, shimmer: 'none', source: 'combat', flavor: 'A root that swallowed. Spin it before it remembers how.' },
-  { id: 'mothspool', name: 'Mothspool', shellId: 'verdance', rarity: 'common', palette: ['#3a3830', '#6a6656', '#a09a84'], facets: 4, shimmer: 'soft', source: 'combat', flavor: 'Wound silk off a wing the size of a door.' },
-  { id: 'wireweed', name: 'Wireweed', shellId: 'verdance', rarity: 'rich', palette: ['#2c332a', '#4e6349', '#7d9c74'], facets: 5, shimmer: 'none', source: 'combat', flavor: 'A plant doing an impression of cable. The impression bites.' },
-  { id: 'palefiber', name: 'Palefiber', shellId: 'verdance', rarity: 'rich', palette: ['#343440', '#5e5e74', '#9494ae'], facets: 5, shimmer: 'soft', source: 'combat', flavor: 'Thread from something that was barely there. The Loom disagrees about the barely.' },
-  { id: 'mawpith', name: 'Mawpith', shellId: 'verdance', rarity: 'pure', palette: ['#332226', '#63424a', '#9c6c78'], facets: 6, shimmer: 'soft', source: 'combat', flavor: 'The soft center of a hard argument.' },
-  { id: 'plentyheart', name: "Old Plenty's Heart", shellId: 'verdance', rarity: 'flawless', palette: ['#2a3620', '#4c6a3a', '#7fa85e'], facets: 9, shimmer: 'crystalline', source: 'combat', flavor: 'It is still beating, at about one beat per season.' },
+  // =============== VERDANCE'S REMAINS (A.88) — re-sourced by PLACE =========
+  //
+  // The third set of six, by the same mechanism as Loam's (A.84) and Ferrite's
+  // (A.87): bound to stations in `content/shell3/roll.ts`, substituted into a
+  // drop that already happened, never added to the rarity pool. Four of the six
+  // lines described no kill and are kept verbatim — a root that swallowed, silk
+  // off a shed wing, a plant that bites, thread from something barely there.
+  { id: 'throatroot', name: 'Throatroot', shellId: 'verdance', rarity: 'common', palette: ['#3a2f20', '#66543a', '#96805a'], facets: 4, shimmer: 'none', source: 'remains', flavor: 'A root that swallowed. Spin it before it remembers how.' },
+  { id: 'mothspool', name: 'Mothspool', shellId: 'verdance', rarity: 'common', palette: ['#3a3830', '#6a6656', '#a09a84'], facets: 4, shimmer: 'soft', source: 'remains', flavor: 'Wound silk off a wing the size of a door.' },
+  { id: 'wireweed', name: 'Wireweed', shellId: 'verdance', rarity: 'rich', palette: ['#2c332a', '#4e6349', '#7d9c74'], facets: 5, shimmer: 'none', source: 'remains', flavor: 'A plant doing an impression of cable. The impression bites.' },
+  { id: 'palefiber', name: 'Palefiber', shellId: 'verdance', rarity: 'rich', palette: ['#343440', '#5e5e74', '#9494ae'], facets: 5, shimmer: 'soft', source: 'remains', flavor: 'Thread from something that was barely there. The Loom disagrees about the barely.' },
+  // Was "the soft center of a hard argument" — an argument you win by killing
+  // it, which is the shape `chitinshard` carried before A.84 rewrote it. A
+  // canker is a wound the tree closed over; the pith is what is left inside.
+  { id: 'mawpith', name: 'Mawpith', shellId: 'verdance', rarity: 'pure', palette: ['#332226', '#63424a', '#9c6c78'], facets: 6, shimmer: 'soft', source: 'remains', flavor: 'The soft centre of a wound the wood grew shut around. It kept the softness and lost the argument.' },
+  // Was "It is still beating, at about one beat per season" under the name Old
+  // Plenty's Heart — the Warden's heart, in your hand, in a game with no
+  // fighting. Same correction as `taproot` and `loadstarcore`: she has more than
+  // one, she drops them, and they are collected. The beat is kept; it was the
+  // best line of the six.
+  { id: 'plentyheart', name: "Old Plenty's Heart", shellId: 'verdance', rarity: 'flawless', palette: ['#2a3620', '#4c6a3a', '#7fa85e'], facets: 9, shimmer: 'crystalline', source: 'remains', flavor: 'She grows a new one every round and lets the old one fall. It is still beating, at about one beat per season.' },
+
+  // ============ VERDANCE DEEP-ENTRY (§16.2) — compaction 20 ================
+  //
+  // The ladder is sapstone (c>=8) / bindingclay (c>=14) / Heartwood (c>=20),
+  // and TWO OF THE THREE ALREADY EXIST — `sapstone` is Verdance's own common
+  // and `bindingclay` is a Loam rich, so both are reused exactly as `wormsteel`
+  // and `umberjade` were: a second way to find a stone, never a second stone
+  // that means the same thing. Only the TERMINAL is new, because a terminal
+  // must come out of the deepest gate and NOWHERE else — `heartwood` is a
+  // pool-eligible ore called Ironheartwood and would have broken that.
+  //
+  // Named for the floor it comes out of, as `deepgrave` and `poleiron` are.
+  M('thornwall', 'Thornwall Heart', 'verdance', 'starred', ['#181e16', '#33422c', '#5e7a4e'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. Wood that stopped being wood without ever agreeing to be stone.',
+    false, 'deep'),
   // Glassmere combat-only (Phase 8).
   { id: 'glasschitin', name: 'Glasschitin', shellId: 'glassmere', rarity: 'common', palette: ['#3a4048', '#6a7684', '#a8b8c8'], facets: 6, shimmer: 'crystalline', source: 'combat', flavor: 'Armor you can read a page through. The page argues back.' },
   { id: 'coldsinew', name: 'Coldsinew', shellId: 'glassmere', rarity: 'common', palette: ['#38404a', '#5e6c7c', '#93a8ba'], facets: 5, shimmer: 'soft', source: 'combat', flavor: 'Muscle at four below. It flexes slowly and forever.' },

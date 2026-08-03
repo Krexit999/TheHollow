@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngine } from '../index';
+import { isRollSource } from '../content/rolls';
 import type { GameState } from '../types';
 import { MATERIALS, materialDef, RARITY_GATES, BANDS, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
 import { addMaterial, materialCount, recipeDef, equippedTool } from '../systems/forge';
@@ -260,14 +261,15 @@ describe('transmutation makes the 132 a graph', () => {
         // system" from "mentioned in a list"; the exclusion list is where that
         // distinction is kept.
         //
-        // EXCLUDED BY PATH, NOT BY SHELL (A.87). This named `shell1/roll.ts`
-        // explicitly, so the moment Ferrite's Roll was written its seam pools
-        // read as consumers and `trueFromPolestar` lost the only justification
-        // it had — the identical failure the paragraph above describes, one
-        // shell later. Any `content/**/roll.ts` is a list of places, and a
-        // place is never a consumer.
+        // EXCLUDED BY REGISTRY (A.88). This named `shell1/roll.ts` explicitly
+        // and fired the moment Ferrite's Roll existed — `trueFromPolestar` lost
+        // the only justification it had, which is the identical failure the
+        // paragraph above describes, one shell later. A.87 replaced the name
+        // with a path pattern, which is better and still a second list that can
+        // fall behind. `isRollSource` is derived from `ROLL_SOURCES`, so
+        // REGISTERING a Roll registers its exclusion and there is one list.
         if (p.endsWith('materials.ts') || p.endsWith('chains.ts') || p.endsWith('traits.ts')
-          || /[\\/]content[\\/].*roll\.ts$/.test(p) || p.endsWith(join('content', 'rolls.ts'))) continue;
+          || isRollSource(p)) continue;
         parts.push(readFileSync(p, 'utf8'));
       }
     };

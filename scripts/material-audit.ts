@@ -24,6 +24,7 @@ ensureContentLoaded();
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MATERIALS } from '../src/engine/materials';
+import { isRollSource } from '../src/engine/content/rolls';
 import { allShells } from '../src/engine/shells';
 import { CHAINS } from '../src/engine/systems/refinery';
 
@@ -52,10 +53,12 @@ function engineSource(dropChains = NO_CHAINS): string {
        * it, five stones would have "gained a consumer" by being written into a
        * place where they DROP.
        */
-      // BY PATH, NOT BY SHELL (A.87). Naming `shell1` meant Ferrite's Roll read
-      // as a consumer the moment it was written, which would have quietly
-      // un-orphaned every stone in its seam pools.
-      if (/[\\/]content[\\/].*roll\.ts$/.test(p) || p.endsWith(join('content', 'rolls.ts'))) continue;
+      // BY REGISTRY (A.88). Naming `shell1` (A.84) meant Ferrite's Roll read as
+      // a consumer the moment it was written; a path pattern (A.87) fixed that
+      // and was still a second list that could fall behind. `isRollSource` is
+      // derived from `ROLL_SOURCES`, so registering a Roll registers its
+      // exclusion and there is exactly one list.
+      if (isRollSource(p)) continue;
       // --no-chains: see the header. A chain must not vouch for itself.
       if (dropChains && p.endsWith('chains.ts')) continue;
       out.push(readFileSync(p, 'utf8'));

@@ -84,6 +84,15 @@ export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
     { at: 14, materialId: 'lodestonecored', chance: 0.11 },
     { at: 8, materialId: 'wormsteel', chance: 0.18 },
   ],
+  // Verdance reuses TWO of its three: `sapstone` is its own common and
+  // `bindingclay` is a Loam rich, both already in the game. Only the terminal
+  // is new, because a terminal must come out of the deepest gate and nowhere
+  // else — see the note on `thornwall` in materials.ts.
+  verdance: [
+    { at: 20, materialId: 'thornwall', chance: 0.06 },
+    { at: 14, materialId: 'bindingclay', chance: 0.11 },
+    { at: 8, materialId: 'sapstone', chance: 0.18 },
+  ],
 };
 
 export function deepGatesFor(shellId: string): DeepGate[] {

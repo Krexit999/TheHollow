@@ -23,6 +23,7 @@ import {
   MATERIALS, RARITY_GATES, REMAINS_TUNING, materialDef, remainsAt, rollDrop,
 } from '../materials';
 import { loamRoll } from '../content/shell1/roll';
+import { anUnauthoredShell } from '../content/rolls';
 import { CHAINS } from '../systems/refinery';
 import { ensureContentLoaded } from '../content';
 import { createEngine } from '../index';
@@ -147,9 +148,9 @@ describe('4 — nothing was added to the rarity pool', () => {
   });
 
   it('a shell with no authored Roll has no remains at any depth', () => {
-    // Ferrite HAS one now (A.87), so the unauthored case has to be a shell
-    // that genuinely has no Roll — otherwise this passes for the wrong reason.
-    for (let d = 0; d <= 250; d += 10) expect(remainsAt('verdance', d)).toEqual([]);
+    // ASK THE REGISTRY — 'ferrite' broke at A.87 and 'verdance' at A.88.
+    const none = anUnauthoredShell();
+    for (let d = 0; d <= 250; d += 10) expect(remainsAt(none, d), none).toEqual([]);
   });
 });
 

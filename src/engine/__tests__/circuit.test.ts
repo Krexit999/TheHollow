@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
+import { anUnauthoredShell } from '../content/rolls';
 import { dpsMax, cellCap } from '../systems/face';
 import { addMaterial } from '../systems/forge';
 import { contentsOf } from '../systems/roll';
@@ -136,9 +137,10 @@ describe('2 — the vocabulary is only what exists', () => {
   });
 
   it('a shell with no authored Roll offers no world reads', () => {
-    // Ferrite has an authored Roll as of A.87, so the shell that proves the
-    // rule has to be one that genuinely does not.
-    s.shell.current = 'verdance';
+    // ASK THE REGISTRY. This said 'ferrite' until A.87 authored it and
+    // 'verdance' until A.88 did — naming a shell by hand is the same trap as
+    // naming a file, and it broke twice in two passes for the right reason.
+    s.shell.current = anUnauthoredShell();
     const ids = availableReads(s).map((r) => r.id);
     expect(ids).not.toContain('seam');
     expect(ids).not.toContain('station');

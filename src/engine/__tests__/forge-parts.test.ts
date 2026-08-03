@@ -28,6 +28,7 @@
 import { describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import { MATERIALS, RARITIES, materialDef } from '../materials';
+import { AUTHORED_SHELLS } from '../content/rolls';
 import { allShells } from '../shells';
 import {
   FORGE_TRAITS, LINEAR_STATS, PART_DEFS, PART_TYPES, SHELL_STEP, SHELL_TRAIT,
@@ -539,34 +540,33 @@ describe('same shape, different material, genuinely different part', () => {
     expect(b.stats.durability).toBeGreaterThan(a.stats.durability);
   });
 
-  it('no two mined Loam materials produce the same head', () => {
-    const seen = new Set<string>();
-    for (const m of inShell('loam')) {
-      const d = derivePart(makePart('head', m.id, 60));
-      const key = TOOL_STATS.map((s) => d.stats[s].toFixed(3)).join('|');
-      expect(seen.has(key), `${m.name} collides with another Loam head`).toBe(false);
-      seen.add(key);
-    }
-    expect(seen.size).toBeGreaterThan(10);
-  });
-
   /**
-   * AND NOR DO FERRITE'S (A.87). This rule was Loam-only because Loam was the
-   * only shell whose stone could all be dug; A.87 made Ferrite's six combat
-   * orphans minable and added two deep-entry stones, which is exactly the
-   * moment A.84 found `burrowertooth` to be a bit-for-bit clone of `duskflint`.
-   * A shell whose materials are reachable needs the check the reachable shell
-   * has.
+   * AND NOR DO ANY AUTHORED SHELL'S (A.88, generalised from A.87's Ferrite-only
+   * copy).
+   *
+   * This rule was Loam-only because Loam was the only shell whose stone could
+   * all be dug. It has now caught a bit-for-bit clone in every shell the moment
+   * that shell became reachable, three for three:
+   *
+   *   A.84  burrowertooth  was  duskflint       (Loam)
+   *   A.87  scalebackplate was  ironbloom       (Ferrite)
+   *   A.88  mothspool      was  sporewood       (Verdance)
+   *
+   * Every one invisible beforehand, because a material that cannot drop cannot
+   * be compared to one that can. So the check is driven off the ROLL REGISTRY:
+   * authoring a shell's geography enrols its stone here automatically, and the
+   * fourth clone gets found on the day it becomes findable rather than a phase
+   * later.
    */
-  it('no two mined Ferrite materials produce the same head', () => {
+  it.each(AUTHORED_SHELLS)('no two mined %s materials produce the same head', (shell) => {
     const seen = new Map<string, string>();
-    for (const m of inShell('ferrite')) {
+    for (const m of inShell(shell)) {
       const d = derivePart(makePart('head', m.id, 60));
       const key = TOOL_STATS.map((s) => d.stats[s].toFixed(3)).join('|');
       expect(seen.has(key), `${m.name} collides with ${seen.get(key)}`).toBe(false);
       seen.set(key, m.name);
     }
-    expect(seen.size).toBeGreaterThan(10);
+    expect(seen.size, `${shell} has too few mined materials to be a real check`).toBeGreaterThan(10);
   });
 
   /**

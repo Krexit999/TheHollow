@@ -16,7 +16,9 @@
  */
 import { loamRoll } from './shell1/roll';
 import { ferriteRoll } from './shell2/roll';
+import { verdanceRoll } from './shell3/roll';
 import type { StationDef } from './shell1/roll';
+import { allShells } from '../shells';
 
 /**
  * The station TYPES live in `shell1/roll.ts` because that is where they were
@@ -30,10 +32,61 @@ export { ROLL_FEATURES, FEATURE_LABEL, TYPE_LABEL, type RollFeature } from './sh
 const ROLLS: Record<string, () => StationDef[]> = {
   loam: loamRoll,
   ferrite: ferriteRoll,
+  verdance: verdanceRoll,
 };
 
-/** Shells whose geography is written. The other five return `[]`. */
+/** Shells whose geography is written. The rest return `[]`. */
 export const AUTHORED_SHELLS = Object.keys(ROLLS);
+
+/**
+ * Shells whose geography is NOT written yet, in ordinal order.
+ *
+ * Exported because NAMING ONE BY HAND IS THE SAME TRAP AS NAMING A FILE. Five
+ * tests across three files said `'ferrite'` and then `'verdance'` to mean "a
+ * shell with no Roll", and every one of them broke — for the right reason, but
+ * noisily — the moment that shell got one. Ask the registry and the fourth Roll
+ * costs nothing.
+ *
+ * `shells.ts` is the currency/wall registry and imports nothing from `content`,
+ * so this direction is safe.
+ */
+export function unauthoredShells(): string[] {
+  return allShells().filter((s) => !AUTHORED_SHELLS.includes(s.id)).map((s) => s.id);
+}
+
+/** The first shell with no Roll — what a test means by "a shell with no Roll". */
+export function anUnauthoredShell(): string {
+  const id = unauthoredShells()[0];
+  if (!id) throw new Error('every shell is authored — this helper has no meaning any more');
+  return id;
+}
+
+/**
+ * WHERE EACH ROLL LIVES ON DISK — and this is not bookkeeping, it is a fix.
+ *
+ * The consumer audits (`refinery.test.ts`'s orphan-rescue law, and
+ * `scripts/material-audit.ts`) scan the engine's source text to work out which
+ * materials nothing wants, and a station's `seams` pool NAMES stone it does not
+ * consume. So every Roll has to be excluded from that scan — and both audits
+ * excluded `shell1/roll.ts` BY FILENAME, which fired twice: once when Ferrite's
+ * Roll was written and `trueFromPolestar` lost its only justification, and it
+ * would have fired again here.
+ *
+ * Registering a Roll now registers its exclusion. There is one list, and it is
+ * this one; an audit that reads it cannot fall behind the registry.
+ */
+export const ROLL_SOURCES: Record<string, string> = {
+  loam: 'shell1/roll.ts',
+  ferrite: 'shell2/roll.ts',
+  verdance: 'shell3/roll.ts',
+};
+
+/** True if this path is an authored Roll (or the registry itself). */
+export function isRollSource(path: string): boolean {
+  const p = path.replace(/\\/g, '/');
+  return p.endsWith('content/rolls.ts')
+    || Object.values(ROLL_SOURCES).some((rel) => p.endsWith(`content/${rel}`));
+}
 
 export function authoredRoll(shellId: string): StationDef[] {
   return ROLLS[shellId]?.() ?? [];
