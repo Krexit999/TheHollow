@@ -278,7 +278,25 @@ export function sampleReport(state: GameState, stationId: string): SampleReport 
   const def = shellRoll(state).find((d) => d.id === stationId);
   if (!def) return null;
   const held = contentsOf(state, stationId);
-  const pool = held.seam ? [held.seam] : (def.seams ?? []);
+  /**
+   * THE REMAINS ARE PART OF THE READING (A.84), and they have to be, or the
+   * mechanism is undiscoverable.
+   *
+   * Six Loam materials drop ONLY within four depths of a station that buries
+   * them (`remainsAt`). A player who is never told that reads it as the drop
+   * table occasionally producing a bone, which is noise — the same failure the
+   * MILLSTONE note two files over is about: a material that arrives only by
+   * chance cannot be reasoned with.
+   *
+   * So the bench names them, and only the bench: this costs a sample, it is
+   * not printed on the Roll row, and the seam the station is FEATURING still
+   * re-rolls at every Collapse while these do not. Reading a place tells you
+   * what is in the ground there. That is what a survey is.
+   */
+  const pool = [
+    ...(held.seam ? [held.seam] : (def.seams ?? [])),
+    ...(def.remains ?? []),
+  ];
   const seams: SampleSeam[] = pool.map((id) => {
     let name = id;
     try { name = materialDef(id).name; } catch { /* a def that has gone missing must not take the panel down */ }

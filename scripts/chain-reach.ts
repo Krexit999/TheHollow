@@ -30,6 +30,10 @@ const seams = new Set<string>();
 for (const st of loamRoll()) {
   if (st.depth >= 150) continue;          // the floor itself is not shallow
   for (const s of st.seams ?? []) seams.add(s);
+  // THE REMAINS (A.84) are obtainable at their stations and nowhere else, so a
+  // station above the floor puts them in shallow reach exactly as a seam does.
+  // Taproot is seamed at DEEPGRAVE alone and therefore stays out, correctly.
+  for (const s of st.remains ?? []) seams.add(s);
 }
 // ...plus what Loam's own drop table gives, and the Crusher's output.
 for (const m of MATERIALS) {

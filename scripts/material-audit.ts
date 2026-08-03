@@ -8,7 +8,16 @@
  * catalysts, thread spinning, brews, contracts, museum cases — and reports
  * what is left over.
  *
- *   npx tsx scripts/material-audit.ts
+ *   npx tsx scripts/material-audit.ts [--no-chains]
+ *
+ * `--no-chains` excludes the chain registry from the scan. THIS IS THE AUDIT'S
+ * BLIND SPOT, and it hid a real question for several phases: a stone consumed
+ * only by a transmutation chain reads exactly like a stone that was never an
+ * orphan, so "how many orphans did the chains actually rescue" could not be
+ * asked of this instrument. Run it both ways and diff — the difference IS the
+ * rescue list. (`refinery.test.ts` has excluded chains.ts from its own scan
+ * since the rule was written, for the same reason: a chain must not vouch for
+ * itself.)
  */
 import { ensureContentLoaded } from '../src/engine/content';
 ensureContentLoaded();
@@ -16,11 +25,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MATERIALS } from '../src/engine/materials';
 import { allShells } from '../src/engine/shells';
+import { CHAINS } from '../src/engine/systems/refinery';
 
 const root = join(process.cwd(), 'src', 'engine');
+const NO_CHAINS = process.argv.includes('--no-chains');
 
-/** Every .ts file under src/engine, EXCLUDING the registry itself. */
-function engineSource(): string {
+/** Every .ts file under src/engine, EXCLUDING the ones that NAME without WANTING. */
+function engineSource(dropChains = NO_CHAINS): string {
   const out: string[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
@@ -32,6 +43,18 @@ function engineSource(): string {
       if (!entry.endsWith('.ts')) continue;
       // materials.ts DECLARES; traits.ts assigns PROPERTIES. Neither consumes.
       if (p.endsWith('materials.ts') || p.endsWith('traits.ts')) continue;
+      /**
+       * THE ROLL NAMES STONE IT DOES NOT WANT. A station's `seams` pool says
+       * what you might FIND there — the opposite of a consumer. Counting it
+       * un-orphaned every stone the geography mentions is a fake rescue, and it
+       * is the exact trap `refinery.test.ts` already documents at its own
+       * exclusion list. Added here when the Loam remains were seamed: without
+       * it, five stones would have "gained a consumer" by being written into a
+       * place where they DROP.
+       */
+      if (p.endsWith(join('shell1', 'roll.ts'))) continue;
+      // --no-chains: see the header. A chain must not vouch for itself.
+      if (dropChains && p.endsWith('chains.ts')) continue;
       out.push(readFileSync(p, 'utf8'));
     }
   };
@@ -50,7 +73,7 @@ for (const m of MATERIALS) {
   (re.test(src) ? consumed : orphans).push(m.id);
 }
 
-console.log('\nMATERIAL AUDIT\n');
+console.log(`\nMATERIAL AUDIT${NO_CHAINS ? '  (chains EXCLUDED — chain-rescued stones read as orphans)' : ''}\n`);
 console.log(`  total          ${MATERIALS.length}`);
 console.log(`  consumed       ${consumed.length}  (named by a recipe, catalyst, brew, contract or case)`);
 console.log(`  ZERO CONSUMERS ${orphans.length}\n`);
@@ -75,4 +98,39 @@ if (orphans.length > 0) {
 
 console.log('\n  ORPHAN IDS BY SHELL:');
 for (const [shell, ids] of byShell) console.log(`    ${shell}: ${ids.join(' ')}`);
+console.log('');
+
+/**
+ * WHAT THE CHAINS ACTUALLY RESCUED — the question the blind spot hid.
+ *
+ * Re-scan with chains.ts out, so a chain cannot vouch for itself, then ask of
+ * every chain which of its two inputs was an orphan by every OTHER route. A
+ * chain whose inputs were all already busy rescued nothing; a chain taking an
+ * orphan another chain already takes DUPLICATES a rescue. Both are printed,
+ * because §16.4's rule is about coverage and both failures leave a stone dead.
+ */
+const srcNoChains = engineSource(true);
+const wasOrphan = (id: string): boolean =>
+  !new RegExp(`['"\`]${id}['"\`]|\\b${id}\\s*:`).test(srcNoChains);
+
+console.log('  CHAIN RESCUE ATTRIBUTION (orphan = orphaned by every route except chains)\n');
+const claimed = new Map<string, string[]>();
+for (const c of CHAINS) {
+  const pulls = [c.a, c.b].filter(wasOrphan);
+  for (const id of pulls) claimed.set(id, [...(claimed.get(id) ?? []), c.id]);
+}
+let rescues = 0, dupes = 0, none = 0;
+for (const c of CHAINS) {
+  const pulls = [c.a, c.b].filter(wasOrphan);
+  const first = pulls.filter((id) => claimed.get(id)![0] === c.id);
+  const dup = pulls.filter((id) => claimed.get(id)![0] !== c.id);
+  const verdict = first.length > 0 ? `RESCUES ${first.join(',')}`
+    : dup.length > 0 ? `duplicate of ${dup.map((i) => claimed.get(i)![0]).join(',')}`
+      : 'rescues nothing';
+  if (first.length > 0) rescues += first.length; else if (dup.length > 0) dupes += 1; else none += 1;
+  console.log(`    ${c.id.padEnd(24)} ${c.a}+${c.b} -> ${c.out}   ${verdict}`);
+}
+console.log(`\n    chains ${CHAINS.length} · stones rescued ${rescues} · duplicate rescues ${dupes} · rescue nothing ${none}`);
+const stranded = MATERIALS.filter((m) => wasOrphan(m.id) && !claimed.has(m.id));
+console.log(`    still with ZERO consumers after chains: ${stranded.length}`);
 console.log('');

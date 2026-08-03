@@ -53,7 +53,15 @@ describe('the taxonomy', () => {
     // Was 15 before MILLSTONE, the shell's trap material (§16.3) — the best
     // Core magnitude in Loam wearing the one trait a Core must not have.
     expect(materialsOfShell('loam').filter((m) => !m.source)).toHaveLength(16);
-    expect(materialsOfShell('loam').filter((m) => m.source === 'combat').length).toBeGreaterThanOrEqual(5);
+    /**
+     * LOAM HAS NO COMBAT-ONLY MATERIALS ANY MORE (A.84). This line asserted
+     * `>= 5` of them, which was true and was the bug: combat was cut at A.7x, so
+     * those five were obtainable by NO route and the test was pinning the
+     * defect in place. They are REMAINS now — dug at named stations — and the
+     * assertion is inverted to keep them that way.
+     */
+    expect(materialsOfShell('loam').filter((m) => m.source === 'combat')).toHaveLength(0);
+    expect(materialsOfShell('loam').filter((m) => m.source === 'remains')).toHaveLength(6);
     expect(GEMS).toHaveLength(6);
     // Every shell got its share of the declaration.
     for (const shell of ['ferrite', 'verdance', 'glassmere', 'cinder', 'hollow', 'aleph']) {

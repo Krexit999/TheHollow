@@ -36,6 +36,7 @@ import { canSpiral } from '../src/engine/systems/spiral';
 import { dpsMax, cellRegen, cellCap } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
+import { REMAINS_TUNING } from '../src/engine/materials';
 import {
   activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceSlotCap,
 } from '../src/engine/systems/confluence';
@@ -110,6 +111,9 @@ interface Args {
    *  unconfigured bay, so an arm without these flags is the old sim exactly. */
   drillBehaviour: 'fullest' | 'sweep' | 'chain';
   drillBar: number;
+  /** THE REMAINS (A.84). 0 reproduces the pre-A.84 drop table exactly, so the
+   *  baseline arm is this same binary one flag apart. */
+  remainsShare: number;
   /**
    * THE HAND. `fullest` is the greedy policy every prior run used; it spreads
    * strokes across the whole board, which is the worst possible model for a
@@ -167,6 +171,7 @@ function parseArgs(): Args {
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
+    remainsShare: Number(get('remains-share') ?? REMAINS_TUNING.share),
   };
 }
 
@@ -1270,6 +1275,7 @@ function main(): void {
   horizonBasis = args.horizon;
   if (args.seed !== null) Math.random = mulberry32(args.seed);
   HOLD_TUNING.cap = args.holdCap;
+  REMAINS_TUNING.share = args.remainsShare;
   holdEmulate = args.holdEmulate;
   if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
     drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };

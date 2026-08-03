@@ -191,4 +191,80 @@ export function registerChains(): void {
     name: 'The Flint Staining',
     flavor: 'The ochre goes into the flint and does not come out. It goes green about a week later.',
   });
+
+  /*
+   * ── THE REMAINS BOARD (A.84) ────────────────────────────────────────────
+   *
+   * The five above earn their place by REACH and rescue nothing — measured,
+   * not assumed: `material-audit.ts` now prints a rescue attribution per chain
+   * and all five come back "rescues nothing". That was honest at A.71, whose
+   * own comment says so, because the only Loam orphans left were castings and
+   * Starmarl and neither could carry a board.
+   *
+   * That is no longer true. Loam's six combat-stranded stones are REMAINS now
+   * (`materials.ts`, `remainsAt`) and five of them are genuine orphans by every
+   * route the audit can see. So this board goes back to §16.4's actual rule:
+   * ONE ORPHAN EACH, none of them twice, and an output something really wants.
+   *
+   * Two of the five close a gap rather than adding a lane. TEMPERASH and
+   * TRUESILVER each had three routes and not one a Loam player could run —
+   * every one wanted Cinder, Verdance, Glassmere or Hollow stock — so the
+   * quench trough and the good-tool intermediate were both Ferrite-era
+   * furniture in a Loam-era room.
+   *
+   * The trait heuristic (§17) is kept honest here: every pair below SHARES a
+   * trait, and four of the five outputs inherit the pair's traits exactly. A
+   * player working the rule out gets these; a player pairing at random does not.
+   */
+
+  // chitinshard (tough+springy) + loamiron (keen+SPRINGY) -> wormsteel
+  // (springy+tough): both of the input traits, and a common+rich pair reaching
+  // two gates up into `pure`.
+  registerChain({
+    id: 'plateFolding', a: 'chitinshard', b: 'loamiron', out: 'wormsteel', cost: 3,
+    name: 'The Plate Folding',
+    flavor: 'Plate off something long dead, folded through soil-iron until it stops flaking and starts flexing.',
+  });
+  // gravemote (light+HOLLOW) + ochre (HOLLOW+tough) -> temperash (warm+hollow).
+  // THE FIRST TEMPERASH ROUTE A LOAM PLAYER CAN RUN — the other three want
+  // Hollow, Cinder and Verdance stock, so the quench trough opened on nothing.
+  registerChain({
+    id: 'risingAsh', a: 'gravemote', b: 'ochre', out: 'temperash', cost: 3,
+    name: 'The Rising Ash',
+    flavor: 'The motes go up, the yellow burns off, and what settles in the bottom of the trough remembers both.',
+  });
+  // burrowertooth (KEEN+tough) + duskflint (KEEN+dense) -> truesilver
+  // (keen+trueseated): the shared edge goes through and the rest burns off.
+  // THE FIRST SHALLOW TRUESILVER — the other three want Ferrite and Glassmere
+  // stone, so the good-tool intermediate was Ferrite-era furniture until now.
+  registerChain({
+    id: 'toothDrawing', a: 'burrowertooth', b: 'duskflint', out: 'truesilver', cost: 3,
+    name: 'The Tooth Drawing',
+    flavor: 'Something spent its whole life going forward through this. Drawn out against flint, it comes back silver.',
+  });
+  // marrowglass (BRITTLE+keen) + rootglass (charged+BRITTLE) -> umberjade
+  // (brittle+charged): again exactly the pair's traits.
+  registerChain({
+    id: 'marrowSetting', a: 'marrowglass', b: 'rootglass', out: 'umberjade', cost: 3,
+    name: 'The Marrow Setting',
+    flavor: 'Glass grown inside a body, set against glass grown around a root. Neither of them was ever stone until now.',
+  });
+  /*
+   * THE FLOOR CHAIN, and the only one here a shallow player cannot run.
+   * Taproot is buried at DEEPGRAVE and nowhere else — the Tapmother's roots do
+   * not come up — so this is the pair you can only hold by standing at the
+   * bottom of the world. Cost two, batch of three: both stones are scarce and a
+   * per-unit toll on scarce stock is a bottleneck, not a decision.
+   *
+   * FIRST DRAFT WAS taproot + SABLEQUARTZ, and the trait test refused it:
+   * springy+charged against trueseated+keen is nothing in common, which §17
+   * says gives grog. The rule the player infers is the rule the author obeys.
+   * Starmarl shares `charged` and hands `trueseated` straight to the output —
+   * and it is itself an orphan the A.71 board named and could not use.
+   */
+  registerChain({
+    id: 'deepgraveDraw', a: 'taproot', b: 'starmarl', out: 'truesilver', cost: 2, yield: 3,
+    name: 'The Deepgrave Draw',
+    flavor: 'A root out of the floor of the world and marl with a light still in it. Between them they draw longer than anything down here has a right to.',
+  });
 }

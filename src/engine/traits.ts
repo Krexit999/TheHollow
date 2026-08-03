@@ -340,7 +340,13 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   graveclaydeep: ['dense', 'tough', 'trueseated'],
   deepgrave: ['trueseated', 'dense', 'brittle'],
   chitinshard: ['tough', 'springy'], gravemote: ['light', 'hollow'], taproot: ['springy', 'charged'],
-  marrowglass: ['brittle', 'keen'], wormsilk: ['springy', 'light'], burrowertooth: ['keen', 'dense'],
+  // BURROWERTOOTH WAS `keen + dense`, WHICH IS DUSKFLINT. While it was combat-
+  // only that was invisible — it could not drop, so no part was ever made of
+  // it. The moment A.84 gave it a place, `forge-parts.test.ts` caught it: same
+  // traits AND same rarity means a bit-for-bit identical head, i.e. a second
+  // row in the registry that changes no decision. A tooth that bores rock for a
+  // living is TOUGH before it is dense.
+  marrowglass: ['brittle', 'keen'], wormsilk: ['springy', 'light'], burrowertooth: ['keen', 'tough'],
   refineslag: ['dense', 'brittle'], salvagedust: ['light', 'hollow'], temperash: ['warm', 'hollow'],
   bindingclay: ['tough', 'hollow'], truesilver: ['keen', 'trueseated'], voidresidue: ['hollow', 'charged'],
   lawfiling: ['trueseated', 'keen'],

@@ -2,7 +2,10 @@
  * Ore taxonomy — the substrate for alloys, runes, brewing, merchants,
  * contracts, and relics. Materials are DATA: 132 across seven shells, each
  * visually defined as palette + facet count + shimmer profile (the art is
- * generated, never drawn). 100 are mineable; 32 drop only from the Deepwrought.
+ * generated, never drawn). Most are mineable; SIX are Loam REMAINS, dug at named
+ * places (`remainsAt`); TWENTY-SIX still say `source: 'combat'` and are therefore
+ * obtainable by no route at all, combat having been cut — that is a known, open
+ * gap covering five shells, not a description of a working system.
  *
  * Every drop rolls a purity 0-100. Distributions are tight at low rarities
  * and wide at high ones — a Flawless stone with a bad roll should sting.
@@ -10,6 +13,10 @@
  * Materials are POSSESSIONS, not shell currency: they survive Collapse.
  */
 import type { Bucket } from './modifiers';
+// Content, imported by the registry, and it is one-way: `roll.ts` is a pure
+// authored list with no imports of its own, so there is no cycle. The remains
+// need a geography (`remainsAt`), and this is where the geography lives.
+import { loamRoll } from './content/shell1/roll';
 
 export type MaterialRarity = 'common' | 'rich' | 'pure' | 'flawless' | 'starred' | 'aberrant';
 
@@ -29,12 +36,17 @@ export interface MaterialDef {
   shimmer: Shimmer;
   /**
    * MATERIALS THAT DO NOT COME OUT OF THE RARITY TABLE.
-   *   'combat' — the Deepwrought drop them.
-   *   'deep'   — the compaction gates drop them (systems/compaction.ts).
-   * Both pools in this file filter on `!m.source`, so one flag keeps a material
-   * out of ordinary chips AND out of cracked geodes.
+   *   'combat'  — the Deepwrought dropped them. COMBAT IS CUT (types.ts:88),
+   *               so every one of these is unobtainable by any route. 31 of the
+   *               registry's orphans are stranded here; A.84 re-sourced Loam's
+   *               six and the other 26 are ledgered, not fixed.
+   *   'deep'    — the compaction gates drop them (systems/compaction.ts).
+   *   'remains' — they are IN THE ROCK, at named places. See `remainsAt`.
+   * Every pool in this file filters on `!m.source`, so one flag keeps a
+   * material out of ordinary chips AND out of cracked geodes; `remains` then
+   * puts a place back under it, which `combat` never had once the fighting went.
    */
-  source?: 'combat' | 'deep';
+  source?: 'combat' | 'deep' | 'remains';
   /**
    * WORKED materials are made, never found: refinery byproducts, salvage
    * residue, transmutation intermediates, tempering media. rollDrop filters
@@ -411,13 +423,44 @@ export const MATERIALS: MaterialDef[] = [
   M('voidstar', 'Voidstar', 'hollow', 'starred', ['#1e1e28', '#363650', '#5c5c8a'], 10, 'crystalline'),
   M('nothing', 'A Piece of Nothing', 'hollow', 'aberrant', ['#161618', '#28282c', '#414146'], 6, 'aberrant'),
 
+  /**
+   * ================= LOAM'S REMAINS (A.84) — found, not fought ==============
+   *
+   * These six were `source: 'combat'`, and combat was cut at A.7x. That left
+   * them obtainable by NO ROUTE AT ALL: 45,000 drop rolls across depths 0-150
+   * produced none of them, five sat on the orphan list where no chain could
+   * honestly consume them, and `wormsilk` was worse than an orphan — a live
+   * consumer asking for a stone the game cannot produce.
+   *
+   * THE FICTION IS KEPT, NOT IGNORED. Every one of these is a piece of
+   * something that lived, and the flavour said so. The Deepwrought are gone;
+   * what they left is still down here, which is the premise of the whole game
+   * ("you are not the first one down"). So they are REMAINS: you dig them up.
+   * Two lines that named a kill are rewritten below and marked; the other four
+   * never needed one.
+   *
+   * They do NOT go into the rarity pool, and that is the load-bearing decision.
+   * Loam holds four commons and three riches; dropping six more in would have
+   * cut marl/ochre/bonechalk/graveclay by a THIRD and every rich by two fifths
+   * — the tier-II floor recipe and the whole shallow chain board are made of
+   * exactly those stones, so "adding content" would have quietly re-priced the
+   * first hardness wall. Pillar 1 binds the drop economy, not just income.
+   *
+   * Instead they are bound to PLACE — `remainsAt` below.
+   */
+  { id: 'chitinshard', name: 'Chitinshard', shellId: 'loam', rarity: 'common', palette: ['#3a3226', '#6b5c42', '#a5936c'], facets: 5, shimmer: 'none', source: 'remains', flavor: 'Plate off something that objected to being dug through. It lost the argument a long time before you got here.' },
+  { id: 'gravemote', name: 'Gravemote', shellId: 'loam', rarity: 'common', palette: ['#2e2c33', '#54505e', '#8a8496'], facets: 4, shimmer: 'soft', source: 'remains', flavor: 'It drifts upward if you stop watching it.' },
+  { id: 'wormsilk', name: 'Wormsilk', shellId: 'loam', rarity: 'rich', palette: ['#3c3830', '#6e6753', '#ada183'], facets: 6, shimmer: 'soft', source: 'remains', flavor: 'Stronger than it should be. Damp forever.' },
+  { id: 'burrowertooth', name: "Burrower's Tooth", shellId: 'loam', rarity: 'rich', palette: ['#42392c', '#7a6a4e', '#bda87c'], facets: 6, shimmer: 'none', source: 'remains', flavor: 'Curved for going forward. Only forward.' },
+  { id: 'marrowglass', name: 'Marrowglass', shellId: 'loam', rarity: 'pure', palette: ['#443c33', '#7d7059', '#c4b494'], facets: 8, shimmer: 'crystalline', source: 'remains', flavor: 'Grown in the middle of something alive. It remembers a pulse.' },
+  // Was "Cut from the Warden of the Loam floor" — a kill, in a game with no
+  // fighting. Her roots reach further than she does, which is why this one
+  // seams at DEEPGRAVE and nowhere shallower.
+  { id: 'taproot', name: "Tapmother's Root", shellId: 'loam', rarity: 'flawless', palette: ['#33402c', '#5c744e', '#94b581'], facets: 9, shimmer: 'crystalline', source: 'remains', flavor: 'The Tapmother\'s roots run further down than she does. It is still growing, slowly.' },
+
   // ============ COMBAT-ONLY (the Deepwrought drop these; unminable) ========
-  { id: 'chitinshard', name: 'Chitinshard', shellId: 'loam', rarity: 'common', palette: ['#3a3226', '#6b5c42', '#a5936c'], facets: 5, shimmer: 'none', source: 'combat', flavor: 'Plate off something that objected to being dug through.' },
-  { id: 'gravemote', name: 'Gravemote', shellId: 'loam', rarity: 'common', palette: ['#2e2c33', '#54505e', '#8a8496'], facets: 4, shimmer: 'soft', source: 'combat', flavor: 'It drifts upward if you stop watching it.' },
-  { id: 'wormsilk', name: 'Wormsilk', shellId: 'loam', rarity: 'rich', palette: ['#3c3830', '#6e6753', '#ada183'], facets: 6, shimmer: 'soft', source: 'combat', flavor: 'Stronger than it should be. Damp forever.' },
-  { id: 'burrowertooth', name: "Burrower's Tooth", shellId: 'loam', rarity: 'rich', palette: ['#42392c', '#7a6a4e', '#bda87c'], facets: 6, shimmer: 'none', source: 'combat', flavor: 'Curved for going forward. Only forward.' },
-  { id: 'marrowglass', name: 'Marrowglass', shellId: 'loam', rarity: 'pure', palette: ['#443c33', '#7d7059', '#c4b494'], facets: 8, shimmer: 'crystalline', source: 'combat', flavor: 'Grown in the middle of something alive. It remembers a pulse.' },
-  { id: 'taproot', name: "Tapmother's Root", shellId: 'loam', rarity: 'flawless', palette: ['#33402c', '#5c744e', '#94b581'], facets: 9, shimmer: 'crystalline', source: 'combat', flavor: 'Cut from the Warden of the Loam floor. It is still growing, slowly.' },
+  // 26 of these remain, across the six shells below. They are UNOBTAINABLE and
+  // ledgered as such — re-sourcing them is a shell-wide ruling, not this pass.
   { id: 'scalebackplate', name: 'Scaleback Plate', shellId: 'ferrite', rarity: 'common', palette: ['#2c3138', '#4e5865', '#7f8fa3'], facets: 5, shimmer: 'none', source: 'combat', flavor: 'Armor that grew, was shed, and is now yours.' },
   { id: 'ironsinew', name: 'Ironsinew', shellId: 'ferrite', rarity: 'rich', palette: ['#32302e', '#5c5754', '#948d87'], facets: 6, shimmer: 'soft', source: 'combat', flavor: 'Flexes once per day, whether you use it or not.' },
   { id: 'voltgland', name: 'Voltgland', shellId: 'ferrite', rarity: 'rich', palette: ['#2c3440', '#4c6078', '#7f9fc2'], facets: 7, shimmer: 'soft', source: 'combat', flavor: 'Handle with dry gloves, or briefly.' },
@@ -574,6 +617,64 @@ export function rollRarity(depth: number, rng: () => number = Math.random): Mate
 }
 
 /**
+ * THE REMAINS ARE IN A PLACE, NOT IN THE POOL (A.84).
+ *
+ * How far from a station its remains reach, and what share of the drops inside
+ * that window come up as them.
+ *
+ * SIZED AGAINST THE THING IT MUST NOT DO. This is a SUBSTITUTION, exactly like
+ * THE ASSAY CALL below it: one unit in, one unit out, at a roll that had
+ * already happened. It cannot change the drop chance, the number of drops, or
+ * the charge that paid for them — so no value of either constant reaches
+ * `dpsMax`, and pillar 2 holds structurally rather than by tuning. What the
+ * SHARE buys is how much of a narrow depth band's drops are the local remains
+ * instead of the local rock; what the REACH buys is how narrow.
+ *
+ * 4 and 0.35 make each seamed station about nine depths of the hundred and
+ * fifty, so a stone stays a thing you go somewhere for.
+ */
+export const REMAINS_REACH = 4;
+export const REMAINS_SHARE = 0.35;
+
+/**
+ * The live values, in one mutable object so a sim ARM can turn the mechanism
+ * off without a second binary. `--remains-share 0` reproduces the drop table
+ * exactly as it was before A.84 — a baseline measured by the same code as the
+ * treatment, which is the only kind this project accepts (PILLARS, A.42).
+ */
+export const REMAINS_TUNING = { reach: REMAINS_REACH, share: REMAINS_SHARE };
+
+/**
+ * The remains a station within reach of this depth holds — read off the
+ * AUTHORED station list, never off save state, so `rollDrop` stays pure and a
+ * plain sweep of the drop table can find them.
+ *
+ * The authored `seams` pool is a geological fact about the place ("the rock
+ * around The Sag holds one of these"); WHICH of them the station is featuring
+ * this run is the §1.1 re-roll, and that is a different question this does not
+ * ask. A remains stone still answers to its own RARITY GATE, so being near the
+ * place is necessary and never sufficient — Marrowglass is at Sinter Row and
+ * Sinter Row is at depth 60, but pure does not open until 40 either way.
+ *
+ * Only Loam has an authored Roll, which is exactly why this pass fixes Loam and
+ * ledgers the other six shells: remains need a geography to be in.
+ */
+export function remainsAt(shellId: string, depth: number): MaterialDef[] {
+  if (shellId !== 'loam') return [];
+  const out: MaterialDef[] = [];
+  for (const st of loamRoll()) {
+    if (Math.abs(st.depth - depth) > REMAINS_TUNING.reach) continue;
+    for (const id of st.remains ?? []) {
+      const def = MATERIALS.find((m) => m.id === id);
+      if (!def || def.source !== 'remains') continue;
+      if (depth < RARITY_GATES[def.rarity].minDepth) continue;
+      if (!out.includes(def)) out.push(def);
+    }
+  }
+  return out;
+}
+
+/**
  * Roll a single drop for a shell at a depth. Assumes the drop CHANCE already
  * passed — this only decides what fell out.
  */
@@ -593,9 +694,24 @@ export function rollDrop(
     }
   }
   const rarity = rollRarity(depth, rng) ?? 'common';
-  // Combat-only materials never come out of the rock.
+  /**
+   * THE REMAINS, BEFORE THE POOL. Near a station that holds them, this share of
+   * drops comes up as what is buried there instead of what the rarity table
+   * would have handed over. It SUBSTITUTES — the drop already happened, and one
+   * stone still comes out — so it adds materials without adding throughput.
+   *
+   * Note this reads the depth it was PASSED, which for an ore pocket is
+   * `state.depth + depthBonus`. That is deliberate and reads correctly: a table
+   * rolled deeper reaches the deeper place too.
+   */
+  const remains = remainsAt(shellId, depth);
+  if (remains.length > 0 && rng() < REMAINS_TUNING.share) {
+    const def = remains[Math.floor(rng() * remains.length)]!;
+    return { kind: 'material', materialId: def.id, purity: rollPurity(def.rarity, rng) };
+  }
   // Combat-only materials never come out of the rock, and neither do WORKED
-  // ones — those are made at a bench, not found in a seam.
+  // ones — those are made at a bench, not found in a seam. REMAINS are out of
+  // this pool too: they have their own route above, which is a place.
   const pool = MATERIALS.filter((m) => m.shellId === shellId && m.rarity === rarity && !m.source && !m.worked);
   const def = pickFavoured(pool, favoured, rng) ?? FALLBACK_DROP;
   return { kind: 'material', materialId: def.id, purity: rollPurity(def.rarity, rng) };

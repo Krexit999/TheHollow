@@ -36,12 +36,53 @@ export interface StationDef {
    * where you find one of the same short list, and never a surprise.
    */
   seams?: string[];
+  /**
+   * WHAT IS BURIED HERE — and it is a SEPARATE FIELD from `seams` on purpose.
+   *
+   * The first cut put the remains in `seams`, which broke a rule that was right:
+   * the re-roll band is two or three candidates because a station whose contents
+   * swing widely stops meaning anything (§45.1 risk 3), and `roll.test.ts`
+   * enforces it. Five candidates at The Sag failed that test, correctly.
+   *
+   * They are different things. A SEAM is what this place is featuring THIS RUN
+   * and it re-rolls at every Collapse. REMAINS are what is in the ground here,
+   * permanently — the Tapmother's roots do not move because the shaft fell in.
+   * So the re-roll never touches this, and `remainsAt` never reads `seams`.
+   */
+  remains?: string[];
   /** One line the row can show when it is legible. */
   line?: string;
 }
 
 /** Stations a player passes but which hold no seam: their contents are the place. */
 const NO_SEAM: string[] = [];
+
+/**
+ * THE REMAINS ARE SEAMED HERE, AND THIS IS THE ONLY PLACE THEY EXIST (A.84).
+ *
+ * Six Loam materials were `source: 'combat'` after combat was cut, which made
+ * them unobtainable by any route in the game. They are not in the rarity pool
+ * — dropping them in would have thinned Loam's four commons and three riches
+ * by a third, and those are the stones the tier-II floor recipe and the whole
+ * shallow chain board are made of. They are in PLACES instead: `remainsAt` in
+ * materials.ts reads the `remains` lists below and substitutes a share of the
+ * drops within four depths of the station.
+ *
+ * So a seam entry here is now load-bearing rather than decorative — it is the
+ * ONLY thing that makes these six drop. Which is also why the material audit
+ * had to learn to skip this file: naming a stone in a place you FIND it is the
+ * opposite of consuming it, and counting it as a consumer is a fake rescue.
+ *
+ *   chitinshard   The Sag 17 · Marlgate 40      buried under a slow roof-fall
+ *   gravemote     Kiln Yard 9 · The Ashfall 72  it drifts, so it is where dust hangs
+ *   wormsilk      The Sag 17 · The Undersill 28 damp forever, so: the damp places
+ *   burrowertooth The Undersill 28 · Long Cut 47 something bored that shortcut
+ *   marrowglass   Sinter Row 60 · Umberdeep 90  cooked once already; vitrified
+ *   taproot       DEEPGRAVE 150                 her roots, and only at the floor
+ *
+ * Every one still answers to its RARITY GATE, so Marrowglass (pure, gate 40)
+ * cannot come up at a shallower station even if one seamed it.
+ */
 
 export const LOAM_ROLL: StationDef[] = [
   {
@@ -51,17 +92,17 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'kilnyard', depth: 9, name: 'Kiln Yard', type: 'wreck', wreck: 'THE KILN',
-    seams: ['ochre', 'bonechalk'],
+    seams: ['ochre', 'bonechalk'], remains: ['gravemote'],
     line: 'Somebody fired brick here until they stopped.',
   },
   {
     id: 'sag', depth: 17, name: 'The Sag', type: 'seam',
-    seams: ['bonechalk', 'graveclay', 'marl'],
+    seams: ['bonechalk', 'graveclay', 'marl'], remains: ['chitinshard', 'wormsilk'],
     line: 'The roof came down slowly enough that they kept working under it.',
   },
   {
     id: 'undersill', depth: 28, name: 'The Undersill', type: 'wreck', wreck: 'A DRILL',
-    seams: ['graveclay', 'loamiron'],
+    seams: ['graveclay', 'loamiron'], remains: ['wormsilk', 'burrowertooth'],
     line: 'Under the sill, where things roll to and are not fetched back.',
   },
   /**
@@ -84,7 +125,7 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'marlgate', depth: 40, name: 'Marlgate', type: 'chamber',
-    seams: ['marl', 'graveclay', 'rootglass'],
+    seams: ['marl', 'graveclay', 'rootglass'], remains: ['chitinshard'],
     line: 'A room, and the marl worked into a gate that shuts on nothing.',
   },
   {
@@ -94,17 +135,17 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'longcut', depth: 47, name: 'The Long Cut', type: 'wreck', wreck: 'CRUSHER',
-    seams: ['loamiron', 'duskflint'],
+    seams: ['loamiron', 'duskflint'], remains: ['burrowertooth'],
     line: 'A shortcut that took longer than the way round.',
   },
   {
     id: 'sinterrow', depth: 60, name: 'Sinter Row', type: 'wreck', wreck: 'REFINERY',
-    seams: ['loamiron', 'duskflint', 'rootglass'],
+    seams: ['loamiron', 'duskflint', 'rootglass'], remains: ['marrowglass'],
     line: 'Everything here has been cooked once already.',
   },
   {
     id: 'ashfall', depth: 72, name: 'The Ashfall', type: 'hazard',
-    seams: ['duskflint', 'bonechalk'],
+    seams: ['duskflint', 'bonechalk'], remains: ['gravemote'],
     line: 'Dust that has not settled in a hundred years and is in no hurry.',
   },
   {
@@ -114,7 +155,7 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'umberdeep', depth: 90, name: 'Umberdeep', type: 'seam',
-    seams: ['umberjade', 'hollowamber'],
+    seams: ['umberjade', 'hollowamber'], remains: ['marrowglass'],
     line: 'Deep enough that the good stone stops being a rumour.',
   },
   {
@@ -145,7 +186,7 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'deepgrave', depth: 150, name: 'DEEPGRAVE', type: 'floor',
-    seams: ['sablequartz', 'starmarl'],
+    seams: ['sablequartz', 'starmarl'], remains: ['taproot'],
     line: 'The floor of this world. It sounds hollow underfoot.',
   },
 ];
