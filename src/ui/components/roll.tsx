@@ -22,6 +22,7 @@ import { rollRows, floorRow, FEATURE_LABEL, type RollRow } from '../../engine/sy
 import { TYPE_LABEL } from '../../engine/content/shell1/roll';
 import { materialDef } from '../../engine/materials';
 import { effectiveToolTier } from '../../engine/systems/toolMining';
+import { isShored } from '../../engine/systems/shoring';
 import { DEEPWROUGHT_NAME } from '../../engine/systems/standoff';
 import type { GameState } from '../../engine';
 
@@ -77,7 +78,7 @@ function contentsLine(row: RollRow, tier: number): { text: string; tone: string 
  * engine one: `legible` stays false for the floor, because the fog over its
  * contents is real.
  */
-function StationRow({ row, tier, pinned }: { row: RollRow; tier: number; pinned?: boolean }) {
+function StationRow({ row, tier, pinned, shored }: { row: RollRow; tier: number; pinned?: boolean; shored?: boolean }) {
   const t = TYPE_LABEL[row.type];
   const tone = TYPE_TONE[row.type] ?? 'text-cave-400';
 
@@ -120,6 +121,17 @@ function StationRow({ row, tier, pinned }: { row: RollRow; tier: number; pinned?
       <span className={`min-w-0 flex-1 truncate font-semibold ${row.current ? 'text-lamp-200' : 'text-cave-200'}`}>
         {row.def.name}
       </span>
+      {/*
+        A TIMBERED BAND IS MARKED ON THE ROLL ITSELF (§9.4). The Roll is where
+        you read what a station holds, so it has to be where you read that this
+        one will never hold anything else — otherwise the price of the drift is
+        only legible on the screen that sold it to you.
+      */}
+      {shored && (
+        <span className="shrink-0 text-[10px] text-[#c9a86a]" title="timbered — the fall drops through it, and its contents never re-roll">
+          ⌸
+        </span>
+      )}
       {row.def.hardness !== undefined && (
         <span className="tnum shrink-0 text-[10px] text-cave-500">h{row.def.hardness}</span>
       )}
@@ -152,7 +164,9 @@ export function RollPanel() {
           screen's column, and a list you have to scroll to see the floor of is
           not a list of where you are going — it is a menu. */}
       <div className="overflow-x-hidden">
-        {listed.map((r) => <StationRow key={r.def.id} row={r} tier={tier} />)}
+        {listed.map((r) => (
+          <StationRow key={r.def.id} row={r} tier={tier} shored={isShored(state as GameState, r.def.id)} />
+        ))}
       </div>
       {floor && (
         /* PINNED FROM THE MOMENT YOU ENTER THE SHELL. You always know where the

@@ -8,6 +8,8 @@ import { registerModifier } from '../../modifiers';
 import { registerUpgrade, stat, upgradeLevel } from '../../upgrades';
 import type { GameState } from '../../types';
 import { newDrill, defaultDrillName, MAX_DRILLS } from '../../systems/drills';
+import { rigFound } from '../../systems/shoring';
+import { ensureRoll } from '../../systems/roll';
 
 const hasKiln = (s: GameState) => s.kiln.built;
 const hasBay = (s: GameState) => s.drills.bayBuilt;
@@ -207,6 +209,37 @@ export function registerShell1Upgrades(): void {
       'Sand moulds, a crucible, and a chimney borrowed from the Kiln. The ore you keep finding wants shaping.',
     onPurchase: (s) => {
       s.forge.built = true;
+    },
+  });
+  /**
+   * THE SHORING RIG (§9.4) — found in the wreck at Shoring Deep, raised with
+   * Brick, and it never falls again.
+   *
+   * The established pattern for every machine in this shell: the Roll shows you
+   * the wreck, walking to it makes it yours, and a repair price turns it back
+   * on (§23's cracked kiln at depth 9, seized drill at 28). So the gate is a
+   * PLACE you walked to, not a count — LAW 9's "do it once under a condition",
+   * and the condition is the one the geography already authored.
+   *
+   * It sits at depth 120, which is AFTER Loam's last wall (THE KNOT, 109), so
+   * the standing rule holds: this is not a structural unlock gated behind the
+   * wall it exists to cross. It cannot be — it crosses no wall. It removes a
+   * TAX, and the tax it removes is the Collapse re-walk, which is worst
+   * precisely at the depths you have to be at to find it.
+   */
+  registerUpgrade({
+    id: 'shoringRig',
+    name: 'Raise the Shoring Rig',
+    currency: 'CONV',
+    baseCost: D(400),
+    ratio: 1,
+    maxLevel: 1,
+    resetsOnCollapse: false,
+    visible: (s) => rigFound(s),
+    description: () => 'A winch, a saw bench and four hundred feet of prop timber, all of it still where it fell. With it standing you can timber a band so it never has to be walked again.',
+    onPurchase: (s) => {
+      ensureRoll(s);
+      s.roll!.rig = true;
     },
   });
   registerUpgrade({

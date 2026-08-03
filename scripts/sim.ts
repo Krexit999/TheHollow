@@ -38,6 +38,9 @@ import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { REMAINS_TUNING } from '../src/engine/materials';
 import {
+  bands, driftDepth, isShored, shoreBlocker, shoreCost, shoringUnlocked,
+} from '../src/engine/systems/shoring';
+import {
   activeConfluences, CONFLUENCE_BY_ID, CONFLUENCE_RANK_CAP, confluenceSlotCap,
 } from '../src/engine/systems/confluence';
 import { serialize } from '../src/engine/save/codec';
@@ -114,6 +117,9 @@ interface Args {
   /** THE REMAINS (A.84). 0 reproduces the pre-A.84 drop table exactly, so the
    *  baseline arm is this same binary one flag apart. */
   remainsShare: number;
+  /** SHORING (§9.4). The BASELINE arm is this same binary with the flag off —
+   *  the policy simply never shores, and nothing in the engine changes. */
+  shore: boolean;
   /**
    * THE HAND. `fullest` is the greedy policy every prior run used; it spreads
    * strokes across the whole board, which is the worst possible model for a
@@ -172,6 +178,7 @@ function parseArgs(): Args {
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
     remainsShare: Number(get('remains-share') ?? REMAINS_TUNING.share),
+    shore: argv.includes('--shore'),
   };
 }
 
@@ -203,6 +210,12 @@ const forkTrack = { t45: 0, t110: 0, t150: 0, packedPeak: 0 };
 const deepFirst: Record<string, number> = { umberjade: 0, graveclaydeep: 0, deepgrave: 0 };
 /** Set by main. See `Args.holdEmulate` — this emulates an UNBUILT mechanic. */
 let holdEmulate = false;
+/** Set by main. SHORING (§9.4): the policy timbers bands only when this is on,
+ *  which is the whole difference between the two arms. */
+let shorePolicy = false;
+/** How dear a band the shoring policy will save up for. Past this it spends the
+ *  Brick on the plant instead — see `convReserve`. */
+const SHORE_REACH = 4000;
 /** Set by main when either A.75 drill-axis flag is off its default. */
 let drillAxes: { behaviour: 'fullest' | 'sweep' | 'chain'; bar: number } | null = null;
 
@@ -281,6 +294,24 @@ const cadence = {
   spentOnDescent: 0,
   rows: [] as Array<{ len: number; earned: number; descent: number; iMean: number; iFinal: number }>,
 };
+
+/**
+ * WHAT FRACTION OF A COLLAPSE RE-COVERS GROUND ALREADY WALKED (§9.4).
+ *
+ * The number shoring exists for, and the one the phase is judged on. A descend
+ * step is RE-COVER when its target is at or under the shell depth record — the
+ * player has stood there before, and is paying and walking to stand there again.
+ *
+ * Steps and dust are counted apart because the drift moves them differently: it
+ * removes the steps outright (the fall does not go through the stair at all),
+ * and the steps it leaves are the shallow cheap ones, so the dust share falls
+ * further than the step share. Both are printed.
+ */
+const recover = { steps: 0, reSteps: 0, dust: 0, reDust: 0, falls: 0, driftMax: 0 };
+/** The same four counters, restricted to steps taken while a drift EXISTS —
+ *  the honest "after" within one run, since the rig arrives two thirds of the
+ *  way through a Loam arc and the whole-run figure is mostly the before. */
+const recoverPost = { steps: 0, reSteps: 0, dust: 0, reDust: 0, removed: 0, runs: 0 };
 
 const rtp = {
   /**
@@ -909,6 +940,61 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   const s = engine.getState() as GameState;
   mods.invalidate();
 
+  /**
+   * SHORING (§9.4) — the treatment arm's only behavioural difference.
+   *
+   * Raise the rig the moment the wreck at Shoring Deep has been walked to, then
+   * timber the SHALLOWEST untimbered band, one per shop tick, whenever it costs
+   * under half the Brick bank. Shallowest-first is not a preference, it is the
+   * mechanic: drifts chain, so a band bought out of order extends the fall by
+   * nothing (`strandedDrifts`).
+   *
+   * The half-bank slice is the same shape as `buyIfUnder` uses for every other
+   * Brick sink, so shoring competes with field expansion the way a player's
+   * Brick actually has to.
+   */
+  if (shorePolicy) {
+    const rigDef = allUpgrades().find((u) => u.id === 'shoringRig')!;
+    if (upgradeLevel(s, 'shoringRig') === 0 && rigDef.visible?.(s)) {
+      if (engine.dispatch({ type: 'buyUpgrade', id: 'shoringRig' }).ok) log('raised the shoring rig');
+    }
+    if (shoringUnlocked(s)) {
+      /**
+       * POUR THE PROPS. §9.4 prices a band in Brick AND CAST PARTS, and this
+       * harness has never poured a part in its life — `casting.rack` is empty in
+       * every run in this project's history, which is why the first shoring arm
+       * came out bit-identical to its baseline with the rig standing and not one
+       * band timbered. The policy could not pay half the price.
+       *
+       * So the treatment arm melts a common and pours a head when the rack is
+       * short, through the same two dispatches the Casting Floor uses. It is
+       * still one flag apart: without `--shore` none of this runs and the
+       * baseline is the harness exactly as it was.
+       */
+      if ((s.casting.rack?.length ?? 0) < 4) {
+        // A MELT TAKES TIME. The first cut charged and poured in the same tick
+        // and every pour came back "the tub is empty" — `frontCharge` is only
+        // ready after `tickCasting` has run it down, so this pours what is ready
+        // and otherwise charges, one step per shop tick.
+        if (!engine.dispatch({ type: 'castPart', partType: 'head' }).ok) {
+          for (const id of ['marl', 'ochre', 'bonechalk', 'graveclay']) {
+            if (materialCount(s, id) < 6) continue;
+            if (engine.dispatch({ type: 'chargeCrucible', materialId: id, units: 3 }).ok) break;
+          }
+        }
+      }
+      const next = bands(s).find((b) => !isShored(s, b.def.id));
+      if (next && shoreBlocker(s, next.def.id) === null) {
+        const cost = shoreCost(s, next.def.id)!;
+        if ((s.currencies[convCurrencyId(s)] ?? D(0)).gte(cost.brick)) {
+          if (engine.dispatch({ type: 'shoreBand', stationId: next.def.id }).ok) {
+            log(`shored ${next.def.name} (${next.from}-${next.to}m) — drift now ${driftDepth(s)}m`);
+          }
+        }
+      }
+    }
+  }
+
   // Structures first — they are the unlocks.
   for (const id of ['kilnBuild', 'bayBuild', 'forgeBuild']) {
     const def = allUpgrades().find((u) => u.id === id)!;
@@ -920,7 +1006,44 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   // Chip/conv upgrades: spend if a level costs under a slice of the bank.
   // Currency resolves per shell — the same policy plays Loam and Ferrite.
   const dust = () => s.currencies[chipCurrencyId(s)]!;
-  const brick = () => s.currencies[convCurrencyId(s)]!;
+  /**
+   * A RESERVE, NOT A LATCH — the same fix `unlockReserve` needed in the descend
+   * policy (A.43), for the same failure and one currency over.
+   *
+   * The first run of the shoring arm bought NOTHING: the rig is 400 Brick, and
+   * every tick `buyIfUnder` had already drained the bank into Blade/Soil/
+   * expand, so the bank never once sat at 400 and the treatment arm came out
+   * bit-identical to the baseline. That is the policy refusing something it can
+   * plainly afford over any two minutes — a harness bug, and it would have been
+   * reported as "shoring changes nothing".
+   *
+   * So while the rig is visible and unbought, the other Brick sinks see a bank
+   * with its price held back. Off entirely without `--shore`, so the baseline
+   * arm is untouched.
+   */
+  const convReserve = (): Decimal => {
+    if (!shorePolicy) return D(0);
+    const def = allUpgrades().find((u) => u.id === 'shoringRig')!;
+    if (upgradeLevel(s, 'shoringRig') === 0) return def.visible?.(s) ? def.baseCost : D(0);
+    /**
+     * AND THEN THE NEXT BAND, up to an AFFORDABILITY HORIZON.
+     *
+     * Uncapped this would freeze the whole Brick economy forever the moment the
+     * next band is a deep one: a band at 110–120m costs ~700k Brick against a
+     * Loam arc that ends holding tens, so the policy would stop buying drill
+     * chassis in order to save for something it will never reach. `SHORE_REACH`
+     * is the point past which a human stops saving and spends — and how far the
+     * arm actually got is a RESULT, not an assumption, so it is reported.
+     */
+    const next = bands(s).find((b) => !isShored(s, b.def.id));
+    if (!next || !shoringUnlocked(s)) return D(0);
+    const cost = shoreCost(s, next.def.id)?.brick ?? D(0);
+    return cost.lte(SHORE_REACH) ? cost : D(0);
+  };
+  const brick = () => {
+    const free = s.currencies[convCurrencyId(s)]!.sub(convReserve());
+    return free.gt(0) ? free : D(0);
+  };
   const buyIfUnder = (id: string, bank: () => Decimal, slice: number) => {
     const def = allUpgrades().find((u) => u.id === id)!;
     if (def.visible && !def.visible(s)) return;
@@ -1045,8 +1168,20 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   ) {
     mods.invalidate();
     const paid = effectiveDescendCost(s, mods).toNumber();
+    // RE-COVER (§9.4): is the step about to be taken into ground already walked?
+    // The record is the whole test — you have stood there, and here you are
+    // paying and walking to stand there again.
+    const already = s.depth + 1 <= (s.depthRecords[s.shell.current] ?? 0);
     if (!engine.dispatch({ type: 'descend' }).ok) break;
     cadence.spentOnDescent += paid; // what the stair actually took
+    recover.steps += 1;
+    recover.dust += paid;
+    if (already) { recover.reSteps += 1; recover.reDust += paid; }
+    if ((s.shaft.drift ?? 0) > 0) {
+      recoverPost.steps += 1;
+      recoverPost.dust += paid;
+      if (already) { recoverPost.reSteps += 1; recoverPost.reDust += paid; }
+    }
   }
 
   // Collapse when the yield is worth the reset — the bar rises with lifetime
@@ -1133,6 +1268,14 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     const holdBefore = holdEmulate ? holdFloor(s) : 0;
     if (engine.dispatch({ type: 'collapse' }).ok) {
       if (holdBefore > 0) resetCompaction(s, holdBefore);
+      // THE FALL (§9.4): where the Collapse put the run down. 0 without drifts,
+      // so the baseline arm reports nothing new.
+      if (s.depth > 0) {
+        recover.falls += 1;
+        recover.driftMax = Math.max(recover.driftMax, s.depth);
+        // TRAVEL REMOVED: the steps the fall did not have to take.
+        recoverPost.removed += s.depth;
+      }
       noteRtpCollapse(currentShell(s).id, peak, s.stats.playTimeSec);
       {
         const now = s.stats.playTimeSec;
@@ -1277,6 +1420,7 @@ function main(): void {
   HOLD_TUNING.cap = args.holdCap;
   REMAINS_TUNING.share = args.remainsShare;
   holdEmulate = args.holdEmulate;
+  shorePolicy = args.shore;
   if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
     drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };
   }
@@ -1927,6 +2071,37 @@ function main(): void {
           `I_final/I_mean = ${g.toFixed(2)}x | share of earnings spent on the stair ` +
           `f = ${(f * 100).toFixed(0)}% | model x growth / share = ` +
           `${(12 * g / Math.max(f, 1e-9)).toFixed(1)}m`,
+      );
+    }
+    /**
+     * THE NUMBER SHORING EXISTS FOR (§9.4, roadmap item 14). Printed on every
+     * run, with or without the flag, so the two arms are the same line read
+     * twice rather than a measurement that only exists in the treatment.
+     */
+    {
+      const pc = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : '—');
+      console.error(
+        `recover: ${pc(recover.reSteps, recover.steps)} of descend steps ` +
+          `(${recover.reSteps}/${recover.steps}) | ${pc(recover.reDust, recover.dust)} of descend dust | ` +
+          `falls through a drift ${recover.falls}, deepest ${recover.driftMax}m`,
+      );
+      /**
+       * AND THE HALF THE SHARE CANNOT SAY.
+       *
+       * Once a run stops setting records the SHARE is 100% by construction —
+       * every step of a repeat climb is re-cover — so the share alone reads as
+       * "shoring did nothing" while the drift is busy deleting a third of the
+       * climb. What a drift actually does is REMOVE TRAVEL, so the honest
+       * companion measure is steps per Collapse and the steps the falls did not
+       * have to take. The share says how much of the descent is re-walk; this
+       * says how much of the re-walk went away.
+       */
+      const runs = Math.max(1, cadence.rows.length);
+      console.error(
+        `recover: ${(recover.steps / runs).toFixed(1)} descend steps per Collapse | ` +
+          `drift removed ${recoverPost.removed} steps over ${recover.falls} falls | ` +
+          `share once a drift stands ${pc(recoverPost.reSteps, recoverPost.steps)} ` +
+          `(100% is expected — a repeat climb is re-cover by definition)`,
       );
     }
   }

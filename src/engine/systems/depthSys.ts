@@ -29,6 +29,7 @@ import { effectiveToolTier } from './toolMining';
 import { currentShell } from '../shells';
 import { lawFlag, lawNum, challengeNum } from '../laws';
 import { descendMultiplier, noteReached, clearDigStop } from './shaftSys';
+import { driftDepth } from './shoring';
 import { settleRelief, spendSettle } from './settle';
 
 
@@ -64,7 +65,15 @@ export function descend(state: GameState, mods: ModifierCache, ctx: EngineCtx): 
 
   // THE SHAFT: re-treading rock you have already cleared this run is free, and
   // the wall down there is already broken — walk back down without paying.
-  const mult = descendMultiplier(state, state.depth + 1);
+  //
+  // A DRIFT (§9.4) is the same thing made permanent: timbered rock, free in
+  // either direction, for as long as you leave the props in. After a Collapse
+  // the fall has already set `shaft.reached` to the drift floor so the line
+  // above covers it; this line is what makes a band you shored MID-RUN free to
+  // walk down to without waiting for the next fall.
+  const mult = state.depth + 1 <= driftDepth(state)
+    ? 0
+    : descendMultiplier(state, state.depth + 1);
   if (mult === 0) return finishDescend(state, mods, ctx);
 
   // The rock hardens with depth. It is a PRICE, never a door — see below.
@@ -161,7 +170,18 @@ function finishDescend(state: GameState, mods: ModifierCache, ctx: EngineCtx): A
   // NEW GROUND is anything past the run's cleared floor. Re-treading cleared
   // rock (a free step back down after climbing) is movement, not progress: it
   // pays no XP and does not count as a descent, so climb+descend cannot farm.
-  const newGround = state.depth + 1 > state.shaft.reached;
+  /**
+   * NEW GROUND is anything past the run's cleared floor — and past the DRIFT.
+   *
+   * Without the second half, a band shored mid-run pays XP and a `descents`
+   * tick for every step of a free walk down it, once per newly-timbered band.
+   * Small, repeatable, and exactly the shape of faucet this codebase keeps
+   * finding after the fact, so it is closed at the seam rather than argued
+   * about. The Collapse fall is already covered: it sets `shaft.reached` to
+   * the drift floor, so `reached` alone would do — this is belt and braces for
+   * the one path that does not go through the fall.
+   */
+  const newGround = state.depth + 1 > Math.max(state.shaft.reached, driftDepth(state));
   state.depth += 1;
   noteReached(state); // extend the run's cleared floor if this is new ground
   clearDigStop(state); // arriving somewhere new frees the next excavation shift

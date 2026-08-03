@@ -53,6 +53,14 @@ export interface RollState {
   cleared: string[];
   /** WRECK stations looted. PERMANENT; a looted wreck reads as a WORKS. */
   looted: string[];
+  /**
+   * BANDS SHORED (§9.4). PERMANENT — this is the drift, and surviving the
+   * Collapse is the entire mechanic. It is also what `rerollRoll` skips: a
+   * shored band's contents are frozen, which is the price §1.1 names.
+   */
+  shored?: string[];
+  /** THE SHORING RIG is standing. Found at a wreck, raised with Brick. */
+  rig?: boolean;
   /** How many times the contents have been re-rolled. Lets the UI (and a test)
    *  tell "it rolled the same thing" apart from "it never rolled". */
   rolls: number;
@@ -92,6 +100,7 @@ export function ensureRoll(state: GameState, rng: () => number = Math.random): v
   r.rolled ??= {};
   r.cleared ??= [];
   r.looted ??= [];
+  r.shored ??= [];
   r.rolls ??= 0;
   for (const def of shellRoll(state)) {
     if (!r.rolled[def.id]) r.rolled[def.id] = rollOne(def, rng);
@@ -106,7 +115,23 @@ export function ensureRoll(state: GameState, rng: () => number = Math.random): v
 export function rerollRoll(state: GameState, rng: () => number = Math.random): void {
   ensureRoll(state, rng);
   const r = state.roll!;
-  for (const def of shellRoll(state)) r.rolled[def.id] = rollOne(def, rng);
+  for (const def of shellRoll(state)) {
+    /**
+     * A SHORED BAND DOES NOT RE-ROLL (§9.4, §1.1). This is the price of the
+     * drift and the reason shoring is a decision rather than an upgrade: you
+     * have traded a permanent seam for a permanent shortcut, and the answer
+     * depends entirely on whether this band's current roll is one worth
+     * keeping. §8's bottleneck — "I froze a seam I didn't want" — is exactly
+     * this line, and `unshoreBand` is its authored answer.
+     *
+     * Deliberately here and not in `rollOne`: the exemption belongs to the
+     * COLLAPSE, so `ensureRoll` still populates a shored station that has never
+     * rolled at all (a save from before shoring existed, or a shell authored
+     * later), and no station can end up permanently blank.
+     */
+    if (r.shored?.includes(def.id)) continue;
+    r.rolled[def.id] = rollOne(def, rng);
+  }
   r.rolls += 1;
 }
 

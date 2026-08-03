@@ -59,6 +59,10 @@ export interface CacheSlot {
 export interface ShaftState {
   /** Deepest depth reached since the last Collapse. New ground past this pays. */
   reached: number;
+  /** THE DRIFT FLOOR this run started at (§9.4) — depth the shoring HANDED you
+   *  rather than depth you covered. 0 without the rig. `shaftPeak` will not pay
+   *  Cores on it; everything else treats it as ordinary cleared rock. */
+  drift?: number;
   /** Rail extent per shell id — the deepest railed depth. SURVIVES Collapse. */
   rail: Record<string, number>;
   /** A bounded record of what happened where, newest last. For the view. */
@@ -91,7 +95,7 @@ export interface ShaftState {
 
 export function defaultShaftState(): ShaftState {
   return {
-    reached: 0, rail: {}, scars: [], caches: [], lift: {}, curesFound: [],
+    reached: 0, drift: 0, rail: {}, scars: [], caches: [], lift: {}, curesFound: [],
     curesHinted: [], digs: {}, lastDigDepth: -1,
     settle: 0, settleChips: 0, settleQuietSec: 0,
   };
@@ -109,9 +113,22 @@ export const RAIL_DISCOUNT = 0.5;
 export const RAIL_CORE_PER_DEPTH = 0.5;
 const SCAR_CAP = 120; // the wall only holds so many marks; oldest fade
 
-/** The deepest point this run — what a Collapse pays out on. */
+/**
+ * The deepest point this run — what a Collapse pays out on.
+ *
+ * A DRIFT IS NOT AN ACHIEVEMENT (A.86). Shoring starts a run at the bottom of
+ * your own tunnel, and that ground was bought once already; paying Cores on it
+ * again would make Collapse → fall → Collapse an infinite faucet at literally
+ * zero cost, which is the one way the fast-forward could break the ladder.
+ *
+ * So a run that never goes past its own drift has covered nothing and pays
+ * nothing. One step past it and the payout is exactly what it always was —
+ * `shaft.drift` is 0 for every player without the rig and for every save from
+ * before it existed, so this line is bit-identical for them.
+ */
 export function shaftPeak(state: GameState): number {
-  return Math.max(state.depth, state.shaft.reached);
+  const peak = Math.max(state.depth, state.shaft.reached);
+  return peak > (state.shaft.drift ?? 0) ? peak : 0;
 }
 
 /** Rail extent for the current shell (0 if none). */
@@ -128,6 +145,9 @@ export function railDepth(state: GameState): number {
  */
 export function descendMultiplier(state: GameState, targetDepth: number): number {
   if (targetDepth <= state.shaft.reached) return 0; // already cleared — walk down free
+  // A DRIFT is also free (§9.4) — but that check lives in `depthSys.descend`,
+  // not here: `shoring.ts` reads the Roll and this module is imported by four
+  // systems that must stay above it in the graph. One direction, no cycle.
   if (targetDepth <= railDepth(state)) return RAIL_DISCOUNT; // the rail carries you
   return 1;
 }
@@ -140,6 +160,9 @@ export function noteReached(state: GameState): void {
 /** Reset the run column on Collapse. The RAIL is NOT touched — it is the point. */
 export function resetShaftRun(state: GameState): void {
   state.shaft.reached = 0;
+  // The drift floor is re-established by `fallThroughDrifts` immediately after,
+  // so it is cleared here rather than carried: a run with no drifts must read 0.
+  state.shaft.drift = 0;
 }
 
 // ---------------------------------------------------------------------------

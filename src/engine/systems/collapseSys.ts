@@ -23,6 +23,7 @@ import { note } from './reading';
 import { clampPacked, holdFloor } from './shopFork';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
+import { fallThroughDrifts } from './shoring';
 
 /** Levels every resetting face upgrade is kept AT through a Collapse (the floor
  *  the fall leaves behind): 4 per Momentum core-node rank, or the Gentle Fall
@@ -143,6 +144,17 @@ export function doCollapse(
 
   state.depth = 0;
   resetShaftRun(state); // the run's cleared floor washes; the RAIL does not
+  /**
+   * THE FAST-FORWARD (§21.1). Every shored band survived the fall, so the run
+   * does not start at the surface — it starts at the bottom of your own tunnel,
+   * instantly. `fallThroughDrifts` also records the floor it handed you, which
+   * is what keeps `shaftPeak` from paying Cores on it twice (shaftSys.ts).
+   *
+   * AFTER the depth reset and the shaft reset, never before: the peak this
+   * Collapse pays on was read at the top of this function, and the drift must
+   * not be able to touch it.
+   */
+  fallThroughDrifts(state, ctx);
   // Ember Memory core node: the kiln keeps 10% heat per level.
   state.kiln.heat = shape.heatKeep === 'node'
     ? state.kiln.heat * 0.1 * coreNodeLevel(state, 'emberMemory')

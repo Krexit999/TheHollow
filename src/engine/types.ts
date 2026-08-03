@@ -851,6 +851,10 @@ export type GameEvent =
   | { type: 'descend'; depth: number }
   | { type: 'climb'; depth: number }
   | { type: 'railExtended'; shell: string; depth: number }
+  /** SHORING (§9.4): a band timbered, a band opened again, and the fall itself. */
+  | { type: 'shored'; stationId: string; depth: number }
+  | { type: 'unshored'; stationId: string }
+  | { type: 'drift'; depth: number }
   | { type: 'cacheInstalled'; depth: number }
   | { type: 'cacheDeposited'; materialId: string; qty: number }
   | { type: 'cacheCollected'; materialId: string; qty: number; cured: boolean }
@@ -1102,6 +1106,11 @@ export type GameAction =
   | { type: 'setDrillFilter'; index: number; minCharge: number }
   /** THE PLANT (§3, §15.4). A machine tier is built from cast parts, never
    *  bought with currency; a batch is fired by hand and costs Surge. */
+  /** SHORING (§9.4). Timber a band into a permanent drift, or pull the props —
+   *  the second is the authored answer to "I froze a seam I didn't want" (§8)
+   *  and it costs the same again rather than refunding. */
+  | { type: 'shoreBand'; stationId: string }
+  | { type: 'unshoreBand'; stationId: string }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;
