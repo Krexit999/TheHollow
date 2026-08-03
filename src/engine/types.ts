@@ -676,6 +676,9 @@ export interface GameState {
   /** THE PLANT (§3): the Surge bank, machine tiers, and what Flow each machine
    *  actually got last tick. Flow CAPACITY is derived, never stored. */
   plant?: import('./systems/plant').PlantState;
+  /** THE CIRCUIT (§7.3, §25.3): per-machine condition strips, and what they
+   *  have been doing — fires per row, acts and flips per machine. */
+  circuit?: import('./systems/circuit').CircuitState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -1101,6 +1104,20 @@ export type GameAction =
    *  bought with currency; a batch is fired by hand and costs Surge. */
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
+  /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;
+   *  `index === strip.length` appends. Four rows a strip, hard. */
+  | {
+      type: 'setCircuitRow';
+      machine: import('./systems/circuit').MachineId;
+      index: number;
+      row: import('./systems/circuit').CircuitRow | null;
+    }
+  | {
+      type: 'moveCircuitRow';
+      machine: import('./systems/circuit').MachineId;
+      index: number;
+      to: number;
+    }
   | { type: 'setDrillLine'; line: import('./systems/standoff').DrillLine }
   | { type: 'beginStandoff' }
   | { type: 'exchange'; stance: import('./systems/standoff').Stance }

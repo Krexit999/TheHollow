@@ -13,6 +13,7 @@ import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip } from './systems/face';
 import { resetCompaction } from './systems/compaction';
 import { buildCrusher, crush } from './systems/crusher';
+import { setRow as setCircuitRow, moveRow as moveCircuitRow } from './systems/circuit';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -149,6 +150,23 @@ export function handleAction(
 
     case 'crush':
       return crush(state, ctx, action.materialId, action.band);
+
+    // THE CIRCUIT (§7.3). Writing a strip is a plain edit — it costs nothing,
+    // because LAW 9 forbids a toll and the price of a bad circuit is the bad
+    // circuit. Both verbs clear the fire counters for that machine: a strip you
+    // just changed has not been running, and carrying the old counts forward
+    // would make the log lie about the rules it was collected under.
+    case 'setCircuitRow': {
+      const r = setCircuitRow(state, action.machine, action.index, action.row);
+      if (r.ok) ctx.dirty();
+      return r;
+    }
+
+    case 'moveCircuitRow': {
+      const r = moveCircuitRow(state, action.machine, action.index, action.to);
+      if (r.ok) ctx.dirty();
+      return r;
+    }
 
     case 'setDrillLine':
       return setDrillLine(state, action.line);

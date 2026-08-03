@@ -128,10 +128,23 @@ export function RefineryPanel() {
           )}
           {held.map(({ id, bands }) => (
             <div key={id} className="rounded-md border border-cave-800 p-1.5">
+              {/*
+                THE NAME GETS ITS OWN LINE. This was `icon | name | bands` on one
+                row with the band group `shrink-0`, so with three or more bands
+                held the group refused to give up any width and the name — the
+                only thing here that says WHAT you are refining — truncated to
+                nothing. Rows read as anonymous piles of numbers.
+
+                A `min-w-0` on the group would only trade one clipped thing for
+                another (six band chips do not fit beside a name at 380px no
+                matter how the space is split), so the row is stacked instead:
+                the name always gets the full width, the chips wrap under it.
+              */}
               <div className="flex items-center gap-2">
-              <MaterialIcon id={id} size={20} />
-              <span className="min-w-0 flex-1 truncate text-[11px] text-cave-300">{materialDef(id).name}</span>
-              <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                <MaterialIcon id={id} size={20} />
+                <span className="min-w-0 flex-1 truncate text-[11px] text-cave-300">{materialDef(id).name}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1">
                 {bands.map(([band, n]) => {
                   const preview = refinePreview(state as GameState, id, band);
                   return (
@@ -148,7 +161,6 @@ export function RefineryPanel() {
                     </button>
                   );
                 })}
-              </div>
               </div>
               <ClimbRow state={state as GameState} id={id} />
             </div>

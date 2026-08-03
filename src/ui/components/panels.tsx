@@ -35,6 +35,7 @@ import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
 import { PlantPanel, CrusherPanel } from './plant';
+import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
 import { AssayBenchPanel, AssayCallStrip } from './assayBench';
@@ -342,6 +343,9 @@ export function KilnPanel() {
       {/* THE PLANT lives with the converter chain it powers — the Hearth IS the
           Kiln, so a separate room for it would be a room about one number. */}
       <PlantPanel />
+      {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
+          the machine list, Flow/Surge, and the Circuit). */}
+      <CircuitPanel />
       <CrusherPanel />
       {/* A Surge machine, so it sits with the plant that feeds it. */}
       <AssayBenchPanel />

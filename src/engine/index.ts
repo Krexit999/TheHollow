@@ -30,6 +30,7 @@ import { allCraftSystems } from './craft';
 import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
 import { tickPlant } from './systems/plant';
+import { tickCircuit } from './systems/circuit';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
 import { tickDrills } from './systems/drills';
@@ -184,6 +185,11 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     verdAcc += dt;
     if (verdAcc >= 1) {
       noticeConfluences(state, ctx);
+      // THE CIRCUIT (§7.3): read the strips and throw what they say. On the 1Hz
+      // block because a condition strip is a standing rule, not a frame effect —
+      // and because every action it can take is a control the player throws by
+      // hand at human speed anyway.
+      tickCircuit(state, mods, ctx, verdAcc);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

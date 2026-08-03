@@ -26,6 +26,7 @@ import { defaultCastingState } from './systems/casting';
 import { defaultShaftState } from './systems/shaftSys';
 import { defaultRollState } from './systems/roll';
 import { defaultPlantState } from './systems/plant';
+import { defaultCircuitState } from './systems/circuit';
 import { defaultStandoffState } from './systems/standoff';
 import { defaultAssayBenchState } from './systems/assayBench';
 import { defaultShopState } from './systems/shopFork';
@@ -111,6 +112,7 @@ export function initialState(nowMs: number): GameState {
     collapse: { count: 0, nodes: {}, lastRun: null, runStartAt: 0, traces: [] },
     roll: defaultRollState(),
     plant: defaultPlantState(),
+    circuit: defaultCircuitState(),
     standoff: defaultStandoffState(),
     assayBench: defaultAssayBenchState(),
     shop: defaultShopState(),
