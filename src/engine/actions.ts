@@ -29,6 +29,7 @@ import { allCraftSystems } from './craft';
 import { craftTool, craftFromParts, discardTool, socketGem, consumeMaterial, materialCount, addMaterial } from './systems/forge';
 import { ensureReading, noteCount, note, noteTally } from './systems/reading';
 import { propositionById } from './content/shell1/reading';
+import { equipGear } from './systems/gear';
 import { setSocket, type SocketFill } from './systems/toolSockets';
 import { forgeDrillAlloy, clearDrillAlloy, fireNow } from './systems/drillAlloys';
 import { digComplete, openOre, workOre } from './systems/ores';
@@ -286,6 +287,18 @@ export function handleAction(
      * unreachable or already-proved id keeps the panel honest rather than
      * letting it hold a working row that can never resolve.
      */
+    /**
+     * GEAR. The refusal IS the mechanic (§40.1: what you carry into a stretch is
+     * a commitment), so it is returned with the place to go rather than a bare
+     * no — a rule the player cannot act on reads as a bug.
+     */
+    case 'equipGear': {
+      const r = equipGear(state, action.id, action.slot);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      ctx.dirty();
+      return { ok: true };
+    }
+
     case 'workProposition': {
       const r = ensureReading(state);
       if (action.id === null) { r.working = null; ctx.dirty(); return { ok: true }; }

@@ -44,6 +44,7 @@ import {
   DRILL_ORE_SPEED, ORE_EAGER_OPENING, ORE_WORTH_OPENING, digProgress, oreAt, openOre, plantOre,
 } from './ores';
 import { note, noteTally, proven } from './reading';
+import { wearing } from './gear';
 import { oreRichness } from '../content/ores';
 
 /** Twenty-four rails, and A.56 split how you fill them: `BOUGHT_DRILLS` come
@@ -203,6 +204,8 @@ function pickTarget(
     if (zone && !zone.has(i)) return false;
     // A pocket is never an ordinary target: it will not come away in one bite.
     if (ore?.[i]) return false;
+    // FELT OVERBOOTS: the machines leave alone the cell your hand last struck.
+    if (wearing(state, 'feltboots') && state.face.lastHandCell === i) return false;
     // t2: under its own bar this machine waits rather than nibbles.
     return (cells[i] ?? 0) >= bar;
   };
@@ -222,9 +225,12 @@ function pickTarget(
      * whole point is that the route is fixed.
      */
     const n = cells.length;
-    const from = ((drill?.lastCell ?? -1) + 1) % Math.max(1, n);
+    // MARCHING BOOTS: a sweeping machine steps TWO squares, so it crosses the
+    // face in half the strokes and leaves every other cell for you.
+    const stride = wearing(state, 'marchboots') ? 2 : 1;
+    const from = ((drill?.lastCell ?? -1) + stride) % Math.max(1, n);
     for (let k = 0; k < n; k++) {
-      const i = (from + k) % n;
+      const i = (from + k * stride) % n;
       if (allowed(i) && (cells[i] ?? 0) > 0) return i;
     }
     return -1;

@@ -29,6 +29,7 @@ import {
 } from '../content/shell1/roll';
 import { currentShell } from '../shells';
 import { isRemembered, isSampled } from './assayBench';
+import { grantWreckGear, wearing } from './gear';
 
 /** How many stations ahead are fully legible (§1: "the next three"). */
 export const LEGIBLE_AHEAD = 3;
@@ -177,6 +178,9 @@ export function markReached(state: GameState, depth: number, toolTier: number): 
       if (!isLooted(state, def.id)) {
         r.looted.push(def.id);
         newly.push(def.id);
+        // A WRECK HANDS YOU WHAT WAS IN IT, once. The one place a wreck becomes
+        // looted is the one place kit appears — no second rule about when.
+        grantWreckGear(state, def.id);
       }
     }
   }
@@ -224,9 +228,14 @@ export function rollRows(state: GameState): RollRow[] {
     let current = false;
     if (!behind) {
       current = ahead === 0;
-      if (ahead < LEGIBLE_AHEAD) legible = true;
+      // SABLE'S LAMP reads one station further down the ladder.
+      if (ahead < LEGIBLE_AHEAD + (wearing(state, 'sableslamp') ? 1 : 0)) legible = true;
       ahead += 1;
     }
+    // THE ASH LAMP reads the DANGEROUS rows at any distance — a different
+    // capability from reading further, and strong in a different place: one is
+    // for scouting a route, the other for picking through one.
+    if (def.type === 'hazard' && wearing(state, 'ashlamp')) legible = true;
     // THE BENCH BURNS FOG (§9.3). A sampled station reads as though it were
     // under the lamp — which is the whole product the Bench sells. It is a
     // separate flag as well as an OR into `legible` so the row can say why.

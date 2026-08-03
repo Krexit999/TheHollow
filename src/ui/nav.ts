@@ -58,6 +58,9 @@ export const CLUSTERS: ClusterDef[] = [
     glyph: '▤',
     systems: [
       { id: 'hold', label: 'Materials', visible: (s) => s.materials.totalDrops > 0 },
+      // GEAR opens on the first piece found — never before, so the room is
+      // never an empty list of kit you could have (LAW 3).
+      { id: 'gear', label: 'Gear', visible: (s) => (s.gear?.owned?.length ?? 0) > 0 },
       /*
        * THE FORGE TAB IS RETIRED (A.71). Once casting moved to its own station
        * and the alloy bench moved to the Drills, what was left was an archive of

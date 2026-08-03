@@ -24,6 +24,7 @@ import { D } from '../decimal';
 import { cellCap, harvestCell } from './face';
 import { spendToolUse, toolEffect } from './toolMining';
 import { note, noteTally } from './reading';
+import { wearing } from './gear';
 import { rollForOre } from './drops';
 import { runChipMult } from '../signatures';
 import { currentShell } from '../shells';
@@ -390,7 +391,10 @@ export function workOre(
    * same `digSec`, and the pocket still pays out through the same `openOre`.
    * Bare hands run at exactly 1x, as they always did.
    */
-  const rate = toolEffect(state).oreRate;
+  // GRAVECLAY GLOVES: pockets come open faster under your own hands. Time, not
+  // yield — `digComplete` still gates the payout and the pocket pays what it
+  // held, so this is attention spent, never charge created.
+  const rate = toolEffect(state).oreRate * (wearing(state, 'gravegloves') ? 1.6 : 1);
   const after = Math.min(def.digSec, before + Math.max(0, seconds) * rate);
   dug[cell] = after;
   if (after > before) spendToolUse(state, 1);

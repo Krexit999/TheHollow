@@ -21,13 +21,25 @@ function fresh(): { engine: Engine; s: () => GameState; m: ModifierCache } {
   return { engine, s: () => engine.getState() as GameState, m: new ModifierCache() };
 }
 
-describe('the fifteen Loam stations', () => {
-  it('are the fifteen §1.3 names at their specified depths', () => {
-    expect(LOAM_ROLL).toHaveLength(15);
-    expect(LOAM_ROLL.map((s) => s.depth)).toEqual([0, 9, 17, 28, 40, 44, 47, 60, 72, 90, 98, 109, 120, 135, 150]);
+describe('the Loam stations', () => {
+  /**
+   * SEVENTEEN SINCE A.77, and the two additions are deliberate. §1.3 authored
+   * fifteen and none of them was a REST — while `rest` sat in `StationType`
+   * and in the label map the whole time. §40.1 gates gear swapping on standing
+   * at one, so the rule had no door: every swap would have refused forever.
+   * The Lampline (33) and the Low Bench (80) fill depths that were empty, one
+   * in each half of the run. Nothing authored moved.
+   */
+  it('are the §1.3 names at their specified depths, plus the two RESTs', () => {
+    expect(LOAM_ROLL).toHaveLength(17);
+    expect(LOAM_ROLL.map((s) => s.depth)).toEqual([0, 9, 17, 28, 33, 40, 44, 47, 60, 72, 80, 90, 98, 109, 120, 135, 150]);
     expect(LOAM_ROLL[0]!.name).toBe('The Turnrow');
-    expect(LOAM_ROLL[14]!.name).toBe('DEEPGRAVE');
-    expect(LOAM_ROLL[14]!.type).toBe('floor');
+    const last = LOAM_ROLL[LOAM_ROLL.length - 1]!;
+    expect(last.name).toBe('DEEPGRAVE');
+    expect(last.type).toBe('floor');
+    // The fifteen authored rows are untouched — this is an addition, not an edit.
+    expect(LOAM_ROLL.filter((s) => s.type !== 'rest').map((s) => s.depth))
+      .toEqual([0, 9, 17, 28, 40, 44, 47, 60, 72, 90, 98, 109, 120, 135, 150]);
   });
 
   it('the two WALLS name the hardness walls that already existed', () => {
@@ -155,8 +167,10 @@ describe('THE RE-ROLL', () => {
       });
     }
     expect(moved).toBeGreaterThan(0);
-    // ...and the authored half never moved.
-    expect(LOAM_ROLL.map((d) => [d.name, d.depth, d.type, d.hardness])).toEqual([
+    // ...and the authored half never moved. Filtered to the non-REST rows on
+    // purpose: this list is the A.77 evidence that adding the two rest stations
+    // EXTENDED the ladder and edited nothing on it.
+    expect(LOAM_ROLL.filter((d) => d.type !== 'rest').map((d) => [d.name, d.depth, d.type, d.hardness])).toEqual([
       ['The Turnrow', 0, 'seam', undefined],
       ['Kiln Yard', 9, 'wreck', undefined],
       ['The Sag', 17, 'seam', undefined],

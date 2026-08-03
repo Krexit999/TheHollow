@@ -64,6 +64,24 @@ export const LOAM_ROLL: StationDef[] = [
     seams: ['graveclay', 'loamiron'],
     line: 'Under the sill, where things roll to and are not fetched back.',
   },
+  /**
+   * THE TWO REST STATIONS, AND WHY THEY ARE NEW.
+   *
+   * `rest` has been in `StationType` and in the label map since the Roll was
+   * built, and NOT ONE OF LOAM'S FIFTEEN STATIONS USED IT. §40.1 gates gear
+   * swapping on standing at a REST — so shipping that rule against this
+   * geography would have made gear permanently unswappable: a system that
+   * cannot be used, behind a refusal that always fires.
+   *
+   * So the type gets its stations. Two, one in each half of the run, at depths
+   * that sat empty (28→40 and 72→90). They hold no seam; the place IS the
+   * contents, which is what `NO_SEAM` is for.
+   */
+  {
+    id: 'lampline', depth: 33, name: 'The Lampline', type: 'rest',
+    seams: NO_SEAM,
+    line: 'A row of hooks, most of them empty. Somebody kept this stretch lit on purpose.',
+  },
   {
     id: 'marlgate', depth: 40, name: 'Marlgate', type: 'chamber',
     seams: ['marl', 'graveclay', 'rootglass'],
@@ -88,6 +106,11 @@ export const LOAM_ROLL: StationDef[] = [
     id: 'ashfall', depth: 72, name: 'The Ashfall', type: 'hazard',
     seams: ['duskflint', 'bonechalk'],
     line: 'Dust that has not settled in a hundred years and is in no hurry.',
+  },
+  {
+    id: 'lowbench', depth: 80, name: 'The Low Bench', type: 'rest',
+    seams: NO_SEAM,
+    line: 'Cut into the wall at sitting height, worn smooth. You are not the first to stop here.',
   },
   {
     id: 'umberdeep', depth: 90, name: 'Umberdeep', type: 'seam',

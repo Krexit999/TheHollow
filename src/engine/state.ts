@@ -86,6 +86,7 @@ export function initialState(nowMs: number): GameState {
     keystones: defaultKeystonesState(),
     kiln: { built: false, heat: 0, feeding: false, progress: D(0) },
     reading: { notes: [], proven: [], working: null, tally: {} },
+    gear: { worn: {}, owned: [] },
     drills: { bayBuilt: false, units: [], alloys: [], huntOres: true },
     depth: 0,
     maxDepthRecord: 0,

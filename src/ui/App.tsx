@@ -7,6 +7,7 @@ import { ShaftCanvas } from './shaft/ShaftCanvas';
 import { DepthBar } from './components/DepthBar';
 import { DigPanel, KilnPanel, DrillsPanel } from './components/panels';
 import { ReadingPanel } from './components/ReadingPanel';
+import { GearPanel } from './components/GearPanel';
 import { HoldPanel } from './components/HoldPanel';
 import { CastingPanel } from './components/CastingPanel';
 import { RefineryPanel } from './components/refinery';
@@ -65,6 +66,7 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
       {only('runes') && <RunesPanel />}
       {only('delver') && <DelverPanel />}
       {only('desk') && <ReadingPanel />}
+      {only('gear') && <GearPanel />}
       {only('collapse') && <CollapsePanel />}
       {only('rewrite') && <RewritePanel />}
       {only('parallel') && <ParallelView />}

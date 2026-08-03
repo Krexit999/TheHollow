@@ -575,6 +575,10 @@ export interface GameState {
    */
   reading?: import('./systems/reading').ReadingState;
 
+  /** GEAR (A.77) — three slots, swapped only at a REST. Optional for the same
+   *  reason `reading` is: every older save has none and `ensureGear` heals it. */
+  gear?: import('./systems/gear').GearState;
+
   drills: {
     bayBuilt: boolean;
     units: DrillState[];
@@ -1084,6 +1088,7 @@ export type GameAction =
   | { type: 'setDrillPriority'; index: number; priority: 'both' | 'oresFirst' | 'ores' | 'rock' }
   /** THE READING: choose which question you are working. Null puts the desk down. */
   | { type: 'workProposition'; id: string | null }
+  | { type: 'equipGear'; slot: 'lamp' | 'gloves' | 'boots'; id: string | null }
   | { type: 'setDrillBehaviour'; index: number; behavior: 'fullest' | 'sweep' | 'chain' }
   | { type: 'setDrillFilter'; index: number; minCharge: number }
   /** THE PLANT (§3, §15.4). A machine tier is built from cast parts, never

@@ -34,6 +34,7 @@ import {
   applyChipCompaction, ensureCompaction, remapCompaction, tickCompaction, type CompactionResult,
 } from './compaction';
 import { noteTally } from './reading';
+import { wearing } from './gear';
 
 export const BASE_CAP = 8;
 export const BASE_REGEN = 0.08;
@@ -425,7 +426,17 @@ export function manualChip(
   const wasFull = (state.face.cells[cell] ?? 0) >= cellCap(state, mods) * 0.7;
 
   const { dust, charge } = harvestCell(state, mods, cell, 1, mult);
-  if (charge <= 0) return { dust, charge, crit: false, fractured: [] };
+  if (charge <= 0) {
+    /**
+     * CHALKED GRIPS: a swing that finds nothing still leaves a mark. The rule
+     * this reverses is deliberate — a face you can compact by tapping empty
+     * cells walks every deep-entry gate open for free — so it is gated behind a
+     * piece of kit you have to WEAR, in a slot that then holds nothing else,
+     * and it is drops-only either way (deep-entry sits outside the income path).
+     */
+    if (wearing(state, 'chalkgloves')) applyChipCompaction(state, ctx, cell);
+    return { dust, charge, crit: false, fractured: [] };
+  }
 
   let totalDust = dust;
   const fractured: number[] = [];
