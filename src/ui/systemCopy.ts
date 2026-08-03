@@ -16,6 +16,7 @@ import { fmt } from '../engine';
 import { MAX_DRILLS } from '../engine/systems/drills';
 import { spiralPending } from '../engine/systems/spiral';
 import { toolLevel } from '../engine/systems/toolMining';
+import { tallyOf } from '../engine/systems/reading';
 import type { TabId } from './store';
 
 export interface SystemCopy {
@@ -49,6 +50,29 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
       if (s.maxDepthRecord === 0) {
         if (dust >= 50) return 'You can afford your first upgrade. Take it — the face gives more from here on.';
         return 'Tap the rock. Keep tapping — the first upgrade is only a few strokes away.';
+      }
+      /**
+       * WHAT THE NUMBER ON THE ROCK IS FOR.
+       *
+       * This line carries a third of the material economy. Measured: a hand
+       * that chips the FULLEST cell reaches graveclay-deep and deepgrave
+       * NEVER — zero units in eighteen simulated hours across three seeds —
+       * while a hand that works one cell down reaches them in 51 s and 119 s.
+       * Machines never compact, so hand-chipping is the only route there for
+       * anybody, idle or active. Nothing in the game said so.
+       *
+       * LAW 3: it names the BEHAVIOUR and nothing else. No threshold, no
+       * material name, no table of what waits at 8 / 14 / 20 — the digit on the
+       * cell is the destination and the player watches it move. In the
+       * propositions' voice, because it is the same kind of claim they make: a
+       * sentence about how the world works.
+       *
+       * IT STOPS THE MOMENT IT IS UNDERSTOOD. `gates` counts deep-entry gates
+       * crossed, so the line is gone forever after the first one — a hint that
+       * keeps talking after the player has acted on it is noise.
+       */
+      if (tallyOf(s, 'gates') === 0 && (s.face.compaction?.some((c) => c > 0) ?? false)) {
+        return 'The rock remembers the cell, not the hand. Work one square instead of the fullest and watch its number climb — that is what the number is for.';
       }
       return null;
     },
