@@ -115,8 +115,6 @@ export interface ChallengeLaws {
   sealTools?: boolean;
   sealRooms?: boolean;
   sealGovernor?: boolean;
-  sealSignatures?: boolean;
-  sharedBank?: boolean;
   // --- Phase 15 ---------------------------------------------------------
   /** Nothing accrues while away. */
   sealOffline?: boolean;
@@ -124,19 +122,41 @@ export interface ChallengeLaws {
   sealCollapse?: boolean;
   /** Nothing drops. No materials, no gems, no geodes. */
   sealDrops?: boolean;
-  /** Every shell reads its neutral weather forever. */
-  sealWeather?: boolean;
   /** Every material rolls at zero purity. */
   sealPurity?: boolean;
-  /** You cannot slip away from an encounter. */
-  sealFlee?: boolean;
 }
+/*
+ * FOUR SEALS CUT AT A.82: `sealSignatures`, `sharedBank`, `sealWeather`,
+ * `sealFlee`.
+ *
+ * Not deprecated — DELETED. Each had ZERO references anywhere in `src/` outside
+ * this file: no guard read them, so no challenge could ever have expressed
+ * itself through them and no player could ever have felt one. They were names
+ * in a union, and a name in a union is the cheapest possible way to look like a
+ * feature.
+ *
+ * The ten that remain all have a live reader (`seals.test.ts` enforces it), and
+ * that is a WEAKER claim than "they work": nothing calls
+ * `registerChallengeLaws`, so every one of those readers is still dead code
+ * waiting on the layer that switches it on. Cutting the four closes the
+ * dead-NAME class; the dead-BEHAVIOUR class is still open and still ledgered.
+ */
 
 export type ChallengeSeal =
   | 'sealWiden' | 'sealKiln' | 'sealHand' | 'sealTools'
-  | 'sealRooms' | 'sealGovernor' | 'sealSignatures' | 'sharedBank'
-  | 'sealOffline' | 'sealCollapse' | 'sealDrops' | 'sealWeather'
-  | 'sealPurity' | 'sealFlee';
+  | 'sealRooms' | 'sealGovernor'
+  | 'sealOffline' | 'sealCollapse' | 'sealDrops'
+  | 'sealPurity';
+
+/** Every seal, as data — so a test can walk them rather than trust a list in a
+ *  comment. Kept beside the union it mirrors; `seals.test.ts` asserts the two
+ *  agree, because a hand-maintained copy of a type is a copy that drifts. */
+export const ALL_SEALS: ChallengeSeal[] = [
+  'sealWiden', 'sealKiln', 'sealHand', 'sealTools',
+  'sealRooms', 'sealGovernor',
+  'sealOffline', 'sealCollapse', 'sealDrops',
+  'sealPurity',
+];
 
 const challengeLaws = new Map<string, ChallengeLaws>();
 
