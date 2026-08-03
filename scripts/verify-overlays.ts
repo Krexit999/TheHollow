@@ -186,6 +186,43 @@ async function main(): Promise<void> {
   check(clash.measured, true, false, 'both the toast stack and the room header were on screen');
   check(clash.overlaps, false, true, 'NO TOAST INTERSECTS THE ROOM HEADER');
 
+  console.log('D — five fired at once, one slot on a phone');
+  /**
+   * THE CAP, RED-TESTED BY THE VOLUME. Firing ONE toast would pass whatever the
+   * queue did; five landing together is the ordinary case at a Dust milestone,
+   * and it is what the old `.slice(-4)` silently DROPPED rather than delayed.
+   */
+  await page.evaluate(() => {
+    const e = (window as unknown as Record<string, never>)['__engine'] as unknown as
+      { dispatch: (a: unknown) => unknown };
+    for (let i = 0; i < 5; i++) {
+      e.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 10 ** (4 + i) });
+    }
+  });
+  await page.waitForTimeout(1400);
+  const shown = await toastCount(page);
+  console.log(`      toast rects on screen after five fired: ${shown}`);
+  check(shown <= 1, true, false, 'ONE TOAST AT A TIME at 380px');
+  check(shown >= 1, true, false, '...and the slot is actually filled, not empty');
+
+  // The queue must ADVANCE. Watching one frame cannot tell a working queue from
+  // a dropped tail, so this samples across twelve seconds and counts distinct
+  // announcements — more than one means later toasts were delayed, not lost.
+  const distinct = await page.evaluate(async () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 24; i++) {
+      for (const n of document.querySelectorAll('.toast-in')) {
+        const head = (n as HTMLElement).innerText.split('\n')[0] ?? '';
+        if (head) seen.add(head);
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    return seen.size;
+  });
+  console.log(`      distinct announcements seen over 12s: ${distinct}`);
+  check(distinct > 1, true, false, 'the queue ADVANCES — later ones are delayed, not dropped');
+  await page.screenshot({ path: `${OUT}/one-toast.png` });
+
   const overflow = await page.evaluate(() =>
     Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
   check(overflow, 0, 1, 'no horizontal overflow at 380px');

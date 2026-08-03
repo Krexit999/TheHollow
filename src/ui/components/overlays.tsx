@@ -99,13 +99,67 @@ interface Toast {
   title: string;
   body: string;
   color: string;
+  /** When it TOOK THE SLOT — stamped by the queue, not by whatever produced it.
+   *  Absent while it is still waiting its turn. */
+  at?: number;
 }
+
+/**
+ * HOW MANY ANNOUNCEMENTS MAY BE ON SCREEN AT ONCE.
+ *
+ * ONE ON A PHONE, and the rest WAIT (ruled A.81). At 380x900 the room region is
+ * roughly 290px tall, so a stack of four toasts is most of it — and the two
+ * alternatives both lose: floating covers content the player has to read, and
+ * putting the stack in normal flow shifts the layout under their thumb every
+ * time an achievement lands. A queue costs a player nothing but time they were
+ * not spending anyway.
+ *
+ * Desktop keeps four: the stack lives bottom-RIGHT, opposite the control column,
+ * where there is nothing underneath it.
+ */
+const PHONE_TOASTS = 1;
+const DESKTOP_TOASTS = 4;
+/** How long one announcement holds the slot before the queue advances. */
+const TOAST_MS = 4200;
 
 export function Toasts() {
   const state = useGame((s) => s.state);
   const rev = useGame((s) => s.rev);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const lastSeq = useRef(-1);
+  /** Announcements earned but not yet shown. Never dropped, only delayed. */
+  const queue = useRef<Toast[]>([]);
+  const [wide, setWide] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const on = (): void => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  const cap = wide ? DESKTOP_TOASTS : PHONE_TOASTS;
+
+  /**
+   * THE SLOT OPENS, THE QUEUE ADVANCES. One interval rather than a timer per
+   * toast: a per-toast `setTimeout` cannot know whether the slot it frees is
+   * wanted by something that arrived while it was up, which is how a queue
+   * turns back into a stack.
+   */
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      setToasts((cur) => {
+        const now = Date.now();
+        const live = cur.filter((x) => now - (x.at ?? now) < TOAST_MS);
+        const room = cap - live.length;
+        if (room <= 0) return live.length === cur.length ? cur : live;
+        const take = queue.current.splice(0, room).map((x) => ({ ...x, at: now }));
+        return take.length > 0 ? [...live, ...take] : (live.length === cur.length ? cur : live);
+      });
+    }, 250);
+    return () => window.clearInterval(t);
+  }, [cap]);
 
   useEffect(() => {
     if (!state) return;
@@ -204,11 +258,15 @@ export function Toasts() {
       }
     }
     if (fresh.length > 0) {
-      setToasts((t) => [...t, ...fresh].slice(-4));
-      const keys = fresh.map((f) => f.key);
-      window.setTimeout(() => {
-        setToasts((t) => t.filter((x) => !keys.includes(x.key)));
-      }, 4200);
+      /**
+       * EVERYTHING GOES TO THE QUEUE. The slot-filler above is the only thing
+       * that puts a toast on screen, so there is exactly one rule about how many
+       * are visible and it lives in one place. The old code pushed straight to
+       * the visible list and trimmed with `.slice(-4)` — which DROPPED
+       * announcements rather than delaying them whenever five landed together,
+       * and five landing together is the ordinary case at a Dust milestone.
+       */
+      queue.current.push(...fresh);
     }
   }, [rev, state]);
 
