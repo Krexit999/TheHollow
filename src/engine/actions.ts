@@ -19,6 +19,7 @@ import { floodStation } from './systems/flood';
 import { recastMachine, setMachineBand } from './systems/condition';
 import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sieve';
 import { buildStill, distil } from './systems/still';
+import { breakPart, breakRack, buildBreaker } from './systems/breaker';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -167,6 +168,15 @@ export function handleAction(
 
     case 'buildStill':
       return buildStill(state, ctx);
+
+    case 'buildBreaker':
+      return buildBreaker(state, ctx);
+
+    case 'breakPart':
+      return breakPart(state, ctx, action.partId);
+
+    case 'breakRack':
+      return breakRack(state, ctx);
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);

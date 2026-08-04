@@ -848,6 +848,7 @@ export type GameEvent =
   | { type: 'machineBuilt'; machineId: string; tier: number }
   | { type: 'machineRecast'; machineId: string }
   | { type: 'distilled'; materialId: string; trait: string; into: string }
+  | { type: 'partBroken'; materialId: string; units: number }
   | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
@@ -1130,6 +1131,10 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still, and the one verb it has.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // SALVAGE (§13) — the Breaker, and the two verbs it has.
+  | { type: 'buildBreaker' }
+  | { type: 'breakPart'; partId: number }
+  | { type: 'breakRack' }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

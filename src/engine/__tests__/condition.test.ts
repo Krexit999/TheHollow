@@ -63,8 +63,11 @@ describe('the fixture is real', () => {
     expect(CONDITION_RULES.map((r) => r.shellId).sort())
       .toEqual(['cinder', 'ferrite', 'glassmere', 'hollow', 'verdance']);
     expect(new Set(CONDITION_RULES.map((r) => r.id)).size, 'two rules share an id').toBe(5);
+    // The three new machines enrolled themselves: `conditionedMachines` is
+    // derived from MACHINE_DEMAND, so a machine is conditioned the day it
+    // exists rather than a pass later.
     expect(conditionedMachines().sort())
-      .toEqual(['assayBench', 'crusher', 'kiln', 'refinery', 'sieve', 'still']);
+      .toEqual(['assayBench', 'breaker', 'crusher', 'kiln', 'refinery', 'sieve', 'still']);
   });
 
   /**

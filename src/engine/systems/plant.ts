@@ -206,6 +206,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   sieve: { flow: 1.1, surge: 0 },
   /**
+   * THE BREAKER (§13) — PURE SURGE, and heavier than the Crusher's. It does
+   * nothing at all and then takes something apart in one go, which is the
+   * Crusher's shape pointed at your own stock instead of at the rock.
+   */
+  breaker: { flow: 0, surge: 11 },
+  /**
    * THE STILL (§14.1) — FLOW AND SURGE, like the Refinery, and for the same
    * reason: it holds a slow heat and then takes one thing out in a single
    * separation. It is the second machine that punishes a lopsided plant.

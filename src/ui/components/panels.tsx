@@ -37,6 +37,7 @@ import { Select } from './Select';
 import { PlantPanel, CrusherPanel, ConditionPanel } from './plant';
 import { SievePanel } from './sieve';
 import { StillPanel } from './still';
+import { BreakerPanel } from './breaker';
 import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
@@ -351,6 +352,8 @@ export function KilnPanel() {
       <SievePanel />
       {/* ESSENCE WORK (§14.1) — the Still, and the trap stones it answers. */}
       <StillPanel />
+      {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
+      <BreakerPanel />
       {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
           the machine list, Flow/Surge, and the Circuit). */}
       <CircuitPanel />

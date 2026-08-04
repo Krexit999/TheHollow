@@ -43,6 +43,7 @@ import { convCurrencyId, currentShell } from '../shells';
 import { currencyDef, getCurrency, spendCurrency } from '../resources';
 import { ensureRoll, shellRoll } from './roll';
 import { noteBuiltOf } from './plant';
+import { propsBack } from './breaker';
 import type { StationDef } from '../content/shell1/roll';
 
 /**
@@ -248,9 +249,30 @@ export function unshoreBand(state: GameState, ctx: EngineCtx, stationId: string)
   }
   ensureRoll(state);
   state.roll!.shored = (state.roll!.shored ?? []).filter((id) => id !== stationId);
+  /**
+   * AND THE TIMBER COMES BACK, if the Breaker is standing (A.90, §13, §9.4).
+   *
+   * Un-shoring used to charge Brick and return NOTHING — the props, the winch
+   * and every cast part the band swallowed simply vanished. That made it a pure
+   * loss, which made it never the right move, which meant §8's own bottleneck
+   * ("I froze a seam I didn't want") had an answer nobody would take.
+   *
+   * The parts come back as blank stock rather than as the exact parts that went
+   * in: the Breaker breaks things, it does not un-break them. Zero without a
+   * tier-II Breaker, which is the whole reason to stand one.
+   */
+  const back = propsBack(state, cost.parts);
+  for (let i = 0; i < back; i += 1) {
+    state.casting.rack.push({
+      id: state.casting.nextId++,
+      type: 'sockets',
+      materialId: 'marl',
+      purity: 40,
+    } as never);
+  }
   ctx.dirty();
   ctx.emit({ type: 'unshored', stationId });
-  return { ok: true, data: { stationId } };
+  return { ok: true, data: { stationId, partsBack: back } };
 }
 
 // ---------------------------------------------------------------------------
