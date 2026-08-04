@@ -9,17 +9,19 @@
  * made of properties, not things".
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * THE VIAL IS CUT, DELIBERATELY, AND THIS IS THE HONEST HALF OF §14.1.
+ * THE VIAL WAS CUT AT A.90 AND IS WIRED AT A.92. The cut, kept for the trail:
  *
- * §14.1 is one keystone with two ends: THE STILL takes a trait out and puts it
- * in a vial, THE INFUSER puts a vial into something else. This pass builds the
- * Still. Shipping the vial as a counted item with no consumer would be a name
- * against no mechanism — the deceptive-stub class PILLARS warns about, and the
- * same call A.85 made about seven Circuit reads and A.89 about two of the
- * flood's four consequences.
+ *   "§14.1 is one keystone with two ends: THE STILL takes a trait out and puts
+ *   it in a vial, THE INFUSER puts a vial into something else. This pass builds
+ *   the Still. Shipping the vial as a counted item with no consumer would be a
+ *   name against no mechanism — the deceptive-stub class PILLARS warns about."
  *
- * So the trait comes out and is GONE. `still.test.ts` asserts the absence, so
- * a vial cannot creep back in as a word before the Infuser exists to want one.
+ * The blocker named in that paragraph is built (`systems/infuser.ts`), so the
+ * reason has dissolved exactly as PILLARS says a cut's reason can. A strip now
+ * yields a VIAL, the vial remembers WHICH STONE it came out of, and that second
+ * field is what keeps the pair from being a worth faucet: essence runs
+ * downhill. `still.test.ts`'s absence assertion was INVERTED IN PLACE rather
+ * than deleted, so the finding and its answer read as one story.
  * ─────────────────────────────────────────────────────────────────────────────
  *
  * WHAT COMES BACK IS A REAL MATERIAL. `content/traps.ts` registers the stilled
@@ -48,6 +50,7 @@ import { TRAPS, isTrap, registerStilledForm, stilledId, trapDef } from '../conte
 import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } from './plant';
 import { machineSpeed } from './condition';
 import { addMaterial } from './forge';
+import { addVial } from './infuser';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 
@@ -224,6 +227,10 @@ export function distil(
     trap && trap.trait === trait ? trap.line : undefined,
   );
   if (!def) return { ok: false, reason: 'There would be nothing left.' };
+  // THE OTHER END (§14.1). The trait leaves the stone and arrives in a vial
+  // that remembers the stone — one strip, one vial, and the vial is the only
+  // thing an Infuser will take.
+  addVial(state, trait, materialId);
   addMaterial(state, def.id, purity, 1);
   // `addMaterial` counts every unit as a drop; a stilled unit is a CONVERSION,
   // not a find, and letting it inflate `totalDrops` would quietly move a

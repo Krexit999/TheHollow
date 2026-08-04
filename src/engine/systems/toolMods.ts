@@ -38,6 +38,7 @@ import {
   modXpForLevel,
   type ModEffectDef, type SynergyDef, type ToolModDef,
 } from '../content/toolMods';
+import { overNatural } from '../traits';
 import { alloyHint, dominantTrait } from '../content/drillAlloys';
 import { reachedOrdinal } from './drillAlloys';
 import { currentTool } from './casting';
@@ -670,6 +671,19 @@ export const INST_PER_SLOT = 2.2;
 /** Instability a woken synergy adds — arrangements are volatile. */
 export const INST_PER_SYNERGY = 12;
 /**
+ * INSTABILITY PER TRAIT PUT INTO A STONE PAST WHAT IT WAS BORN WITH — §14.1's
+ * own clause ("cap 4; each trait past the material's natural count adds
+ * instability, §11.4"), and the only consequence the Infuser has outside its
+ * own panel.
+ *
+ * Sized against `INST_PER_SYNERGY` deliberately: a stone carrying a fourth
+ * trait is roughly as loud as a woken arrangement, so a tool built out of
+ * seven infused parts is a real commitment rather than a free upgrade. It is
+ * per PART, so infusing the head only is a small risk and infusing everything
+ * is the decision §11.4 calls overpaying.
+ */
+export const INST_PER_OVERFILLED = 9;
+/**
  * THE FLOOR IS RELATIVE TO WHAT THE TOOL CAN CARRY — and the fixed 40 it
  * replaces made this whole mechanic unreachable for most of a game.
  *
@@ -801,6 +815,19 @@ export function instability(state: GameState, abilities: Array<{ power: number; 
   // removing it, which is what makes those two a real decision.
   let steady = cache.stabilize;
   const tool = currentTool(state);
+  /**
+   * WHAT WAS PUT INTO THE STONE (§14.1, §11.4). A part cast from a stone
+   * carrying more traits than it was born with shakes — which is the price
+   * §14.1 attaches to the Infuser, and the reason a fourth trait is a decision
+   * rather than a strictly-better pour. Read off `MATERIAL_TRAITS` through
+   * `overNatural`, so no machine is imported to answer it.
+   */
+  const overfilled = (tool?.parts ?? []).reduce((n, p) => n + overNatural(p.materialId), 0);
+  if (overfilled > 0) {
+    const n = overfilled * INST_PER_OVERFILLED;
+    raw += n;
+    from.push({ label: 'what was put into the stone', n });
+  }
   if (tool) {
     steady += steadyOf(tool);
     // SUPPLE living parts and EXCELLENT/TRUEBORN pours steady it too. Both are

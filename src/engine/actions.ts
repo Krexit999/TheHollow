@@ -19,6 +19,7 @@ import { floodStation } from './systems/flood';
 import { recastMachine, setMachineBand } from './systems/condition';
 import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sieve';
 import { buildStill, distil } from './systems/still';
+import { buildInfuser, infuse } from './systems/infuser';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -210,6 +211,12 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildInfuser':
+      return buildInfuser(state, ctx);
+
+    case 'infuse':
+      return infuse(state, ctx, action.vial, action.materialId, action.band);
 
     case 'addFilter':
       return addFilter(state, action.clauses);

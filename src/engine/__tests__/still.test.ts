@@ -7,7 +7,8 @@
  *      and the stone is measurably better at the part it looked perfect for
  *   3  the stilled form is a REAL material — pool-excluded, clone-free, and
  *      readable by everything the Forge already has
- *   4  the VIAL IS CUT, and the absence is asserted so it cannot creep back
+ *   4  the VIAL — cut at A.90, wired at A.92, and this section is the A.90
+ *      absence assertion INVERTED IN PLACE rather than deleted
  *   5  PILLAR 2 — one unit in, one unit out, at the same band
  */
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -28,6 +29,7 @@ import {
   STILL_MIN_RARITY, buildStill, canTake, distil, distilBlocker, distillable, stillBuilt,
   stillFound, stillStation, stilledHeld,
 } from '../systems/still';
+import { vialsHeld } from '../systems/infuser';
 import { allAuthoredStations } from '../content/rolls';
 import type { EngineCtx, GameState } from '../types';
 
@@ -313,31 +315,36 @@ describe('3 — a stilled stone is a material like any other', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4 — THE VIAL IS CUT
+// 4 — THE VIAL WAS CUT AT A.90 AND IS WIRED AT A.92
 // ---------------------------------------------------------------------------
 
 /**
- * §14.1 is ONE keystone with two ends — the Still takes a trait out into a
- * vial, the Infuser puts a vial into something else. This pass builds the
- * Still. A counted vial with no consumer would be a name against no mechanism,
- * which is the deceptive-stub class PILLARS warns about and the same call A.85
- * made about seven Circuit reads. So the trait comes out and is GONE, and this
- * test is what stops the word creeping back before the machine that wants one.
+ * THIS TEST IS THE A.90 ONE, INVERTED IN PLACE. It read:
+ *
+ *   "4 — the vial is CUT, and stays cut until the Infuser exists
+ *    it('nothing anywhere holds a vial or an infusion')"
+ *
+ * and it was there to stop the WORD creeping in before the machine that wants
+ * one existed. The machine exists (`systems/infuser.ts`), so the cut's stated
+ * reason has dissolved — PILLARS: "a cut is provisional, and its reason can
+ * dissolve". Inverting rather than deleting keeps the finding and its answer as
+ * one story, and the new assertion is the strong half of the old one: a vial
+ * exists, has a producer AND a consumer, and remembers where it came from.
  */
-describe('4 — the vial is CUT, and stays cut until the Infuser exists', () => {
-  it('nothing anywhere holds a vial or an infusion', () => {
+describe('4 — the vial has a producer, a consumer, and a memory', () => {
+  it('a strip fills a vial, and the vial names the stone it came out of', () => {
     const st = withStill(3);
+    expect(vialsHeld(st), 'vials before anything was stilled').toEqual([]);
     addMaterial(st, 'millstone', 80);
     distil(st, ctx, 'millstone', 'fine', 'brittle');
-    const dump = JSON.stringify(st).toLowerCase();
-    // NOT "essence": Hollow's converter currency is `nullEssence` and has been
-    // since Phase 10. A word-scan that matches it would be the vacuous kind.
-    for (const word of ['vial', 'infus']) {
-      expect(dump.includes(word), `state carries "${word}"`).toBe(false);
-    }
-    for (const key of ['essence', 'vials', 'infuser']) {
-      expect((st as unknown as Record<string, unknown>)[key], `state.${key}`).toBeUndefined();
-    }
+    expect(vialsHeld(st)).toEqual([{ trait: 'brittle', fromId: 'millstone', count: 1 }]);
+  });
+
+  it('one strip, one vial — it cannot be farmed off a stack', () => {
+    const st = withStill(3);
+    for (let i = 0; i < 4; i++) addMaterial(st, 'millstone', 80);
+    for (let i = 0; i < 3; i++) distil(st, ctx, 'millstone', 'fine', 'brittle');
+    expect(vialsHeld(st)[0]!.count).toBe(3);
   });
 });
 

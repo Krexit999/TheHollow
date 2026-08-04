@@ -241,6 +241,14 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * separation. It is the second machine that punishes a lopsided plant.
    */
   still: { flow: 2.2, surge: 6 },
+  /**
+   * THE INFUSER (§14.1) — pure SURGE, and heavy. Its shape is the Still's
+   * INVERTED, which is the whole relationship between the two: the Still holds
+   * a slow heat and separates, the Infuser holds nothing and drives one thing
+   * into another in a single push. A plant tuned for the Still is not tuned for
+   * this, and that is the point of both being keystones.
+   */
+  infuser: { flow: 0, surge: 13 },
 };
 
 export function demandOf(machineId: string): Demand {

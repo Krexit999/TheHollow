@@ -506,3 +506,36 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
 export function traitsOf(materialId: string): TraitId[] {
   return MATERIAL_TRAITS[materialId] ?? [];
 }
+
+/**
+ * HOW MANY TRAITS THIS STONE WAS BORN WITH (§14.1, §11.4).
+ *
+ * A worked form's id is its source's id plus a suffix — `_no<trait>` from the
+ * Still, `_with<trait>` from the Infuser — so the stone it descends from is
+ * readable off the id, however many times it has been round. That naming
+ * convention belongs to two systems and the ANSWER belongs here, because the
+ * question ("what is natural for this material") is the trait registry's and
+ * `toolMods` has to ask it without importing a machine.
+ *
+ * The suffixes are checked as a pair rather than by string surgery, so a
+ * material whose real id happens to contain the letters is unaffected: the id
+ * only counts as derived when what is left of it is a material this table
+ * knows.
+ */
+export function naturalTraits(materialId: string): number {
+  let id = materialId;
+  for (let hops = 0; hops < 8; hops++) {
+    const cuts = [id.lastIndexOf('_with'), id.lastIndexOf('_no')].filter((i) => i > 0);
+    if (cuts.length === 0) break;
+    const at = Math.max(...cuts);
+    const base = id.slice(0, at);
+    if (!MATERIAL_TRAITS[base]) break;
+    id = base;
+  }
+  return (MATERIAL_TRAITS[id] ?? MATERIAL_TRAITS[materialId] ?? []).length;
+}
+
+/** How much more than it was born with this stone is carrying. §11.4's shake. */
+export function overNatural(materialId: string): number {
+  return Math.max(0, traitsOf(materialId).length - naturalTraits(materialId));
+}

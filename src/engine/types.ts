@@ -687,6 +687,8 @@ export interface GameState {
   line?: import('./systems/line').LineState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
+  /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
+  essence?: import('./systems/infuser').EssenceState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -854,6 +856,7 @@ export type GameEvent =
   | { type: 'machineBuilt'; machineId: string; tier: number }
   | { type: 'machineRecast'; machineId: string }
   | { type: 'distilled'; materialId: string; trait: string; into: string }
+  | { type: 'infused'; materialId: string; trait: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
   | { type: 'machineUnbuilt'; machineId: string; parts: number }
   | { type: 'poured'; alloyId: string; traits: string[]; grog: boolean }
@@ -1138,9 +1141,16 @@ export type GameAction =
   | { type: 'addFilter'; clauses: import('./systems/sieve').FilterClause[] }
   | { type: 'removeFilter'; filterId: string }
   | { type: 'assignFilter'; machineId: string; filterId: string | null }
-  // ESSENCE WORK (§14.1) — the Still, and the one verb it has.
+  // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  | { type: 'buildInfuser' }
+  | {
+      type: 'infuse';
+      vial: import('./systems/infuser').Vial;
+      materialId: string;
+      band: PurityBand;
+    }
   // SALVAGE (§13) — the Breaker, and the two verbs it has.
   | { type: 'buildBreaker' }
   | { type: 'breakPart'; partId: number }

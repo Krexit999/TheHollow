@@ -18,7 +18,9 @@
  *   THORNWALL                the floor     (§10.2 — "the wall is fallow rock")
  *
  * The other sixteen are invented under the freedom clause, which is explicit
- * that names and flavour are open. They are named for what a green shell does:
+ * that names and flavour are open. THE GRAFTHOUSE 225 is the seventeenth, added
+ * A.92: §14.1's keystone has two ends and §6 named only one of them, so the
+ * Infuser had no place. Its own entry carries the reasoning. They are named for what a green shell does:
  * rot, fallow, sap, wick, seed, choke.
  *
  * THE WALLS SIT ON THE WALLS THAT ALREADY EXIST, one depth above each gate, as
@@ -150,6 +152,25 @@ export const VERDANCE_ROLL: StationDef[] = [
     id: 'thesplit', depth: 209, name: 'THE SPLIT', type: 'wall', hardness: 9,
     seams: NO_SEAM,
     line: 'One trunk, split top to bottom some long time ago, and both halves still growing away from each other.',
+  },
+  {
+    /**
+     * THE INFUSER'S PLACE, and it is the one station in this file that §6 does
+     * not name. §14.1 is ONE keystone with two ends — the Still takes a trait
+     * out, the Infuser puts one in — and §6's keystone table lists the Still
+     * and not its other half. So the wreck had to be authored, under the
+     * freedom clause that already covers sixteen of the twenty names here.
+     *
+     * WHY 225, AND WHY VERDANCE. It is the far end of the shell from
+     * Stillwright's Bower 30, which is the shape the system wants: a vial is
+     * drawn at the top of the world and carried to the bottom of it. And it
+     * sits below THE SPLIT (209), so the Infuser is behind Verdance's last
+     * wall — §13 blocks "tier IX+ and every custom part" on it, and a keystone
+     * that gates the deep half should not be reachable from the shallow one.
+     */
+    id: 'grafthouse', depth: 225, name: 'The Grafthouse', type: 'wreck', wreck: 'THE INFUSER',
+    seams: ['wildstar', 'heartwood'],
+    line: 'Benches of stock with other things put into them, and every graft took. She was not grafting plants.',
   },
   {
     id: 'plentysround', depth: 240, name: "Old Plenty's Round", type: 'seam',

@@ -87,7 +87,7 @@ describe('the fixture is real', () => {
   it('every shell in the game has a geography', () => {
     expect(unauthoredShells(), 'a shell with no Roll').toEqual([]);
     expect(AUTHORED_SHELLS.length).toBe(7);
-    expect(allAuthoredStations().length).toBe(116);
+    expect(allAuthoredStations().length).toBe(117);
   });
 
   it('and `shellRoll` reads the registry, not a hardcoded shell', () => {

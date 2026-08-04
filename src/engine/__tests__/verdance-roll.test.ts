@@ -55,9 +55,9 @@ const REMAINS = ['throatroot', 'mothspool', 'wireweed', 'palefiber', 'mawpith', 
 beforeEach(() => { s = inVerdance(); });
 
 describe('the fixture is real', () => {
-  it('Verdance is authored, twenty stations, floor at 290', () => {
+  it('Verdance is authored, twenty-one stations, floor at 290', () => {
     const roll = authoredRoll('verdance');
-    expect(roll.length).toBe(20);
+    expect(roll.length).toBe(21);
     expect(roll[0]!.name).toBe('The Greenfall');
     expect(roll[roll.length - 1]!.name).toBe('THORNWALL');
     expect(roll[roll.length - 1]!.depth).toBe(290);
@@ -201,13 +201,13 @@ describe('3 — PILLAR 2: geography is not income', () => {
     for (const [id, v] of all) expect(v, `${id} reads a different ceiling`).toBe(all[0]![1]);
     expect(new Set(AUTHORED_SHELLS.map((id) => authoredRoll(id).length)).size,
       'every shell has the same station count — this control proves nothing').toBeGreaterThan(1);
-    expect(authoredRoll('verdance').length).toBe(20);
+    expect(authoredRoll('verdance').length).toBe(21);
   });
 });
 
 describe('4 — what the shell can now support', () => {
   it('SHORING: Verdance has bands, and one can be timbered — in SAP, not Brick', () => {
-    expect(bands(s).length).toBe(19); // twenty stations, and The Greenfall has no band
+    expect(bands(s).length).toBe(20); // twenty-one stations, and The Greenfall has no band
     expect(bands(s)[0]!.def.id).toBe('rootbind');
     s.depthRecords['verdance'] = 290;
     s.roll!.rig = true;

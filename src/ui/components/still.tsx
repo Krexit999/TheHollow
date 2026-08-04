@@ -90,6 +90,7 @@ export function StillPanel() {
                   {/* BOTH HALVES OF THE TRADE, before the button. */}
                   <div className="mt-0.5 truncate text-[9px] text-cave-500">
                     loses <span className="text-[#e0885a]">{d.trait}</span> · keeps {left.join(' + ') || 'nothing'}
+                    {' · '}<span className="text-[#8fb3c9]">a vial of {d.trait}</span>
                     {d.named && <span className="text-[#c9a86a]"> · the one thing wrong with it</span>}
                   </div>
                   <button
