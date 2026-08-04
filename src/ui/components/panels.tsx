@@ -40,6 +40,7 @@ import { StillPanel } from './still';
 import { InfuserPanel } from './infuser';
 import { PressPanel } from './press';
 import { WitnessPanel } from './witness';
+import { GovernorPanel } from './governor';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -364,6 +365,8 @@ export function KilnPanel() {
       <PressPanel />
       {/* WITNESSING (§13, Hollow) — the Condenser and the Witness, one economy. */}
       <WitnessPanel />
+      {/* OVERCLOCKING (§13) — the Governor, and the gamble it holds machines at. */}
+      <GovernorPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}

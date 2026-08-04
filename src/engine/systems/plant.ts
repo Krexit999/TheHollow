@@ -38,6 +38,13 @@ import { traitsOf, type TraitId } from '../traits';
  * nothing.
  */
 import { conditionRetainsBand, conditionTraits } from './condition';
+/**
+ * ...AND THE SAME ARRANGEMENT WITH `governor.ts`, for the same reason: it reads
+ * `flowSatisfaction` from here to decide whether to back a machine off, and this
+ * reads `overclockDraw` from there to know what the machine is asking for. Both
+ * calls are inside function bodies.
+ */
+import { overclockDraw } from './governor';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -271,10 +278,34 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * machine in the plant whose draw is paid for an act of attention.
    */
   witness: { flow: 0, surge: 12 },
+  /**
+   * THE GOVERNOR (§13) — pure FLOW, and modest. It is not a converter; it is a
+   * thing that stands there holding other machines above their rating, which is
+   * a continuous act. Modest because the EXPENSIVE half of overclocking is the
+   * multiplier it puts on the machines it governs — charging twice for the same
+   * decision would make the first step a bad deal on arithmetic alone.
+   */
+  governor: { flow: 1.4, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {
   return MACHINE_DEMAND[machineId] ?? { flow: 0, surge: 0 };
+}
+
+/**
+ * WHAT IT IS ASKING FOR RIGHT NOW — the profile above, times whatever the
+ * Governor is asking of it (§13, `systems/governor.ts`).
+ *
+ * This is where "spend extra Draw for speed" is actually SPENT, and it matters
+ * that it is here rather than in a currency: Flow is shared proportionally and
+ * Surge is one bank, so an overclock takes its extra Draw OUT OF THE REST OF THE
+ * PLANT. Overclocking the Still slows the Refinery, and no amount of anything
+ * fixes it — which is the half of the trade that makes it a decision.
+ */
+export function demandNow(state: GameState, machineId: string): Demand {
+  const base = demandOf(machineId);
+  const mult = overclockDraw(state, machineId);
+  return mult === 1 ? base : { flow: base.flow * mult, surge: base.surge * mult };
 }
 
 /**
@@ -285,7 +316,7 @@ export function demandOf(machineId: string): Demand {
  * it is built, which is why standing a Refinery up on a thin plant slows the
  * Kiln: they are competing for the same sustained number.
  */
-function flowDrawers(state: GameState): string[] {
+export function flowDrawers(state: GameState): string[] {
   const out: string[] = [];
   if (state.kiln.built && state.kiln.feeding) out.push('kiln');
   if (tierOf(state, 'refinery') > 0) out.push('refinery');
@@ -296,6 +327,7 @@ function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'crucible') > 0) out.push('crucible');
   if (tierOf(state, 'balance') > 0) out.push('balance');
   if (tierOf(state, 'condenser') > 0) out.push('condenser');
+  if (tierOf(state, 'governor') > 0) out.push('governor');
   return out;
 }
 
@@ -308,18 +340,18 @@ function flowDrawers(state: GameState): string[] {
  * thing a player can read off the panel and fix, unlike a silent priority order.
  */
 export function flowSatisfaction(state: GameState, machineId: string): number {
-  const want = demandOf(machineId).flow;
+  const want = demandNow(state, machineId).flow;
   if (want <= 0) return 1;
   const drawers = flowDrawers(state);
   if (!drawers.includes(machineId)) return 1;
-  const total = drawers.reduce((n, id) => n + demandOf(id).flow, 0);
+  const total = drawers.reduce((n, id) => n + demandNow(state, id).flow, 0);
   if (total <= 0) return 1;
   return Math.max(0, Math.min(1, flowCap(state) / total));
 }
 
 /** Total Flow the built-and-running plant is asking for. */
 export function flowDemand(state: GameState): number {
-  return flowDrawers(state).reduce((n, id) => n + demandOf(id).flow, 0);
+  return flowDrawers(state).reduce((n, id) => n + demandNow(state, id).flow, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +359,7 @@ export function flowDemand(state: GameState): number {
 // ---------------------------------------------------------------------------
 
 export function canFire(state: GameState, machineId: string): boolean {
-  const need = demandOf(machineId).surge;
+  const need = demandNow(state, machineId).surge;
   if (need <= 0) return true;
   return ensurePlant(state).surge >= need;
 }
@@ -338,7 +370,7 @@ export function canFire(state: GameState, machineId: string): boolean {
  * between being starved of Surge and being starved of Flow.
  */
 export function fire(state: GameState, machineId: string): boolean {
-  const need = demandOf(machineId).surge;
+  const need = demandNow(state, machineId).surge;
   const p = ensurePlant(state);
   /**
    * A LINE PAYS FOR ITS MEMBERS ONCE (§14.5, A.91). `runLine` charges the whole

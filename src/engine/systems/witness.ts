@@ -57,6 +57,7 @@ import { biting, conditionOf, conditionedMachines, machineSpeed } from './condit
 import { addMaterial } from './forge';
 import { isLooted } from './roll';
 import { worth } from './balance';
+import { rollOffSpec } from './governor';
 import { allAuthoredStations } from '../content/rolls';
 
 export const WITNESS_WRECK = 'THE WITNESS';
@@ -173,14 +174,22 @@ export function registerMaybe(materialId: string): MaterialDef | null {
  */
 export function deliver(
   state: GameState, machineId: string, materialId: string, purity: number, n = 1,
+  rng: () => number = Math.random,
 ): string {
+  /**
+   * AND THE GOVERNOR'S GAMBLE LANDS HERE (§13, `systems/governor.ts`), for the
+   * same reason the Hollow rule does: this is the one place a converter's output
+   * leaves the machine, so a rule applied here reaches every one of them and no
+   * converter had to be taught about either.
+   */
+  const arrives = rollOffSpec(state, machineId, purity, rng);
   if (!biting(state, machineId, 'undecided')) {
-    addMaterial(state, materialId, purity, n);
+    addMaterial(state, materialId, arrives, n);
     return materialId;
   }
   const def = registerMaybe(materialId);
-  if (!def) { addMaterial(state, materialId, purity, n); return materialId; }
-  addMaterial(state, def.id, purity, n);
+  if (!def) { addMaterial(state, materialId, arrives, n); return materialId; }
+  addMaterial(state, def.id, arrives, n);
   return def.id;
 }
 

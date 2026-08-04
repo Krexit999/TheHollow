@@ -55,6 +55,17 @@ import type { ModifierCache } from '../modifiers';
 import { traitsOf, type TraitId } from '../traits';
 import { currentShell } from '../shells';
 import { MACHINE_DEMAND, ensurePlant, tierOf } from './plant';
+/**
+ * THE THIRD DELIBERATE CYCLE, and it follows the same discipline as the two
+ * this file and `plant.ts` already document: `governor.ts` reads `conditionOf`
+ * from here and this reads `overclockSpeed` from there, both only ever from
+ * inside a function body, so neither binding can arrive undefined at module
+ * scope. `machineSpeed` is the plant's ONE answer to "how fast is this running",
+ * and the world's mark and the player's setting both belong in it — two
+ * separate reads would mean every caller multiplying them by hand, which is how
+ * one of them ends up forgotten.
+ */
+import { overclockSpeed } from './governor';
 
 export type ConditionId = 'baked' | 'overgrown' | 'unlit' | 'undecided' | 'magnetised';
 
@@ -303,6 +314,16 @@ function castWith(state: GameState, machineId: string, trait: TraitId): boolean 
  * the distinction pillar 2 lives on, and the same one `plant.ts` draws for Flow.
  */
 export function machineSpeed(state: GameState, machineId: string): number {
+  return conditionSpeed(state, machineId) * overclockSpeed(state, machineId);
+}
+
+/**
+ * ...AND WHAT THE WORLD ALONE HAS DONE TO IT, apart from what the player asked
+ * for. Kept separate because a SEIZURE is a hard stop that no setting can
+ * override — `machineSpeed` multiplies, and zero times anything is still zero,
+ * which is exactly the behaviour a cracked machine should have.
+ */
+export function conditionSpeed(state: GameState, machineId: string): number {
   const c = conditionOf(state, machineId);
   if (!c) return 1;
   if (c.seized) return 0;

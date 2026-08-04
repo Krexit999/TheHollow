@@ -22,6 +22,7 @@ import { buildStill, distil } from './systems/still';
 import { buildInfuser, infuse } from './systems/infuser';
 import { buildPress, press } from './systems/press';
 import { buildCondenser, buildWitness, condense, witness } from './systems/witness';
+import { buildGovernor, setOverclock } from './systems/governor';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -213,6 +214,12 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildGovernor':
+      return buildGovernor(state, ctx);
+
+    case 'setOverclock':
+      return setOverclock(state, ctx, action.machineId, action.steps);
 
     case 'buildCondenser':
       return buildCondenser(state, ctx);

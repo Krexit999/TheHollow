@@ -691,6 +691,8 @@ export interface GameState {
   essence?: import('./systems/infuser').EssenceState;
   /** WITNESSING (§13, Hollow) — what the unwatched plant left, and the Hush. */
   witness?: import('./systems/witness').WitnessState;
+  /** OVERCLOCKING (§13) — what is past its rating, and how often that cost. */
+  governor?: import('./systems/governor').GovernorState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -1149,6 +1151,9 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // OVERCLOCKING (§13) — the Governor, and the one setting it holds.
+  | { type: 'buildGovernor' }
+  | { type: 'setOverclock'; machineId: string; steps: number }
   // WITNESSING (§13, Hollow) — the Condenser and the Witness, one economy.
   | { type: 'buildCondenser' }
   | { type: 'condense' }
