@@ -63,7 +63,7 @@ describe('the fixture is real', () => {
     expect(CONDITION_RULES.map((r) => r.shellId).sort())
       .toEqual(['cinder', 'ferrite', 'glassmere', 'hollow', 'verdance']);
     expect(new Set(CONDITION_RULES.map((r) => r.id)).size, 'two rules share an id').toBe(5);
-    expect(conditionedMachines().sort()).toEqual(['assayBench', 'crusher', 'kiln', 'refinery']);
+    expect(conditionedMachines().sort()).toEqual(['assayBench', 'crusher', 'kiln', 'refinery', 'sieve']);
   });
 
   /**

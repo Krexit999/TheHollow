@@ -197,6 +197,14 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * not a machine, which is the test of whether the claim was real.
    */
   assayBench: { flow: 0, surge: 9 },
+  /**
+   * THE SIEVE (§14.3) — PURE FLOW, and small. A filter is a standing rule, not
+   * an event: it is consulted every time any machine reaches for stock, so it
+   * draws while it exists rather than when it fires. Sized under the Crusher's
+   * demand because sorting should never be the thing that starves the plant it
+   * is sorting FOR.
+   */
+  sieve: { flow: 1.1, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -215,6 +223,9 @@ function flowDrawers(state: GameState): string[] {
   const out: string[] = [];
   if (state.kiln.built && state.kiln.feeding) out.push('kiln');
   if (tierOf(state, 'refinery') > 0) out.push('refinery');
+  // THE SIEVE draws whenever it is standing, like the Refinery: a filter is a
+  // standing rule consulted on every reach for stock, not an event.
+  if (tierOf(state, 'sieve') > 0) out.push('sieve');
   return out;
 }
 

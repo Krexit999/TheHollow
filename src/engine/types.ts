@@ -679,6 +679,8 @@ export interface GameState {
   /** THE CIRCUIT (§7.3, §25.3): per-machine condition strips, and what they
    *  have been doing — fires per row, acts and flips per machine. */
   circuit?: import('./systems/circuit').CircuitState;
+  /** SORTING (§14.3) — saved predicates and what they are pointed at. */
+  sorting?: import('./systems/sieve').SortingState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -1119,6 +1121,11 @@ export type GameAction =
   // E2 (§7.2) — the two verbs a condition needs: undo it, and aim Glassmere's.
   | { type: 'recastMachine'; machineId: string }
   | { type: 'setMachineBand'; machineId: string; band: number }
+  // SORTING (§14.3) — the Sieve, and the three verbs a saved predicate needs.
+  | { type: 'buildSieve' }
+  | { type: 'addFilter'; clauses: import('./systems/sieve').FilterClause[] }
+  | { type: 'removeFilter'; filterId: string }
+  | { type: 'assignFilter'; machineId: string; filterId: string | null }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

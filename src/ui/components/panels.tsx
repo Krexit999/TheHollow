@@ -35,6 +35,7 @@ import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
 import { PlantPanel, CrusherPanel, ConditionPanel } from './plant';
+import { SievePanel } from './sieve';
 import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
@@ -345,6 +346,8 @@ export function KilnPanel() {
       <PlantPanel />
       {/* E2 (§7.2) — what the shell has done to the machines, under the machines. */}
       <ConditionPanel />
+      {/* SORTING (§14.3) — the Sieve, and the filters it lets you write. */}
+      <SievePanel />
       {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
           the machine list, Flow/Surge, and the Circuit). */}
       <CircuitPanel />

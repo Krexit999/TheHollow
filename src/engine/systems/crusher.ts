@@ -26,6 +26,7 @@ import {
   canFire, emitsByproduct, fire, retainsBand, tierOf, TIER_PART_COST, MAX_MACHINE_TIER,
 } from './plant';
 import { machineSpeed } from './condition';
+import { accepts, filterOf, filterSentence } from './sieve';
 import {
   ensurePlant, builtWith, noteBuiltOf,
 } from './plant';
@@ -165,6 +166,16 @@ export function crush(
   if (machineSpeed(state, 'crusher') <= 0) {
     return { ok: false, reason: 'The liner has cracked. Re-cast it before it will run.' };
   }
+  /**
+   * AND IT SAYS NO BY NAME. A refusal that reads "Needs 4 of the same band"
+   * over a Hold holding forty is the class of bug this project has shipped
+   * three times (the Brick-over-a-Flux-purse one twice); a filter that silently
+   * made a stack invisible would be the same shape.
+   */
+  if (!accepts(state, 'crusher', materialId, band)) {
+    const f = filterOf(state, 'crusher')!;
+    return { ok: false, reason: `The Crusher only takes what ${filterSentence(f)}.` };
+  }
   const preview = crushPreview(state, materialId, band);
   if (!preview) return { ok: false, reason: `Needs ${CRUSH_BATCH} of the same band` };
   if (!canFire(state, 'crusher')) {
@@ -234,6 +245,17 @@ export function crushable(state: GameState): { materialId: string; band: PurityB
     if (def.worked) continue;
     for (const [band, stack] of Object.entries(perMat)) {
       if (!stack || stack.count < CRUSH_BATCH) continue;
+      /**
+       * SORTING (§14.3). A machine with no filter says yes to everything, which
+       * is exactly what this list did before the Sieve existed — so an
+       * unfiltered plant is bit-identical. With one, this is where "crush only
+       * stone under Fair" stops being a wish.
+       *
+       * The stack is not hidden and not destroyed: it is simply not on the list
+       * of things this machine is willing to take, which is the difference
+       * between sorting and a punishment.
+       */
+      if (!accepts(state, 'crusher', materialId, band as PurityBand)) continue;
       out.push({ materialId, band: band as PurityBand, count: stack.count });
     }
   }

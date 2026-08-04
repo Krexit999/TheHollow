@@ -41,6 +41,7 @@ import { cellCap } from './face';
 import { contentsOf, shellRoll, typeOf } from './roll';
 import { crush, crushable, crusherBuilt } from './crusher';
 import { surgeCap } from './plant';
+import { ensureSorting, filterSentence, filterable, sieveBuilt } from './sieve';
 import {
   CONDITION_BITE, CONDITION_RULES, conditionLine, conditionOf, ruleFor,
 } from './condition';
@@ -488,12 +489,87 @@ export const ACTS: ActDef[] = [
   },
 ];
 
-export function actDef(id: string): ActDef | undefined {
-  return ACTS.find((a) => a.id === id);
+/**
+ * FILTER AS AN ACTION (§14.3, §25.5) — the thing the Circuit has been waiting
+ * on since A.85, and the reason `bank` and `run` were the only Crusher rows
+ * this build could honestly offer.
+ *
+ * Every SAVED filter becomes a row you can throw at any machine the Sieve can
+ * point at. That is what makes a strip a plant rather than a switchboard:
+ *
+ *     WHEN this machine is magnetised  → take only what is under Fair
+ *     WHEN the seam here is Umberjade  → take only what is dense
+ *
+ * §25.5's first automation problem is "it consumes what you were saving", and
+ * its shipped answer is the blunt RESERVE flag (`qol.pins`, which `run the
+ * Crusher` already honours). This is the granular one the section asks for, and
+ * it is granular in the way that matters: a pin names a STACK, a filter names a
+ * PROPERTY, so it goes on applying to stone you have not mined yet.
+ *
+ * Generated rather than authored — the same shape as the kiln fuels above — so
+ * a filter written today is throwable today, without a registry entry.
+ */
+function filterActs(state: GameState): ActDef[] {
+  if (!sieveBuilt(state)) return [];
+  const machines = new Set(filterable(state));
+  const out: ActDef[] = [];
+  for (const f of ensureSorting(state).filters) {
+    for (const m of CIRCUIT_MACHINES) {
+      if (!machines.has(m)) continue;
+      out.push({
+        id: `filter:${m}:${f.id}`,
+        machine: m,
+        label: `take only what ${filterSentence(f)}`,
+        avail: (s) => sieveBuilt(s) && ensureSorting(s).filters.some((x) => x.id === f.id),
+        holds: (s) => ensureSorting(s).assigned[m] === f.id,
+        apply: (s) => {
+          const sort = ensureSorting(s);
+          if (sort.assigned[m] === f.id) return false;
+          sort.assigned[m] = f.id;
+          return true;
+        },
+      });
+    }
+  }
+  // ...AND THE ROW THAT TAKES IT BACK OFF. A strip that can only ever narrow a
+  // machine is a ratchet, and a ratchet is not a decision.
+  for (const m of CIRCUIT_MACHINES) {
+    if (!machines.has(m)) continue;
+    out.push({
+      id: `unfilter:${m}`,
+      machine: m,
+      label: 'take anything',
+      avail: (s) => sieveBuilt(s),
+      holds: (s) => ensureSorting(s).assigned[m] === undefined,
+      apply: (s) => {
+        const sort = ensureSorting(s);
+        if (sort.assigned[m] === undefined) return false;
+        delete sort.assigned[m];
+        return true;
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * EVERY ACT, INCLUDING THE GENERATED ONES. The filter rows depend on state (a
+ * filter is a thing the player wrote), so the list cannot be a module constant
+ * — but nothing outside this file may hold a stale copy either, which is why
+ * both lookups go through here.
+ */
+export function allActs(state: GameState): ActDef[] {
+  return [...ACTS, ...filterActs(state)];
+}
+
+export function actDef(id: string, state?: GameState): ActDef | undefined {
+  const found = ACTS.find((a) => a.id === id);
+  if (found || !state) return found;
+  return filterActs(state).find((a) => a.id === id);
 }
 
 export function availableActs(state: GameState, machine: MachineId): ActDef[] {
-  return ACTS.filter((a) => a.machine === machine && a.avail(state));
+  return allActs(state).filter((a) => a.machine === machine && a.avail(state));
 }
 
 /** A machine can carry a strip only if it has something to be told to do. */
@@ -563,7 +639,7 @@ export function tickCircuit(state: GameState, mods: ModifierCache, ctx: EngineCt
     while (fires.length < strip.length) fires.push(0);
     fires[won] = (fires[won] ?? 0) + 1;
 
-    const act = actDef(strip[won]!.act);
+    const act = actDef(strip[won]!.act, state);
     if (!act || !act.avail(state)) continue;
     if (act.apply(state, ctx, mods)) {
       c.acts[machine] = (c.acts[machine] ?? 0) + 1;
@@ -590,7 +666,7 @@ export function setRow(
     return { ok: true };
   }
   const rd = readDef(row.read);
-  const ad = actDef(row.act);
+  const ad = actDef(row.act, state);
   if (!rd || !rd.avail(state)) return { ok: false, reason: 'Nothing here reads that' };
   if (!ad || ad.machine !== machine || !ad.avail(state)) return { ok: false, reason: 'That machine cannot do that' };
   if (index >= MAX_ROWS) return { ok: false, reason: `A strip holds ${MAX_ROWS} rows` };
@@ -625,7 +701,7 @@ export function moveRow(
 /** One row as a sentence, for the panel and the log. */
 export function rowSentence(state: GameState, row: CircuitRow): string {
   const rd = readDef(row.read);
-  const ad = actDef(row.act);
+  const ad = actDef(row.act, state);
   if (!rd || !ad) return 'an unreadable row';
   const opWord = rd.kind === 'enum'
     ? (row.op === 'isnt' ? 'is not' : 'is')
