@@ -22,6 +22,7 @@ import {
   CHAINS, climbPreview, findChain, refine, refinePreview, refineTo, transmute, REFINE_RATIO,
   REFINERY_MASTERY, refineryUnlocked, transmuteUnlocked, SLAG_MATERIAL,
 } from '../systems/refinery';
+import { allBridges, needsCatalyst } from '../systems/reaction';
 import { salvageTool, salvagePreview, SALVAGE_RESIDUE } from '../systems/salvage';
 import { TEMPERS, TEMPER_MASTERY, temperTool, temperBonus, temperCost, temperingUnlocked } from '../systems/tempering';
 
@@ -336,9 +337,15 @@ describe('transmutation makes the 132 a graph', () => {
     expect(transmuteUnlocked(s)).toBe(true);
     addMaterial(s, 'marl', 50, 4);
     addMaterial(s, 'ochre', 50, 4);
+    // A.94: marl and ochre are STRANGERS (no trait in common), so the bench
+    // will not pour them without something that talks to both. The miss still
+    // pays slag — and now it eats the catalyst too (§17).
+    const cat = allBridges('marl', 'ochre').find((id) => !materialDef(id).worked)!;
+    addMaterial(s, cat, 50, 1);
     const before = materialCount(s, SLAG_MATERIAL);
-    const res = transmute(s, ctx, 'marl', 'ochre');
+    const res = transmute(s, ctx, 'marl', 'ochre', cat);
     expect(res.ok).toBe(true);
+    expect(materialCount(s, cat), 'a miss eats the catalyst').toBe(0);
     expect((res.data as { found: string | null }).found).toBeNull();
     expect(materialCount(s, SLAG_MATERIAL)).toBeGreaterThan(before);
   });
@@ -350,12 +357,16 @@ describe('transmutation makes the 132 a graph', () => {
     const c = CHAINS[0]!;
     addMaterial(s, c.a, 50, c.cost * 3);
     addMaterial(s, c.b, 50, c.cost * 3);
+    // A.94: whichever chain sits first, supply a catalyst if its pair needs one.
+    const cat = needsCatalyst(c.a, c.b)
+      ? allBridges(c.a, c.b).find((id) => !materialDef(id).worked)! : null;
+    if (cat) addMaterial(s, cat, 50, 1);
 
-    const first = transmute(s, ctx, c.a, c.b);
+    const first = transmute(s, ctx, c.a, c.b, cat);
     expect((first.data as { isNew: boolean }).isNew).toBe(true);
     expect(materialCount(s, c.out)).toBeGreaterThan(0);
 
-    const second = transmute(s, ctx, c.a, c.b);
+    const second = transmute(s, ctx, c.a, c.b, cat);
     expect((second.data as { isNew: boolean }).isNew).toBe(false);
     expect(s.refinery.found.filter((id) => id === c.id)).toHaveLength(1);
   });

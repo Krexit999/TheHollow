@@ -1077,7 +1077,7 @@ export type GameAction =
   /** Walk every rung up to a target band in one act. Same cost, fewer taps. */
   | { type: 'refineTo'; materialId: string; band: string }
   | { type: 'recastLegendary'; legend: string; materialId: string }
-  | { type: 'transmute'; a: string; b: string }
+  | { type: 'transmute'; a: string; b: string; catalyst?: string | null }
   | { type: 'salvageTool'; toolId: number; extract: boolean }
   | { type: 'temperTool'; temperId: string }
   | { type: 'listen' }

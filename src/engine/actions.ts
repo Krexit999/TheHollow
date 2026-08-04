@@ -674,7 +674,7 @@ export function handleAction(
       return refineTo(state, ctx, action.materialId, action.band as PurityBand);
 
     case 'transmute':
-      return transmute(state, ctx, action.a, action.b);
+      return transmute(state, ctx, action.a, action.b, action.catalyst ?? null);
 
     // --- THE NEW FORGE (v36): casting and the tool station ----------------
     // `partType` crosses the action boundary as a plain string, so it is

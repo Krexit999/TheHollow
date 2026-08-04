@@ -18,6 +18,7 @@ import { materialDef, workedMaterials, rollDrop, crackGeodeRolls } from '../mate
 import { traitsOf } from '../traits';
 import { SHELL_EXPORTS } from '../content/exports';
 import { CHAINS, transmute } from '../systems/refinery';
+import { allBridges } from '../systems/reaction';
 
 function fresh(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const engine = createEngine({ nowMs: 0 });
@@ -94,9 +95,15 @@ describe('Loam → Ferrite: Kilnflux fires every pour', () => {
     s.depthRecords['ferrite'] = 300; // transmute bench open
     addMaterial(s, chain!.a, 60, chain!.cost * 2);
     addMaterial(s, chain!.b, 60, chain!.cost * 2);
-    const r = transmute(s, ctx, chain!.a, chain!.b);
+    // A.94: palegold and marl PULL AGAINST EACH OTHER (dense vs light), so the
+    // firing is a violent pour and wants something between them (§17). The
+    // catalyst is handed back on a hit, and the batch comes out one heavier.
+    const cat = allBridges(chain!.a, chain!.b).find((id) => !materialDef(id).worked)!;
+    addMaterial(s, cat, 60, 1);
+    const r = transmute(s, ctx, chain!.a, chain!.b, cat);
     expect(r.ok).toBe(true);
-    expect(materialCount(s, 'kilnflux')).toBe(6);
+    expect(materialCount(s, 'kilnflux')).toBe(7);
+    expect(materialCount(s, cat), 'the catalyst survives a hit').toBe(1);
   });
 
 });

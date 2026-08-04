@@ -31,6 +31,10 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import { BANDS, BAND_RANGES, MATERIALS, materialDef, type PurityBand } from '../materials';
 import { materialCount, consumeMaterial, addMaterial } from './forge';
 import { masteryLevel } from './mastery';
+import {
+  VIOLENT_BONUS, bridges, catalystReading, pairClass,
+  type CatalystRead, type PairClass,
+} from './reaction';
 
 // ---------------------------------------------------------------------------
 // Refining — purity becomes workable
@@ -357,39 +361,46 @@ export interface BenchReading {
   a: ScentLevel;
   b: ScentLevel;
   line: string;
+  /** §17's three classes (`systems/reaction.ts`), and what the third slot says. */
+  klass: PairClass | null;
+  catalyst: CatalystRead;
 }
 
 export function benchReading(
-  state: GameState, aId: string | null, bId: string | null,
+  state: GameState, aId: string | null, bId: string | null, catId: string | null = null,
 ): BenchReading {
   const a = scentOf(aId);
   const b = scentOf(bId);
   const name = (id: string | null): string => (id ? materialDef(id).name : "");
+  const cat = catalystReading(state, aId, bId, catId);
+  const klass = aId && bId && aId !== bId ? pairClass(aId, bId) : null;
 
   if (!aId || !bId) {
-    return { read: 'empty', a, b, line: 'Put two stones in. The bench will say whether they have anything to make together.' };
+    return { read: 'empty', a, b, klass, catalyst: cat, line: 'Put two stones in. The bench will say whether they have anything to make together.' };
   }
   if (aId === bId) {
-    return { read: 'same', a, b, line: 'Two of the same thing is a pile, not a reaction.' };
+    return { read: 'same', a, b, klass, catalyst: cat, line: 'Two of the same thing is a pile, not a reaction.' };
   }
 
   const chain = findChain(aId, bId);
   if (!chain) {
     return {
-      read: 'inert', a, b,
+      read: 'inert', a, b, klass, catalyst: cat,
       line: `${name(aId)} and ${name(bId)} have nothing to say to each other. This would come back as slag.`,
     };
   }
   // ALREADY FOUND: no reason to make a player re-derive their own Codex.
   if (state.refinery?.found?.includes(chain.id)) {
     return {
-      read: 'known', a, b,
+      read: 'known', a, b, klass, catalyst: cat,
       line: `${chain.name} — you have run this one. ${chain.cost} of each makes ${materialDef(chain.out).name}.`,
     };
   }
   return {
-    read: 'reacts', a, b,
-    line: `These two have something to make together. What it is, you find out by pouring — ${chain.cost} of each.`,
+    read: 'reacts', a, b, klass, catalyst: cat,
+    line: klass === 'opposed'
+      ? `These two want to make something and they want to fight about it — ${chain.cost} of each, and it will come out heavier than it should.`
+      : `These two have something to make together. What it is, you find out by pouring — ${chain.cost} of each.`,
   };
 }
 
@@ -408,9 +419,32 @@ export function transmute(
   ctx: EngineCtx,
   aId: string,
   bId: string,
+  catId: string | null = null,
 ): ActionResult {
   if (!transmuteUnlocked(state)) return { ok: false, reason: 'The crucible bench is not yours yet' };
   if (aId === bId) return { ok: false, reason: 'Two of the same thing is a pile, not a reaction' };
+
+  /**
+   * THE THIRD SLOT (§17). A pair with nothing in common will not go on its own,
+   * whatever the chain table says — the rule the player is meant to infer is now
+   * the rule the bench obeys. The catalyst is checked BEFORE anything is spent,
+   * because refusing after taking the stone would make the reading a lie.
+   */
+  const klass = pairClass(aId, bId);
+  if (klass !== 'shares') {
+    if (!catId) {
+      return {
+        ok: false,
+        reason: klass === 'opposed'
+          ? `${materialDef(aId).name} and ${materialDef(bId).name} pull against each other. Put something between them.`
+          : `${materialDef(aId).name} and ${materialDef(bId).name} have nothing in common. This wants a third stone that talks to both.`,
+      };
+    }
+    if (!bridges(catId, aId, bId)) {
+      return { ok: false, reason: `${materialDef(catId).name} has nothing in common with one of them either` };
+    }
+    if (materialCount(state, catId) < 1) return { ok: false, reason: 'You are not holding that' };
+  }
 
   const chain = findChain(aId, bId);
   const cost = chain?.cost ?? 1;
@@ -423,6 +457,9 @@ export function transmute(
 
   if (!chain) {
     // A miss. It still pays: slag is feedstock, so a failed attempt moves you.
+    // AND THE CATALYST GOES WITH IT — §17: "catalysts are consumed only on
+    // failure", which is what makes reasoning nearly free and guessing costly.
+    if (klass !== 'shares' && catId) consumeMaterial(state, catId, 1);
     grantSlag(state, cost);
     state.refinery.attempts += 1;
   state.refinery.attemptsRun = (state.refinery.attemptsRun ?? 0) + 1;
@@ -430,12 +467,18 @@ export function transmute(
     // THE MISS NARROWS. A failure that says only "nothing happened" is what
     // turned this bench into a slot machine; the same one bit that priced the
     // attempt is worth repeating after it, because that is when it is read.
-    return { ok: true, data: { found: null, slag: cost, ...benchReading(state, aId, bId) } };
+    return {
+      ok: true,
+      data: { found: null, slag: cost, catalystSpent: klass !== 'shares' && !!catId, ...benchReading(state, aId, bId, catId) },
+    };
   }
 
   // The output inherits the WORSE of the two inputs' typical purity — you
   // cannot launder a bad stack into a good one by routing it through a chain.
-  addMaterial(state, chain.out, BAND_RANGES['fair'][0], chain.yield ?? 1);
+  // A VIOLENT pour comes out heavier by one (§17's "higher yield"): still
+  // strictly lossy in units, and it is the harder class that pays for it.
+  const units = (chain.yield ?? 1) + (klass === 'opposed' ? VIOLENT_BONUS : 0);
+  addMaterial(state, chain.out, BAND_RANGES['fair'][0], units);
   grantSlag(state, 1);
   state.refinery.attempts += 1;
   state.refinery.attemptsRun = (state.refinery.attemptsRun ?? 0) + 1;
@@ -446,7 +489,8 @@ export function transmute(
     ctx.emit({ type: 'chainFound', chainId: chain.id, name: chain.name });
   }
   ctx.dirty();
-  return { ok: true, data: { found: chain.id, isNew, out: chain.out } };
+  // The catalyst is NOT consumed here, and that omission is the mechanic.
+  return { ok: true, data: { found: chain.id, isNew, out: chain.out, units, violent: klass === 'opposed' } };
 }
 
 /** Chains the player has actually found — the Codex view. */

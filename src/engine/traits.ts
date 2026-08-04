@@ -171,6 +171,74 @@ export function traitFactorLines(id: TraitId): FactorLine[] {
 }
 
 /**
+ * OPPOSED TRAITS — **DERIVED FROM THE FACTOR TABLE ABOVE, NEVER AUTHORED.**
+ *
+ * §17 states a heuristic the game is supposed to never say out loud: "materials
+ * sharing a trait react; OPPOSED traits react violently; nothing in common
+ * gives grog." Two of those three words already existed here — sharing is
+ * `traitsOf(a) ∩ traitsOf(b)` — and "opposed" did not exist at all.
+ *
+ * It did not need authoring. Every trait already declares which stats it raises
+ * and which it cuts, and the honest reading of "opposed" is right there: two
+ * traits are opposed when **one raises a stat the other lowers.** Dense hits
+ * harder and Light hits softer; Tough refuses to sharpen and Keen is nothing
+ * but edge. A player who has read two trait cards already knows it.
+ *
+ * Grouped by the PLAYER-FACING label rather than the raw axis, for the same
+ * reason `compositionLean` groups: `force` and `heft` are both "strike power",
+ * and a rule the player is meant to infer has to be stated in the words the
+ * game shows them. FIFTEEN pairs fall out of ten traits.
+ *
+ * Deriving it means the rule cannot rot. Re-tune a factor and the opposition
+ * moves with it; author a trait and it takes its place in the table for free.
+ */
+function labelledFactors(id: TraitId): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const [axis, v] of Object.entries(traitDef(id).factors) as [keyof PartFactors, number][]) {
+    if (v === undefined) continue;
+    const label = AXIS_LABEL[axis];
+    m.set(label, (m.get(label) ?? 1) * v);
+  }
+  return m;
+}
+
+/**
+ * The stat they disagree on, or null.
+ *
+ * CANONICAL, not first-found. Two traits can disagree on more than one axis —
+ * Keen and Tough pull against each other on chip yield AND on edge hold — and
+ * a first-found answer reads a different one depending on which side you ask
+ * from. A rule the player is told to infer cannot answer differently in each
+ * direction, so the axes are walked in the registry's own order.
+ */
+const AXIS_ORDER: string[] = [...new Set(Object.values(AXIS_LABEL))];
+
+export function traitsOppose(a: TraitId, b: TraitId): string | null {
+  if (a === b) return null;
+  const A = labelledFactors(a);
+  const B = labelledFactors(b);
+  for (const label of AXIS_ORDER) {
+    const va = A.get(label);
+    const vb = B.get(label);
+    if (va === undefined || vb === undefined) continue;
+    if ((va > 1 && vb < 1) || (va < 1 && vb > 1)) return label;
+  }
+  return null;
+}
+
+/** Every opposed pair, derived once. Used by the Codex and by tests. */
+export function opposedPairs(): Array<{ a: TraitId; b: TraitId; axis: string }> {
+  const out: Array<{ a: TraitId; b: TraitId; axis: string }> = [];
+  for (let i = 0; i < TRAIT_IDS.length; i++) {
+    for (let j = i + 1; j < TRAIT_IDS.length; j++) {
+      const axis = traitsOppose(TRAIT_IDS[i]!, TRAIT_IDS[j]!);
+      if (axis) out.push({ a: TRAIT_IDS[i]!, b: TRAIT_IDS[j]!, axis });
+    }
+  }
+  return out;
+}
+
+/**
  * The net LEAN of a set of traits (a whole tool's combined traits): which stat
  * axes end up raised and which lowered, strongest first. Multiplies each trait's
  * factors per axis so a haft's Dense and a binding's Hollow read as one verdict.

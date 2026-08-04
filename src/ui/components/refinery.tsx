@@ -18,6 +18,9 @@ import {
   refineryUnlocked, transmuteUnlocked, refinePreview, climbPreview, foundChains,
   REFINE_RATIO, REFINERY_MASTERY, benchReading, scentOf,
 } from '../../engine/systems/refinery';
+import {
+  catalystReading, catalystsHeld, needsCatalyst, pairClass,
+} from '../../engine/systems/reaction';
 import { salvagePreview } from '../../engine/systems/salvage';
 import { TEMPERS, temperingUnlocked, temperCost, currentTemper } from '../../engine/systems/tempering';
 import { dispatch, useGame } from '../store';
@@ -94,6 +97,7 @@ export function RefineryPanel() {
   const state = useLive();
   const [feedA, setFeedA] = useState<string | null>(null);
   const [feedB, setFeedB] = useState<string | null>(null);
+  const [cat, setCat] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   if (!state) return null;
 
@@ -237,7 +241,7 @@ export function RefineryPanel() {
               still found only by pouring.
             */}
             {(() => {
-              const r = benchReading(state as GameState, feedA, feedB);
+              const r = benchReading(state as GameState, feedA, feedB, cat);
               const tone = r.read === 'reacts' ? '#9ac07a'
                 : r.read === 'known' ? '#9fc4dd'
                   : r.read === 'inert' ? '#c46a5a' : '#8a7f70';
@@ -247,28 +251,73 @@ export function RefineryPanel() {
                   style={{ borderColor: `${tone}55`, color: tone }}
                   data-testid="bench-reading"
                   data-read={r.read}
+                  data-class={r.klass ?? ''}
                 >
                   {r.line}
                 </div>
               );
             })()}
+            {/*
+              THE THIRD SLOT (§17). It only appears when the pair actually wants
+              one — a slot that is empty and irrelevant on two thirds of pours
+              would be furniture. The picker lists what YOU HOLD that bridges
+              these two, never the registry (LAW 3).
+            */}
+            {feedA && feedB && needsCatalyst(feedA, feedB) && (
+              <div className="mt-1.5 rounded-md border border-[#c9a86a]/40 p-2" data-testid="catalyst-slot">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[9px] uppercase tracking-widest text-cave-500">Between them</span>
+                  <span className="text-[9px] uppercase tracking-wider text-[#c9a86a]">
+                    {pairClass(feedA, feedB) === 'opposed' ? 'violent' : 'strangers'}
+                  </span>
+                </div>
+                <Select
+                  className="mt-1 w-full"
+                  ariaLabel="Catalyst"
+                  value={cat ?? ''}
+                  onChange={(v) => setCat(v || null)}
+                  options={[
+                    { value: '', label: '— nothing —' },
+                    ...catalystsHeld(state as GameState, feedA, feedB)
+                      .map((c) => ({ value: c.id, label: `${c.name} ×${c.count}` })),
+                  ]}
+                />
+                {(() => {
+                  const cr = catalystReading(state as GameState, feedA, feedB, cat);
+                  return (
+                    <div
+                      className="mt-1 text-[10px] leading-snug"
+                      style={{ color: cr.ok ? '#9ac07a' : '#8a7f70' }}
+                      data-testid="catalyst-reading"
+                      data-ok={cr.ok ? '1' : '0'}
+                    >
+                      {cr.line}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
             <button
               className="btn btn-warm mt-2 w-full py-1.5 text-xs"
               disabled={!feedA || !feedB || feedA === feedB}
               onClick={() => {
-                const r = dispatch({ type: 'transmute', a: feedA!, b: feedB! });
+                const r = dispatch({ type: 'transmute', a: feedA!, b: feedB!, catalyst: cat });
                 if (!r.ok) { setResult(r.reason ?? 'Nothing happened.'); return; }
-                const d = r.data as { found: string | null; isNew?: boolean; out?: string; line?: string };
+                const d = r.data as {
+                  found: string | null; isNew?: boolean; out?: string; line?: string;
+                  units?: number; violent?: boolean; catalystSpent?: boolean;
+                };
                 setResult(d.found
-                  ? `${d.isNew ? 'NEW — ' : ''}It came out as ${materialDef(d.out!).name}.`
+                  ? `${d.isNew ? 'NEW — ' : ''}It came out as ${d.units ?? 1}× ${materialDef(d.out!).name}.${d.violent ? ' It fought the whole way, and came out heavier.' : ''}`
                   // A MISS THAT NARROWS. "Nothing happened" is what made this a
                   // slot machine; the reading is repeated where it is read.
-                  : `Slag, and a smell. ${d.line ?? ''}`);
+                  : `Slag, and a smell.${d.catalystSpent ? ' The catalyst went with it.' : ''} ${d.line ?? ''}`);
               }}
             >
               {(() => {
-                const r = benchReading(state as GameState, feedA, feedB);
+                const r = benchReading(state as GameState, feedA, feedB, cat);
                 if (r.read === 'same') return 'Two of the same thing is a pile';
+                if (r.catalyst.needed && !r.catalyst.ok) return 'It will not go like this';
                 if (r.read === 'inert') return 'Run it anyway — this is slag';
                 if (r.read === 'known') return 'Run it';
                 if (r.read === 'reacts') return 'Run it — these two make something';
