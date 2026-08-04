@@ -349,11 +349,21 @@ export function couldBe(state: GameState, materialId: string): string[] {
   const ceiling = worth(was);
   const src = materialDef(was);
   const walked = new Set(Object.keys(state.depthRecords ?? {}));
-  return MATERIALS
-    .filter((m) => !m.worked && !m.source
+  const wider = MATERIALS
+    .filter((m) => !m.worked && !m.source && m.id !== was
       && (tier >= 3 ? walked.has(m.shellId) || m.shellId === src.shellId : m.shellId === src.shellId)
       && worth(m.id) <= ceiling + 1e-9)
     .map((m) => m.id);
+  /**
+   * WHAT IT WAS IS ALWAYS ON THE LIST, and this is a bug the driver found on
+   * its first run rather than a nicety. The wider set filters to `!m.source`,
+   * which is correct — you cannot witness a maybe into an alloy or a stilled
+   * form nobody made. But a maybe of a STILLED stone has a source, so the thing
+   * it was going to be fell out of its own option list, and a tier-III Witness
+   * could name a maybe as anything EXCEPT the truth. Tier I's own sentence ("it
+   * says what the thing was") was silently lost by the tiers above it.
+   */
+  return [was, ...wider];
 }
 
 export function witnessBlocker(

@@ -50,6 +50,8 @@ import {
 } from '../src/engine/systems/shopFork';
 import { resetCompaction } from '../src/engine/systems/compaction';
 import { BAY_DEPTH_UNLOCK } from '../src/engine/content/shell1/upgrades';
+import { ensurePlant } from '../src/engine/systems/plant';
+import { MAX_OVERCLOCK, ensureGovernor } from '../src/engine/systems/governor';
 
 interface Args {
   hours: number;
@@ -83,6 +85,14 @@ interface Args {
    *  shipped 55 sits BEHIND the tier-II wall at 44; this makes the alternative
    *  a measurement instead of an argument. */
   bay: number | null;
+  /**
+   * A.92 — HOLD EVERY BUILT MACHINE N STEPS PAST ITS RATING (`--overclock N`).
+   * The Governor's own wreck is at Ferrite 175, which a Loam arc never reaches,
+   * so the only way to measure the machine one flag apart from a real run is to
+   * stand it up and set it. Zero (the default) is exactly the run that existed
+   * before it, so the arms differ by the flag and nothing else.
+   */
+  overclock: number;
   /** Attribute every dust gained to the action that paid it (A.44 A0). */
   income: boolean;
   /** What the run-end horizon sizes pushing power against. `field` is the
@@ -168,6 +178,7 @@ function parseArgs(): Args {
     horizon: (get('horizon') ?? 'income') as 'income' | 'field',
     opening: get('opening') ?? null,
     bay: get('bay') !== undefined ? Number(get('bay')) : null,
+    overclock: Number(get('overclock') ?? 0),
     fork: (get('fork') ?? 'income') as Args['fork'],
     forkRow: (get('fork-row') ?? 'all') as Args['forkRow'],
     forkSwitchSec: Number(get('fork-switch-sec') ?? 20),
@@ -1716,6 +1727,25 @@ function main(): void {
 
   if (args.bay !== null && Number.isFinite(args.bay)) BAY_DEPTH_UNLOCK.depth = args.bay;
 
+  /**
+   * A.92 — THE GOVERNOR, HELD ON (`--overclock N`).
+   *
+   * Its wreck is at Ferrite 175 and a Loam arc never gets there, so the only
+   * way to measure it one flag apart from a real run is to stand the machine up
+   * and hold every built machine N steps past its rating for the whole arc.
+   * `overclockTick` re-applies it each second because machines are BUILT during
+   * a run — a setting written once at t=0 would only ever govern the Kiln.
+   *
+   * At N=0 nothing is written at all, so the zero arm is bit-for-bit the run
+   * that existed before this flag.
+   */
+  if (args.overclock > 0) {
+    const s0 = engine.getState() as GameState;
+    ensurePlant(s0).tiers['governor'] = 3;
+    s0.plant!.builtOf = s0.plant!.builtOf ?? {};
+    s0.plant!.builtOf['governor'] = ['marl', 'marl'];
+  }
+
   const started = Date.now();
   growthPolicy = args.growth;
   heatStance = args.heat;
@@ -1799,6 +1829,21 @@ function main(): void {
       );
     }
     const s = engine.getState();
+    /**
+     * A.92 — RE-APPLY THE OVERCLOCK. Machines are BUILT during a run, so a
+     * setting written once at t=0 would only ever have governed the Kiln, and
+     * the arm would have measured almost nothing. Costs one pass over the plant
+     * per second and is skipped entirely at N=0.
+     */
+    if (args.overclock > 0) {
+      const g = ensureGovernor(s as GameState);
+      for (const id of Object.keys(ensurePlant(s as GameState).tiers)) {
+        if (id !== 'governor') g.steps[id] = Math.min(MAX_OVERCLOCK, args.overclock);
+      }
+      if ((s as GameState).kiln.built) {
+        g.steps['kiln'] = Math.min(MAX_OVERCLOCK, args.overclock);
+      }
+    }
     // balanced: fully active for the first hour AND for 45 min after a
     // Breach (the biggest beat — nobody idles through it), else 5-min
     // check-in bursts.

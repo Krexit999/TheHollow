@@ -318,6 +318,24 @@ describe('4 — a maybe settles as something it could have been', () => {
     expect(couldBe(st, maybeId('marl'))).toEqual(['marl']);
   });
 
+  /**
+   * FOUND BY THE DRIVER, NOT BY THIS FILE. The wider set filters `!m.source`,
+   * which is right — you cannot witness a maybe into a stilled form nobody
+   * made — but a maybe OF a stilled stone then fell out of its own option list,
+   * so a tier-III Witness could name it as anything except the truth.
+   */
+  it('what it WAS is on the list at every tier, even when the wider set drops it', () => {
+    const st = built(1, 3);
+    const stilled = stilledId('millstone', 'brittle');
+    expect(materialDef(stilled).source, 'the fixture is not a sourced form').toBe('still');
+    registerMaybe(stilled);
+    const options = couldBe(st, maybeId(stilled));
+    expect(options[0]).toBe(stilled);
+    expect(options.length).toBeGreaterThan(1);
+    // ...and it is offered exactly once.
+    expect(options.filter((id) => id === stilled)).toHaveLength(1);
+  });
+
   it('tier II opens the shell, and NEVER anything worth more', () => {
     const st = built(1, 2);
     registerMaybe('ochre');

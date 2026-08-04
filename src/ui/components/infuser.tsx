@@ -118,12 +118,17 @@ export function InfuserPanel() {
                         <span className="text-[#8fb3c9]">
                           {[...traitsOf(t.materialId), vial.trait].join(' + ')}
                         </span>
-                        {t.over && (
-                          <span className="text-[#e0885a]">
-                            {' '}· more than it was born with ({naturalTraits(t.materialId)}) — the tool will shake
-                          </span>
-                        )}
                       </div>
+                      {/* ITS OWN LINE, AND IT WRAPS. It was inline in the row
+                          above, inside a `truncate` — so the one warning on the
+                          card was the first thing an ellipsis ate, and the
+                          driver's overflow check caught the nowrap span
+                          running past 380px. */}
+                      {t.over && (
+                        <div className="text-[9px] leading-snug text-[#e0885a]">
+                          More than it was born with ({naturalTraits(t.materialId)}) — the tool will shake.
+                        </div>
+                      )}
                       <button
                         className="btn mt-1 w-full px-1.5 py-1 text-[10px] disabled:opacity-50"
                         disabled={blocked !== null}
