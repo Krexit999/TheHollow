@@ -224,7 +224,20 @@ export type PartShape =
   // Grip
   | 'plain' | 'knurled'
   // Sockets
-  | 'open' | 'deepset';
+  | 'open' | 'deepset'
+  /**
+   * THE WORKED SHAPES (§13, A.92) — the three you cannot POUR.
+   *
+   * Every shape above is a mould: stone goes in liquid and comes out that
+   * shape. These three are made by working solid stock, which is what a Press
+   * is for, so each demands PLATE, ROD or WIRE in the tub rather than a melt.
+   * `systems/press.ts` owns the stock; `castPart` owns the refusal.
+   *
+   * ADDED, NEVER SUBSTITUTED. Nothing above became unreachable to make room —
+   * a route that takes something away to justify itself is a tax, and this
+   * codebase has reverted two systems for being one.
+   */
+  | 'rolled' | 'drawn' | 'wound';
 
 /** How a swing arranges the cells it reaches. Set by the HEAD's shape. */
 export type ReachPattern = 'spread' | 'single' | 'block' | 'twin' | 'arc' | 'line';
@@ -354,6 +367,24 @@ export const PART_SHAPES: PartShapeDef[] = [
     effect: 'Steadier under load, and what it carries comes round sooner.',
     fx: { wear: 0.85, charge: 0.3, stabilize: 10 },
   },
+  {
+    /**
+     * WORKED, NOT POURED — needs PLATE in the tub (§13, `systems/press.ts`).
+     *
+     * IT IS A CORE AND NOT A HEAD, and the tool-shapes suite is why. Only the
+     * HEAD sets a swing's geometry, there are exactly six `ReachPattern`s and
+     * all six are taken, so a seventh head shape necessarily duplicates one —
+     * `and the same stone in different heads sweeps DIFFERENT rock` caught
+     * `rolled` cutting identically to `wide` on its first run. Adding a seventh
+     * pattern is a face-reach change, which is not what a Press is for. A
+     * rolled plate core is the better object anyway: laminated sheet is exactly
+     * what you would put in the middle of something.
+     */
+    id: 'rolled', name: 'Rolled', part: 'core', melt: 1,
+    blurb: 'Not poured. Plate rolled over on itself, again and again, until it is one thing.',
+    effect: 'It barely wears at all, and it is slow to give back what it carries.',
+    fx: { wear: 0.6, charge: -0.2, stabilize: 8 },
+  },
 
   // ═══ HANDLE ═════════════════════════════════════════════════════════════
   {
@@ -374,6 +405,13 @@ export const PART_SHAPES: PartShapeDef[] = [
     effect: 'Lasts longer and works a pocket faster, with no reach in it at all.',
     fx: { wear: 0.75, oreRate: 1.25, cells: 0.9 },
   },
+  {
+    /** WORKED, NOT POURED — needs ROD in the tub. */
+    id: 'drawn', name: 'Drawn', part: 'handle', melt: 1,
+    blurb: 'Pulled through a die until it is longer than it started and stiffer than it was.',
+    effect: 'Reaches further than a straight haft and stays true doing it.',
+    fx: { cells: 1.15, stabilize: 10, wear: 1.1 },
+  },
 
   // ═══ BINDING ════════════════════════════════════════════════════════════
   {
@@ -387,6 +425,13 @@ export const PART_SHAPES: PartShapeDef[] = [
     blurb: 'Driven through and peened over. It is not coming apart.',
     effect: 'Considerably steadier — what it carries goes off where you aimed it.',
     fx: { stabilize: 26 },
+  },
+  {
+    /** WORKED, NOT POURED — needs WIRE in the tub. */
+    id: 'wound', name: 'Wound', part: 'binding', melt: 1,
+    blurb: 'Wire, wound on wet and left to tighten. It gets harder to undo every year.',
+    effect: 'Steadier than a lashing, and what it carries comes round noticeably sooner.',
+    fx: { stabilize: 14, charge: 0.4 },
   },
 
   // ═══ GRIP ═══════════════════════════════════════════════════════════════

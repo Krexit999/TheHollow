@@ -54,6 +54,7 @@ import { forgeDiscover } from './toolMods';
 import type { SocketFill } from './toolSockets';
 import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
+import { formForShape, formOf } from './press';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -405,6 +406,10 @@ export function canCast(
 ): boolean {
   const n = Math.max(1, Math.min(LAYER_MAX, layers));
   if (c.queue.length < n) return false;
+  // The worked shapes want stock at the front, not a melt (§13). Same rule as
+  // `castPart`, asked here so the button is disabled rather than merely refusing.
+  const wants = formForShape(shapeDef(shape, type).id);
+  if (wants && formOf(c.queue[0]?.materialId ?? '') !== wants) return false;
   const draws = layerDraw(type, shape, n);
   for (let i = 0; i < n; i++) {
     if ((c.queue[i]?.molten ?? 0) < draws[i]!) return false;
@@ -639,6 +644,26 @@ export function castPart(
    * hand-built dispatch can never produce a part that is nothing.
    */
   const cast = shapeDef(shape, type);
+  /**
+   * THE THREE SHAPES YOU CANNOT POUR (§13, A.92). Rolled, Drawn and Wound are
+   * WORKED out of plate, rod and wire — so the front of the queue has to BE
+   * that stock, not a melt of the stone it came from. This is the only place
+   * the Press reaches into casting, and it is a refusal rather than a price:
+   * every shape that existed before is still pourable from raw stone at exactly
+   * the cost it always was, so nothing a save could already do stopped working.
+   */
+  const wants = formForShape(cast.id);
+  if (wants) {
+    const is = formOf(front.materialId);
+    if (is !== wants) {
+      return {
+        ok: false,
+        reason: is
+          ? `A ${cast.name} ${type} is worked out of ${wants}, and the tub has ${is}.`
+          : `A ${cast.name} ${type} cannot be poured. Put ${wants} in the tub — the Press draws it.`,
+      };
+    }
+  }
   /**
    * LAYERS DRAW FROM THE FIRST N STONES IN THE QUEUE, outer first.
    *

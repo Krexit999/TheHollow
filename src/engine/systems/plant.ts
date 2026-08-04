@@ -249,6 +249,14 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * this, and that is the point of both being keystones.
    */
   infuser: { flow: 0, surge: 13 },
+  /**
+   * THE PRESS (§13) — pure SURGE, and the biggest single-machine draw there is.
+   * A press does nothing for a long time and then puts its whole weight through
+   * one stroke, which is the Crusher's shape at the scale of a room. Above the
+   * Line's 18 deliberately: one press is the most a plant can be asked for at
+   * once, so a thin plant feels this before it feels anything else.
+   */
+  press: { flow: 0, surge: 20 },
 };
 
 export function demandOf(machineId: string): Demand {

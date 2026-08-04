@@ -857,6 +857,7 @@ export type GameEvent =
   | { type: 'machineRecast'; machineId: string }
   | { type: 'distilled'; materialId: string; trait: string; into: string }
   | { type: 'infused'; materialId: string; trait: string; into: string }
+  | { type: 'pressed'; materialId: string; form: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
   | { type: 'machineUnbuilt'; machineId: string; parts: number }
   | { type: 'poured'; alloyId: string; traits: string[]; grog: boolean }
@@ -1144,6 +1145,14 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // DRAWING (§13) — the Press, and the one verb it has.
+  | { type: 'buildPress' }
+  | {
+      type: 'press';
+      materialId: string;
+      band: PurityBand;
+      form: import('./systems/press').StockForm;
+    }
   | { type: 'buildInfuser' }
   | {
       type: 'infuse';

@@ -20,6 +20,7 @@ import { recastMachine, setMachineBand } from './systems/condition';
 import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sieve';
 import { buildStill, distil } from './systems/still';
 import { buildInfuser, infuse } from './systems/infuser';
+import { buildPress, press } from './systems/press';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -211,6 +212,12 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildPress':
+      return buildPress(state, ctx);
+
+    case 'press':
+      return press(state, ctx, action.materialId, action.band, action.form);
 
     case 'buildInfuser':
       return buildInfuser(state, ctx);

@@ -38,6 +38,7 @@ import { PlantPanel, CrusherPanel, ConditionPanel } from './plant';
 import { SievePanel } from './sieve';
 import { StillPanel } from './still';
 import { InfuserPanel } from './infuser';
+import { PressPanel } from './press';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -358,6 +359,8 @@ export function KilnPanel() {
       <StillPanel />
       {/* ...and its other end: the vials the Still fills go into something here. */}
       <InfuserPanel />
+      {/* DRAWING (§13) — the Press, and the three shapes you cannot pour. */}
+      <PressPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}
