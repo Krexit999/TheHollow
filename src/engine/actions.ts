@@ -24,6 +24,7 @@ import { buildPress, press } from './systems/press';
 import { buildCondenser, buildWitness, condense, witness } from './systems/witness';
 import { buildGovernor, setOverclock } from './systems/governor';
 import { allocate, buildPrism } from './systems/prism';
+import { buildPatternBench, forgetPattern, recordPattern, repour } from './systems/pattern';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -215,6 +216,18 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildPatternBench':
+      return buildPatternBench(state, ctx);
+
+    case 'recordPattern':
+      return recordPattern(state, ctx, action.name);
+
+    case 'forgetPattern':
+      return forgetPattern(state, ctx, action.patternId);
+
+    case 'repour':
+      return repour(state, ctx, action.patternId);
 
     case 'buildPrism':
       return buildPrism(state, ctx);

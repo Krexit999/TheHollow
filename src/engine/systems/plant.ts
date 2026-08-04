@@ -286,6 +286,13 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   prism: { flow: 1.0, surge: 0 },
   /**
+   * THE PATTERN BENCH (§13) — pure SURGE, and large. A re-pour is seven casts
+   * in one press, which is the Crusher's shape with a whole tool behind it. It
+   * costs nothing to OWN and a great deal to fire, so a bench you keep for the
+   * one tool you rebuild is cheap and a bench you lean on is not.
+   */
+  pattern: { flow: 0, surge: 16 },
+  /**
    * THE GOVERNOR (§13) — pure FLOW, and modest. It is not a converter; it is a
    * thing that stands there holding other machines above their rating, which is
    * a continuous act. Modest because the EXPENSIVE half of overclocking is the
