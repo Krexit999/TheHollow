@@ -18,6 +18,11 @@ import {
   RECAST_PART_COST, bandOfMachine, conditionLine, conditionedMachines, litBands,
   observePlant, recastBlocker, ruleFor,
 } from '../../engine/systems/condition';
+import {
+  SOLVENT_COST, TIER_CAPABILITY_WASHER, WASH_BATCH, nextWasherTierCost, solventOf, washBlocker,
+  washRows,
+} from '../../engine/systems/washer';
+import { currencyDef } from '../../engine';
 import { WAVELENGTH_NAMES } from '../../engine/systems/refraction';
 import { currentShell } from '../../engine/shells';
 import type { GameState } from '../../engine';
@@ -310,7 +315,92 @@ export function CrusherPanel() {
               The bank is short. It waits for the charge.
             </div>
           )}
+          {/* THE WASHER — a PROCESSING STEP (§13, §37): a row in the panel of
+              the machine whose output it eats, never a construction event of
+              its own. */}
+          <WasherRow />
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * THE WASHER (§13) — grit + solvent → concentrate + silt.
+ *
+ * §37: a processing step is "a row inside an existing panel", so this is a
+ * fragment of the Crusher's card rather than a machine with a home. It states
+ * the solvent it will spend and the band the wash reaches, because both are the
+ * decision — the Refinery does the same job for UNITS, and this one does it for
+ * the shell's own currency.
+ */
+function WasherRow() {
+  const state = useGame((s) => s.state);
+  useGame((s) => s.rev);
+  if (!state) return null;
+  const st = state as GameState;
+  const tier = tierOf(st, 'washer');
+  const cost = nextWasherTierCost(st);
+  const rack = st.casting.rack?.length ?? 0;
+  const rows = washRows(st).slice(0, 3);
+  const sol = solventOf(st);
+  let solName = sol.id;
+  try { solName = currencyDef(sol.id).name; } catch { /* unknown */ }
+
+  return (
+    <div className="mt-2 border-t border-cave-800 pt-1.5" data-testid="washer-row">
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[9px] font-semibold uppercase tracking-widest text-cave-500">
+          The Washer
+        </span>
+        <span className="text-[9px] text-cave-600" data-testid="washer-tier">
+          {TIER_CAPABILITY_WASHER[Math.min(tier, MAX_MACHINE_TIER)]}
+        </span>
+      </div>
+      {tier === 0 ? (
+        <p className="text-[10px] leading-snug text-cave-600">
+          Grit is the end of the line until something washes it. Add the drum and it comes back
+          a band cleaner, for solvent instead of for stone.
+        </p>
+      ) : (
+        <>
+          <div className="mb-1 flex items-baseline justify-between text-[9px] text-cave-600">
+            <span>{WASH_BATCH} grit + {SOLVENT_COST} {solName}</span>
+            <span className="tnum">{Math.floor(sol.have)} held</span>
+          </div>
+          {rows.length === 0 && (
+            <div className="text-[10px] text-cave-600">No grit held in fours.</div>
+          )}
+          {rows.map((r) => {
+            const blocked = washBlocker(st, r.materialId, r.band);
+            return (
+              <button
+                key={`${r.materialId}-${r.band}`}
+                className="mt-1 flex w-full items-baseline gap-2 rounded border border-cave-800 px-1.5 py-1 text-[10px] hover:bg-cave-800 disabled:opacity-50"
+                disabled={blocked !== null}
+                title={blocked ?? undefined}
+                data-testid={`wash-${r.materialId}`}
+                onClick={() => dispatch({ type: 'wash', materialId: r.materialId, band: r.band })}
+              >
+                <span className="min-w-0 flex-1 truncate text-left text-cave-200">{r.name}</span>
+                <span className="shrink-0 text-cave-500">{BAND_LABELS[r.band]}</span>
+                <span className="shrink-0 text-cave-600">→</span>
+                <span className="shrink-0 text-[#a8d8a0]">{BAND_LABELS[r.into]}</span>
+                <span className="shrink-0 text-cave-600">+ silt</span>
+              </button>
+            );
+          })}
+        </>
+      )}
+      {cost !== null && (
+        <button
+          className="btn mt-1 w-full py-1 text-[10px] disabled:opacity-50"
+          disabled={rack < cost}
+          data-testid="build-washer"
+          onClick={() => dispatch({ type: 'buildWasher' })}
+        >
+          {tier === 0 ? 'Add the drum' : TIER_CAPABILITY_WASHER[tier + 1]} · {cost} cast parts
+        </button>
       )}
     </div>
   );

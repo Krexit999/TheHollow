@@ -26,6 +26,7 @@ import { buildGovernor, setOverclock } from './systems/governor';
 import { allocate, buildPrism } from './systems/prism';
 import { buildPatternBench, forgetPattern, recordPattern, repour } from './systems/pattern';
 import { buildCentrifuge, spin } from './systems/centrifuge';
+import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -217,6 +218,12 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildWasher':
+      return buildWasher(state, ctx);
+
+    case 'wash':
+      return wash(state, ctx, action.materialId, action.band);
 
     case 'buildCentrifuge':
       return buildCentrifuge(state, ctx);

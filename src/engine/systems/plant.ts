@@ -299,6 +299,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   centrifuge: { flow: 2.6, surge: 8 },
   /**
+   * THE WASHER (§13) — pure FLOW, and modest. A wash is a soak: the solvent has
+   * to keep moving over the grit for as long as it takes, which is the Kiln's
+   * shape and not the Crusher's, even though it hangs off the Crusher's panel.
+   */
+  washer: { flow: 1.6, surge: 0 },
+  /**
    * THE GOVERNOR (§13) — pure FLOW, and modest. It is not a converter; it is a
    * thing that stands there holding other machines above their rating, which is
    * a continuous act. Modest because the EXPENSIVE half of overclocking is the
@@ -350,6 +356,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'governor') > 0) out.push('governor');
   if (tierOf(state, 'prism') > 0) out.push('prism');
   if (tierOf(state, 'centrifuge') > 0) out.push('centrifuge');
+  if (tierOf(state, 'washer') > 0) out.push('washer');
   return out;
 }
 

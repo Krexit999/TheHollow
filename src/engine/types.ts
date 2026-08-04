@@ -871,6 +871,7 @@ export type GameEvent =
   | { type: 'patternDrawn'; patternId: number; casts: number }
   | { type: 'repoured'; patternId: number; parts: number }
   | { type: 'spun'; materialId: string; out: string[] }
+  | { type: 'washed'; materialId: string; band: PurityBand; solvent: string }
   | { type: 'condensed'; residue: number; hush: number }
   | { type: 'witnessed'; materialId: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
@@ -1160,6 +1161,9 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // A PROCESSING STEP (§13) — the Washer, a row in the Crusher's panel.
+  | { type: 'buildWasher' }
+  | { type: 'wash'; materialId: string; band: PurityBand }
   // SEPARATION (§13) — the Centrifuge, and the one verb it has.
   | { type: 'buildCentrifuge' }
   | { type: 'spin'; materialId: string; band: PurityBand }
