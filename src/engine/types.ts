@@ -694,6 +694,8 @@ export interface GameState {
   lapidary?: import('./systems/lapidary').LapidaryState;
   /** THE VENT ARRAY (A.95) — cast valves and the line you asked for. Self-heals. */
   vents?: import('./systems/vents').VentArrayState;
+  /** THE CULTIVAR BENCH (A.95) — what is seeded in each quadrant. Self-heals. */
+  cultivar?: import('./systems/cultivar').CultivarState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -992,6 +994,8 @@ export type GameEvent =
   | { type: 'valveSet'; cell: number }
   | { type: 'reduced'; fromId: string; toId: string; byShaft: boolean }
   | { type: 'arrayAnswered' }
+  | { type: 'bedSeeded'; quad: string; strainId: string }
+  | { type: 'cropped'; quad: string; materialId: string; units: number }
   | { type: 'castFound'; id: string; name: string }
   | { type: 'castMissed' }
   // --- THE NEW FORGE, step 2: casting and the tool station ---------------
@@ -1179,6 +1183,9 @@ export type GameAction =
   | { type: 'buildBoiler' }
   | { type: 'buildVentArray' }
   | { type: 'buildRetort' }
+  | { type: 'buildCultivarBench' }
+  | { type: 'seedBed'; quad: import('./systems/cultivar').QuadrantId; strainId: string | null }
+  | { type: 'cropBed'; quad: import('./systems/cultivar').QuadrantId }
   | { type: 'reduce'; fromId: string; band: PurityBand }
   | { type: 'setValve'; cell: number }
   | { type: 'setHoldLine'; line: number | null }

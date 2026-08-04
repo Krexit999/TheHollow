@@ -31,6 +31,7 @@ import { buildQuenchTank, quenchPart } from './systems/quench';
 import { buildBoiler } from './systems/boiler';
 import { buildVentArray, setHoldLine, setValve } from './systems/vents';
 import { buildRetort, reduce } from './systems/retort';
+import { buildCultivarBench, cropBed, seedBed } from './systems/cultivar';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -265,6 +266,15 @@ export function handleAction(
 
     case 'reduce':
       return reduce(state, ctx, action.fromId, action.band);
+
+    case 'buildCultivarBench':
+      return buildCultivarBench(state, ctx);
+
+    case 'seedBed':
+      return seedBed(state, ctx, action.quad, action.strainId);
+
+    case 'cropBed':
+      return cropBed(state, ctx, action.quad);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

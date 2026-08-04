@@ -366,6 +366,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * the end, which is the Refinery shape with a fire under it.
    */
   retort: { flow: 4.4, surge: 10 },
+  /**
+   * THE CULTIVAR BENCH (§13, Verdance) — pure FLOW, and small. A bed is tended
+   * continuously and cropped rarely, which is the Sieve's shape: a standing
+   * rule rather than an event.
+   */
+  cultivar: { flow: 1.0, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -414,6 +420,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'quench') > 0) out.push('quench');
   if (tierOf(state, 'vents') > 0) out.push('vents');
   if (tierOf(state, 'retort') > 0) out.push('retort');
+  if (tierOf(state, 'cultivar') > 0) out.push('cultivar');
   return out;
 }
 

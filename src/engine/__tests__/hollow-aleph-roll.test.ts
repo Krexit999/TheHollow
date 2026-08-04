@@ -447,7 +447,7 @@ describe('5 — PILLAR 2: geography is not income', () => {
     for (const [id, v] of all) expect(v, `${id} reads a different ceiling`).toBe(all[0]![1]);
     // ...and the arms really are different geographies: 6 stations against 20.
     expect(authoredRoll('aleph').length).toBe(6);
-    expect(authoredRoll('verdance').length).toBe(21);
+    expect(authoredRoll('verdance').length).toBe(22);
   });
 
   it('and a roll still returns exactly ONE stone in both shells', () => {

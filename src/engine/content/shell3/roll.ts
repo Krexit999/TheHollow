@@ -94,6 +94,24 @@ export const VERDANCE_ROLL: StationDef[] = [
     line: 'Nobody has cut anything here in a long time, and it shows in every direction at once.',
   },
   {
+    /**
+     * THE CULTIVAR BENCH'S PLACE — the fourth station this project has authored
+     * around a hole in §6's keystone table (the Grafthouse A.92, The Long Spin
+     * A.93, The Slake A.94). §13 lists the CULTIVAR BENCH; §6 gives it no wreck,
+     * and item 9's two candidates — The Fallow 38 and The Long Fallow 265 — are
+     * both CHAMBERS, so neither was one.
+     *
+     * It sits immediately past The Fallow, which is the ground it is about, and
+     * BEFORE Bramblewall at 44: a bench that farms the face must not be behind
+     * the wall the face is meant to get you through.
+     *
+     * IT BURIES NOTHING, the standing rule since The Long Spin.
+     */
+    id: 'trayhouse', depth: 40, name: 'The Tray House', type: 'wreck', wreck: 'THE CULTIVAR BENCH',
+    seams: ['barkiron', 'sapstone'],
+    line: 'Trays of seed stock in rows, and the rows are still in the order she left them.',
+  },
+  {
     id: 'bramblewall', depth: 44, name: 'BRAMBLEWALL', type: 'wall', hardness: 7,
     seams: NO_SEAM,
     line: 'Not stone. Thorn, grown across and through itself until it is harder than the rock it replaced.',
