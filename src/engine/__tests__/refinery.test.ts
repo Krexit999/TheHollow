@@ -440,16 +440,19 @@ describe('salvage is an exit path, not a bin', () => {
 });
 
 describe('worked materials are made, never found', () => {
-  it('there are twenty-six — seven bench-worked (P16), seven cured (P19), seven exports (Part B), five castings (B4) — each made, never dug', () => {
+  it('there are twenty-seven — the twenty-six, plus the Retort Pyre-bath (A.95) — each made, never dug', () => {
     // Cured stones (Phase 19) are the second kind of made-not-found material,
     // the export spine (Part B) the third, and the alloy castings (B4
     // pull-through) the fourth: all `worked: true`, so all share every
     // guarantee below (never drop, never listed under a shell taxonomy).
     const worked = workedMaterials();
-    expect(worked).toHaveLength(26);
+    expect(worked).toHaveLength(27);
     for (const id of ['refineslag', 'salvagedust', 'truesilver', 'rustochre', 'sunamber', 'cinderglass',
       'kilnflux', 'lodeframe', 'setresin', 'fibercloth', 'groundlens', 'glasseal', 'emberglass',
-      'steelcasting', 'brazecasting', 'platecasting', 'polecasting', 'cryocasting']) {
+      'steelcasting', 'brazecasting', 'platecasting', 'polecasting', 'cryocasting',
+      // §17's last quench medium, and the only STARRED material in the game
+      // that is made rather than dug.
+      'pyrebath']) {
       expect(worked.some((m) => m.id === id), `${id} is a worked material`).toBe(true);
     }
   });

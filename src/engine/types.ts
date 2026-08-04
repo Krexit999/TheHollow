@@ -990,6 +990,7 @@ export type GameEvent =
   | { type: 'gemCut'; gemId: string; shape: string }
   | { type: 'partQuenched'; partId: number; mediumId: string }
   | { type: 'valveSet'; cell: number }
+  | { type: 'reduced'; fromId: string; toId: string; byShaft: boolean }
   | { type: 'arrayAnswered' }
   | { type: 'castFound'; id: string; name: string }
   | { type: 'castMissed' }
@@ -1177,6 +1178,8 @@ export type GameAction =
   | { type: 'buildQuenchTank' }
   | { type: 'buildBoiler' }
   | { type: 'buildVentArray' }
+  | { type: 'buildRetort' }
+  | { type: 'reduce'; fromId: string; band: PurityBand }
   | { type: 'setValve'; cell: number }
   | { type: 'setHoldLine'; line: number | null }
   | { type: 'quenchPart'; partId: number; mediumId: string }

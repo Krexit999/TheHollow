@@ -30,6 +30,7 @@ import { buildLapidary, cutGem } from './systems/lapidary';
 import { buildQuenchTank, quenchPart } from './systems/quench';
 import { buildBoiler } from './systems/boiler';
 import { buildVentArray, setHoldLine, setValve } from './systems/vents';
+import { buildRetort, reduce } from './systems/retort';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -258,6 +259,12 @@ export function handleAction(
 
     case 'setHoldLine':
       return setHoldLine(state, ctx, action.line);
+
+    case 'buildRetort':
+      return buildRetort(state, ctx);
+
+    case 'reduce':
+      return reduce(state, ctx, action.fromId, action.band);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

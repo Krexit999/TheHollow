@@ -25,6 +25,7 @@ import { allAuthoredStations } from '../src/engine/content/rolls';
 import { CHAINS } from '../src/engine/systems/refinery';
 import { CURE_RECIPES } from '../src/engine/systems/curing';
 import { SPLITS } from '../src/engine/content/splits';
+import { REDUCTIONS } from '../src/engine/content/reductions';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -59,6 +60,10 @@ for (const c of CURE_RECIPES) note(c.to, `cure ${c.id}`);
 // 6b. SEPARATION — the Centrifuge (§13, A.93). The eleven this instrument found
 //     on its first run are exactly what these rows produce.
 for (const s of SPLITS) for (const out of s.out) note(out, `split from ${s.from}`);
+
+// 6c. REDUCTION — the Retort (§13, A.95). The only verb in the game that moves
+//     stock UP a rarity band, and the only producer of the Pyre-bath.
+for (const r of REDUCTIONS) note(r.to, `reduced from ${r.from}`);
 
 // 7. Anything a source file GRANTS by name — `addMaterial(state, 'x'` and the
 //    literal id in a grant table. Text-scanned, then verified against the

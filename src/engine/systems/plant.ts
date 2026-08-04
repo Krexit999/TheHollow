@@ -360,6 +360,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * it is not, and it costs the same either way.
    */
   vents: { flow: 1.2, surge: 0 },
+  /**
+   * THE RETORT (§13, Cinder) — FLOW AND SURGE, and the heaviest sustained draw
+   * in the plant. A reduction is a long hold at temperature with a shove at
+   * the end, which is the Refinery shape with a fire under it.
+   */
+  retort: { flow: 4.4, surge: 10 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -407,6 +413,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'washer') > 0) out.push('washer');
   if (tierOf(state, 'quench') > 0) out.push('quench');
   if (tierOf(state, 'vents') > 0) out.push('vents');
+  if (tierOf(state, 'retort') > 0) out.push('retort');
   return out;
 }
 

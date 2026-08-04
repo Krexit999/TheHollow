@@ -28,6 +28,7 @@ import { makePart } from '../systems/forgeParts';
 import { allShells } from '../shells';
 import { materialDef } from '../materials';
 import { registerInfusedForm, resultOf } from '../systems/infuser';
+import { PYRE_BATH } from '../content/reductions';
 import type { EngineCtx, GameState } from '../types';
 
 ensureContentLoaded();
@@ -111,10 +112,25 @@ describe('§1 — the wreck, and the machine', () => {
 describe('§2 — a medium only takes what it has something in common with', () => {
   it('and it is the SAME rule the Reaction Bench runs on', () => {
     for (const t of TEMPERS) {
+      // ...with ONE exception, and it is the whole of the Retort's tier III:
+      // §17's Pyre-bath refuses no part (A.95). Asserted below rather than
+      // quietly skipped.
+      if (t.medium === PYRE_BATH) continue;
       for (const m of ['marl', 'ochre', 'loamiron', 'bonechalk']) {
         expect(mediumTakes(t.id, m)).toBe(pairClass(t.medium, m) === 'shares');
       }
     }
+  });
+
+  it('THE PYRE-BATH IS THE EXCEPTION, and it is the only one', () => {
+    const pyre = TEMPERS.find((t) => t.medium === PYRE_BATH)!;
+    for (const m of ['marl', 'ochre', 'loamiron', 'bonechalk', 'voidstar', 'axiomdust']) {
+      expect(mediumTakes(pyre.id, m), `the Pyre-bath refused ${m}`).toBe(true);
+      // ...and it is genuinely an exception: most of these share nothing with it.
+    }
+    const shares = ['marl', 'ochre', 'loamiron', 'bonechalk']
+      .filter((m) => pairClass(PYRE_BATH, m) === 'shares');
+    expect(shares.length, 'the Pyre-bath shares a trait with everything anyway').toBeLessThan(4);
   });
 
   it('a medium with nothing in common is refused BY NAME, and offered nowhere', () => {

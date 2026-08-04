@@ -1,32 +1,18 @@
 import { ensureContentLoaded } from '../src/engine/content';
-import { createEngine } from '../src/engine/index';
-import { SURGE_FLOOR, SURGE_PER_RANK, demandOf, flowCap, surgeCap } from '../src/engine/systems/plant';
-import { allAuthoredStations } from '../src/engine/content/rolls';
-import type { GameState } from '../src/engine/types';
+import { MATERIALS, materialDef } from '../src/engine/materials';
+import { TEMPERS } from '../src/engine/systems/tempering';
+import { traitsOf } from '../src/engine/traits';
 ensureContentLoaded();
-const s = createEngine({ nowMs: 0 }).getState() as GameState;
-
-console.log('=== SURGE (item 11) ===');
-console.log('bare surgeCap          ', surgeCap(s));
-console.log('LINE demand            ', JSON.stringify(demandOf('line')));
-console.log('PRESS demand           ', JSON.stringify(demandOf('press')));
-console.log('can a bare plant fire a Line?', surgeCap(s) >= demandOf('line').surge);
-console.log('ranks needed for a Line', Math.ceil((demandOf('line').surge - SURGE_FLOOR) / SURGE_PER_RANK));
-
-console.log('\n=== FLOW / the plant shape (§3.2) ===');
-s.kiln.built = false;
-console.log('flowCap, no kiln       ', flowCap(s));
-s.kiln.built = true; s.kiln.heat = 0;
-console.log('flowCap, cold kiln     ', flowCap(s));
-s.kiln.heat = 1;
-console.log('flowCap, hot kiln      ', flowCap(s));
-for (const shell of ['loam', 'ferrite', 'verdance', 'glassmere', 'cinder', 'hollow', 'aleph']) {
-  s.shell.current = shell;
-  console.log(`  ${shell.padEnd(10)} flow ${flowCap(s).toFixed(2)}  surge ${surgeCap(s)}`);
+console.log('=== the six quench media, and who can reach them ===');
+for (const t of TEMPERS) {
+  const d = materialDef(t.medium);
+  console.log(`  ${t.id.padEnd(7)} ${t.name.padEnd(16)} medium ${t.medium.padEnd(13)} ${d.shellId.padEnd(10)} ${d.rarity.padEnd(9)} cost ${t.mediumCost}  traits [${traitsOf(t.medium)}]`);
 }
-
-console.log('\n=== UNCLAIMED WRECKS in the four shells ===');
-for (const w of allAuthoredStations().filter((x) => x.def.type === 'wreck')) {
-  if (!['cinder', 'verdance', 'ferrite'].includes(w.shellId)) continue;
-  console.log(`  ${w.shellId.padEnd(9)} ${String(w.def.depth).padStart(4)} ${w.def.name.padEnd(22)} ${w.def.wreck}`);
+console.log('\n=== starred materials (what §13 says the Retort blocks) ===');
+for (const m of MATERIALS.filter((x) => x.rarity === 'starred')) {
+  console.log(`  ${m.id.padEnd(16)} ${m.shellId.padEnd(10)} worked=${!!m.worked} source=${m.source ?? '-'}`);
+}
+console.log('\n=== Cinder commons that read as ash/pyre ===');
+for (const m of MATERIALS.filter((x) => x.shellId === 'cinder')) {
+  console.log(`  ${m.id.padEnd(16)} ${m.rarity.padEnd(9)} worked=${!!m.worked} [${traitsOf(m.id)}]`);
 }

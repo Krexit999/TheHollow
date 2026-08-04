@@ -57,6 +57,7 @@ import { allAuthoredStations } from '../content/rolls';
 import { consumeMaterial, materialCount } from './forge';
 import { TEMPERS, TEMPER_BY_ID, ASH_COST, type TemperDef } from './tempering';
 import { pairClass } from './reaction';
+import { PYRE_BATH } from '../content/reductions';
 import type { RackPart } from './casting';
 
 /** The wreck it is found in — Cinder, The Slake 96. */
@@ -151,10 +152,20 @@ function findPart(state: GameState, partId: number): { part: RackPart; where: 'r
   return null;
 }
 
-/** A medium only takes a part it has something in common with. */
+/**
+ * A medium only takes a part it has something in common with.
+ *
+ * ...EXCEPT THE PYRE-BATH (§17: "the only route to tier-XI temper", A.95). The
+ * shared-trait rule is what makes most media refuse most parts, and it is also
+ * what would leave the deepest stone in the game untreatable — a tier-XI part
+ * is poured from exotics that share nothing with a lump of charstone. So the
+ * Retort's last reduction refuses nothing, and THAT is the capability, rather
+ * than a bigger number on the same six.
+ */
 export function mediumTakes(mediumId: string, materialId: string): boolean {
   const def = TEMPER_BY_ID.get(mediumId);
   if (!def) return false;
+  if (def.medium === PYRE_BATH) return true;
   return pairClass(def.medium, materialId) === 'shares';
 }
 

@@ -130,8 +130,10 @@ describe('refined recipes', () => {
 // three brew-gated tempers. The six material-medium quenches stand.
 // ---------------------------------------------------------------------------
 describe('tempers', () => {
-  it('six material quenches stand', () => {
-    expect(TEMPERS.length).toBe(6);
+  it('SEVEN material quenches stand — the Pyre-bath is the seventh (A.95)', () => {
+    // §17 names five quench media and calls the Pyre-bath "the only route to
+    // tier-XI temper"; it had never existed. The Retort makes it.
+    expect(TEMPERS.length).toBe(7);
   });
 });
 

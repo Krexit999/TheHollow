@@ -28,6 +28,8 @@ import { convCurrencyId, currentShell } from '../shells';
 import { consumeMaterial, materialCount, equippedTool } from './forge';
 import { affinityLevel } from './affinity';
 import { masteryLevel } from './mastery';
+import { PYRE_BATH } from '../content/reductions';
+import { riskedHeat } from './boiler';
 
 /** The quench trough opens with the Refinery's deeper half. */
 export const TEMPER_MASTERY = 6;
@@ -113,6 +115,13 @@ export const TEMPERS: TemperDef[] = [
     when: 'While you are working the deep half of a shell.',
     active: (s) => s.depth >= currentShell(s).floorDepth * 0.5,
     bucket: 'drillPower', bonus: 0.22, idle: 0.04,
+  },
+  {
+    id: 'pyre', name: 'Pyre-quenched', medium: PYRE_BATH, mediumCost: 2,
+    flavor: 'Whatever you put in it comes out having been somewhere. Nobody has ever described where.',
+    when: 'While the shaft is above the line you are safe at.',
+    active: (s) => (s.pressure?.heat ?? 0) > 0 && riskedHeat(s) > 0,
+    bucket: 'dustYield', bonus: 0.24, idle: 0.05,
   },
 ];
 
