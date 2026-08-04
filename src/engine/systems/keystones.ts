@@ -142,7 +142,23 @@ export function registerReferenceKeystones(): void {
     craft: {
       materials: [{ id: 'steelcasting', count: 1 }],
       currencies: [{ id: 'scale', amount: 40 }],
-      source: 'the Crucible casts from a discovered alloy',
+      /**
+       * THIS LINE NAMED THE WRONG MACHINE FOR 140 COMMITS (A.94).
+       *
+       * It said "the Crucible casts from a discovered alloy", and no Crucible
+       * recipe has ever produced a `steelcasting` — nothing did, which is how
+       * this craft leg came to be an UNSATISFIABLE GATE from the day it was
+       * authored (A.40 Part B, 2026-07-24) until the Centrifuge's splits landed
+       * at A.93. The refusal message is the only place LAW 3 gets to show a
+       * destination, so a wrong one is worse than none: it sent the player to
+       * a bench that could not help them.
+       *
+       * The gate was never a softlock — the idle leg hauls one up for chip
+       * currency, which is the ruled correction doing exactly its job — but an
+       * engaged player who wanted the shell's headline system to be load-bearing
+       * had no route at all.
+       */
+      source: 'the Centrifuge takes Ferrite ore apart at The Long Spin',
     },
     idlePriceMult: 1,
   });

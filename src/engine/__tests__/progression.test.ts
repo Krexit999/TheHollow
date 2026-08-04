@@ -17,7 +17,12 @@ import { SEEP_EFFICIENCY } from '../systems/face';
 import { chainTimeoutSec, chainBreakPenalty, chainCap, magnetBias } from '../systems/polarity';
 import { addMaterial, materialCount, TOOL_RECIPES } from '../systems/forge';
 import { MATERIALS, materialDef } from '../materials';
-import { keystoneFor, keystoneIdlePrice, keystonePlaced } from '../systems/keystones';
+import { allKeystones, keystoneFor, keystoneIdlePrice, keystonePlaced } from '../systems/keystones';
+import { centrifugeBuilt, centrifugeStation, spin } from '../systems/centrifuge';
+import { ensurePlant } from '../systems/plant';
+import { markReached } from '../systems/roll';
+import { SPLITS } from '../content/splits';
+import { CHAINS } from '../systems/refinery';
 import { canBreach } from '../systems/breach';
 import { allUpgrades } from '../upgrades';
 
@@ -154,17 +159,64 @@ describe('keystones — the breach gate', () => {
     expect(canBreach(s)).toBe(true);
   });
 
-  it('ferrite: the anchor eats a casting — the headline system, load-bearing', () => {
+  /**
+   * THIS TEST WAS HANDED THE MATERIAL IT EXISTED TO GATE ON (found A.94).
+   *
+   * It read `addMaterial(s, 'steelcasting', 70, 1)` and then asserted the gate
+   * opened — so it passed for 140 commits while NOTHING IN THE GAME PRODUCED A
+   * STEELCASTING and the craft leg was unsatisfiable. Same family as A.44's
+   * recursion scenario, which was seeded with 5.7× the echoes the game pays:
+   * an instrument that stipulates its own premise cannot fail.
+   *
+   * So the casting is MADE now, by the route a player has: walk into The Long
+   * Spin, stand a Centrifuge, and take Ferrite ore apart. If that route ever
+   * dies again this test dies with it.
+   */
+  it('ferrite: the anchor eats a casting, and the casting is MADE not granted', () => {
     const { engine, s } = fresh();
     s.shell.current = 'ferrite';
     s.shell.breachCount = 1;
     s.depth = 250;
     expect(canBreach(s)).toBe(false);
-    addMaterial(s, 'steelcasting', 70, 1);
+    expect(materialCount(s, 'steelcasting')).toBe(0);
+
+    // The wreck is looted by being WALKED INTO, and the machine is cast parts.
+    const at = centrifugeStation()!;
+    expect(at.shellId).toBe('ferrite');
+    markReached(s, at.depth, 15);
+    ensurePlant(s).tiers['centrifuge'] = 1;
+    expect(centrifugeBuilt(s)).toBe(true);
+
+    // AN ORE WHOSE MAJORITY COMPONENT IS THE CASTING. A tier-I drum hands back
+    // only the first thing out (`componentsOf`), so three of the six splits
+    // that mention a casting do not produce one until tier II — this is the
+    // route that exists on the day the machine is stood up.
+    const split = SPLITS.find((sp) => sp.out[0] === 'steelcasting')!;
+    addMaterial(s, split.from, 70, split.units);
+    const band = Object.keys(s.materials.stacks[split.from]!)[0] as never;
+    expect(spin(s, { dirty: () => {}, emit: () => {} } as never, split.from, band).ok).toBe(true);
+    expect(materialCount(s, 'steelcasting')).toBeGreaterThan(0);
+
     s.currencies['scale'] = D(50);
     expect(engine.dispatch({ type: 'placeKeystone', leg: 'craft' }).ok).toBe(true);
     expect(s.currencies['scale']!.toNumber()).toBe(10);
     expect(canBreach(s)).toBe(true);
+  });
+
+  it('and NO keystone may want a material nothing produces', () => {
+    // The general form of the defect above. A craft leg is allowed to be
+    // expensive; it is not allowed to be unreachable.
+    const produced = new Set<string>([
+      ...SPLITS.flatMap((sp) => sp.out),
+      ...CHAINS.map((c) => c.out),
+    ]);
+    for (const k of allKeystones()) {
+      for (const m of k.craft.materials ?? []) {
+        const def = materialDef(m.id);
+        // Either the rock drops it, or something in the plant makes it.
+        expect(!def.worked || produced.has(m.id), `keystone ${k.shellId} wants ${m.id}, which nothing produces`).toBe(true);
+      }
+    }
   });
 });
 

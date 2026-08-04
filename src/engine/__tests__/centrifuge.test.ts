@@ -101,6 +101,21 @@ describe('0 — the split-only eleven, measured', () => {
     expect(CASTING_IDS).toHaveLength(5);
   });
 
+  /**
+   * A.94 — AND NO CASTING WAITS FOR TIER II.
+   *
+   * A tier-I drum returns only the MAJORITY component (`componentsOf`), so a
+   * casting that is second on every ore it appears in would be routed on paper
+   * and unreachable in the hand — the same shape as the gate this list closed.
+   * Every one of the five is first out of at least one ore.
+   */
+  it('and every casting is the FIRST thing out of some ore, so tier I reaches all five', () => {
+    for (const id of CASTING_IDS) {
+      const asMajority = SPLITS.filter((s) => s.out[0] === id);
+      expect(asMajority.length, `${id} is never a tier-I majority component`).toBeGreaterThan(0);
+    }
+  });
+
   it('every split reads down from an ore that is actually dug, in its own shell', () => {
     for (const s of SPLITS) {
       const from = materialDef(s.from);
