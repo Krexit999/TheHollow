@@ -334,12 +334,24 @@ export function assignFilter(state: GameState, machineId: string, filterId: stri
   return { ok: true };
 }
 
-/** Which machines a filter can be pointed at: the ones the plant knows about. */
+/**
+ * WHICH MACHINES A FILTER CAN BE POINTED AT: the ones that REACH INTO THE HOLD.
+ *
+ * This used to be "every built plant tier", which was true while every machine
+ * took stock — and stopped being true the day the Line joined. A.91's driver
+ * found the Sieve offering `take only what is under fair` to a LINE, which
+ * takes no stock at all: its MEMBERS do, and they have their own filters.
+ * The Breaker takes rack parts and the Sieve is itself the filter, so neither
+ * has an input a predicate could describe either.
+ *
+ * Listed rather than derived, because "does this machine reach into the Hold"
+ * is a fact about each machine's verb and there is no field that says so.
+ */
+export const FILTERABLE = ['kiln', 'crusher', 'refinery', 'still', 'crucible', 'balance'];
+
 export function filterable(state: GameState): string[] {
   const p = ensurePlant(state);
-  return Object.keys(p.tiers)
-    .filter((id) => id !== 'sieve' && (p.tiers[id] ?? 0) > 0)
-    .concat(state.kiln.built ? ['kiln'] : []);
+  return FILTERABLE.filter((id) => (id === 'kiln' ? state.kiln.built : (p.tiers[id] ?? 0) > 0));
 }
 
 export { bandOf, materialDef };
