@@ -279,6 +279,13 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   witness: { flow: 0, surge: 12 },
   /**
+   * THE PRISM (§13, Glassmere) — pure FLOW, and small. Splitting light is a
+   * standing act, not an event: it is doing it or it is not, and it costs the
+   * same either way. Small because §13 makes it the first machine of a shell,
+   * and a first machine that browns out the plant it arrives in is a wall.
+   */
+  prism: { flow: 1.0, surge: 0 },
+  /**
    * THE GOVERNOR (§13) — pure FLOW, and modest. It is not a converter; it is a
    * thing that stands there holding other machines above their rating, which is
    * a continuous act. Modest because the EXPENSIVE half of overclocking is the
@@ -328,6 +335,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'balance') > 0) out.push('balance');
   if (tierOf(state, 'condenser') > 0) out.push('condenser');
   if (tierOf(state, 'governor') > 0) out.push('governor');
+  if (tierOf(state, 'prism') > 0) out.push('prism');
   return out;
 }
 

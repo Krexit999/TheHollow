@@ -68,7 +68,7 @@ describe('the fixture is real', () => {
     // exists rather than a pass later.
     expect(conditionedMachines().sort())
       .toEqual(['assayBench', 'balance', 'breaker', 'condenser', 'crucible', 'crusher', 'governor',
-        'infuser', 'kiln', 'line', 'press', 'refinery', 'sieve', 'still', 'witness']);
+        'infuser', 'kiln', 'line', 'press', 'prism', 'refinery', 'sieve', 'still', 'witness']);
   });
 
   /**

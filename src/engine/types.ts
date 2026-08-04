@@ -685,6 +685,8 @@ export interface GameState {
   crucible?: import('./systems/crucible').CrucibleState;
   /** CHAINING (§14.5) — the Line's members, and whether it is held. */
   line?: import('./systems/line').LineState;
+  /** THE SPECTRUM (§13) — where the Prism's points of intensity are spent. */
+  prism?: import('./systems/prism').PrismState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -862,6 +864,7 @@ export type GameEvent =
   | { type: 'distilled'; materialId: string; trait: string; into: string }
   | { type: 'infused'; materialId: string; trait: string; into: string }
   | { type: 'pressed'; materialId: string; form: string; into: string }
+  | { type: 'allocated'; band: number; points: number }
   | { type: 'condensed'; residue: number; hush: number }
   | { type: 'witnessed'; materialId: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
@@ -1151,6 +1154,9 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // THE SPECTRUM (§13) — the Prism, and the one verb it has.
+  | { type: 'buildPrism' }
+  | { type: 'allocate'; band: number; points: number }
   // OVERCLOCKING (§13) — the Governor, and the one setting it holds.
   | { type: 'buildGovernor' }
   | { type: 'setOverclock'; machineId: string; steps: number }

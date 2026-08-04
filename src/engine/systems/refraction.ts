@@ -30,6 +30,14 @@ import { convCurrencyId } from '../shells';
 import { cellCap, chipYield } from './face';
 import { rollForDrop } from './drops';
 import { masteryLevel } from './mastery';
+/**
+ * A DELIBERATE CYCLE, the same discipline as `plant` <-> `condition`: the Prism
+ * imports this file's `WAVELENGTH_NAMES`/`WAVELENGTH_RULES` (the six rules are
+ * authored HERE, and a second copy would drift), and this reads its allocation.
+ * Both calls are inside function bodies, so neither binding can arrive
+ * undefined at module scope.
+ */
+import { carriedBands } from './prism';
 import { lawFlag } from '../laws';
 
 export const BEAM_BONUS = 0.6; // ×(1 + this × strength) on beam-lit cells
@@ -77,6 +85,7 @@ export function traceBeam(state: GameState, mods: ModifierCache): BeamCell[] {
   const entry = Math.min(h - 1, Math.max(0, state.refraction.entryRow));
   const cap = cellCap(state, mods);
   const split = splitUnlocked(state);
+  const carried = carriedBands(state);
   const out: BeamCell[] = [];
   let x = 0;
   let y = entry;
@@ -92,7 +101,23 @@ export function traceBeam(state: GameState, mods: ModifierCache): BeamCell[] {
     seen.add(key);
     const vine = state.growth.stage[cell] ?? 0;
     if (vine >= 3) break; // the canopy is opaque
-    if (split) color = 1 + ((out.length / 3) | 0) % 5; // colors walk the path in bands
+    /**
+     * WHAT COLOUR THE LIGHT IS HERE (§13, A.93).
+     *
+     * It used to be `1 + ((out.length / 3) | 0) % 5` and nothing else: the six
+     * authored rules walked the path in fixed thirds, in that order, forever,
+     * and the player had no say in any of it. A standing PRISM is what gives
+     * them one — `carriedBands` is a flat list with one entry per point of
+     * intensity, so a band leaned on occupies more of the path.
+     *
+     * With no Prism this is the modulo it always was, which is what keeps the
+     * machine an addition rather than a tax on a shipped shell.
+     */
+    if (split || carried.length > 0) {
+      color = carried.length > 0
+        ? carried[((out.length / 3) | 0) % carried.length]!
+        : 1 + ((out.length / 3) | 0) % 5;
+    }
     out.push({ cell, color, dir, amplified });
     if ((state.face.cells[cell] ?? 0) >= cap * 0.9) amplified = true; // full lens
     const mirror = state.refraction.mirrors[cell];

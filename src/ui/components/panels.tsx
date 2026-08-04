@@ -41,6 +41,7 @@ import { InfuserPanel } from './infuser';
 import { PressPanel } from './press';
 import { WitnessPanel } from './witness';
 import { GovernorPanel } from './governor';
+import { PrismPanel } from './prism';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -367,6 +368,8 @@ export function KilnPanel() {
       <WitnessPanel />
       {/* OVERCLOCKING (§13) — the Governor, and the gamble it holds machines at. */}
       <GovernorPanel />
+      {/* THE SPECTRUM (§13) — the Prism, and the six rules it finally aims. */}
+      <PrismPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}

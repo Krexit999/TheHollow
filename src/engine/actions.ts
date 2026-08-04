@@ -23,6 +23,7 @@ import { buildInfuser, infuse } from './systems/infuser';
 import { buildPress, press } from './systems/press';
 import { buildCondenser, buildWitness, condense, witness } from './systems/witness';
 import { buildGovernor, setOverclock } from './systems/governor';
+import { allocate, buildPrism } from './systems/prism';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -214,6 +215,12 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildPrism':
+      return buildPrism(state, ctx);
+
+    case 'allocate':
+      return allocate(state, ctx, action.band, action.points);
 
     case 'buildGovernor':
       return buildGovernor(state, ctx);

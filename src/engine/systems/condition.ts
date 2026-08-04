@@ -66,6 +66,9 @@ import { MACHINE_DEMAND, ensurePlant, tierOf } from './plant';
  * one of them ends up forgotten.
  */
 import { overclockSpeed } from './governor';
+/** ...and the same arrangement with `prism.ts`: it reads `conditionOf` from
+ *  here, and `litBands` reads its allocation. Runtime-only, both ways. */
+import { carriedBands } from './prism';
 
 export type ConditionId = 'baked' | 'overgrown' | 'unlit' | 'undecided' | 'magnetised';
 
@@ -239,11 +242,31 @@ export function setMachineBand(state: GameState, machineId: string, band: number
   return true;
 }
 
-/** The wavelengths the beam is carrying right now. 0 (white) counts as all. */
+/**
+ * The wavelengths the beam is carrying right now. 0 (white) counts as all.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * A.90 SHIPPED THIS RULE AND RECORDED THAT IT COULD NOT FIRE. A pre-Split beam
+ * is white, white lights all six, so no machine was ever in an unallocated
+ * band — for the twenty-five mastery levels it takes to reach THE SPLIT.
+ *
+ * A standing PRISM (§13, A.93) is what changes it: the ALLOCATION is what the
+ * plant reads, not the traced path, so a player who spends three points of
+ * intensity has left three bands dark and every machine sitting in one goes
+ * UNLIT. That works from the Prism's first tier. Without a Prism this is
+ * exactly the function A.90 wrote, white and all.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
 export function litBands(state: GameState): Set<number> {
   const out = new Set<number>();
   if (currentShell(state).id !== 'glassmere') {
     for (let i = 0; i < 6; i++) out.add(i);
+    return out;
+  }
+  const carried = carriedBands(state);
+  if (carried.length > 0) {
+    for (const b of carried) out.add(b);
+    if (out.has(0)) for (let i = 0; i < 6; i++) out.add(i); // white IS all of them
     return out;
   }
   // Imported lazily through the state rather than the module so this file does
