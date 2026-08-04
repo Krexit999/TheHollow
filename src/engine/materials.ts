@@ -46,7 +46,7 @@ export interface MaterialDef {
    * material out of ordinary chips AND out of cracked geodes; `remains` then
    * puts a place back under it, which `combat` never had once the fighting went.
    */
-  source?: 'combat' | 'deep' | 'remains';
+  source?: 'combat' | 'deep' | 'remains' | 'still';
   /**
    * WORKED materials are made, never found: refinery byproducts, salvage
    * residue, transmutation intermediates, tempering media. rollDrop filters
@@ -625,6 +625,28 @@ export const CASTING_IDS = ['steelcasting', 'brazecasting', 'platecasting', 'pol
 export const CASTING_BIND_TIER = 10;
 
 const materialById = new Map(MATERIALS.map((m) => [m.id, m]));
+
+/**
+ * REGISTER A MATERIAL THAT DID NOT EXIST AT MODULE LOAD (A.90).
+ *
+ * The STILLED forms (§16.3, `content/traps.ts`) are a material minus a trait,
+ * so they cannot be written until the thing they subtract from is — and a
+ * tier-III Still can make one out of any pure+ stone, which is 180-odd rows
+ * nobody should enumerate. They are appended instead.
+ *
+ * The index above is built ONCE at module load, which is exactly the bug shape
+ * this project keeps finding (a cache that is correct only until someone adds a
+ * mount). So every append goes through here and the index is maintained rather
+ * than rebuilt or bypassed — pushing to `MATERIALS` alone would leave
+ * `materialDef` throwing on a material the game had just handed the player.
+ */
+export function registerMaterial(def: MaterialDef): MaterialDef {
+  const already = materialById.get(def.id);
+  if (already) return already;
+  MATERIALS.push(def);
+  materialById.set(def.id, def);
+  return def;
+}
 
 export function materialDef(id: string): MaterialDef {
   const def = materialById.get(id);

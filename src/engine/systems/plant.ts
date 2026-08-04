@@ -205,6 +205,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * is sorting FOR.
    */
   sieve: { flow: 1.1, surge: 0 },
+  /**
+   * THE STILL (§14.1) — FLOW AND SURGE, like the Refinery, and for the same
+   * reason: it holds a slow heat and then takes one thing out in a single
+   * separation. It is the second machine that punishes a lopsided plant.
+   */
+  still: { flow: 2.2, surge: 6 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -226,6 +232,7 @@ function flowDrawers(state: GameState): string[] {
   // THE SIEVE draws whenever it is standing, like the Refinery: a filter is a
   // standing rule consulted on every reach for stock, not an event.
   if (tierOf(state, 'sieve') > 0) out.push('sieve');
+  if (tierOf(state, 'still') > 0) out.push('still');
   return out;
 }
 

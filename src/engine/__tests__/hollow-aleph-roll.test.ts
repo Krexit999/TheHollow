@@ -350,7 +350,7 @@ describe('4 — THE ALEPH GATE GAP, asserted rather than hidden', () => {
   it('three Aleph materials cannot be rolled anywhere in Aleph', () => {
     const floor = shellDef('aleph').floorDepth;
     const unreachable = MATERIALS
-      .filter((m) => m.shellId === 'aleph' && !m.worked && m.source !== 'deep')
+      .filter((m) => m.shellId === 'aleph' && !m.worked && !m.source)
       .filter((m) => RARITY_GATES[m.rarity].minDepth > floor)
       .map((m) => m.id)
       .sort();

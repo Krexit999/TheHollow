@@ -18,6 +18,7 @@ import { shoreBand, unshoreBand } from './systems/shoring';
 import { floodStation } from './systems/flood';
 import { recastMachine, setMachineBand } from './systems/condition';
 import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sieve';
+import { buildStill, distil } from './systems/still';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -163,6 +164,12 @@ export function handleAction(
 
     case 'buildSieve':
       return buildSieve(state, ctx);
+
+    case 'buildStill':
+      return buildStill(state, ctx);
+
+    case 'distil':
+      return distil(state, ctx, action.materialId, action.band, action.trait);
 
     case 'addFilter':
       return addFilter(state, action.clauses);

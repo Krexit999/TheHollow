@@ -36,6 +36,7 @@ import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
 import { PlantPanel, CrusherPanel, ConditionPanel } from './plant';
 import { SievePanel } from './sieve';
+import { StillPanel } from './still';
 import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
@@ -348,6 +349,8 @@ export function KilnPanel() {
       <ConditionPanel />
       {/* SORTING (§14.3) — the Sieve, and the filters it lets you write. */}
       <SievePanel />
+      {/* ESSENCE WORK (§14.1) — the Still, and the trap stones it answers. */}
+      <StillPanel />
       {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
           the machine list, Flow/Surge, and the Circuit). */}
       <CircuitPanel />

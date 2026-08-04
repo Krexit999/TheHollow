@@ -23,6 +23,7 @@ import { registerConfluenceModifiers } from '../systems/confluence';
 import { registerChains } from './shell2/chains';
 import { registerTemperModifiers } from '../systems/tempering';
 import { registerRefraction } from '../systems/refraction';
+import { registerTraps } from './traps';
 import { registerRuneModifiers, registerTemporalModifiers } from './shell4/runes';
 import { registerGrowth } from '../systems/growth';
 import { registerShell1Currencies } from './shell1/currencies';
@@ -89,6 +90,9 @@ export function ensureContentLoaded(): void {
   registerGlassmereShell();
   registerGrowth();
   registerRefraction();
+  // TRAP MATERIALS (§16.3) — the Still's tutorial, registered here so their
+  // STILLED forms exist before anything can ask for one.
+  registerTraps();
   registerRuneModifiers();
   registerTemporalModifiers();
   registerCinderShell();
