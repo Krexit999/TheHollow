@@ -692,6 +692,8 @@ export interface GameState {
   prism?: import('./systems/prism').PrismState;
   /** THE LAPIDARY (A.94) — how each gem type has been ground. Self-heals. */
   lapidary?: import('./systems/lapidary').LapidaryState;
+  /** THE VENT ARRAY (A.95) — cast valves and the line you asked for. Self-heals. */
+  vents?: import('./systems/vents').VentArrayState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -932,7 +934,7 @@ export type GameEvent =
   | { type: 'inscriptionFailed'; target: string }
   | { type: 'overpressure'; secondsLeft: number }
   | { type: 'overpressureCleared' }
-  | { type: 'chokeReleased'; reason: 'idle' | 'overpressure' }
+  | { type: 'chokeReleased'; reason: 'idle' | 'overpressure' | 'array' }
   | { type: 'purged'; heat: number }
   | { type: 'flood'; depth: number }
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
@@ -987,6 +989,8 @@ export type GameEvent =
   | { type: 'carveBotched'; target: string }
   | { type: 'gemCut'; gemId: string; shape: string }
   | { type: 'partQuenched'; partId: number; mediumId: string }
+  | { type: 'valveSet'; cell: number }
+  | { type: 'arrayAnswered' }
   | { type: 'castFound'; id: string; name: string }
   | { type: 'castMissed' }
   // --- THE NEW FORGE, step 2: casting and the tool station ---------------
@@ -1171,6 +1175,10 @@ export type GameAction =
   | { type: 'buildCentrifuge' }
   | { type: 'buildLapidary' }
   | { type: 'buildQuenchTank' }
+  | { type: 'buildBoiler' }
+  | { type: 'buildVentArray' }
+  | { type: 'setValve'; cell: number }
+  | { type: 'setHoldLine'; line: number | null }
   | { type: 'quenchPart'; partId: number; mediumId: string }
   | { type: 'cutGem'; gemId: string; shape: import('./systems/lapidary').CutShape }
   | { type: 'spin'; materialId: string; band: PurityBand }

@@ -23,6 +23,7 @@ import { note } from './reading';
 import { clampPacked, holdFloor } from './shopFork';
 import { lawNum } from '../laws';
 import { shaftPeak, resetShaftRun } from './shaftSys';
+import { resetVentRun } from './vents';
 import { fallThroughDrifts } from './shoring';
 
 /** Levels every resetting face upgrade is kept AT through a Collapse (the floor
@@ -144,6 +145,7 @@ export function doCollapse(
 
   state.depth = 0;
   resetShaftRun(state); // the run's cleared floor washes; the RAIL does not
+  resetVentRun(state);  // ...and the Vent Array's one answer comes back (A.95)
   /**
    * THE FAST-FORWARD (§21.1). Every shored band survived the fall, so the run
    * does not start at the surface — it starts at the bottom of your own tunnel,

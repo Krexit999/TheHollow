@@ -57,7 +57,7 @@ import { AssayBenchPanel, AssayCallStrip } from './assayBench';
 import { UpgradeRow, BulkControl, type PreviewStat } from './UpgradeRow';
 import { MagnetCard } from './ferrite';
 import { OpticsCard } from './glassmere';
-import { PressureCard } from './cinder';
+import { BoilerCard, PressureCard } from './cinder';
 import { chipCurrencyId, convCurrencyId, currencyDef, currentShell } from '../../engine';
 
 /** The four field stats, previewed before purchase — pillar 2 made legible. */
@@ -298,6 +298,8 @@ export function DigPanel() {
       ))}
       <ShellBand state={state as GameState} />
       <PressureCard />
+
+      <BoilerCard />
       <MagnetCard />
       <OpticsCard />
       {!state.kiln.built && (

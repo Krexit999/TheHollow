@@ -53,6 +53,13 @@ import { chipCurrencyId, currentShell } from '../shells';
 import { lawFlag, sealed, challengeNum } from '../laws';
 import { masteryLevel } from './mastery';
 import { logScar, resetShaftRun } from './shaftSys';
+/**
+ * THE VENT ARRAY (§13, A.95). Runtime-only cycle in the documented family:
+ * `vents.ts` reads this module's grid constants and `networkCapacity`, and this
+ * calls back only from inside function bodies. The Array may only ADD vent and
+ * only LOWER the line, so no law here can be weakened from that side.
+ */
+import { answerKlaxon, askedLine, resetVentRun, valveCapacity } from './vents';
 
 // ---------------------------------------------------------------------------
 // Tuning surface (every number named; the sim's three heat policies audit it)
@@ -141,7 +148,15 @@ export function networkCapacity(state: GameState): number {
     const d = dist.get(outlet);
     if (d !== undefined && d > 0) cap += OUTLET_VENT * VENT_FALLOFF ** d;
   }
-  return cap;
+  /**
+   * ...PLUS THE CAST VALVES (§13's VENT ARRAY, A.95). A valve vents where it
+   * stands and needs no route, which is the one thing pipe cannot do. It is
+   * strictly ADDITIVE: every guarantee in this file that reads the vent number
+   * — the Damper's convergence, the governor's ceiling, the relief rate — sees
+   * a LARGER number than before and never a smaller one, so nothing about the
+   * four laws can have been weakened by it.
+   */
+  return cap + valveCapacity(state);
 }
 
 export function layPipe(state: GameState, cell: number): ActionResult {
@@ -172,7 +187,16 @@ export function layPipe(state: GameState, cell: number): ActionResult {
 // ---------------------------------------------------------------------------
 
 export function holdLine(state: GameState): number {
-  return Math.min(HOLD_LINE_MAX, HOLD_LINE_BASE + networkCapacity(state) * HOLD_LINE_PER_CAP);
+  const derived = Math.min(HOLD_LINE_MAX, HOLD_LINE_BASE + networkCapacity(state) * HOLD_LINE_PER_CAP);
+  /**
+   * A TIER-II VENT ARRAY LETS YOU ASK FOR A LINE (A.95), and the ask is clamped
+   * to the derived one — so it can only ever hold the shaft COOLER than the
+   * plumbing would. Control, never headroom, which is what keeps this outside
+   * the locked heat model: no law in this file can be loosened by a number that
+   * is bounded above by the number the law already used.
+   */
+  const asked = askedLine(state);
+  return asked === null ? derived : Math.min(derived, Math.max(HOLD_LINE_BASE, asked));
 }
 
 export function ventRate(state: GameState): number {
@@ -288,6 +312,14 @@ function tickPressure(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt:
       p.choke = false;
       ctx.emit({ type: 'chokeReleased', reason: 'overpressure' });
     }
+    /**
+     * ...AND A TIER-III VENT ARRAY ANSWERS IT (§13: "blocks SURVIVING CINDER").
+     * Once per run, it throws the choke open whether or not your hands are on
+     * it — which is the one shape law 2's Damper takes forty-five seconds to
+     * catch: a shaft you CHOKED and then walked away from. It sheds no heat
+     * itself; the escape is still the relief valve doing what it always did.
+     */
+    answerKlaxon(state, ctx);
     ctx.emit({ type: 'overpressure', secondsLeft: OVERPRESSURE_SEC });
   }
   if (p.overpressureAtSec !== null) {
@@ -321,6 +353,8 @@ export function floodRun(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   }
   state.depth = 0;
   resetShaftRun(state); // the run's cleared floor washes with the flood; the rail holds
+  // ...and the Array gets its one answer back, because a new run is a new run.
+  resetVentRun(state);
   state.kiln.heat = 0;
   state.kiln.progress = D(0);
 

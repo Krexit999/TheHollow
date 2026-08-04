@@ -45,6 +45,8 @@ import { conditionRetainsBand, conditionTraits } from './condition';
  * calls are inside function bodies.
  */
 import { overclockDraw } from './governor';
+/** §3.2's plant shapes. Runtime-only cycle: every call is inside a function. */
+import { boilerFlow, boilerShell, boilerSurge } from './boiler';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -152,15 +154,36 @@ export function ensurePlant(state: GameState): PlantState {
 // Capacity
 // ---------------------------------------------------------------------------
 
-/** Sustained draw available per second. The Hearth plus whatever Cores bought. */
+/**
+ * §3.2 — EVERY POWER PLANT HAS A SHAPE, and until A.95 none of them did.
+ *
+ * Measured: `flowCap` was the Hearth in all seven shells and `surgeCap` was a
+ * flat floor plus a Core node, so Loam and Cinder ran the same plant at
+ * different sizes — which is the exact criticism §3 opens with about v4's
+ * single global Draw.
+ *
+ * The shape is the SHELL'S OWN MACHINE now. A shell that has one is powered by
+ * it; a shell that does not keeps the Hearth, which is what it has always had.
+ * The Boiler and the Coil are the two that exist; the Bloom, the Prism ceiling
+ * and the Null are still the Hearth and are ledgered as such.
+ *
+ * DELIBERATE RUNTIME-ONLY CYCLE, same arrangement as `plant ↔ condition`:
+ * `boiler.ts` and `coil.ts` import `tierOf` from here and are called from
+ * inside function bodies below, never at module scope.
+ */
 export function flowCap(state: GameState): number {
+  const cores = FLOW_PER_RANK * coreNodeLevel(state, 'flowCapacity');
+  // CINDER RUNS ON THE BOILER, and on nothing else (§13: "blocks ALL Cinder
+  // power"). A hearth is a fire you feed; there is nothing to feed here.
+  if (boilerShell(state)) return boilerFlow(state) + cores;
   const hearth = state.kiln.built ? HEARTH_FLOOR + HEARTH_PER_HEAT * state.kiln.heat : 0;
-  return hearth + FLOW_PER_RANK * coreNodeLevel(state, 'flowCapacity');
+  return hearth + cores;
 }
 
 /** How big the burst can be. */
 export function surgeCap(state: GameState): number {
-  return SURGE_FLOOR + SURGE_PER_RANK * coreNodeLevel(state, 'surgeCapacity');
+  return SURGE_FLOOR + SURGE_PER_RANK * coreNodeLevel(state, 'surgeCapacity')
+    + boilerSurge(state);
 }
 
 export function surgeRegen(state: GameState): number {
@@ -325,6 +348,18 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * never free to own.
    */
   quench: { flow: 0.9, surge: 4 },
+  /**
+   * THE BOILER (§13, Cinder) — IT DRAWS NOTHING. It is not a machine on the
+   * plant; it IS the plant, the way the Hearth is (`flowCap`). A power source
+   * that charged itself Flow would be the only circular demand in the file.
+   */
+  boiler: { flow: 0, surge: 0 },
+  /**
+   * THE VENT ARRAY (§13, Cinder) — pure FLOW, and small. Holding a gallery of
+   * valves open is a standing act, like the Sieve's filter: it is doing it or
+   * it is not, and it costs the same either way.
+   */
+  vents: { flow: 1.2, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -371,6 +406,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'centrifuge') > 0) out.push('centrifuge');
   if (tierOf(state, 'washer') > 0) out.push('washer');
   if (tierOf(state, 'quench') > 0) out.push('quench');
+  if (tierOf(state, 'vents') > 0) out.push('vents');
   return out;
 }
 
