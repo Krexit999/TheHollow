@@ -31,6 +31,7 @@ import { tickFace } from './systems/face';
 import { tickKiln } from './systems/kiln';
 import { tickPlant } from './systems/plant';
 import { tickCircuit } from './systems/circuit';
+import { tickCondition } from './systems/condition';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
 import { tickDrills } from './systems/drills';
@@ -190,6 +191,12 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // and because every action it can take is a control the player throws by
       // hand at human speed anyway.
       tickCircuit(state, mods, ctx, verdAcc);
+      // E2 (§7.2) — the world writing itself onto the machines. On the same 1Hz
+      // block and BEFORE nothing: it reads five shell states and writes one
+      // field, and every consumer reads that field lazily, so ordering inside
+      // the second cannot matter. Deliberately not per-frame — a four-minute
+      // ratchet sampled twelve times a second is eleven wasted samples.
+      tickCondition(state, mods, verdAcc);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

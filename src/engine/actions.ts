@@ -16,6 +16,7 @@ import { buildCrusher, crush } from './systems/crusher';
 import { setRow as setCircuitRow, moveRow as moveCircuitRow } from './systems/circuit';
 import { shoreBand, unshoreBand } from './systems/shoring';
 import { floodStation } from './systems/flood';
+import { recastMachine, setMachineBand } from './systems/condition';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -155,6 +156,14 @@ export function handleAction(
 
     case 'floodStation':
       return floodStation(state, ctx, action.stationId);
+
+    case 'recastMachine':
+      return recastMachine(state, ctx, action.machineId);
+
+    case 'setMachineBand':
+      return setMachineBand(state, action.machineId, action.band)
+        ? { ok: true }
+        : { ok: false, reason: 'No such machine' };
 
     case 'buildCrusher':
       return buildCrusher(state, ctx);

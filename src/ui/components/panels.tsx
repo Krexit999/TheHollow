@@ -34,7 +34,7 @@ import type { GameState } from '../../engine';
 import { dispatch, useGame } from '../store';
 import { Amount, BucketInfo } from './shared';
 import { Select } from './Select';
-import { PlantPanel, CrusherPanel } from './plant';
+import { PlantPanel, CrusherPanel, ConditionPanel } from './plant';
 import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
@@ -343,6 +343,8 @@ export function KilnPanel() {
       {/* THE PLANT lives with the converter chain it powers — the Hearth IS the
           Kiln, so a separate room for it would be a room about one number. */}
       <PlantPanel />
+      {/* E2 (§7.2) — what the shell has done to the machines, under the machines. */}
+      <ConditionPanel />
       {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
           the machine list, Flow/Surge, and the Circuit). */}
       <CircuitPanel />

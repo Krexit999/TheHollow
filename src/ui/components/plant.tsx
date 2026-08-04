@@ -6,6 +6,7 @@
  * rate against a demand, and a bank against a cost. A single "power" bar would
  * put the design back where it started.
  */
+import { useEffect } from 'react';
 import { useGame, dispatch } from '../store';
 import {
   MACHINE_DEMAND, TIER_CAPABILITY, demandOf, flowCap, flowDemand, flowSatisfaction,
@@ -13,12 +14,19 @@ import {
 } from '../../engine/systems/plant';
 import { CRUSH_BATCH, crushPreview, crushable, nextCrusherTierCost } from '../../engine/systems/crusher';
 import { materialDef, BAND_LABELS } from '../../engine/materials';
+import {
+  RECAST_PART_COST, bandOfMachine, conditionLine, conditionedMachines, litBands,
+  observePlant, recastBlocker, ruleFor,
+} from '../../engine/systems/condition';
+import { WAVELENGTH_NAMES } from '../../engine/systems/refraction';
+import { currentShell } from '../../engine/shells';
 import type { GameState } from '../../engine';
 
 const MACHINE_NAME: Record<string, string> = {
   kiln: 'The Kiln',
   crusher: 'The Crusher',
   refinery: 'The Refinery',
+  assayBench: 'The Assay Bench',
 };
 
 function Bar({ pct, tone }: { pct: number; tone: string }) {
@@ -108,6 +116,106 @@ export function PlantPanel() {
                     : d.flow > 0 && sat < 0.999 ? <span className="text-[#e0885a]">{Math.round(sat * 100)}% speed</span>
                       : 'running'}
               </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * THE CONDITION — E2 (§7.2), what the world has done to each machine.
+ *
+ * Plain rows under the demand profile, in the same panel and not in a new one:
+ * a condition is a fact ABOUT a machine, so it belongs beside the machine's
+ * other facts. LAW 3 — a machine with nothing wrong with it says nothing, and
+ * a shell with no rule shows no block at all.
+ *
+ * HOLLOW'S RULE IS SETTLED BY LOOKING, and this is where the looking happens.
+ * `observePlant` runs on mount rather than behind a button, because attention
+ * IS the mechanic: an UNDECIDED machine is one nobody has been to see, and
+ * making a present player press "settle" would turn a rule about absence into
+ * a chore for someone who is not absent.
+ */
+export function ConditionPanel() {
+  const state = useGame((s) => s.state);
+  useGame((s) => s.rev);
+  useEffect(() => {
+    if (state) observePlant(state as GameState);
+  });
+  if (!state) return null;
+  const st = state as GameState;
+  if (!st.kiln.built) return null;
+
+  const rule = ruleFor(currentShell(st).id);
+  if (!rule) return null;
+  const glassmere = rule.id === 'unlit';
+  const lit = litBands(st);
+  const machines = conditionedMachines()
+    .filter((id) => (id === 'kiln' ? st.kiln.built : tierOf(st, id) > 0));
+  if (machines.length === 0) return null;
+
+  return (
+    <div className="panel mt-2 p-3" data-testid="condition-panel">
+      <div className="mb-1 flex items-baseline justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-cave-400">
+          What the shell is doing to it
+        </span>
+        <span className="text-[10px] text-cave-500">{rule.label}</span>
+      </div>
+      <p className="mb-1.5 text-[9px] leading-snug text-cave-500">{rule.effect}</p>
+
+      <div className="space-y-1">
+        {machines.map((id) => {
+          const line = conditionLine(st, id);
+          const blocked = recastBlocker(st, id);
+          const band = bandOfMachine(st, id);
+          return (
+            <div key={id} className="rounded border border-cave-800 px-1.5 py-1" data-testid={`condition-${id}`}>
+              <div className="flex items-baseline gap-2">
+                <span className="w-[68px] shrink-0 truncate text-[10px] text-cave-200">{MACHINE_NAME[id] ?? id}</span>
+                <span className="min-w-0 flex-1 truncate text-[10px] text-cave-500" data-testid={`condition-line-${id}`}>
+                  {line ?? 'in good order'}
+                </span>
+              </div>
+              {/*
+                GLASSMERE ONLY: which wavelength this machine sits in. It is the
+                one condition a player can aim, so it is the one that gets a
+                control — half speed to keep a band is a trade worth offering.
+              */}
+              {glassmere && (
+                <div className="mt-1 flex items-baseline gap-1">
+                  <span className="w-[68px] shrink-0 text-[9px] text-cave-600">band</span>
+                  <div className="flex min-w-0 flex-1 flex-wrap gap-0.5">
+                    {WAVELENGTH_NAMES.map((name, i) => (
+                      <button
+                        key={name}
+                        className={`btn px-1 py-[1px] text-[9px] ${i === band ? 'border-[#c9a86a]/70 text-cave-100' : 'text-cave-500'}`}
+                        data-testid={`condition-band-${id}-${i}`}
+                        title={lit.has(i) ? 'the beam is carrying this' : 'unlit — half speed, band kept'}
+                        onClick={() => dispatch({ type: 'setMachineBand', machineId: id, band: i })}
+                      >
+                        {name}{lit.has(i) ? '' : ' ·'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {line && (
+                <button
+                  className="btn mt-1 w-full px-1.5 py-1 text-[10px] disabled:opacity-50"
+                  disabled={blocked !== null}
+                  title={blocked ?? undefined}
+                  data-testid={`recast-${id}`}
+                  onClick={() => dispatch({ type: 'recastMachine', machineId: id })}
+                >
+                  Re-cast it — {RECAST_PART_COST} cast parts
+                </button>
+              )}
+              {line && blocked && (
+                <div className="mt-0.5 text-[9px] leading-snug text-cave-600">{blocked}</div>
+              )}
             </div>
           );
         })}

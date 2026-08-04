@@ -29,6 +29,7 @@ import { contentsOf } from '../systems/roll';
 import { surgeCap } from '../systems/plant';
 import { newDrill } from '../systems/drills';
 import { ensureCompaction } from '../systems/compaction';
+import { ensureCondition } from '../systems/condition';
 import {
   ACTS, MAX_ROWS, READS, availableActs, availableMachines, availableReads,
   circuitGateOpen, circuitUnlocked, ensureCircuit, moveRow, setRow, stationHere,
@@ -239,6 +240,25 @@ const CASES: { read: string; row: CircuitRow; on: (st: GameState, m: ModifierCac
     row: { read: 'surge', op: 'gt', value: 50, act: 'damp' },
     on: (st) => { st.plant!.surge = surgeCap(st); },
     off: (st) => { st.plant!.surge = 0; },
+  },
+  {
+    /**
+     * E2's READ (A.90) — the only one about the MACHINE rather than the world,
+     * so its two states are two things the shell has done to this Kiln. Taken
+     * in CINDER because Loam has no §7.2 rule and therefore does not offer the
+     * read at all; the pair is the same condition BELOW and ABOVE the bite
+     * line, which is the distinction the read exists to make.
+     */
+    read: 'condition',
+    row: { read: 'condition', op: 'is', value: 'baked', act: 'damp' },
+    on: (st) => {
+      st.shell.current = 'cinder';
+      ensureCondition(st)['kiln'] = { id: 'baked', level: 1 };
+    },
+    off: (st) => {
+      st.shell.current = 'cinder';
+      ensureCondition(st)['kiln'] = { id: 'baked', level: 0.2 };
+    },
   },
 ];
 

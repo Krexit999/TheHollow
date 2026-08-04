@@ -28,6 +28,16 @@
 import type { GameState } from '../types';
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { traitsOf, type TraitId } from '../traits';
+/**
+ * E2 (§7.2). `condition.ts` imports `MACHINE_DEMAND`, `ensurePlant` and
+ * `tierOf` from here, so this is a CYCLE — and it is the deliberate kind, in
+ * the same family as the documented `toolMining` <-> `toolMods` one. Both
+ * halves only call across at RUNTIME (inside a function body), never at module
+ * scope, so neither binding can arrive undefined. The alternative was a third
+ * module holding two functions, which puts the seam in a place that describes
+ * nothing.
+ */
+import { conditionRetainsBand, conditionTraits } from './condition';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -98,6 +108,18 @@ export interface PlantState {
    * behaviour, which is what they have always had.
    */
   builtOf?: Record<string, string[]>;
+  /**
+   * E2 (§7.2) — WHAT THE WORLD HAS DONE TO EACH MACHINE. One condition value
+   * per machine, one rule per shell; `systems/condition.ts` owns the shape and
+   * every rule that writes it. Absent = nothing has happened to it yet.
+   */
+  condition?: Record<string, import('./condition').MachineCondition>;
+  /**
+   * GLASSMERE ONLY (§7.2, §19) — which of the six wavelengths a machine sits
+   * in. Unset falls back to the machine's index, so a player who never opens
+   * the optics still has machines in different bands.
+   */
+  bands?: Record<string, number>;
 }
 
 export function defaultPlantState(): PlantState {
@@ -276,7 +298,14 @@ export function tierOf(state: GameState, machineId: string): number {
  *
  * Each is a thing the machine could not do before, not a bigger multiplier.
  */
+/**
+ * E2 OVERRIDES THE TIER, in both directions (§7.2). An UNLIT Glassmere machine
+ * keeps the band whatever tier it is; an UNDECIDED Hollow one will not commit
+ * to a band at any tier. Everything else has no opinion and the tier decides.
+ */
 export function retainsBand(state: GameState, machineId: string): boolean {
+  const said = conditionRetainsBand(state, machineId);
+  if (said !== null) return said;
   return tierOf(state, machineId) >= 2;
 }
 
@@ -298,6 +327,11 @@ export function machineTraits(state: GameState, machineId: string): Set<TraitId>
   for (const id of ensurePlant(state).builtOf?.[machineId] ?? []) {
     for (const t of traitsOf(id)) out.add(t);
   }
+  // ...AND WHATEVER THE WORLD PUT ON IT (E2, §7.2). Verdance's OVERGROWN hands
+  // a machine a trait it was never cast with, and every trait-reading behaviour
+  // in the plant reads it from here — so the rule changes what the machine DOES
+  // rather than adding a second lookup beside this one.
+  for (const t of conditionTraits(state, machineId)) out.add(t);
   return out;
 }
 

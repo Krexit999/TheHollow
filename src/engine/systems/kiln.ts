@@ -17,6 +17,7 @@ import { grantXP } from './xp';
 import { chipCurrencyId, convCurrencyId } from '../shells';
 import { lawFlag, sealed } from '../laws';
 import { flowSatisfaction } from './plant';
+import { machineSpeed } from './condition';
 import { materialCount, consumeMaterial } from './forge';
 import { noteTally, proven } from './reading';
 import {
@@ -109,7 +110,12 @@ export function tickKiln(state: GameState, mods: ModifierCache, ctx: EngineCtx, 
      * PILLAR 2: this scales how fast the Kiln eats Dust the field already grew.
      * It cannot reach cap, regen or yield, so the ceiling does not move.
      */
-    const want = kilnRate(state, mods).mul(dt).mul(flowSatisfaction(state, 'kiln'));
+    // ...AND WHATEVER THE WORLD HAS DONE TO IT (E2, §7.2). A seized Kiln reads 0
+    // and stops; an UNLIT one runs at half; a BAKED warm one runs a little
+    // quicker. Same seam as Flow, and the same pillar-2 argument: it scales how
+    // fast the Kiln eats Dust the field already grew.
+    const want = kilnRate(state, mods).mul(dt)
+      .mul(flowSatisfaction(state, 'kiln')).mul(machineSpeed(state, 'kiln'));
     const have = getCurrency(state, chipId);
     const eat = Decimal.min(want, have);
     if (eat.gt(0)) {

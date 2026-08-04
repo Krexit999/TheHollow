@@ -193,7 +193,7 @@ export function CircuitPanel() {
         )}
         {strip.map((row, i) => {
           const lit = i === firing;
-          const matches = rowMatches(st, m, row);
+          const matches = rowMatches(st, m, row, active);
           return (
             <div
               key={i}
@@ -290,7 +290,7 @@ export function CircuitPanel() {
         {availableReads(st).map((r) => (
           <div key={r.id} className="flex items-baseline gap-2 py-[1px] text-[10px]" data-testid={`circuit-read-${r.id}`}>
             <span className="min-w-0 flex-1 truncate text-cave-500">{r.label}</span>
-            <span className="tnum shrink-0 text-cave-300">{r.now(st, m)}</span>
+            <span className="tnum shrink-0 text-cave-300">{r.now(st, m, active)}</span>
           </div>
         ))}
       </div>

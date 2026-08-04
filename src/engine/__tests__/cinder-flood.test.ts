@@ -223,7 +223,7 @@ describe('AND IT DOES NOT PAY — a flood is not a yield event', () => {
     const m = new ModifierCache(); m.invalidate();
     const seamRead = () => {
       const r = (availableReads(st).find((x) => x.id === 'seam'))!;
-      return String(r.read(st, m));
+      return String(r.read(st, m, 'kiln'));
     };
     floodStation(st, ctx, 'thebank', seeded(7));
     const fixed = seamRead();

@@ -24,6 +24,9 @@ import { BANDS, bandOf, materialDef, type PurityBand } from '../materials';
 import { addMaterial, materialCount } from './forge';
 import {
   canFire, emitsByproduct, fire, retainsBand, tierOf, TIER_PART_COST, MAX_MACHINE_TIER,
+} from './plant';
+import { machineSpeed } from './condition';
+import {
   ensurePlant, builtWith, noteBuiltOf,
 } from './plant';
 
@@ -153,6 +156,15 @@ export function crush(
   state: GameState, ctx: EngineCtx, materialId: string, band: PurityBand,
 ): ActionResult {
   if (!crusherBuilt(state)) return { ok: false, reason: 'No Crusher' };
+  /**
+   * A CRACKED LINER IS A STOP, NOT A SLOW (E2, §7.2 — "a `brittle` liner cracks
+   * and shatters"). The Crusher is pure Surge: it does nothing and then does
+   * everything at once, so there is no rate here to halve. A seized one simply
+   * refuses, and says what to do about it.
+   */
+  if (machineSpeed(state, 'crusher') <= 0) {
+    return { ok: false, reason: 'The liner has cracked. Re-cast it before it will run.' };
+  }
   const preview = crushPreview(state, materialId, band);
   if (!preview) return { ok: false, reason: `Needs ${CRUSH_BATCH} of the same band` };
   if (!canFire(state, 'crusher')) {

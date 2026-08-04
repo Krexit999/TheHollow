@@ -8,6 +8,17 @@ import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
 import { cellCap, cellRegen } from '../systems/face';
 
+/** A fixed generator, so a failure is a failure and not a bad afternoon. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function fresh(): { engine: Engine; s: GameState; mods: ModifierCache } {
   const engine = createEngine({ nowMs: 0 });
   return { engine, s: engine.getState() as GameState, mods: new ModifierCache() };
@@ -23,12 +34,30 @@ function verdant(): { engine: Engine; s: GameState; mods: ModifierCache } {
 }
 
 describe('growth: not acting is a strategy', () => {
+  /**
+   * THE FLAKE, ROOT-CAUSED (A.90). This test failed intermittently in a full
+   * run and passed every time in isolation, and was ledgered at A.89 as a
+   * probabilistic flake. It is not the growth system: `tickGrowth` line 114
+   * reads `if (state.face.ore?.[i]) { g.fullSince[i] = 0; continue; }` — AN ORE
+   * POCKET STOPS A VINE SPROUTING, deliberately (the A.55 ruling, "a drill
+   * commits to a pocket and finishes it"). `tickOres` seeds pockets at random,
+   * so roughly one run in some tens put one on cell 0 and the premise "a cell
+   * held at cap" was false before the assertion ever ran.
+   *
+   * So the GAME is right and the FIXTURE was not guaranteed. Seeded, and the
+   * premise is now asserted rather than assumed — if a pocket ever does land
+   * here the failure says so instead of blaming the vine.
+   */
   it('a cell held at cap sprouts, ages, banks overflow — and NEVER beats the ceiling (pillar 2)', () => {
     const { engine, s, mods } = verdant();
     // Fill every cell and wait.
     const cap = cellCap(s, mods);
     s.face.cells.fill(cap);
-    engine.tick(GROW_DELAY_SEC + 2);
+    const real = Math.random;
+    Math.random = seeded(20260904);
+    try { engine.tick(GROW_DELAY_SEC + 2); } finally { Math.random = real; }
+    expect(s.face.ore?.[0], 'an ore pocket landed on cell 0 — it was never held at cap')
+      .toBeFalsy();
     expect(vineStage(s, 0)).toBeGreaterThanOrEqual(1);
     const fruitBefore = s.growth.fruit[0]!;
     const T = 60;

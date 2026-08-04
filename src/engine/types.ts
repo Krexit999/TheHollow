@@ -844,6 +844,7 @@ export type GameEvent =
   /** A named station was passed for the first time — cleared, or looted. */
   | { type: 'stationReached'; id: string; depth: number }
   | { type: 'machineBuilt'; machineId: string; tier: number }
+  | { type: 'machineRecast'; machineId: string }
   | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
@@ -1115,6 +1116,9 @@ export type GameAction =
   | { type: 'unshoreBand'; stationId: string }
   /** THE FLOODGATE (§36.1). Irreversible on purpose — there is no undo. */
   | { type: 'floodStation'; stationId: string }
+  // E2 (§7.2) — the two verbs a condition needs: undo it, and aim Glassmere's.
+  | { type: 'recastMachine'; machineId: string }
+  | { type: 'setMachineBand'; machineId: string; band: number }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

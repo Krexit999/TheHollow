@@ -41,6 +41,10 @@ import { cellCap } from './face';
 import { contentsOf, shellRoll, typeOf } from './roll';
 import { crush, crushable, crusherBuilt } from './crusher';
 import { surgeCap } from './plant';
+import {
+  CONDITION_BITE, CONDITION_RULES, conditionLine, conditionOf, ruleFor,
+} from './condition';
+import { currentShell } from '../shells';
 import type { StationType } from '../content/shell1/roll';
 
 // ---------------------------------------------------------------------------
@@ -173,9 +177,14 @@ export interface ReadDef {
   unit?: string;
   /** Is its SOURCE in the game for this player, right now? */
   avail: (state: GameState) => boolean;
-  read: (state: GameState, mods: ModifierCache) => string | number;
+  /**
+   * `machine` is the strip's OWN machine. Every read before A.90 was about the
+   * world and ignored it; E2's condition read is the first that is about the
+   * thing being told what to do, which is why the parameter exists at all.
+   */
+  read: (state: GameState, mods: ModifierCache, machine: MachineId) => string | number;
   /** What it says right now, in words. */
-  now: (state: GameState, mods: ModifierCache) => string;
+  now: (state: GameState, mods: ModifierCache, machine: MachineId) => string;
 }
 
 const STATION_TYPES: StationType[] = ['seam', 'wall', 'wreck', 'works', 'chamber', 'hazard', 'rest', 'floor', 'flood'];
@@ -319,6 +328,36 @@ export const READS: ReadDef[] = [
     avail: (s) => s.kiln.built,
     read: (s) => surgePct(s),
     now: (s) => `${surgePct(s)}%`,
+  },
+  {
+    /**
+     * E2's READ (§7.2, and the one A.85 had to cut). The ONLY read in the
+     * vocabulary that is about the machine carrying the strip rather than about
+     * the world — which is what makes it useful: "WHEN this machine is
+     * magnetised → take rock and ore alike" is a rule you write once and that
+     * fires in Ferrite and nowhere else, without naming Ferrite.
+     *
+     * It is listed only in a shell that HAS a rule, because a read that will
+     * answer "nothing is wrong with it" forever is a readout (LAW 3). All seven
+     * shells have one, so in practice it is always there — and the guard is what
+     * keeps that honest rather than assumed.
+     */
+    id: 'condition',
+    label: 'this machine',
+    kind: 'enum',
+    options: () => [
+      { value: 'none', label: 'in good order' },
+      ...CONDITION_RULES.map((r) => ({ value: r.id, label: r.label.toLowerCase() })),
+      { value: 'seized', label: 'cracked and stopped' },
+    ],
+    avail: (s) => ruleFor(currentShell(s).id) !== undefined,
+    read: (s, _m, machine) => {
+      const c = conditionOf(s, machine);
+      if (!c) return 'none';
+      if (c.seized) return 'seized';
+      return c.level >= CONDITION_BITE ? c.id : 'none';
+    },
+    now: (s, _m, machine) => conditionLine(s, machine) ?? 'in good order',
   },
 ];
 
@@ -466,10 +505,12 @@ export function availableMachines(state: GameState): MachineId[] {
 // Evaluation
 // ---------------------------------------------------------------------------
 
-export function rowMatches(state: GameState, mods: ModifierCache, row: CircuitRow): boolean {
+export function rowMatches(
+  state: GameState, mods: ModifierCache, row: CircuitRow, machine: MachineId,
+): boolean {
   const def = readDef(row.read);
   if (!def || !def.avail(state)) return false;
-  const now = def.read(state, mods);
+  const now = def.read(state, mods, machine);
   if (def.kind === 'enum') {
     const eq = String(now) === String(row.value);
     return row.op === 'isnt' ? !eq : eq;
@@ -484,7 +525,7 @@ export function rowMatches(state: GameState, mods: ModifierCache, row: CircuitRo
 export function winningRow(state: GameState, mods: ModifierCache, machine: MachineId): number {
   const strip = stripOf(state, machine);
   for (let i = 0; i < strip.length; i++) {
-    if (rowMatches(state, mods, strip[i]!)) return i;
+    if (rowMatches(state, mods, strip[i]!, machine)) return i;
   }
   return -1;
 }
