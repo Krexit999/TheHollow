@@ -134,9 +134,22 @@ export function buildBoiler(state: GameState, ctx: EngineCtx): ActionResult {
 // The plant it IS — read by `plant.ts`, which owns Flow and Surge
 // ---------------------------------------------------------------------------
 
-/** Is this shell's power the Boiler's rather than the Hearth's? */
+/**
+ * IS THE BOILER THIS SHELL'S BUSINESS AT ALL.
+ *
+ * FOUND BY THE DRIVER, NOT BY A TEST. `boilerSurge` had no shell condition on
+ * it, so a Boiler stood in Cinder went on banking Surge off the heat gauge
+ * while the player was standing in FERRITE — which read as "a bare Ferrite
+ * plant has 31 Surge" and blew the Coil's whole measurement. Cinder's plant
+ * powering another shell for free is exactly the thing §3.2 exists to stop.
+ *
+ * The honest boundary is §3.2's own sentence — "because signatures carry down
+ * on Breach, your power profile is a BUILD" — so the Boiler works where Cinder
+ * works: natively, or in a shell you carried PRESSURE into. Nowhere else.
+ */
 export function boilerShell(state: GameState): boolean {
-  return currentShell(state).id === 'cinder';
+  if (currentShell(state).id === 'cinder') return true;
+  return state.shell?.signatures?.includes('pressure') ?? false;
 }
 
 /**
@@ -158,6 +171,7 @@ export function boilerFlow(state: GameState): number {
 
 /** What the Boiler adds to the bank. §3.2: "Surge that grows with heat". */
 export function boilerSurge(state: GameState): number {
+  if (!boilerShell(state)) return 0;
   if (!bankGrowsWithHeat(state)) return 0;
   return BOILER_SURGE_PER_HEAT * (state.pressure?.heat ?? 0);
 }

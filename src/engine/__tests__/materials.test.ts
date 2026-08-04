@@ -339,15 +339,36 @@ describe('drops ride the ceiling (pillar 2)', () => {
     void engine;
   });
 
+  /**
+   * SEEDED (A.95, item 14). This rolled REAL drop chances against the global
+   * `Math.random` and asserted a threshold — a probabilistic claim wearing a
+   * unit test's clothes. It failed one full-suite run in four and passed every
+   * time it was run alone, which is the worst possible shape: it teaches people
+   * to re-run instead of to read.
+   *
+   * The RNG is pinned for the duration and restored in a `finally`, so a throw
+   * inside cannot leak a deterministic `Math.random` into every test after it.
+   * The claim is unchanged; only its variance is gone.
+   */
   it('an hour of drilling accumulates materials for idle players', () => {
     const { engine, s } = fresh();
     s.drills.bayBuilt = true;
     for (let i = 0; i < 12; i++) {
       s.drills.units.push({ level: 5, timer: 0, lastCell: 0 });
     }
-    // Two hours: one is within binomial flake range at depth-0 drop odds.
-    engine.dispatch({ type: 'debug', op: 'warp', seconds: 7200 });
-    expect(s.materials.totalDrops).toBeGreaterThan(2);
+    const real = Math.random;
+    let seed = 20260804;
+    Math.random = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    try {
+      // Two hours: one is within binomial flake range at depth-0 drop odds.
+      engine.dispatch({ type: 'debug', op: 'warp', seconds: 7200 });
+      expect(s.materials.totalDrops).toBeGreaterThan(2);
+    } finally {
+      Math.random = real;
+    }
   });
 });
 
