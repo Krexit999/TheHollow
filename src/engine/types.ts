@@ -849,6 +849,7 @@ export type GameEvent =
   | { type: 'machineRecast'; machineId: string }
   | { type: 'distilled'; materialId: string; trait: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
+  | { type: 'machineUnbuilt'; machineId: string; parts: number }
   | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
@@ -1135,6 +1136,7 @@ export type GameAction =
   | { type: 'buildBreaker' }
   | { type: 'breakPart'; partId: number }
   | { type: 'breakRack' }
+  | { type: 'unbuildMachine'; machineId: string }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

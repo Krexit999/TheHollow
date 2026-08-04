@@ -18,14 +18,16 @@ import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
 import { markReached } from '../systems/roll';
-import { MAX_MACHINE_TIER, tierOf } from '../systems/plant';
+import { MAX_MACHINE_TIER, TIER_PART_COST, tierOf } from '../systems/plant';
 import { ensureCondition } from '../systems/condition';
 import { SALVAGE_RETURN } from '../systems/salvage';
 import { MELT_BACK_SHARE } from '../systems/casting';
 import { shoreBand, shoreCost, unshoreBand } from '../systems/shoring';
+import { buildCrusher, crusherBuilt, nextCrusherTierCost } from '../systems/crusher';
 import {
   BREAK_RETURN, breakBlocker, breakPart, breakRack, breakable, breakerBuilt, breakerFound,
-  breakerStation, breaksInBulk, buildBreaker, propsBack, returnsProps,
+  breakerStation, breaksInBulk, buildBreaker, propsBack, returnsProps, unbuildBlocker,
+  unbuildMachine, unbuildable,
 } from '../systems/breaker';
 import { allAuthoredStations } from '../content/rolls';
 import type { EngineCtx, GameState } from '../types';
@@ -308,5 +310,105 @@ describe('6 — PILLAR 2: it returns what you spent, never more', () => {
       return Math.round(dpsMax(st, m).toNumber() * 1e6);
     };
     expect(read(true)).toBe(read(false));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7 — UN-BUILDING (A.91, by ruling)
+// ---------------------------------------------------------------------------
+
+/**
+ * THE ROW A.90 LEDGERED AS "what else should salvage and doesn't": cast parts
+ * spent on a machine tier were gone forever, and a player who tiered the wrong
+ * one had no exit at all.
+ *
+ * THE RULING: un-building returns its PARTS, not its tier. Re-tiering costs the
+ * tier material again — so the loss is the CAPABILITY, which is a different
+ * trade from every other salvage in the game.
+ */
+describe('7 — a built machine back to its parts', () => {
+  function withCrusher(tier: number): GameState {
+    const st = withBreaker(1);
+    racked(st, 12, 'ironbloom');
+    for (let i = 0; i < tier; i++) buildCrusher(st, ctx);
+    return st;
+  }
+
+  it('is offered at TIER I — an exit is not a convenience', () => {
+    const st = withCrusher(2);
+    expect(tierOf(st, 'breaker'), 'the fixture should be a tier-I Breaker').toBe(1);
+    expect(unbuildable(st).map((u) => u.machineId)).toContain('crusher');
+    expect(unbuildBlocker(st, 'crusher')).toBeNull();
+  });
+
+  it('hands back EXACTLY what went in, and takes the tier', () => {
+    const st = withCrusher(2);
+    const spent = [...st.plant!.builtOf!['crusher']!];
+    expect(spent.length, 'tier I + II is 2 + 3 parts').toBe(5);
+    const rackBefore = st.casting.rack.length;
+
+    const r = unbuildMachine(st, ctx, 'crusher');
+    expect(r.ok, r.reason).toBe(true);
+    expect((r.data as { parts: number; tierLost: number })).toEqual({ parts: 5, tierLost: 2 });
+    expect(st.casting.rack.length - rackBefore, 'not one part more or fewer').toBe(spent.length);
+    // ...and they are the same STONE, which is the ruling rather than generosity.
+    const back = st.casting.rack.slice(rackBefore).map((p) => p.materialId).sort();
+    expect(back).toEqual([...spent].sort());
+
+    // THE TIER IS GONE.
+    expect(tierOf(st, 'crusher')).toBe(0);
+    expect(crusherBuilt(st)).toBe(false);
+    expect(st.plant!.builtOf!['crusher']).toBeUndefined();
+  });
+
+  it('and re-tiering costs the tier material again — it is not a refund loop', () => {
+    const st = withCrusher(2);
+    unbuildMachine(st, ctx, 'crusher');
+    // The parts came back, so a rebuild is affordable — and it costs the SAME
+    // ladder from the bottom: tier I is 2 parts again, not a free restore.
+    expect(nextCrusherTierCost(st), 'the ladder restarts at tier I').toBe(TIER_PART_COST[1]);
+    const before = st.casting.rack.length;
+    expect(buildCrusher(st, ctx).ok).toBe(true);
+    expect(before - st.casting.rack.length).toBe(TIER_PART_COST[1]);
+    expect(tierOf(st, 'crusher'), 'it came back at ONE, not at two').toBe(1);
+  });
+
+  it('the world\'s mark comes off with it — a seizure cannot outlive its machine', () => {
+    const st = withCrusher(1);
+    ensureCondition(st)['crusher'] = { id: 'baked', level: 1, seized: true };
+    expect(unbuildMachine(st, ctx, 'crusher').ok).toBe(true);
+    expect(st.plant!.condition?.['crusher']).toBeUndefined();
+  });
+
+  it('refuses what is not built, and a machine that remembers nothing', () => {
+    const st = withBreaker(1);
+    expect(unbuildBlocker(st, 'crusher')).toBe('It is not built.');
+    // A machine raised before `builtOf` existed (A.83) has no record, so there
+    // is nothing honest to hand back.
+    st.plant!.tiers['crusher'] = 2;
+    expect(unbuildBlocker(st, 'crusher')).toContain('nothing to give back');
+  });
+
+  it('the KILN is never offered — it is not a plant tier (§3.2)', () => {
+    const st = withCrusher(1);
+    st.kiln.built = true;
+    expect(unbuildable(st).map((u) => u.machineId)).not.toContain('kiln');
+  });
+
+  it('PILLAR 2: no currency moves and dpsMax does not budge at equal depth', () => {
+    const read = (run: boolean): number => {
+      const st = withCrusher(2);
+      st.depth = 48; // THE SAME DEPTH IN BOTH ARMS
+      if (run) unbuildMachine(st, ctx, 'crusher');
+      const m = new ModifierCache();
+      m.invalidate();
+      return Math.round(dpsMax(st, m).toNumber() * 1e6);
+    };
+    expect(read(true)).toBe(read(false));
+
+    const st = withCrusher(2);
+    const before = JSON.stringify(st.currencies);
+    unbuildMachine(st, ctx, 'crusher');
+    expect(JSON.stringify(st.currencies)).toBe(before);
   });
 });

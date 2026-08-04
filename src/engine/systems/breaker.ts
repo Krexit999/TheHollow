@@ -228,6 +228,86 @@ export function propsBack(state: GameState, parts: number): number {
   return Math.max(1, Math.floor(parts * BREAK_RETURN));
 }
 
+// ---------------------------------------------------------------------------
+// A BUILT MACHINE, back to its parts
+// ---------------------------------------------------------------------------
+
+/**
+ * UN-BUILDING (A.91, by ruling): the Breaker takes a BUILT MACHINE back to its
+ * cast parts. THE TIER IS LOST; re-tiering costs the tier material again.
+ *
+ * This is the row A.90 ledgered as the honest answer to "what else should
+ * salvage and doesn't": cast parts spent on a machine tier were gone forever —
+ * 2 + 3 + 5 each across six machines — and a player who tiered the wrong one
+ * had no exit at all.
+ *
+ * WHAT COMES BACK IS EXACTLY WHAT WENT IN, and that is the ruling rather than
+ * generosity. `builtOf` records the material of every part spent across every
+ * tier, so the rack gets one part per entry, at the type and purity a chassis
+ * part is worth. THE LOSS IS THE TIER: you keep the stone and give up the
+ * capability, which is a different trade from every other salvage in the game
+ * (those keep a fraction of the stone and the capability was never the point).
+ *
+ * AVAILABLE AT TIER I, deliberately. The Breaker's own tiers buy SCOPE (props)
+ * and CONVENIENCE (the rack at once); an EXIT is not a convenience. Gating the
+ * only way out of a mis-spent machine behind two more tiers of the machine that
+ * provides it is the "structural unlock behind the wall it is needed to cross"
+ * shape in miniature.
+ *
+ * THE KILN IS NOT UN-BUILDABLE and needs no rule for it: the Kiln is
+ * `state.kiln.built`, not a plant tier, because the Hearth IS the Kiln (§3.2).
+ * Nothing with `tierOf === 0` is offered, so it falls out.
+ */
+export function unbuildable(state: GameState): { machineId: string; tier: number; parts: number }[] {
+  if (!breakerBuilt(state)) return [];
+  const p = state.plant;
+  if (!p) return [];
+  return Object.keys(p.tiers ?? {})
+    .filter((id) => (p.tiers[id] ?? 0) > 0)
+    .map((id) => ({ machineId: id, tier: p.tiers[id]!, parts: (p.builtOf?.[id] ?? []).length }));
+}
+
+export function unbuildBlocker(state: GameState, machineId: string): string | null {
+  if (!breakerBuilt(state)) return 'The Breaker is not standing.';
+  if (machineSpeed(state, 'breaker') <= 0) return 'It has cracked. Re-cast it before it will run.';
+  if (tierOf(state, machineId) <= 0) return 'It is not built.';
+  const made = state.plant?.builtOf?.[machineId] ?? [];
+  if (made.length === 0) {
+    // A machine raised before `builtOf` existed (A.83) remembers nothing, so
+    // there is nothing to hand back and the honest answer is to say so rather
+    // than to invent stone.
+    return 'Nobody wrote down what it was cast from. There is nothing to give back.';
+  }
+  return null;
+}
+
+export function unbuildMachine(
+  state: GameState, ctx: EngineCtx, machineId: string,
+): ActionResult {
+  const blocked = unbuildBlocker(state, machineId);
+  if (blocked) return { ok: false, reason: blocked };
+  const p = state.plant!;
+  const made = p.builtOf![machineId]!;
+  const tier = p.tiers[machineId]!;
+  for (const materialId of made) {
+    state.casting.rack.push({
+      id: state.casting.nextId++,
+      type: 'sockets',
+      materialId,
+      purity: 40,
+    } as never);
+  }
+  delete p.tiers[machineId];
+  delete p.builtOf![machineId];
+  // AND THE WORLD'S MARK COMES OFF WITH IT. A condition is written onto a
+  // machine (§7.2); there is no machine now, and a seizure that survived an
+  // un-build would be a permanent debuff on a thing that does not exist.
+  delete p.condition?.[machineId];
+  ctx.emit({ type: 'machineUnbuilt', machineId, parts: made.length });
+  ctx.dirty();
+  return { ok: true, data: { parts: made.length, tierLost: tier } };
+}
+
 /** Every material this Breaker could hand back off the rack right now. */
 export function breakable(state: GameState): { partId: number; materialId: string; name: string; units: number }[] {
   if (!breakerBuilt(state)) return [];
