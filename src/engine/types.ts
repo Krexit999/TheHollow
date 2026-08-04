@@ -690,6 +690,8 @@ export interface GameState {
 
   /** THE SPECTRUM (§13) — where the Prism's points of intensity are spent. */
   prism?: import('./systems/prism').PrismState;
+  /** THE LAPIDARY (A.94) — how each gem type has been ground. Self-heals. */
+  lapidary?: import('./systems/lapidary').LapidaryState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -983,7 +985,7 @@ export type GameEvent =
   | { type: 'traitPairFound'; name: string }
   | { type: 'craftFinished'; act: string; quality: number; delegated: boolean }
   | { type: 'carveBotched'; target: string }
-  | { type: 'gemCut'; gemId: string; lean: string; quality: number }
+  | { type: 'gemCut'; gemId: string; shape: string }
   | { type: 'castFound'; id: string; name: string }
   | { type: 'castMissed' }
   // --- THE NEW FORGE, step 2: casting and the tool station ---------------
@@ -1166,6 +1168,8 @@ export type GameAction =
   | { type: 'wash'; materialId: string; band: PurityBand }
   // SEPARATION (§13) — the Centrifuge, and the one verb it has.
   | { type: 'buildCentrifuge' }
+  | { type: 'buildLapidary' }
+  | { type: 'cutGem'; gemId: string; shape: import('./systems/lapidary').CutShape }
   | { type: 'spin'; materialId: string; band: PurityBand }
   // PATTERNS (§13) — the Pattern Bench, and the three verbs it has.
   | { type: 'buildPatternBench' }

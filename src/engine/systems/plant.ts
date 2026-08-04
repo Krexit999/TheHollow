@@ -312,6 +312,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * decision would make the first step a bad deal on arithmetic alone.
    */
   governor: { flow: 1.4, surge: 0 },
+  /**
+   * THE LAPIDARY (§13) — pure SURGE, and modest. A cut is one long careful pass
+   * over a wheel and then it is done, so it is the Pattern Bench's shape at a
+   * fraction of the size: nothing to own, something to fire.
+   */
+  lapidary: { flow: 0, surge: 7 },
 };
 
 export function demandOf(machineId: string): Demand {

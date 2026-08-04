@@ -26,6 +26,7 @@ import { buildGovernor, setOverclock } from './systems/governor';
 import { allocate, buildPrism } from './systems/prism';
 import { buildPatternBench, forgetPattern, recordPattern, repour } from './systems/pattern';
 import { buildCentrifuge, spin } from './systems/centrifuge';
+import { buildLapidary, cutGem } from './systems/lapidary';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -230,6 +231,12 @@ export function handleAction(
 
     case 'spin':
       return spin(state, ctx, action.materialId, action.band);
+
+    case 'buildLapidary':
+      return buildLapidary(state, ctx);
+
+    case 'cutGem':
+      return cutGem(state, ctx, action.gemId, action.shape);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

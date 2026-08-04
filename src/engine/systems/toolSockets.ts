@@ -80,6 +80,7 @@ import { POWER_BUCKETS, wireSocketedPowers } from './relicPowers';
 import { currentTool, wireEmptySockets } from './casting';
 import { tierOf } from './toolMining';
 import { derivePart, type ToolStats } from './forgeParts';
+import { aimedByNeighbours, calmsTheRow, cutOf, paysItsOwn, readsThrough } from './lapidary';
 
 // ---------------------------------------------------------------------------
 // What a socket can hold
@@ -223,17 +224,44 @@ export function socketedRelics(state: GameState): RelicInstance[] {
 }
 
 /** The row as a rune sequence — non-rune sockets read as gaps, which is what
- *  `sequencePairs` already means by `null`. */
+ *  `sequencePairs` already means by `null`.
+ *
+ *  PER-SLOT AND INDEX-STABLE. Everything that WRITES a slot reads this, so it
+ *  must stay the same length as the row; the READING below is a different
+ *  shape and lives in its own function. */
 export function runeSequence(state: GameState): Array<RuneId | null> {
   return socketRow(state).map((f) => (f?.kind === 'rune' ? f.id : null));
 }
 
+/**
+ * WHAT THE ROW ACTUALLY SAYS — the sequence the grammar is read against.
+ *
+ * A gem in a socket has always read as a gap, which means it silently kills the
+ * pair it sits between (§13's "blocks binding at scale", sitting in the code
+ * unexplained). A CUT stone is transparent: it drops out of the reading
+ * entirely, so the runes on either side become adjacent and speak.
+ *
+ * The Lapidary is asked what shape a stone is (`readsThrough`); nothing about
+ * cutting is decided here.
+ */
+export function rowReading(
+  state: GameState, row: Array<SocketFill | null> = socketRow(state),
+): Array<RuneId | null> {
+  const out: Array<RuneId | null> = [];
+  for (const f of row) {
+    if (f?.kind === 'rune') { out.push(f.id); continue; }
+    if (f?.kind === 'gem' && readsThrough(cutOf(state, f.id))) continue; // transparent
+    out.push(null);
+  }
+  return out;
+}
+
 export function socketRunePairs(state: GameState): string[] {
-  return sequencePairs(runeSequence(state));
+  return sequencePairs(rowReading(state));
 }
 
 export function socketRuneTriples(state: GameState): string[] {
-  return sequenceTriples(runeSequence(state));
+  return sequenceTriples(rowReading(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -265,9 +293,20 @@ export function socketRelicBonus(state: GameState, bucket: Bucket): number {
   return total;
 }
 
-/** A socketed gem's contribution, read exactly as the legacy tool reads one:
- *  the gem's own value, scaled by how well it was CUT, then by focus. */
+/**
+ * A socketed gem's contribution — its own value, aimed by its CUT, then focus.
+ *
+ * The Workbench took cutting with it when it was culled and this read `const
+ * cut = 1` for several passes. The Lapidary (A.94) brings it back as a SHAPE
+ * rather than a quality number, so the three answers here are where the stone
+ * pays, not how much:
+ *
+ *   uncut / table   its own bucket, as before
+ *   star            the bucket of the PAIR reading through it — not more, elsewhere
+ *   water           nothing; it is spending itself holding the row together
+ */
 export function socketGemBonus(state: GameState, bucket: Bucket): number {
+  const row = socketRow(state);
   const gems = socketed(state).filter((f) => f.kind === 'gem');
   if (gems.length === 0) return 0;
   const focus = socketFocus(currentTool(state));
@@ -275,15 +314,50 @@ export function socketGemBonus(state: GameState, bucket: Bucket): number {
   let total = 0;
   for (const g of gems) {
     const def = GEMS.find((x) => x.id === g.id);
-    if (!def || def.bucket !== bucket) continue;
-    // The Workbench is gone (A.7x) — nothing can cut a gem any more, so the
-    // cut is always neutral (gemCutMult's own undefined-cut behavior).
-    const cut = 1;
+    if (!def) continue;
+    const shape = cutOf(state, g.id);
+    if (!paysItsOwn(shape)) continue;
+    let target: Bucket = def.bucket;
+    if (aimedByNeighbours(shape)) {
+      const aimed = pairThrough(state, row, g.id);
+      if (aimed) target = aimed;
+    }
+    if (target !== bucket) continue;
     // A gem states a MULTIPLIER (1.15) except on an additive bucket, where it
     // states the addend (0.05). Same split the legacy registration makes.
-    total += (additive ? def.value : def.value - 1) * cut * focus;
+    total += (additive ? def.value : def.value - 1) * focus;
   }
   return total;
+}
+
+/**
+ * THE BUCKET OF THE PAIR READING THROUGH THIS STONE — a Star cut's whole
+ * sentence. The runes either side of it became adjacent because it is
+ * transparent, so it takes the colour of what passes.
+ *
+ * Nothing if it is not between two runes, or if that pair says nothing.
+ */
+export function pairThrough(
+  state: GameState, row: Array<SocketFill | null>, gemId: string,
+): Bucket | null {
+  const at = row.findIndex((f) => f?.kind === 'gem' && f.id === gemId);
+  if (at < 0) return null;
+  let left: RuneId | null = null;
+  for (let i = at - 1; i >= 0; i--) {
+    const f = row[i];
+    if (f?.kind === 'rune') { left = f.id; break; }
+    if (f?.kind === 'gem' && readsThrough(cutOf(state, f.id))) continue;
+    break;
+  }
+  let right: RuneId | null = null;
+  for (let i = at + 1; i < row.length; i++) {
+    const f = row[i];
+    if (f?.kind === 'rune') { right = f.id; break; }
+    if (f?.kind === 'gem' && readsThrough(cutOf(state, f.id))) continue;
+    break;
+  }
+  if (!left || !right) return null;
+  return RUNE_PAIRS[`${left}|${right}`]?.bucket ?? null;
 }
 
 /**
@@ -293,7 +367,7 @@ export function socketGemBonus(state: GameState, bucket: Bucket): number {
  * Edge is 1.05 -> 1.06 and never 1.05^1.28.
  */
 export function socketRuneBonus(state: GameState, bucket: Bucket): number {
-  const seq = runeSequence(state);
+  const seq = rowReading(state);
   if (!seq.some(Boolean)) return 0;
   const focus = socketFocus(currentTool(state));
   const additive = isAdditiveBucket(bucket);
@@ -327,6 +401,24 @@ export function socketBuckets(): Bucket[] {
 export function dissonantWith(seq: Array<RuneId | null>): string | null {
   for (const p of sequencePairs(seq)) if (DISSONANT.has(p)) return p;
   return null;
+}
+
+/**
+ * HOW MANY QUARRELS THIS ROW IS ALLOWED — the Water cut's whole sentence, and
+ * the only thing in the game that softens the rune grammar.
+ *
+ * One per water-cut stone in the row, so a second dissonance still refuses. The
+ * price is stated where the cut is: a Water stone gives up its own effect.
+ */
+export function quarrelsAllowed(state: GameState, row: Array<SocketFill | null>): number {
+  let n = 0;
+  for (const f of row) if (f?.kind === 'gem' && calmsTheRow(cutOf(state, f.id))) n += 1;
+  return n;
+}
+
+/** Every refused adjacency in a reading, in order. */
+export function dissonancesIn(seq: Array<RuneId | null>): string[] {
+  return sequencePairs(seq).filter((p) => DISSONANT.has(p));
 }
 
 export function runeName(id: string): string {
@@ -402,11 +494,11 @@ export function setSocket(
      * failure here would be a free way to delete your own runes. It names the
      * pair, because the pair is the thing the player needs to know.
      */
-    const next = runeSequence(state);
-    next[slot] = fill.id;
-    const bad = dissonantWith(next);
-    if (bad) {
-      const [a, b] = bad.split('|');
+    const prospective = [...socketRow(state)];
+    prospective[slot] = fill;
+    const bad = dissonancesIn(rowReading(state, prospective));
+    if (bad.length > quarrelsAllowed(state, prospective)) {
+      const [a, b] = bad[0]!.split('|');
       return {
         ok: false,
         reason: `${runeName(a!)} will not sit beside ${runeName(b!)} — they fight. Try another order.`,
@@ -415,6 +507,22 @@ export function setSocket(
   } else {
     if (!GEMS.some((g) => g.id === fill.id)) return { ok: false, reason: 'No such gem' };
     if ((state.materials.gems[fill.id] ?? 0) < 1) return { ok: false, reason: 'You hold no such gem' };
+    /**
+     * A CUT STONE IS TRANSPARENT, so dropping one into a row can make two
+     * runes ADJACENT that were not — and the grammar refuses some of those.
+     * The same guard has to run on this side or a gem becomes the back door
+     * into a dissonant row.
+     */
+    const prospective = [...socketRow(state)];
+    prospective[slot] = fill;
+    const bad = dissonancesIn(rowReading(state, prospective));
+    if (bad.length > quarrelsAllowed(state, prospective)) {
+      const [a, b] = bad[0]!.split('|');
+      return {
+        ok: false,
+        reason: `Set here, the stone lets ${runeName(a!)} see ${runeName(b!)}, and they fight.`,
+      };
+    }
   }
 
   // Whatever was in the slot comes out first, then the new thing goes in.
