@@ -24,6 +24,7 @@ import { MATERIALS } from '../src/engine/materials';
 import { allAuthoredStations } from '../src/engine/content/rolls';
 import { CHAINS } from '../src/engine/systems/refinery';
 import { CURE_RECIPES } from '../src/engine/systems/curing';
+import { SPLITS } from '../src/engine/content/splits';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -54,6 +55,10 @@ for (const c of CHAINS) note(c.out, `chain ${c.id}`);
 
 // 6. Curing.
 for (const c of CURE_RECIPES) note(c.to, `cure ${c.id}`);
+
+// 6b. SEPARATION — the Centrifuge (§13, A.93). The eleven this instrument found
+//     on its first run are exactly what these rows produce.
+for (const s of SPLITS) for (const out of s.out) note(out, `split from ${s.from}`);
 
 // 7. Anything a source file GRANTS by name — `addMaterial(state, 'x'` and the
 //    literal id in a grant table. Text-scanned, then verified against the

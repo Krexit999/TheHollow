@@ -25,6 +25,7 @@ import { buildCondenser, buildWitness, condense, witness } from './systems/witne
 import { buildGovernor, setOverclock } from './systems/governor';
 import { allocate, buildPrism } from './systems/prism';
 import { buildPatternBench, forgetPattern, recordPattern, repour } from './systems/pattern';
+import { buildCentrifuge, spin } from './systems/centrifuge';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -216,6 +217,12 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildCentrifuge':
+      return buildCentrifuge(state, ctx);
+
+    case 'spin':
+      return spin(state, ctx, action.materialId, action.band);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

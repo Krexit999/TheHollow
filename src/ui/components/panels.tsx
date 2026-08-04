@@ -43,6 +43,7 @@ import { WitnessPanel } from './witness';
 import { GovernorPanel } from './governor';
 import { PrismPanel } from './prism';
 import { PatternPanel } from './pattern';
+import { CentrifugePanel } from './centrifuge';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -373,6 +374,8 @@ export function KilnPanel() {
       <PrismPanel />
       {/* PATTERNS (§13) — the Pattern Bench, and the price it repeats. */}
       <PatternPanel />
+      {/* SEPARATION (§13) — the Centrifuge, and the eleven it is the only route to. */}
+      <CentrifugePanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}

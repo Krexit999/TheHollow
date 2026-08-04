@@ -687,6 +687,7 @@ export interface GameState {
   line?: import('./systems/line').LineState;
   /** PATTERNS (§13) — configurations recorded at the Pattern Bench. */
   pattern?: import('./systems/pattern').PatternState;
+
   /** THE SPECTRUM (§13) — where the Prism's points of intensity are spent. */
   prism?: import('./systems/prism').PrismState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
@@ -869,6 +870,7 @@ export type GameEvent =
   | { type: 'allocated'; band: number; points: number }
   | { type: 'patternDrawn'; patternId: number; casts: number }
   | { type: 'repoured'; patternId: number; parts: number }
+  | { type: 'spun'; materialId: string; out: string[] }
   | { type: 'condensed'; residue: number; hush: number }
   | { type: 'witnessed'; materialId: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
@@ -1158,6 +1160,9 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // SEPARATION (§13) — the Centrifuge, and the one verb it has.
+  | { type: 'buildCentrifuge' }
+  | { type: 'spin'; materialId: string; band: PurityBand }
   // PATTERNS (§13) — the Pattern Bench, and the three verbs it has.
   | { type: 'buildPatternBench' }
   | { type: 'recordPattern'; name?: string }

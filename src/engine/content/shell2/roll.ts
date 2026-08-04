@@ -1,5 +1,5 @@
 /**
- * THE ROLL — FERRITE'S NINETEEN STATIONS (§1.3).
+ * THE ROLL — FERRITE'S TWENTY STATIONS (§1.3).
  *
  * The second authored geography in the game, and it is deliberately the SAME
  * shape as Loam's rather than a second pattern: name, depth, type and a WALL's
@@ -117,6 +117,28 @@ export const FERRITE_ROLL: StationDef[] = [
     id: 'ironvespers', depth: 112, name: 'Iron Vespers', type: 'rest',
     seams: NO_SEAM,
     line: 'The seams hum on one note at this depth, all of them, and it is a comfortable place to sit.',
+  },
+  {
+    /**
+     * THE CENTRIFUGE'S PLACE, and it is the second station in this project
+     * authored because §6's keystone table has a hole in it (the Infuser's
+     * Grafthouse was the first, A.92). §13 lists the CENTRIFUGE and says it
+     * blocks "~10 split-only materials"; §6 gives it no wreck at all.
+     *
+     * WHY FERRITE, AND WHY HERE. The measurement decides it, not taste:
+     * `scripts/material-sources.ts` finds ELEVEN materials nothing in the game
+     * produces, and SIX of them are Ferrite's — the five castings plus the
+     * Lodeframe. It sits between Iron Vespers (112) and Fluxgate (140), deep
+     * enough that a player meets it after the Sieve and the Crucible.
+     *
+     * IT BURIES NOTHING, deliberately. The first draft gave it `ironsinew` out
+     * of habit and broke `a barren depth rolls what it did` — depth 125 is the
+     * drop economy's own guard, and a new station that moved it would have been
+     * a drop-economy change wearing a station's hat.
+     */
+    id: 'longspin', depth: 126, name: 'The Long Spin', type: 'wreck', wreck: 'THE CENTRIFUGE',
+    seams: ['nullsilver', 'magnetile'],
+    line: 'It turned until things came apart into what they had been all along. It is still turning.',
   },
   {
     id: 'fluxgate', depth: 140, name: 'Fluxgate', type: 'chamber',

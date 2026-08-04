@@ -293,6 +293,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   pattern: { flow: 0, surge: 16 },
   /**
+   * THE CENTRIFUGE (§13) — FLOW AND SURGE. It has to be brought up to speed and
+   * then held there, which is the Refinery's shape: a drum that stops halfway
+   * has separated nothing. The third machine that punishes a lopsided plant.
+   */
+  centrifuge: { flow: 2.6, surge: 8 },
+  /**
    * THE GOVERNOR (§13) — pure FLOW, and modest. It is not a converter; it is a
    * thing that stands there holding other machines above their rating, which is
    * a continuous act. Modest because the EXPENSIVE half of overclocking is the
@@ -343,6 +349,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'condenser') > 0) out.push('condenser');
   if (tierOf(state, 'governor') > 0) out.push('governor');
   if (tierOf(state, 'prism') > 0) out.push('prism');
+  if (tierOf(state, 'centrifuge') > 0) out.push('centrifuge');
   return out;
 }
 

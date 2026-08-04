@@ -87,7 +87,7 @@ describe('the fixture is real', () => {
   it('every shell in the game has a geography', () => {
     expect(unauthoredShells(), 'a shell with no Roll').toEqual([]);
     expect(AUTHORED_SHELLS.length).toBe(7);
-    expect(allAuthoredStations().length).toBe(117);
+    expect(allAuthoredStations().length).toBe(118);
   });
 
   it('and `shellRoll` reads the registry, not a hardcoded shell', () => {
@@ -343,8 +343,10 @@ describe('4 — the six combat orphans drop, by place (§16.4)', () => {
   });
 
   it('and nothing was added to the rarity pool — a barren depth rolls what it did', () => {
-    // Depth 125: the nearest stations are Iron Vespers (112) and Fluxgate (140),
-    // and 125 is out of reach of both.
+    // Depth 125 is out of reach of every REMAINS in the shell. The Long Spin
+    // (126, A.93) is its nearest neighbour now and deliberately buries nothing:
+    // this assertion is the drop economy's own guard, and a new station that
+    // moved it would have been a drop-economy change wearing a station's hat.
     expect(remainsAt('ferrite', 125)).toEqual([]);
   });
 
