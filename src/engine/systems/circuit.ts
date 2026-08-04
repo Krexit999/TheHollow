@@ -42,6 +42,7 @@ import { contentsOf, shellRoll, typeOf } from './roll';
 import { crush, crushable, crusherBuilt } from './crusher';
 import { surgeCap } from './plant';
 import { ensureSorting, filterSentence, filterable, sieveBuilt } from './sieve';
+import { ensureLine, lineBuilt, runLine } from './line';
 import {
   CONDITION_BITE, CONDITION_RULES, conditionLine, conditionOf, ruleFor,
 } from './condition';
@@ -52,13 +53,14 @@ import type { StationType } from '../content/shell1/roll';
 // Shape
 // ---------------------------------------------------------------------------
 
-export type MachineId = 'kiln' | 'bay' | 'crusher';
-export const CIRCUIT_MACHINES: MachineId[] = ['kiln', 'bay', 'crusher'];
+export type MachineId = 'kiln' | 'bay' | 'crusher' | 'line';
+export const CIRCUIT_MACHINES: MachineId[] = ['kiln', 'bay', 'crusher', 'line'];
 
 export const MACHINE_LABEL: Record<MachineId, string> = {
   kiln: 'The Kiln',
   bay: 'The Drill Bay',
   crusher: 'The Crusher',
+  line: 'The Line',
 };
 
 /**
@@ -455,9 +457,8 @@ export const ACTS: ActDef[] = [
   })),
   {
     /**
-     * BANK THE SURGE — §7.3's own line, in the form Loam can honestly take. The
-     * Line does not exist to hold, so what this holds is the Crusher: a row
-     * above `run the Crusher` that says "not here" leaves the bank alone.
+     * BANK THE SURGE — §7.3's own line, in the form Loam can honestly take. A
+     * row above `run the Crusher` that says "not here" leaves the bank alone.
      *
      * It does nothing on purpose. In a top-down strip an action that does
      * nothing is how you say "and stop looking".
@@ -466,6 +467,39 @@ export const ACTS: ActDef[] = [
     avail: (s) => crusherBuilt(s),
     holds: () => true,
     apply: () => false,
+  },
+  /**
+   * HOLD THE LINE — §7.3's fourth sketched line, CUT AT A.85 as a name against
+   * no mechanism ("the Line does not exist to hold") and wired at A.91 because
+   * it does now.
+   *
+   * `WHEN station type = hazard → hold the Line, bank Surge` is the spine's own
+   * example, and it is a real decision: a Line is the biggest single draw in
+   * the plant, so holding it at a hazard station keeps the bank for the Crusher
+   * you might need instead.
+   */
+  {
+    id: 'lineHold', machine: 'line', label: 'hold the Line',
+    avail: (s) => lineBuilt(s),
+    holds: (s) => ensureLine(s).held,
+    apply: (s) => { if (ensureLine(s).held) return false; ensureLine(s).held = true; return true; },
+  },
+  {
+    id: 'lineRelease', machine: 'line', label: 'let the Line run',
+    avail: (s) => lineBuilt(s),
+    holds: (s) => !ensureLine(s).held,
+    apply: (s) => { if (!ensureLine(s).held) return false; ensureLine(s).held = false; return true; },
+  },
+  {
+    /**
+     * ...AND FIRE IT. The Line is the one machine whose whole point is that it
+     * runs as one act, so a strip that can hold it and not throw it would be a
+     * brake with no accelerator.
+     */
+    id: 'lineRun', machine: 'line', label: 'fire the Line',
+    avail: (s) => lineBuilt(s),
+    holds: () => false,
+    apply: (s, ctx) => runLine(s, ctx).ok,
   },
   {
     /**

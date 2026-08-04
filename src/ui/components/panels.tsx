@@ -39,6 +39,7 @@ import { SievePanel } from './sieve';
 import { StillPanel } from './still';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
+import { LinePanel } from './line';
 import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
@@ -357,6 +358,8 @@ export function KilnPanel() {
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}
       <CruciblePanel />
+      {/* CHAINING (§14.5) — the Line, and the one press it turns four into. */}
+      <LinePanel />
       {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
           the machine list, Flow/Surge, and the Circuit). */}
       <CircuitPanel />

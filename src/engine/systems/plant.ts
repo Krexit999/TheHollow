@@ -120,6 +120,12 @@ export interface PlantState {
    * the optics still has machines in different bands.
    */
   bands?: Record<string, number>;
+  /**
+   * TRANSIENT: a Line is mid-firing, so a member's own `fire` must not draw
+   * again (§14.5). Set and cleared inside `runLine`, in a `finally` so a member
+   * that throws cannot leave the plant permanently free.
+   */
+  inLine?: boolean;
 }
 
 export function defaultPlantState(): PlantState {
@@ -218,6 +224,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   crucible: { flow: 3.2, surge: 9 },
   /**
+   * THE LINE (§14.5) — pure Surge, and the biggest single draw in the plant.
+   * It fires everything at once or not at all, which is the Crusher's shape
+   * with four machines behind it.
+   */
+  line: { flow: 0, surge: 18 },
+  /**
    * THE STILL (§14.1) — FLOW AND SURGE, like the Refinery, and for the same
    * reason: it holds a slow heat and then takes one thing out in a single
    * separation. It is the second machine that punishes a lopsided plant.
@@ -290,6 +302,18 @@ export function canFire(state: GameState, machineId: string): boolean {
 export function fire(state: GameState, machineId: string): boolean {
   const need = demandOf(machineId).surge;
   const p = ensurePlant(state);
+  /**
+   * A LINE PAYS FOR ITS MEMBERS ONCE (§14.5, A.91). `runLine` charges the whole
+   * draw up front and then calls each member's ordinary verb — and those verbs
+   * call `fire` themselves, so without this the bank was charged TWICE and a
+   * three-machine Line cost 68 Surge against a quoted 54. Found by the Line's
+   * own test on its first run.
+   *
+   * It is not a discount: `lineDraw` is the SUM of the members plus a mismatch
+   * penalty, so the up-front charge is never less than what the hands would
+   * have paid separately.
+   */
+  if (p.inLine) return true;
   if (need <= 0) return true;
   if (p.surge < need) return false;
   p.surge -= need;

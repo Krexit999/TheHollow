@@ -683,6 +683,8 @@ export interface GameState {
   sorting?: import('./systems/sieve').SortingState;
   /** ALLOYING (§14.2) — which alloys have been poured, and how much grog. */
   crucible?: import('./systems/crucible').CrucibleState;
+  /** CHAINING (§14.5) — the Line's members, and whether it is held. */
+  line?: import('./systems/line').LineState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -853,6 +855,7 @@ export type GameEvent =
   | { type: 'partBroken'; materialId: string; units: number }
   | { type: 'machineUnbuilt'; machineId: string; parts: number }
   | { type: 'poured'; alloyId: string; traits: string[]; grog: boolean }
+  | { type: 'lineFired'; ran: string[]; draw: number }
   | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
@@ -1143,6 +1146,11 @@ export type GameAction =
   // ALLOYING (§14.2) — the Crucible, and the one verb it has.
   | { type: 'buildCrucible' }
   | { type: 'pour'; parts: import('./systems/crucible').PourPart[] }
+  // CHAINING (§14.5) — the Line, and the three verbs it has.
+  | { type: 'buildLine' }
+  | { type: 'setLine'; members: string[] }
+  | { type: 'holdLine'; held: boolean }
+  | { type: 'runLine' }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

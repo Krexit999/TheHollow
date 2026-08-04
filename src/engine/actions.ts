@@ -21,6 +21,7 @@ import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sie
 import { buildStill, distil } from './systems/still';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
+import { buildLine, holdLine, runLine, setLine } from './systems/line';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -187,6 +188,18 @@ export function handleAction(
 
     case 'pour':
       return pour(state, ctx, action.parts);
+
+    case 'buildLine':
+      return buildLine(state, ctx);
+
+    case 'setLine':
+      return setLine(state, action.members);
+
+    case 'holdLine':
+      return holdLine(state, action.held);
+
+    case 'runLine':
+      return runLine(state, ctx);
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);

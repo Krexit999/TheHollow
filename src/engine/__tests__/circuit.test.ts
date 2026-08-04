@@ -31,7 +31,7 @@ import { newDrill } from '../systems/drills';
 import { ensureCompaction } from '../systems/compaction';
 import { ensureCondition } from '../systems/condition';
 import {
-  ACTS, MAX_ROWS, READS, availableActs, availableMachines, availableReads,
+  ACTS, CIRCUIT_MACHINES, MAX_ROWS, READS, availableActs, availableMachines, availableReads,
   circuitGateOpen, circuitUnlocked, ensureCircuit, moveRow, setRow, stationHere,
   tickCircuit, winningRow, type CircuitRow, type MachineId,
 } from '../systems/circuit';
@@ -73,10 +73,15 @@ beforeEach(() => {
 });
 
 describe('the fixture is real', () => {
-  it('the three machines carry strips, and every act belongs to one of them', () => {
+  it('the machines carry strips, and every act belongs to one of them', () => {
     s.plant!.tiers['crusher'] = 1;
+    // THE LINE JOINED AT A.91 and is absent until it is BUILT, which is the
+    // same LAW 3 rule the Crusher follows: a machine you have not raised
+    // contributes no actions and does not appear.
     expect(availableMachines(s).sort()).toEqual(['bay', 'crusher', 'kiln']);
-    for (const a of ACTS) expect(['kiln', 'bay', 'crusher']).toContain(a.machine);
+    s.plant!.tiers['line'] = 1;
+    expect(availableMachines(s).sort()).toEqual(['bay', 'crusher', 'kiln', 'line']);
+    for (const a of ACTS) expect(CIRCUIT_MACHINES).toContain(a.machine);
   });
 
   it('...and the reads it offers are the ones this shell supplies', () => {
