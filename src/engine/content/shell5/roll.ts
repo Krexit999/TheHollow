@@ -104,6 +104,27 @@ export const CINDER_ROLL: StationDef[] = [
     line: 'Deep enough in the fall to be soft, far enough from a vent to be cool. People slept here.',
   },
   {
+    /**
+     * THE QUENCH TANK'S PLACE — the THIRD station this project has authored
+     * around a hole in §6's keystone table (the Grafthouse was the first at
+     * A.92, The Long Spin the second at A.93). §13 lists the QUENCH TANK and
+     * says it blocks "tier XI+ stats"; §6 gives it no wreck at all.
+     *
+     * WHY CINDER, AND WHY HERE. §13's own ordering puts the tank between the
+     * Retort and the Floodgate, which are both Cinder's; and §17 names the
+     * PYRE-BATH as "the only route to tier-XI temper", which is a Cinder
+     * medium. It sits between The Ashfield (80) and Retort Hall (120), deep
+     * enough that a player meets it after the Boiler and the Vents.
+     *
+     * IT BURIES NOTHING, for the reason A.93 learned at The Long Spin: a new
+     * station carrying `remains` is a drop-economy change wearing a station's
+     * hat, and depth 96 has a guard on it like every other.
+     */
+    id: 'theslake', depth: 96, name: 'The Slake', type: 'wreck', wreck: 'THE QUENCH TANK',
+    seams: ['brimshard', 'cindersteel'],
+    line: 'Long stone troughs, all of them dry, all of them stained a different colour at the waterline.',
+  },
+  {
     id: 'retorthall', depth: 120, name: 'Retort Hall', type: 'wreck', wreck: 'THE RETORT',
     seams: ['brimshard', 'magmajade', 'cindersteel'], remains: ['pyregland'],
     line: 'A hall of long glass necks, most of them intact, one of them still dripping.',

@@ -45,6 +45,7 @@ import { PrismPanel } from './prism';
 import { PatternPanel } from './pattern';
 import { CentrifugePanel } from './centrifuge';
 import { LapidaryPanel } from './lapidary';
+import { QuenchPanel } from './quench';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -379,6 +380,8 @@ export function KilnPanel() {
       <CentrifugePanel />
 
       <LapidaryPanel />
+
+      <QuenchPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}

@@ -120,6 +120,17 @@ export interface Part {
    * part is derived by the same code path as a lump of Marl.
    */
   legend?: string;
+  /**
+   * WHAT IT WAS COOLED IN (§13's QUENCH TANK, A.94). A medium id from
+   * `TEMPERS` — the SAME six media the quench trough uses, pointed at a part
+   * rather than at a tool.
+   *
+   * Absent on every part cast before the tank existed, and absent reads as
+   * "never treated" everywhere, so nothing that already existed behaves
+   * differently. It contributes NO STAT: the whole of its effect is a `steady`
+   * term inside `instability()`, which is why it does not appear in `derivePart`.
+   */
+  quench?: string;
 }
 
 /**

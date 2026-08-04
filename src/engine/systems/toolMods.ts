@@ -39,6 +39,7 @@ import {
   type ModEffectDef, type SynergyDef, type ToolModDef,
 } from '../content/toolMods';
 import { overNatural } from '../traits';
+import { forgetsOverfill, quenchedSteady } from './quench';
 import { alloyHint, dominantTrait } from '../content/drillAlloys';
 import { reachedOrdinal } from './drillAlloys';
 import { currentTool } from './casting';
@@ -822,7 +823,12 @@ export function instability(state: GameState, abilities: Array<{ power: number; 
    * rather than a strictly-better pour. Read off `MATERIAL_TRAITS` through
    * `overNatural`, so no machine is imported to answer it.
    */
-  const overfilled = (tool?.parts ?? []).reduce((n, p) => n + overNatural(p.materialId), 0);
+  const overfilled = (tool?.parts ?? []).reduce(
+    // §19's Hollow row, built at A.94: a part that has been through a tier-III
+    // QUENCH TANK forgets what was put into it, so it stops shaking for it.
+    // The tank is asked, never imported — `forgetsOverfill` lives with it.
+    (n, p) => n + (forgetsOverfill(state, p) ? 0 : overNatural(p.materialId)), 0,
+  );
   if (overfilled > 0) {
     const n = overfilled * INST_PER_OVERFILLED;
     raw += n;
@@ -834,6 +840,12 @@ export function instability(state: GameState, abilities: Array<{ power: number; 
     // reliability and neither is in the charge economy — the same reason the
     // stabilise axis was allowed to exist at all.
     steady += growthFold(tool.parts).stabilize + craftFold(tool.parts).stabilize;
+    // ...and so is a part that has been through the tank (§13, A.94).
+    const dipped = quenchedSteady(state, tool.parts);
+    if (dipped > 0) {
+      steady += dipped;
+      from.push({ label: 'what has been through the tank', n: -dipped });
+    }
   }
 
   const net = Math.max(0, raw - steady);

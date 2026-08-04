@@ -318,6 +318,13 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * fraction of the size: nothing to own, something to fire.
    */
   lapidary: { flow: 0, surge: 7 },
+  /**
+   * THE QUENCH TANK (§13) — FLOW, and small. A tank is a standing bath that
+   * has to be kept at temperature whether or not anything is in it, which is
+   * the Refinery shape rather than the Pattern Bench one: cheap to fire and
+   * never free to own.
+   */
+  quench: { flow: 0.9, surge: 4 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -363,6 +370,7 @@ export function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'prism') > 0) out.push('prism');
   if (tierOf(state, 'centrifuge') > 0) out.push('centrifuge');
   if (tierOf(state, 'washer') > 0) out.push('washer');
+  if (tierOf(state, 'quench') > 0) out.push('quench');
   return out;
 }
 

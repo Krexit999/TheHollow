@@ -66,9 +66,11 @@ const REMAINS = ['emberplate', 'charsinew', 'magmaduct', 'pyregland', 'smolderhe
 beforeEach(() => { s = inCinder(); });
 
 describe('the fixture is real', () => {
-  it('nineteen stations, floor at 470 — the registry\'s number', () => {
+  it('twenty stations, floor at 470 — the registry\'s number', () => {
+    // TWENTY since A.94: The Slake (96) carries §13's QUENCH TANK, which §6
+    // gives no wreck. It buries nothing, so the drop economy is untouched.
     const roll = authoredRoll('cinder');
-    expect(roll.length).toBe(19);
+    expect(roll.length).toBe(20);
     expect(roll[roll.length - 1]!.name).toBe('FLASHPOINT');
     expect(roll[roll.length - 1]!.depth).toBe(470);
   });

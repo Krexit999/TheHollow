@@ -494,7 +494,7 @@ function toolKey(parts: Part[]): string {
     k += `:${(p.grown ?? []).join('+')}:${p.growth ?? 0}:${p.craft ?? ''}:${p.work ?? ''}`;
     // EVERY FIELD OF `Part` MUST APPEAR HERE or the memo serves a stale tool —
     // the standing rule this cache has caught people on more than once.
-    k += `:${p.legend ?? ''}|`;
+    k += `:${p.legend ?? ''}:${p.quench ?? ''}|`;
   }
   return k;
 }

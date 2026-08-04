@@ -27,6 +27,7 @@ import { allocate, buildPrism } from './systems/prism';
 import { buildPatternBench, forgetPattern, recordPattern, repour } from './systems/pattern';
 import { buildCentrifuge, spin } from './systems/centrifuge';
 import { buildLapidary, cutGem } from './systems/lapidary';
+import { buildQuenchTank, quenchPart } from './systems/quench';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -237,6 +238,12 @@ export function handleAction(
 
     case 'cutGem':
       return cutGem(state, ctx, action.gemId, action.shape);
+
+    case 'buildQuenchTank':
+      return buildQuenchTank(state, ctx);
+
+    case 'quenchPart':
+      return quenchPart(state, ctx, action.partId, action.mediumId);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

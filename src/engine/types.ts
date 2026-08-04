@@ -986,6 +986,7 @@ export type GameEvent =
   | { type: 'craftFinished'; act: string; quality: number; delegated: boolean }
   | { type: 'carveBotched'; target: string }
   | { type: 'gemCut'; gemId: string; shape: string }
+  | { type: 'partQuenched'; partId: number; mediumId: string }
   | { type: 'castFound'; id: string; name: string }
   | { type: 'castMissed' }
   // --- THE NEW FORGE, step 2: casting and the tool station ---------------
@@ -1169,6 +1170,8 @@ export type GameAction =
   // SEPARATION (§13) — the Centrifuge, and the one verb it has.
   | { type: 'buildCentrifuge' }
   | { type: 'buildLapidary' }
+  | { type: 'buildQuenchTank' }
+  | { type: 'quenchPart'; partId: number; mediumId: string }
   | { type: 'cutGem'; gemId: string; shape: import('./systems/lapidary').CutShape }
   | { type: 'spin'; materialId: string; band: PurityBand }
   // PATTERNS (§13) — the Pattern Bench, and the three verbs it has.
