@@ -230,6 +230,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   line: { flow: 0, surge: 18 },
   /**
+   * THE BALANCE (§14.4) — pure FLOW, and heavy. It does not fire; it holds two
+   * pans level, which is a sustained thing and the Kiln's shape, not the
+   * Crusher's.
+   */
+  balance: { flow: 3.6, surge: 0 },
+  /**
    * THE STILL (§14.1) — FLOW AND SURGE, like the Refinery, and for the same
    * reason: it holds a slow heat and then takes one thing out in a single
    * separation. It is the second machine that punishes a lopsided plant.
@@ -258,6 +264,7 @@ function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'sieve') > 0) out.push('sieve');
   if (tierOf(state, 'still') > 0) out.push('still');
   if (tierOf(state, 'crucible') > 0) out.push('crucible');
+  if (tierOf(state, 'balance') > 0) out.push('balance');
   return out;
 }
 

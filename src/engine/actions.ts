@@ -22,6 +22,7 @@ import { buildStill, distil } from './systems/still';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
+import { buildBalance, convert } from './systems/balance';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -200,6 +201,12 @@ export function handleAction(
 
     case 'runLine':
       return runLine(state, ctx);
+
+    case 'buildBalance':
+      return buildBalance(state, ctx);
+
+    case 'convert':
+      return convert(state, ctx, action.fromId, action.toId, action.units);
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);

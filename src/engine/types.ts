@@ -685,6 +685,8 @@ export interface GameState {
   crucible?: import('./systems/crucible').CrucibleState;
   /** CHAINING (§14.5) — the Line's members, and whether it is held. */
   line?: import('./systems/line').LineState;
+  /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
+  balance?: import('./systems/balance').BalanceState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -856,6 +858,7 @@ export type GameEvent =
   | { type: 'machineUnbuilt'; machineId: string; parts: number }
   | { type: 'poured'; alloyId: string; traits: string[]; grog: boolean }
   | { type: 'lineFired'; ran: string[]; draw: number }
+  | { type: 'converted'; fromId: string; toId: string; units: number; out: number }
   | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
@@ -1151,6 +1154,9 @@ export type GameAction =
   | { type: 'setLine'; members: string[] }
   | { type: 'holdLine'; held: boolean }
   | { type: 'runLine' }
+  // TRANSMUTATION (§14.4) — the Balance, and the one verb it has.
+  | { type: 'buildBalance' }
+  | { type: 'convert'; fromId: string; toId: string; units: number }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;
