@@ -22,7 +22,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { createEngine } from '../index';
 import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
-import { anUnauthoredShell } from '../content/rolls';
+import { AUTHORED_SHELLS, NO_SUCH_SHELL, authoredRoll, unauthoredShells } from '../content/rolls';
 import { dpsMax, cellCap } from '../systems/face';
 import { addMaterial } from '../systems/forge';
 import { contentsOf } from '../systems/roll';
@@ -136,17 +136,29 @@ describe('2 — the vocabulary is only what exists', () => {
     }
   });
 
-  it('a shell with no authored Roll offers no world reads', () => {
-    // ASK THE REGISTRY. This said 'ferrite' until A.87 authored it and
-    // 'verdance' until A.88 did — naming a shell by hand is the same trap as
-    // naming a file, and it broke twice in two passes for the right reason.
-    s.shell.current = anUnauthoredShell();
-    const ids = availableReads(s).map((r) => r.id);
-    expect(ids).not.toContain('seam');
-    expect(ids).not.toContain('station');
-    expect(ids).not.toContain('hazard');
-    // The face is still a face.
-    expect(ids).toContain('compaction');
+  /**
+   * THIS TEST USED TO SAY THE OPPOSITE, and the change is the finding.
+   *
+   * It read "a shell with no authored Roll offers no world reads" and pointed
+   * at `anUnauthoredShell()` — 'ferrite' until A.87, 'verdance' until A.88,
+   * then the registry. A.90 authored the last two, so the subject no longer
+   * exists and the honest statement inverts: EVERY shell supplies the world
+   * reads now. That is the whole point of the six Rolls this row of passes
+   * wrote, so it is asserted rather than assumed.
+   *
+   * The `avail` guard stays in `circuit.ts` — an eighth shell without a Roll
+   * would still be handled — and `authoredRoll`'s fallback keeps its own test.
+   */
+  it('the world reads are live in EVERY shell now', () => {
+    for (const id of AUTHORED_SHELLS) {
+      s.shell.current = id;
+      const ids = availableReads(s).map((r) => r.id);
+      for (const read of ['seam', 'station', 'hazard', 'compaction']) {
+        expect(ids, `${id} is missing the ${read} read`).toContain(read);
+      }
+    }
+    expect(unauthoredShells(), 'a shell with no geography').toEqual([]);
+    expect(authoredRoll(NO_SUCH_SHELL), 'the empty fallback is still live').toEqual([]);
   });
 
   it('a machine you have not built contributes no actions', () => {

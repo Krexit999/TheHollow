@@ -17,7 +17,7 @@ import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
 import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
-import { AUTHORED_SHELLS, anUnauthoredShell, authoredRoll } from '../content/rolls';
+import { AUTHORED_SHELLS, NO_SUCH_SHELL, authoredRoll } from '../content/rolls';
 import { contentsOf, ensureRoll, rerollRoll, shellRoll, typeOf } from '../systems/roll';
 import { deepGatesFor, rollDeepEntry } from '../systems/compaction';
 import {
@@ -313,7 +313,10 @@ describe('PILLAR 2 and what the shell supports', () => {
       m.invalidate();
       return Math.round(dpsMax(st, m).toNumber() * 1e6);
     };
-    expect(read('cinder')).toBe(read(anUnauthoredShell()));
+    // A.90: seven authored geographies, one depth, one ceiling.
+    const all = AUTHORED_SHELLS.map((id) => [id, read(id)] as const);
+    for (const [id, v] of all) expect(v, `${id} reads a different ceiling`).toBe(all[0]![1]);
+    expect(authoredRoll(NO_SUCH_SHELL)).toEqual([]);
   });
 
   it('SHORING: a band can be timbered, and the purse is EMBER', () => {

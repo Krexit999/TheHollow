@@ -12,7 +12,7 @@ import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
 import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
-import { anUnauthoredShell, authoredRoll } from '../content/rolls';
+import { AUTHORED_SHELLS, NO_SUCH_SHELL, authoredRoll } from '../content/rolls';
 import { ensureRoll } from '../systems/roll';
 import { deepGatesFor, rollDeepEntry } from '../systems/compaction';
 import { bands, driftDepth, shoreBand } from '../systems/shoring';
@@ -159,9 +159,11 @@ describe('3 — PILLAR 2: geography is not income', () => {
       m.invalidate();
       return Math.round(dpsMax(st, m).toNumber() * 1e6);
     };
-    const none = anUnauthoredShell();
-    expect(read('glassmere')).toBe(read(none));
-    expect(authoredRoll(none)).toEqual([]);
+    // A.90: seven authored geographies, one depth, one ceiling. See the note
+    // in `verdance-roll.test.ts` — the unauthored control arm no longer exists.
+    const all = AUTHORED_SHELLS.map((id) => [id, read(id)] as const);
+    for (const [id, v] of all) expect(v, `${id} reads a different ceiling`).toBe(all[0]![1]);
+    expect(authoredRoll(NO_SUCH_SHELL)).toEqual([]);
   });
 });
 

@@ -20,7 +20,7 @@ import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
 import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
-import { anUnauthoredShell, authoredRoll } from '../content/rolls';
+import { AUTHORED_SHELLS, authoredRoll } from '../content/rolls';
 import { ensureRoll, shellRoll } from '../systems/roll';
 import { deepGatesFor, rollDeepEntry } from '../systems/compaction';
 import { bands, driftDepth, shoreBand } from '../systems/shoring';
@@ -190,9 +190,17 @@ describe('3 — PILLAR 2: geography is not income', () => {
       m.invalidate();
       return Math.round(dpsMax(st, m).toNumber() * 1e6);
     };
-    const none = anUnauthoredShell();
-    expect(read('verdance')).toBe(read(none));
-    expect(authoredRoll(none), 'the control arm really has no Roll').toEqual([]);
+    /**
+     * THE CONTROL ARM CHANGED AT A.90, because the old one stopped existing.
+     * This compared an authored shell against `anUnauthoredShell()`, and all
+     * seven are authored now. The replacement is stronger, not weaker: seven
+     * geographies of six to twenty stations, read at ONE depth, must all agree
+     * to the microdust. If a station could reach the ceiling they could not.
+     */
+    const all = AUTHORED_SHELLS.map((id) => [id, read(id)] as const);
+    for (const [id, v] of all) expect(v, `${id} reads a different ceiling`).toBe(all[0]![1]);
+    expect(new Set(AUTHORED_SHELLS.map((id) => authoredRoll(id).length)).size,
+      'every shell has the same station count — this control proves nothing').toBeGreaterThan(1);
     expect(authoredRoll('verdance').length).toBe(20);
   });
 });

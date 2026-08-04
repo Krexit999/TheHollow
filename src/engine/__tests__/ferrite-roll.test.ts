@@ -22,7 +22,7 @@ import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
 import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
 import {
-  AUTHORED_SHELLS, allAuthoredStations, anUnauthoredShell, authoredRoll, stationById,
+  AUTHORED_SHELLS, NO_SUCH_SHELL, allAuthoredStations, authoredRoll, stationById,
   unauthoredShells,
 } from '../content/rolls';
 import { contentsOf, ensureRoll, rerollRoll, rollRows, shellRoll } from '../systems/roll';
@@ -69,13 +69,25 @@ beforeEach(() => {
 });
 
 describe('the fixture is real', () => {
-  it('Ferrite is authored, and a shell without a Roll returns nothing', () => {
+  it('Ferrite is authored, and a world without a Roll returns nothing', () => {
     // MEMBERSHIP, not the whole list: this asserted ['ferrite','loam'] and
     // broke the moment Verdance was written — a test about A.87 failing
     // because of A.88.
     expect(AUTHORED_SHELLS).toContain('ferrite');
     expect(authoredRoll('ferrite').length).toBeGreaterThanOrEqual(15);
-    expect(authoredRoll(anUnauthoredShell())).toEqual([]);
+    expect(authoredRoll(NO_SUCH_SHELL)).toEqual([]);
+  });
+
+  /**
+   * ALL SEVEN, AS OF A.90 — the row of passes that started at A.87 with
+   * "`shellRoll` returns [] for six of seven shells" is closed. Asserted here
+   * rather than in the two new shells' own files, because the claim is about
+   * the REGISTRY and this is where the cross-shell rules live.
+   */
+  it('every shell in the game has a geography', () => {
+    expect(unauthoredShells(), 'a shell with no Roll').toEqual([]);
+    expect(AUTHORED_SHELLS.length).toBe(7);
+    expect(allAuthoredStations().length).toBe(116);
   });
 
   it('and `shellRoll` reads the registry, not a hardcoded shell', () => {
@@ -271,14 +283,23 @@ describe('3 — the deep-entry ladder is per shell (§16.2)', () => {
     expect([...got]).toEqual(['deepgrave']);
   });
 
-  it('every shell without its own table falls back to Loam\'s — knowingly, ledgered', () => {
-    // DERIVED, not listed. This named 'verdance' and A.88 gave it a table, so a
-    // test about A.87 failed because of A.88 — the same shape as naming a file.
-    for (const id of unauthoredShells()) {
-      expect(DEEP_GATES_BY_SHELL[id], `${id} should have no entry yet`).toBeUndefined();
-      expect(deepGatesFor(id)).toBe(deepGatesFor('loam'));
+  /**
+   * NOTHING FALLS BACK ANY MORE, and the old test asked to be deleted when that
+   * day came ("nothing falls back any more — delete this"). A.90 wrote the last
+   * two tables, so the Loam default is now unreachable from any real shell —
+   * which is the fix for the row `deepEntry.ts` calls "WRONG and knowingly so"
+   * (a Verdance player digging Deepgrave out of soil).
+   *
+   * The default STAYS, and is still tested, because an eighth shell would need
+   * it. What is gone is any shell that uses it.
+   */
+  it('every shell has its OWN ladder — the Loam default is unreachable', () => {
+    for (const id of AUTHORED_SHELLS) {
+      expect(DEEP_GATES_BY_SHELL[id], `${id} still falls back to Loam's ladder`).toBeDefined();
     }
-    expect(unauthoredShells().length, 'nothing falls back any more — delete this').toBeGreaterThan(0);
+    expect(unauthoredShells()).toEqual([]);
+    expect(deepGatesFor(NO_SUCH_SHELL), 'the default is still there for an eighth shell')
+      .toBe(deepGatesFor('loam'));
   });
 });
 
@@ -347,10 +368,18 @@ describe('5 — PILLAR 2: geography is not income', () => {
       m.invalidate();
       return Math.round(dpsMax(st, m).toNumber() * 1e6);
     };
-    // Ferrite (a Roll, 19 stations) against a shell with no Roll at all.
-    const none = anUnauthoredShell();
-    expect(read('ferrite')).toBe(read(none));
-    expect(shellRoll({ ...s, shell: { ...s.shell, current: none } } as GameState)).toEqual([]);
+    /**
+     * A.90: SEVEN GEOGRAPHIES, ONE DEPTH, ONE CEILING. This compared Ferrite
+     * against a shell with no Roll, and there is no such shell any more. The
+     * replacement is a stronger control, not a weaker one — six to twenty
+     * stations, five wall counts, two shells with no walls at all, and every
+     * one of them must read the same ceiling to the microdust.
+     */
+    const all = AUTHORED_SHELLS.map((id) => [id, read(id)] as const);
+    for (const [id, v] of all) expect(v, `${id} reads a different ceiling`).toBe(all[0]![1]);
+    const counts = new Set(AUTHORED_SHELLS.map((id) => authoredRoll(id).length));
+    expect(counts.size, 'every shell has the same station count — the control is dead')
+      .toBeGreaterThan(1);
   });
 
   it('and a roll still returns exactly ONE stone', () => {

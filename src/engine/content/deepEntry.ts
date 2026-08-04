@@ -54,6 +54,14 @@ export const DEEP_GATES: DeepGate[] = [
  *   verdance   sapstone (own common) · bindingclay (Loam rich) · thornwall (new)
  *   glassmere  weepstone (Loam aberrant) · truesilica (new) · truelight (new)
  *   cinder     charstone (own common) · slagrock (own common) · slagglass (new)
+ *   hollow     silencesteel (own rich) · nothingstone (own common) · nothingstar (new)
+ *   aleph      sigilstone (own pure) · — · record (new)
+ *
+ * ALEPH HAS TWO RUNGS, NOT THREE, and that is authored rather than missing:
+ * §16.2's table writes an em-dash at Aleph's c≥14 column. `rollDeepEntry` walks
+ * this list deepest-first and takes the first gate it meets, so a compaction of
+ * 14-19 in Aleph falls through to the c≥8 rung — a real behavioural difference
+ * from every other shell, and one a test asserts rather than assumes.
  */
 export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
   loam: DEEP_GATES,
@@ -78,6 +86,18 @@ export const DEEP_GATES_BY_SHELL: Record<string, DeepGate[]> = {
     { at: 20, materialId: 'truelight', chance: 0.06 },
     { at: 14, materialId: 'truesilica', chance: 0.11 },
     { at: 8, materialId: 'weepstone', chance: 0.18 },
+  ],
+  // Hollow needed only its TERMINAL: silencesteel and nothingstone are both
+  // its own, both already in the registry, and both pool-eligible.
+  hollow: [
+    { at: 20, materialId: 'nothingstar', chance: 0.06 },
+    { at: 14, materialId: 'nothingstone', chance: 0.11 },
+    { at: 8, materialId: 'silencesteel', chance: 0.18 },
+  ],
+  // TWO RUNGS. The middle one is an em-dash in §16.2 and an absence here.
+  aleph: [
+    { at: 20, materialId: 'record', chance: 0.06 },
+    { at: 8, materialId: 'sigilstone', chance: 0.18 },
   ],
 };
 

@@ -23,7 +23,7 @@ import {
   MATERIALS, RARITY_GATES, REMAINS_TUNING, materialDef, remainsAt, rollDrop,
 } from '../materials';
 import { loamRoll } from '../content/shell1/roll';
-import { anUnauthoredShell } from '../content/rolls';
+import { NO_SUCH_SHELL } from '../content/rolls';
 import { CHAINS } from '../systems/refinery';
 import { ensureContentLoaded } from '../content';
 import { createEngine } from '../index';
@@ -147,10 +147,12 @@ describe('4 — nothing was added to the rarity pool', () => {
     }
   });
 
-  it('a shell with no authored Roll has no remains at any depth', () => {
-    // ASK THE REGISTRY — 'ferrite' broke at A.87 and 'verdance' at A.88.
-    const none = anUnauthoredShell();
-    for (let d = 0; d <= 250; d += 10) expect(remainsAt(none, d), none).toEqual([]);
+  it('a world with no authored Roll has no remains at any depth', () => {
+    // A SYNTHETIC ID, not a shell. This said 'ferrite' (broke at A.87), then
+    // 'verdance' (A.88), then `anUnauthoredShell()` — which A.90 left with no
+    // answer, because all seven are authored. The early return it guards is
+    // still live code, so it still gets a subject.
+    for (let d = 0; d <= 250; d += 10) expect(remainsAt(NO_SUCH_SHELL, d), NO_SUCH_SHELL).toEqual([]);
   });
 });
 

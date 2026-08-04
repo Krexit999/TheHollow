@@ -453,19 +453,53 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   emberplate: ['tough', 'warm'], charsinew: ['warm', 'springy'], magmaduct: ['warm', 'hollow'],
   pyregland: ['warm', 'charged'], smolderheart: ['warm', 'dense'],
   // ---- HOLLOW ----
-  nothingstone: ['hollow', 'light'], quietchalk: ['hollow', 'brittle'], nullchalk: ['light', 'hollow'],
+  nothingstone: ['hollow', 'light'], quietchalk: ['hollow', 'brittle'],
+  /**
+   * CLONE #6 (A.90). `nullchalk` was `['light','hollow']` — Nothingstone bit
+   * for bit, and invisible for eleven phases because Hollow had no geography
+   * and a stone that cannot drop cannot be compared to one that can. It keeps
+   * `light`, and chalk is what makes it `brittle`.
+   */
+  nullchalk: ['light', 'brittle'],
   hushslate: ['tough', 'hollow'], greyecho: ['charged', 'hollow'], echograin: ['charged', 'light'],
   umbralite: ['hollow', 'dense'], voidmarl: ['hollow', 'charged'], umbrite: ['light', 'trueseated'],
   silencesteel: ['tough', 'trueseated'], voidglass: ['hollow', 'brittle'], hushmetal: ['dense', 'trueseated'],
   resonarium: ['charged', 'trueseated'], absentia: ['hollow', 'light'], absencia: ['hollow', 'charged'],
-  phantomsilver: ['light', 'trueseated'], lacuna: ['hollow', 'charged'], stillstar: ['trueseated', 'charged'],
+  phantomsilver: ['light', 'trueseated'],
+  /**
+   * CLONE #7 (A.90). `lacuna` was `['hollow','charged']` — Absencia bit for
+   * bit, the second of two Hollow clones and the seventh this project has
+   * found. A lacuna is a gap CUT to an exact size, which is `keen` doing the
+   * work `charged` was not.
+   *
+   * NOT `trueseated`, which was the first choice and was wrong for a reason
+   * worth keeping: SIX OF THE SEVEN parts in `forge-parts.test.ts`'s
+   * deliberately SCATTERED set carry `trueseated`, so putting it here made the
+   * incoherent tool coherent and dropped that test's margin from 1.44 to 1.18.
+   * A trait fix is a balance change, and this one had a live gate on it.
+   */
+  lacuna: ['hollow', 'keen'],
+  stillstar: ['trueseated', 'charged'],
   voidstar: ['hollow', 'charged', 'trueseated'], nothing: ['hollow', 'light', 'charged'],
   quietsinew: ['springy', 'hollow'], hollowplate: ['tough', 'hollow'], unheart: ['charged', 'trueseated'],
+  /** HOLLOW DEEP-ENTRY, terminal. Three traits so it separates from voidstar
+   *  and `nothing` rather than cloning either — Cinder's slagglass shape. */
+  nothingstar: ['hollow', 'light', 'trueseated'],
   // ---- ALEPH ----
   firstiron: ['dense', 'trueseated'], protolith: ['dense', 'tough'], axiomdust: ['charged', 'hollow'],
   axiomite2: ['trueseated', 'charged'], sigilstone: ['trueseated', 'keen'], lawgold: ['charged', 'dense'],
   alephite: ['keen', 'trueseated'], worldseed: ['charged', 'trueseated'],
-  paradoxa: ['charged', 'brittle', 'trueseated'], authorsInk: ['trueseated', 'charged'],
+  paradoxa: ['charged', 'brittle', 'trueseated'],
+  /**
+   * CLONE #8 (A.90), and this pass MADE it. `authorsInk` was flawless and
+   * `['trueseated','charged']`; coming down to `pure` so its rescue could
+   * actually fire (see `materials.ts`) put it beside Ruleshard, which is pure
+   * and carries the same pair. A BAND CHANGE IS A CLONE RISK, not only a
+   * drop-rate one — the clone check found it on the same run that made it.
+   */
+  authorsInk: ['keen', 'charged'],
+  /** ALEPH DEEP-ENTRY, terminal. */
+  record: ['trueseated', 'dense', 'keen'],
 };
 
 /** A material's traits, or an empty list (a test forbids that from happening). */

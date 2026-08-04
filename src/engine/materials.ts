@@ -434,9 +434,16 @@ export const MATERIALS: MaterialDef[] = [
   M('absencia', 'Absencia', 'hollow', 'flawless', ['#282636', '#4c4674', '#847cb0'], 9, 'crystalline'),
   M('stillstar', 'Stillstar', 'hollow', 'starred', ['#2c2a3c', '#524a80', '#948ac8'], 10, 'crystalline',
     'A star that decided against it.'),
-  { id: 'quietsinew', name: 'Quietsinew', shellId: 'hollow', rarity: 'common', palette: ['#2e2c38', '#4e4a66', '#7e7898'], facets: 4, shimmer: 'none', source: 'combat', flavor: 'Muscle from something that moves without occupying the space between.' },
-  { id: 'hollowplate', name: 'Hollowplate', shellId: 'hollow', rarity: 'rich', palette: ['#2a2836', '#4a4468', '#7a72a0'], facets: 6, shimmer: 'soft', source: 'combat', flavor: 'Armor with no inside. It fits everyone.' },
-  { id: 'unheart', name: 'Unheart', shellId: 'hollow', rarity: 'flawless', palette: ['#262238', '#463e6c', '#7a6ea8'], facets: 10, shimmer: 'crystalline', source: 'combat', flavor: 'It beats. Do not ask what it pumps, or where.' },
+  // ============ HOLLOW'S REMAINS (A.90) — re-sourced by PLACE ==============
+  //
+  // The last three of the twenty-six this project has carried since A.84, minus
+  // Aleph's one below. Same mechanism as Loam's six, Ferrite's six, Verdance's
+  // six and the five each in Glassmere and Cinder: bound to stations in
+  // `content/shell6/roll.ts`, substituted into a drop that already happened,
+  // never added to the rarity pool.
+  { id: 'quietsinew', name: 'Quietsinew', shellId: 'hollow', rarity: 'common', palette: ['#2e2c38', '#4e4a66', '#7e7898'], facets: 4, shimmer: 'none', source: 'remains', flavor: 'Muscle from something that moved without occupying the space between. It is still not occupying it.' },
+  { id: 'hollowplate', name: 'Hollowplate', shellId: 'hollow', rarity: 'rich', palette: ['#2a2836', '#4a4468', '#7a72a0'], facets: 6, shimmer: 'soft', source: 'remains', flavor: 'Armour with no inside. It fits everyone, and it fitted somebody.' },
+  { id: 'unheart', name: 'Unheart', shellId: 'hollow', rarity: 'flawless', palette: ['#262238', '#463e6c', '#7a6ea8'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'It beats. Do not ask what it pumps, or where.' },
 
   // ================== SHELL VII — ALEPH (Phase 10, live) ===================
   M('firstiron', 'First Iron', 'aleph', 'common', ['#3a362c', '#6e6650', '#b0a684'], 5, 'soft',
@@ -446,7 +453,29 @@ export const MATERIALS: MaterialDef[] = [
     'A fragment of how things are. Handle with conviction.'),
   M('alephite', 'Alephite', 'aleph', 'flawless', ['#403a24', '#7c6e3e', '#ccb862'], 9, 'crystalline',
     'The first material. Everything else is commentary.'),
-  { id: 'authorsInk', name: "The Author's Ink", shellId: 'aleph', rarity: 'flawless', palette: ['#26242c', '#48444e', '#787280'], facets: 10, shimmer: 'crystalline', source: 'combat', flavor: 'It writes on the world directly. The pen is bolted down for a reason.' },
+  /**
+   * ALEPH'S ONE REMAINS (A.90) — and it had to come down a BAND to exist.
+   *
+   * `remainsAt` honours the rarity gate: being near the place is necessary and
+   * never sufficient. RARITY_GATES opens `flawless` at depth 70 and
+   * `shellDef('aleph').floorDepth` is **40**, so a flawless Aleph stone cannot
+   * be rolled anywhere in Aleph, by any route, at any compaction. Re-sourcing
+   * this one by place while leaving it flawless would have shipped a rescue
+   * that never fires — the exact thing PILLARS' "a test that a function works
+   * is not a test that anything calls it" is about.
+   *
+   * So it is `pure` (gate 40), which in a forty-deep shell means it comes up at
+   * THE CORE and at no other depth in the game. That is the same shape as
+   * Loam's Tapmother's Root and Ferrite's Loadstar Core — the floor keeps its
+   * own — arrived at from the other direction.
+   *
+   * THREE ALEPH STONES REMAIN UNREACHABLE FROM ALEPH ROCK for the same reason
+   * (alephite `flawless`, worldseed `starred`, paradoxa `aberrant`). That is
+   * PRE-EXISTING and is not this material's problem to fix: the gates are
+   * documented as Shell-I depths and Aleph is a deliberate forty-deep shell.
+   * Ledgered, not papered over.
+   */
+  { id: 'authorsInk', name: "The Author's Ink", shellId: 'aleph', rarity: 'pure', palette: ['#26242c', '#48444e', '#787280'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'It writes on the world directly. The pen is bolted down for a reason.' },
 
   // ======================= SHELL IV — GLASSMERE (14, dormant) ==============
   M('silicash', 'Silicash', 'glassmere', 'common', ['#333338', '#5e5e66', '#9a9aa5'], 4, 'none'),
@@ -493,6 +522,14 @@ export const MATERIALS: MaterialDef[] = [
   M('lacuna', 'Lacuna Stone', 'hollow', 'flawless', ['#1a1a20', '#30303e', '#4f4f66'], 9, 'crystalline'),
   M('voidstar', 'Voidstar', 'hollow', 'starred', ['#1e1e28', '#363650', '#5c5c8a'], 10, 'crystalline'),
   M('nothing', 'A Piece of Nothing', 'hollow', 'aberrant', ['#161618', '#28282c', '#414146'], 6, 'aberrant'),
+
+  // HOLLOW'S TERMINAL (A.90, §16.2). Only a terminal is ever new: the ladder's
+  // lower two rungs are `silencesteel` and `nothingstone`, both already in the
+  // registry and both pool-eligible, which is the `umberjade` pattern — a
+  // second way to FIND something, never a second thing that means the same.
+  M('nothingstar', 'Nothingstone ★', 'hollow', 'starred', ['#101014', '#232330', '#484860'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. The same stone that is not there, from far enough down that it has stopped apologising for it.',
+    false, 'deep'),
 
   /**
    * ================= LOAM'S REMAINS (A.84) — found, not fought ==============
@@ -572,6 +609,14 @@ export const MATERIALS: MaterialDef[] = [
   // (First Iron and Alephite moved to the live Phase-10 block above.)
   M('worldseed', 'Worldseed Ore', 'aleph', 'starred', ['#2e3328', '#586348', '#96a87a'], 10, 'crystalline'),
   M('paradoxa', 'Paradoxa', 'aleph', 'aberrant', ['#2c2830', '#544c5c', '#8f8299'], 9, 'aberrant'),
+
+  // ALEPH'S TERMINAL (A.90, §16.2 — "RECORD at c≥20"). Aleph's ladder is TWO
+  // rungs, not three: the spine writes an em-dash at c≥14 and `deepEntry.ts`
+  // carries that literally, so a compaction between 14 and 19 pays Aleph
+  // nothing. The lower rung is `sigilstone`, which already existed.
+  M('record', 'The Record', 'aleph', 'starred', ['#2a2618', '#565030', '#9c9058'], 11, 'aberrant',
+    'Comes out of a cell one strike from dead, and only out of one. Every rule that has ever been signed, in the order it was signed, and your name is on the last few.',
+    false, 'deep'),
 ];
 
 /** The five alloy castings, ordered by family metal [ingot, flux, scale,

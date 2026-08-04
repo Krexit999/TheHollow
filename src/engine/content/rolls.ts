@@ -19,6 +19,8 @@ import { ferriteRoll } from './shell2/roll';
 import { verdanceRoll } from './shell3/roll';
 import { glassmereRoll } from './shell4/roll';
 import { cinderRoll } from './shell5/roll';
+import { hollowRoll } from './shell6/roll';
+import { alephRoll } from './shell7/roll';
 import type { StationDef } from './shell1/roll';
 import { allShells } from '../shells';
 
@@ -37,6 +39,8 @@ const ROLLS: Record<string, () => StationDef[]> = {
   verdance: verdanceRoll,
   glassmere: glassmereRoll,
   cinder: cinderRoll,
+  hollow: hollowRoll,
+  aleph: alephRoll,
 };
 
 /** Shells whose geography is written. The rest return `[]`. */
@@ -45,11 +49,15 @@ export const AUTHORED_SHELLS = Object.keys(ROLLS);
 /**
  * Shells whose geography is NOT written yet, in ordinal order.
  *
- * Exported because NAMING ONE BY HAND IS THE SAME TRAP AS NAMING A FILE. Five
- * tests across three files said `'ferrite'` and then `'verdance'` to mean "a
- * shell with no Roll", and every one of them broke — for the right reason, but
- * noisily — the moment that shell got one. Ask the registry and the fourth Roll
- * costs nothing.
+ * **THIS IS EMPTY AS OF A.90 and is kept deliberately.** All seven are
+ * authored, so the honest value of this query is `[]` — and a test that asserts
+ * it is `[]` is the only thing standing between "every shell has a geography"
+ * and someone quietly adding an eighth shell without one.
+ *
+ * Exported originally because NAMING ONE BY HAND IS THE SAME TRAP AS NAMING A
+ * FILE. Five tests across three files said `'ferrite'` and then `'verdance'` to
+ * mean "a shell with no Roll", and every one of them broke — for the right
+ * reason, but noisily — the moment that shell got one.
  *
  * `shells.ts` is the currency/wall registry and imports nothing from `content`,
  * so this direction is safe.
@@ -58,12 +66,23 @@ export function unauthoredShells(): string[] {
   return allShells().filter((s) => !AUTHORED_SHELLS.includes(s.id)).map((s) => s.id);
 }
 
-/** The first shell with no Roll — what a test means by "a shell with no Roll". */
-export function anUnauthoredShell(): string {
-  const id = unauthoredShells()[0];
-  if (!id) throw new Error('every shell is authored — this helper has no meaning any more');
-  return id;
-}
+/**
+ * AN ID THAT IS NOT A SHELL, and never will be.
+ *
+ * `anUnauthoredShell()` used to return the first shell with no Roll, and six
+ * tests plus two drivers used it to mean "the empty-geography case". A.90
+ * authored the last two, so that helper had no answer left to give — but the
+ * FALLBACK it exercised is live code (`ROLLS[shellId]?.() ?? []`, and
+ * `remainsAt`'s early return) that still has to work when something asks about
+ * a world that is not there.
+ *
+ * So the subject is a synthetic id rather than a real shell. This is NOT the
+ * trap the old helper existed to avoid: that trap was naming a shell that would
+ * one day be authored, and this one cannot be, because it is not in the shell
+ * registry at all. `shellDef` throws on it by design — it is for functions that
+ * take a shell ID, never for `state.shell.current`.
+ */
+export const NO_SUCH_SHELL = '__no_such_shell__';
 
 /**
  * WHERE EACH ROLL LIVES ON DISK — and this is not bookkeeping, it is a fix.
@@ -85,6 +104,8 @@ export const ROLL_SOURCES: Record<string, string> = {
   verdance: 'shell3/roll.ts',
   glassmere: 'shell4/roll.ts',
   cinder: 'shell5/roll.ts',
+  hollow: 'shell6/roll.ts',
+  aleph: 'shell7/roll.ts',
 };
 
 /**
