@@ -11,7 +11,7 @@ import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
-import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
+import { MATERIALS, gateDepth, materialDef, remainsAt, rollDrop } from '../materials';
 import { AUTHORED_SHELLS, NO_SUCH_SHELL, authoredRoll } from '../content/rolls';
 import { ensureRoll } from '../systems/roll';
 import { deepGatesFor, rollDeepEntry } from '../systems/compaction';
@@ -137,7 +137,7 @@ describe('2 — the five combat orphans drop, by place (§16.4)', () => {
       const stations = authoredRoll('glassmere').filter((st) => (st.remains ?? []).includes(id));
       const stray = at.get(id)!.filter((d) => !stations.some((st) => Math.abs(st.depth - d) <= 4));
       expect(stray, `${id} came up at ${stray.slice(0, 5).join(',')}`).toEqual([]);
-      const gate = RARITY_GATES[materialDef(id).rarity].minDepth;
+      const gate = gateDepth('glassmere', materialDef(id).rarity);
       expect(at.get(id)!.filter((d) => d < gate), `${id} under its gate`).toEqual([]);
     }
   });

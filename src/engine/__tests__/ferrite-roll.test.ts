@@ -20,7 +20,7 @@ import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
-import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
+import { MATERIALS, gateDepth, materialDef, remainsAt, rollDrop } from '../materials';
 import {
   AUTHORED_SHELLS, NO_SUCH_SHELL, allAuthoredStations, authoredRoll, stationById,
   unauthoredShells,
@@ -211,8 +211,10 @@ describe('2 — a seam can always produce what it names', () => {
       for (const id of def.seams ?? []) {
         const m = materialDef(id);
         expect(m.shellId, `${shellId}/${def.id} seams ${id} from ${m.shellId}`).toBe(shellId);
-        expect(def.depth, `${def.name} seams ${m.name} (${m.rarity}, gate ${RARITY_GATES[m.rarity].minDepth})`)
-          .toBeGreaterThanOrEqual(RARITY_GATES[m.rarity].minDepth);
+        // A.91: the gate is the SHELL'S, not a table's. Bit-identical for every
+        // shell whose floor is at or past Loam's 150; Aleph's ladder compresses.
+        expect(def.depth, `${def.name} seams ${m.name} (${m.rarity}, gate ${gateDepth(shellId, m.rarity)})`)
+          .toBeGreaterThanOrEqual(gateDepth(shellId, m.rarity));
         expect(m.worked, `${def.name} seams a WORKED material`).toBeFalsy();
       }
     }
@@ -329,7 +331,7 @@ describe('4 — the six combat orphans drop, by place (§16.4)', () => {
       const stations = authoredRoll('ferrite').filter((st) => (st.remains ?? []).includes(id));
       const stray = at.get(id)!.filter((d) => !stations.some((st) => Math.abs(st.depth - d) <= 4));
       expect(stray, `${id} came up at ${stray.slice(0, 5).join(',')} — no station there`).toEqual([]);
-      const gate = RARITY_GATES[materialDef(id).rarity].minDepth;
+      const gate = gateDepth('ferrite', materialDef(id).rarity);
       const early = at.get(id)!.filter((d) => d < gate);
       expect(early, `${id} came up under its gate (${gate})`).toEqual([]);
     }

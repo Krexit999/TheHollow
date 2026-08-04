@@ -56,17 +56,31 @@ describe('the registry: one export per shell, made never dug', () => {
     let rngState = 12345;
     const rng = () => { rngState = (rngState * 1103515245 + 12345) & 0x7fffffff; return rngState / 0x7fffffff; };
     const shells = ['loam', 'ferrite', 'verdance', 'glassmere', 'cinder', 'hollow', 'aleph'];
+    /**
+     * ONE ASSERTION, NOT THIRTY THOUSAND. This used to `expect` inside the
+     * innermost loop with a template-literal message, so ~30,000 messages were
+     * BUILT whether or not anything was wrong — 6.9 seconds against a 5-second
+     * limit, and the engine work under it is 131ms. Collecting the offenders
+     * and asserting once is both faster and a better report: it names every
+     * leak rather than the first.
+     */
+    const leaks: string[] = [];
     for (const shell of shells) {
       for (const depth of [0, 20, 50, 90, 140, 200, 320]) {
         for (let i = 0; i < 400; i++) {
           const d = rollDrop(shell, depth, rng);
-          if (d.materialId) expect(materialDef(d.materialId).worked ?? false, `rollDrop ${shell}@${depth} -> ${d.materialId}`).toBe(false);
+          if (d.materialId && materialDef(d.materialId).worked) {
+            leaks.push(`rollDrop ${shell}@${depth} -> ${d.materialId}`);
+          }
           for (const g of crackGeodeRolls(shell, depth, rng)) {
-            if (g.materialId) expect(materialDef(g.materialId).worked ?? false, `geode ${shell}@${depth} -> ${g.materialId}`).toBe(false);
+            if (g.materialId && materialDef(g.materialId).worked) {
+              leaks.push(`geode ${shell}@${depth} -> ${g.materialId}`);
+            }
           }
         }
       }
     }
+    expect([...new Set(leaks)]).toEqual([]);
   });
 });
 

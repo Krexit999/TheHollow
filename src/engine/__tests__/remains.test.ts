@@ -20,7 +20,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  MATERIALS, RARITY_GATES, REMAINS_TUNING, materialDef, remainsAt, rollDrop,
+  MATERIALS, REMAINS_TUNING, gateDepth, materialDef, remainsAt, rollDrop,
 } from '../materials';
 import { loamRoll } from '../content/shell1/roll';
 import { NO_SUCH_SHELL } from '../content/rolls';
@@ -109,7 +109,7 @@ describe('1 — they drop', () => {
 
   it('3 — and never under its own rarity gate', () => {
     for (const m of REMAINS) {
-      const gate = RARITY_GATES[m.rarity].minDepth;
+      const gate = gateDepth('loam', m.rarity);
       const early = seen.get(m.id)!.filter((d) => d < gate);
       expect(early, `${m.id} (${m.rarity}, gate ${gate}) came up at ${early.slice(0, 5).join(',')}`)
         .toEqual([]);

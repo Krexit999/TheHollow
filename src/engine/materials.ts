@@ -17,6 +17,7 @@ import type { Bucket } from './modifiers';
 // authored list with no imports of its own, so there is no cycle. The remains
 // need a geography (`remainsAt`), and this is where the geography lives.
 import { authoredRoll } from './content/rolls';
+import { shellDefOrNull } from './shells';
 
 export type MaterialRarity = 'common' | 'rich' | 'pure' | 'flawless' | 'starred' | 'aberrant';
 
@@ -454,28 +455,28 @@ export const MATERIALS: MaterialDef[] = [
   M('alephite', 'Alephite', 'aleph', 'flawless', ['#403a24', '#7c6e3e', '#ccb862'], 9, 'crystalline',
     'The first material. Everything else is commentary.'),
   /**
-   * ALEPH'S ONE REMAINS (A.90) — and it had to come down a BAND to exist.
+   * ALEPH'S ONE REMAINS — DEMOTED AT A.90, RESTORED AT A.91, and the round trip
+   * is PILLARS' "a cut is provisional, and its reason can dissolve" happening
+   * inside two passes.
    *
-   * `remainsAt` honours the rarity gate: being near the place is necessary and
-   * never sufficient. RARITY_GATES opens `flawless` at depth 70 and
-   * `shellDef('aleph').floorDepth` is **40**, so a flawless Aleph stone cannot
-   * be rolled anywhere in Aleph, by any route, at any compaction. Re-sourcing
-   * this one by place while leaving it flawless would have shipped a rescue
-   * that never fires — the exact thing PILLARS' "a test that a function works
-   * is not a test that anything calls it" is about.
+   * A.90 brought it down to `pure` for a stated reason: `remainsAt` honours the
+   * rarity gate, `RARITY_GATES` opened `flawless` at an absolute depth of 70,
+   * and Aleph's floor is 40 — so re-sourcing it by place while leaving it
+   * flawless would have shipped a rescue that never fires. The demotion was
+   * right, and the row said exactly why, which is the only reason this could be
+   * checked rather than inherited.
    *
-   * So it is `pure` (gate 40), which in a forty-deep shell means it comes up at
-   * THE CORE and at no other depth in the game. That is the same shape as
-   * Loam's Tapmother's Root and Ferrite's Loadstar Core — the floor keeps its
-   * own — arrived at from the other direction.
+   * A.91 re-keyed the gates to the shell's own shaft. `flawless` now opens at
+   * depth 19 in Aleph, so the reason has dissolved and the band goes back. It
+   * is a flawless-band prize again, and it comes up in the last handful of
+   * depths around THE CORE rather than on one exact step.
    *
-   * THREE ALEPH STONES REMAIN UNREACHABLE FROM ALEPH ROCK for the same reason
-   * (alephite `flawless`, worldseed `starred`, paradoxa `aberrant`). That is
-   * PRE-EXISTING and is not this material's problem to fix: the gates are
-   * documented as Shell-I depths and Aleph is a deliberate forty-deep shell.
-   * Ledgered, not papered over.
+   * ITS TRAITS STAY `keen+charged` (A.90, clone #8). Those were changed because
+   * at `pure` it collided with Ruleshard bit for bit; at `flawless` it sits
+   * beside Alephite (`keen+trueseated`) and does not. Restoring the band does
+   * not restore the collision, so the fix stays.
    */
-  { id: 'authorsInk', name: "The Author's Ink", shellId: 'aleph', rarity: 'pure', palette: ['#26242c', '#48444e', '#787280'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'It writes on the world directly. The pen is bolted down for a reason.' },
+  { id: 'authorsInk', name: "The Author's Ink", shellId: 'aleph', rarity: 'flawless', palette: ['#26242c', '#48444e', '#787280'], facets: 10, shimmer: 'crystalline', source: 'remains', flavor: 'It writes on the world directly. The pen is bolted down for a reason.' },
 
   // ======================= SHELL IV — GLASSMERE (14, dormant) ==============
   M('silicash', 'Silicash', 'glassmere', 'common', ['#333338', '#5e5e66', '#9a9aa5'], 4, 'none'),
@@ -745,15 +746,128 @@ export const DROP_DEPTH_FACTOR = 0.004; // +0.4% relative per depth
 export const GEODE_SHARE = 0.02; // of successful drops
 export const GEM_SHARE = 0.004; // of successful drops, depth 60+ only
 
-/** Rarity availability by depth (Shell I) and weights once available. */
-export const RARITY_GATES: Record<MaterialRarity, { minDepth: number; weight: number }> = {
-  common: { minDepth: 0, weight: 100 },
-  rich: { minDepth: 10, weight: 32 },
-  pure: { minDepth: 40, weight: 13 },
-  flawless: { minDepth: 70, weight: 5 },
-  starred: { minDepth: 110, weight: 2 },
-  aberrant: { minDepth: 150, weight: 0.8 },
+/**
+ * RARITY AVAILABILITY, KEYED TO SHELL PROGRESSION (A.91 — re-keyed by ruling).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE OLD TABLE WAS LOAM'S FLOOR FRACTIONS WITH THE DENOMINATOR ERASED.
+ *
+ * It read `common 0 · rich 10 · pure 40 · flawless 70 · starred 110 · aberrant
+ * 150` as ABSOLUTE depths, and its own comment said "(Shell I)". Loam's floor is
+ * 150. So every one of those numbers is a fraction of Loam's shaft — 0, 1/15,
+ * 4/15, 7/15, 11/15, 15/15 — applied to six other shells whose floors are 250 to
+ * 560, and to one whose floor is 40.
+ *
+ * That did two opposite things at once, and only one of them was visible:
+ *
+ *   ALEPH WAS STARVED. Its floor is 40, so `flawless` (70), `starred` (110) and
+ *   `aberrant` (150) could not be rolled ANYWHERE in the shell by any route.
+ *   Three of its ten materials were unobtainable, found and ledgered at A.90.
+ *
+ *   EVERY SHELL BELOW LOAM WAS OVER-PAID, which nothing noticed because a
+ *   player getting MORE does not file a bug. In Hollow, `aberrant` opened at
+ *   depth 150 of 560 — a QUARTER of the way down the shaft — against Loam,
+ *   where it opens on the last step. Six shells were handing out their rarest
+ *   stone two to four times earlier than the shell the table was written for.
+ *
+ * So the numbers are kept and the DENOMINATOR IS PUT BACK. `ofFloor` is the
+ * depth this band opened at in LOAM; `gateDepth` scales it by the shell's own
+ * floor. Loam is therefore bit-identical by construction — `ofFloor · 150 / 150`
+ * — which is the check that this is a re-keying and not a re-balance.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+export const LOAM_FLOOR = 150;
+
+export const RARITY_GATES: Record<MaterialRarity, { ofFloor: number; weight: number }> = {
+  common: { ofFloor: 0, weight: 100 },
+  rich: { ofFloor: 10, weight: 32 },
+  pure: { ofFloor: 40, weight: 13 },
+  flawless: { ofFloor: 70, weight: 5 },
+  starred: { ofFloor: 110, weight: 2 },
+  aberrant: { ofFloor: 150, weight: 0.8 },
 };
+
+/**
+ * THE DEPTH THIS BAND OPENS AT, IN THIS SHELL.
+ *
+ * THE LADDER COMPRESSES INTO A SHORT SHAFT AND NEVER STRETCHES INTO A LONG ONE:
+ *
+ *     gate(shell, r) = ofFloor · min(1, floor / 150)
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * WHY `min` AND NOT THE FLAT PROPORTION, WHICH IS WHAT THIS SET OUT TO BE.
+ *
+ * The flat proportion is the honest full reading of "key off shell
+ * progression", and it was written, measured, and pulled back — because it
+ * COLLIDES WITH AUTHORED GEOGRAPHY IN FIVE SHELLS. Measured:
+ *
+ *     42 seam pools name a stone their own station's depth could no longer roll
+ *      5 remains placements land above their own gate
+ *     11 of those 42 have NOTHING FREE in the band they would drop to
+ *
+ * Glassmere's Starlens Deep (258) could not hold `spectrum`; Cinder's Coronaway
+ * (400) could not hold `howlbasalt`; and neither has an unused stone in the
+ * band it would fall back to. The cause is that STATION DEPTHS are authored at
+ * absolute, Loam-ish numbers across shells whose floors run 250 to 560 — and
+ * §6 PINS several of them (Prism Fall 20, Retort Hall 120, The Balance House
+ * 130, Witness Hall 140), so the stations cannot move either.
+ *
+ * Re-authoring 42 seam entries would push every shell's rare stone into its
+ * last fifth and leave the shallow half commons-only. That is a change to what
+ * five shells FEEL like, not a gate fix — the brief's own words for the Loam
+ * case, "a drop-economy change wearing a bugfix's clothes", pointed at shells
+ * II–VII. It needs its own ruling and its own pass; it is ledgered with the
+ * measurement attached.
+ *
+ * So the clamp fixes exactly the case the ruling NAMES — a shell whose floor is
+ * shallower than the ladder — and changes nothing where the shaft is long
+ * enough to hold it. Every shell with a floor at or past 150 is bit-identical
+ * by construction, which is Loam AND the five it would otherwise have moved.
+ * ─────────────────────────────────────────────────────────────────────────────
+ *
+ * `shellDef` throws on an unknown id and the shell registry is empty until an
+ * engine exists (the `allShells()` trap, ledgered at A.58), so this falls back
+ * to Loam's own floor rather than throwing — a caller with no shell gets
+ * exactly the table this game has always had.
+ */
+/**
+ * MEMOISED, because this went on the hot path the moment it existed.
+ *
+ * `rollRarity` asks twelve times per drop and the drop table is swept 45,000
+ * times by several tests; an uncached `shellDef` + try/catch per ask timed two
+ * suites out on the first run. Keyed by shell id and cleared by nothing — a
+ * shell's floor is authored content and does not move inside a session.
+ */
+const gateCache = new Map<string, number[]>();
+/** Loam's own ladder, and what an unregistered shell falls back to. */
+const LOAM_LADDER = RARITIES.map((r) => RARITY_GATES[r].ofFloor);
+
+export function gateDepth(shellId: string, rarity: MaterialRarity): number {
+  let row = gateCache.get(shellId);
+  if (!row) {
+    // `shellDefOrNull`, NEVER `shellDef`. The registry is empty until an engine
+    // exists (the `allShells()` trap, A.58), and a throw on this path costs
+    // 40x what the whole roll does — it timed a suite out on the first run.
+    const def = shellDefOrNull(shellId);
+    // NOT cached before the registry exists: caching the fallback then would
+    // freeze every shell on Loam's ladder for the life of the process.
+    if (!def) return LOAM_LADDER[RARITIES.indexOf(rarity)] ?? 0;
+    const scale = Math.min(1, (def.floorDepth || LOAM_FLOOR) / LOAM_FLOOR);
+    row = RARITIES.map((r) => Math.round(RARITY_GATES[r].ofFloor * scale));
+    gateCache.set(shellId, row);
+  }
+  return row[RARITIES.indexOf(rarity)] ?? 0;
+}
+
+/**
+ * THE DEPTH THIS MATERIAL OPENS AT, IN ITS OWN SHELL — which is the question
+ * every recipe audit is actually asking. A Ferrite stone's gate is a Ferrite
+ * depth; comparing it against a Loam one was only ever right by accident.
+ */
+export function gateOfMaterial(materialId: string): number {
+  const m = MATERIALS.find((x) => x.id === materialId);
+  return m ? gateDepth(m.shellId, m.rarity) : 0;
+}
 
 export interface RolledDrop {
   kind: 'material' | 'geode' | 'gem';
@@ -762,19 +876,25 @@ export interface RolledDrop {
   purity?: number;
 }
 
-/** Weighted rarity pick at a depth; returns null if nothing is available. */
-export function rollRarity(depth: number, rng: () => number = Math.random): MaterialRarity | null {
+/**
+ * Weighted rarity pick at a depth IN A SHELL; null if nothing is available.
+ *
+ * The shell id is not decoration — it is what turns the table above from six
+ * absolute numbers into six proportions. A caller that cannot name a shell is
+ * asking a question the re-keying made meaningless.
+ */
+export function rollRarity(
+  shellId: string, depth: number, rng: () => number = Math.random,
+): MaterialRarity | null {
   let total = 0;
   for (const r of RARITIES) {
-    const gate = RARITY_GATES[r];
-    if (depth >= gate.minDepth) total += gate.weight;
+    if (depth >= gateDepth(shellId, r)) total += RARITY_GATES[r].weight;
   }
   if (total <= 0) return null;
   let pick = rng() * total;
   for (const r of RARITIES) {
-    const gate = RARITY_GATES[r];
-    if (depth < gate.minDepth) continue;
-    pick -= gate.weight;
+    if (depth < gateDepth(shellId, r)) continue;
+    pick -= RARITY_GATES[r].weight;
     if (pick <= 0) return r;
   }
   return 'common';
@@ -834,7 +954,7 @@ export function remainsAt(shellId: string, depth: number): MaterialDef[] {
     for (const id of st.remains ?? []) {
       const def = MATERIALS.find((m) => m.id === id);
       if (!def || def.source !== 'remains') continue;
-      if (depth < RARITY_GATES[def.rarity].minDepth) continue;
+      if (depth < gateDepth(shellId, def.rarity)) continue;
       if (!out.includes(def)) out.push(def);
     }
   }
@@ -860,7 +980,7 @@ export function rollDrop(
       return { kind: 'gem', gemId: candidates[Math.floor(rng() * candidates.length)]!.id };
     }
   }
-  const rarity = rollRarity(depth, rng) ?? 'common';
+  const rarity = rollRarity(shellId, depth, rng) ?? 'common';
   /**
    * THE REMAINS, BEFORE THE POOL. Near a station that holds them, this share of
    * drops comes up as what is buried there instead of what the rarity table
@@ -943,7 +1063,7 @@ export function crackGeodeRolls(shellId: string, depth: number, rng: () => numbe
     // it must exclude them exactly as rollDrop does (the leak the export spine
     // sim caught: a rich Loam geode was rolling Kilnflux, a Verdance one
     // Fibercloth — both bench exports appearing in the seam).
-    const rarity = rollRarity(depth + 40, rng) ?? 'common';
+    const rarity = rollRarity(shellId, depth + 40, rng) ?? 'common';
     const pool = MATERIALS.filter((m) => m.shellId === shellId && m.rarity === rarity && !m.source && !m.worked);
     const def = pool[Math.floor(rng() * pool.length)] ?? FALLBACK_DROP;
     out.push({ kind: 'material', materialId: def.id, purity: rollPurity(def.rarity, rng) });

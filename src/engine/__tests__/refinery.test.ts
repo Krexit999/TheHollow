@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { createEngine } from '../index';
 import { isRollSource } from '../content/rolls';
 import type { GameState } from '../types';
-import { MATERIALS, materialDef, RARITY_GATES, BANDS, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
+import { MATERIALS, gateOfMaterial, materialDef, BANDS, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
 import { addMaterial, materialCount, recipeDef, equippedTool } from '../systems/forge';
 import {
   CHAINS, climbPreview, findChain, refine, refinePreview, refineTo, transmute, REFINE_RATIO,
@@ -298,7 +298,7 @@ describe('transmutation makes the 132 a graph', () => {
     // indexing rarity into it returns -1 for every material and the comparison
     // silently comes out false for all of them. Depth is also the honest
     // measure here: what a chain bypasses is the gate a Collapse re-imposes.
-    const gateOf = (id: string): number => RARITY_GATES[materialDef(id).rarity].minDepth;
+    const gateOf = (id: string): number => gateOfMaterial(id);
     for (const c of CHAINS) {
       const pullsOrphan = wasOrphan(c.a) || wasOrphan(c.b);
       const reachesUp = gateOf(c.out) > Math.max(gateOf(c.a), gateOf(c.b));

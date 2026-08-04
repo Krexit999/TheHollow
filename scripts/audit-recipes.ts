@@ -7,7 +7,7 @@
  * gate a checkpoint the way the tests do.
  */
 import { TOOL_RECIPES } from '../src/engine/systems/forge';
-import { materialDef, RARITY_GATES } from '../src/engine/materials';
+import { materialDef, gateDepth, gateOfMaterial } from '../src/engine/materials';
 import { shellDef } from '../src/engine/shells';
 import { ensureContentLoaded } from '../src/engine/content';
 import { SHELL_EXPORTS } from '../src/engine/content/exports';
@@ -33,7 +33,7 @@ for (const r of TOOL_RECIPES) {
       probs.push(`${id}: UNDEFINED`);
       continue;
     }
-    const gate = RARITY_GATES[def.rarity].minDepth;
+    const gate = gateDepth(def.shellId, def.rarity);
     const cross = wall && def.shellId !== wall.shell;
     const past = wall && gate > wall.depth;
     const combat = def.source === 'combat';
@@ -171,7 +171,7 @@ for (const tier of Object.keys(wallOf).map(Number).sort((a, b) => a - b)) {
   for (const f of floors) {
     // Payable at the depth a reset drops you at.
     for (const id of Object.keys(f.inputs)) {
-      const gate = RARITY_GATES[materialDef(id).rarity].minDepth;
+      const gate = gateOfMaterial(id);
       if (gate > 0) bad(`floor recipe ${f.id} wants ${id} gated at depth ${gate} — not payable after a Collapse`);
       if (materialDef(id).worked) bad(`floor recipe ${f.id} wants worked material ${id} — it cannot be dug`);
       if (materialDef(id).source === 'combat') bad(`floor recipe ${f.id} wants combat drop ${id} — it cannot be dug`);

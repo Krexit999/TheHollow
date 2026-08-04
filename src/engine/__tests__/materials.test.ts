@@ -4,13 +4,17 @@ import type { Engine, GameState } from '../types';
 import {
   bandOf,
   crackGeodeRolls,
+  gateDepth,
+  gateOfMaterial,
   GEMS,
   MATERIALS,
   materialsOfShell,
+  RARITIES,
   rollDrop,
   rollPurity,
   rollRarity,
 } from '../materials';
+import { allShells } from '../shells';
 import {
   addMaterial,
   consumeMaterial,
@@ -39,6 +43,15 @@ function seeded(seed: number): () => number {
     return a / 4294967296;
   };
 }
+
+/**
+ * AN ENGINE AT MODULE SCOPE, so the shell registry exists before any test asks
+ * it a question. `allShells()` is EMPTY until one is created (ledgered A.58,
+ * and this is the fourth time it has bitten): without this the two gate tests
+ * below iterate nothing and pass VACUOUSLY, and `gateOfMaterial` falls back to
+ * Loam's ladder for every shell.
+ */
+createEngine({ nowMs: 0 });
 
 function fresh(): { engine: Engine; s: GameState } {
   const engine = createEngine({ nowMs: 0 });
@@ -93,13 +106,65 @@ describe('the taxonomy', () => {
   it('rarity gates by depth: no pure above depth 40, no starred above 110', () => {
     const rng = seeded(7);
     for (let i = 0; i < 500; i++) {
-      const r = rollRarity(15, rng);
+      const r = rollRarity('loam', 15, rng);
       expect(['common', 'rich']).toContain(r);
     }
     const deep = new Set<string>();
-    for (let i = 0; i < 4000; i++) deep.add(rollRarity(160, rng)!);
+    for (let i = 0; i < 4000; i++) deep.add(rollRarity('loam', 160, rng)!);
     expect(deep.has('starred')).toBe(true);
     expect(deep.has('aberrant')).toBe(true);
+  });
+
+  /**
+   * A.91 — THE GATES ARE KEYED TO THE SHELL'S OWN SHAFT.
+   *
+   * The old table read `0 / 10 / 40 / 70 / 110 / 150` as ABSOLUTE depths and
+   * its own comment said "(Shell I)". Loam's floor is 150, so those six numbers
+   * were Loam's floor fractions with the denominator erased — applied to a
+   * shell with a floor of 40, where the top three bands could never open.
+   */
+  describe('rarity gates key off the shell, not off a table', () => {
+    it('no shell can hold a stone its own shaft cannot reach', () => {
+      expect(allShells(), 'the shell registry is empty — this test is vacuous').toHaveLength(7);
+      const starved: string[] = [];
+      for (const s of allShells()) {
+        for (const m of MATERIALS.filter((x) => x.shellId === s.id && !x.worked && !x.source)) {
+          if (gateDepth(s.id, m.rarity) > s.floorDepth) starved.push(`${s.id}/${m.id}`);
+        }
+      }
+      expect(starved, 'a shell is starving a band it owns').toEqual([]);
+    });
+
+    it('and only ALEPH moved — every shaft long enough holds the ladder unchanged', () => {
+      const loam = RARITIES.map((r) => gateDepth('loam', r));
+      expect(loam).toEqual([0, 10, 40, 70, 110, 150]);
+      for (const s of allShells()) {
+        const here = RARITIES.map((r) => gateDepth(s.id, r));
+        if (s.floorDepth >= 150) {
+          expect(here, `${s.id} moved and its floor is ${s.floorDepth}`).toEqual(loam);
+        } else {
+          expect(s.id).toBe('aleph');
+          expect(here).toEqual([0, 3, 11, 19, 29, 40]);
+        }
+      }
+    });
+
+    it('a material\'s gate is asked in ITS OWN shell, not in Loam', () => {
+      // `gateOfMaterial` is what every recipe audit means. In a shell long
+      // enough to hold the ladder that is the same number Loam gives — which is
+      // exactly why comparing across shells was right by accident until Aleph.
+      expect(gateOfMaterial('umberjade')).toBe(gateDepth('loam', 'pure'));
+      expect(gateOfMaterial('polarite')).toBe(gateDepth('ferrite', 'pure'));
+      expect(gateOfMaterial('alephite')).toBe(19);
+      expect(gateOfMaterial('alephite')).not.toBe(gateDepth('loam', 'flawless'));
+    });
+
+    it('and an unregistered shell falls back to Loam\'s ladder without throwing', () => {
+      // The hot path asks this twelve times per roll and the shell registry is
+      // empty until an engine exists (A.58). A throw here cost 40x the roll.
+      expect(RARITIES.map((r) => gateDepth('__no_such_shell__', r)))
+        .toEqual([0, 10, 40, 70, 110, 150]);
+    });
   });
 
   it('drops only ever come from the rolled shell', () => {

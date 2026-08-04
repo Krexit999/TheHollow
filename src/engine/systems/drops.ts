@@ -22,7 +22,7 @@ import {
   DROP_DEPTH_FACTOR,
   materialDef,
   RARITIES,
-  RARITY_GATES,
+  RARITY_GATES, gateDepth,
   rollDrop,
   type RolledDrop,
 } from '../materials';
@@ -216,12 +216,15 @@ export interface AssayReportEntry {
 
 export function buildAssayReport(state: GameState): AssayReportEntry[] {
   const depth = state.depth;
+  // A.91: the bands open in proportion to THIS shell's floor, so the report has
+  // to ask about the shell the player is standing in rather than about a table.
+  const shellId = currentShell(state).id;
   let total = 0;
-  for (const r of RARITIES) if (depth >= RARITY_GATES[r].minDepth) total += RARITY_GATES[r].weight;
+  for (const r of RARITIES) if (depth >= gateDepth(shellId, r)) total += RARITY_GATES[r].weight;
   const out: AssayReportEntry[] = [];
   for (const r of RARITIES) {
     const gate = RARITY_GATES[r];
-    if (depth < gate.minDepth) continue;
+    if (depth < gateDepth(shellId, r)) continue;
     out.push({
       rarity: r,
       share: gate.weight / total,

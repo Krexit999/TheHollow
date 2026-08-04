@@ -11,7 +11,7 @@ import type { GameState } from '../types';
 import {
   REFINED_SPREAD, TOOL_RECIPES, materialCount, addMaterial, recipeDef,
 } from '../systems/forge';
-import { materialDef, RARITY_GATES } from '../materials';
+import { gateOfMaterial, materialDef } from '../materials';
 import { shellDef } from '../shells';
 import { TEMPERS } from '../systems/tempering';
 
@@ -71,7 +71,7 @@ describe('refined recipes', () => {
       for (const f of floors) {
         for (const id of Object.keys(f.inputs)) {
           expect(
-            RARITY_GATES[materialDef(id).rarity].minDepth,
+            gateOfMaterial(id),
             `${f.id} wants ${id}, which a Collapse gates away`,
           ).toBe(0);
           expect(materialDef(id).worked ?? false, `${f.id} wants worked ${id}`).toBe(false);

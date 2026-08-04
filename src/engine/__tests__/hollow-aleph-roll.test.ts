@@ -23,7 +23,7 @@ import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
 import { ensureContentLoaded } from '../content';
 import { dpsMax } from '../systems/face';
-import { MATERIALS, RARITY_GATES, materialDef, remainsAt, rollDrop } from '../materials';
+import { MATERIALS, RARITIES, gateDepth, materialDef, remainsAt, rollDrop } from '../materials';
 import { AUTHORED_SHELLS, authoredRoll } from '../content/rolls';
 import { ensureRoll, isCleared, markReached, rollRows } from '../systems/roll';
 import { deepGatesFor, rollDeepEntry } from '../systems/compaction';
@@ -292,7 +292,7 @@ describe('3 — the last four combat orphans, by place (§16.4)', () => {
       const stations = authoredRoll('hollow').filter((st) => (st.remains ?? []).includes(id));
       const stray = at.get(id)!.filter((d) => !stations.some((st) => Math.abs(st.depth - d) <= 4));
       expect(stray, `${id} came up at ${stray.slice(0, 5).join(',')} — no station there`).toEqual([]);
-      const gate = RARITY_GATES[materialDef(id).rarity].minDepth;
+      const gate = gateDepth('hollow', materialDef(id).rarity);
       expect(at.get(id)!.filter((d) => d < gate), `${id} under its gate (${gate})`).toEqual([]);
     }
   });
@@ -304,18 +304,23 @@ describe('3 — the last four combat orphans, by place (§16.4)', () => {
   });
 
   /**
-   * ALEPH'S ONE, AND IT CAME DOWN A BAND TO EXIST. At `flawless` its gate is
-   * depth 70 and this shell's floor is 40, so the rescue would have been a
-   * function that works and that nothing ever calls. At `pure` the gate is
-   * exactly the floor — so it comes up at THE CORE and at no other depth in
-   * the game.
+   * ALEPH'S ONE — flawless again as of A.91, and reachable because the gate
+   * ladder now compresses into a forty-deep shaft (`flawless` opens at 19).
+   * A.90 had to demote it to `pure` to make the rescue fire at all; the reason
+   * dissolved with the re-keying and the band went back.
+   *
+   * It still only comes up around THE CORE, because REMAINS are bound to a
+   * PLACE and THE CORE is the only station that buries it — the same shape as
+   * Loam's Tapmother's Root and Ferrite's Loadstar Core.
    */
-  it('the Author\'s Ink drops, at THE CORE, and nowhere shallower', () => {
+  it('the Author\'s Ink drops, around THE CORE, and nowhere else', () => {
     expect(materialDef('authorsInk').source).toBe('remains');
-    expect(materialDef('authorsInk').rarity, 'flawless cannot be rolled in a 40-deep shell')
-      .toBe('pure');
+    expect(materialDef('authorsInk').rarity, 'the A.90 demotion should have been undone')
+      .toBe('flawless');
+    expect(gateDepth('aleph', 'flawless'), 'flawless opens inside the shell now').toBe(19);
     expect(remainsAt('aleph', 40).map((m) => m.id)).toEqual(['authorsInk']);
-    for (let d = 0; d < 40; d++) {
+    // REACH is 4, so the window is the last five depths and nothing above them.
+    for (let d = 0; d < 36; d++) {
       expect(remainsAt('aleph', d), `it reached depth ${d}`).toEqual([]);
     }
 
@@ -327,7 +332,7 @@ describe('3 — the last four combat orphans, by place (§16.4)', () => {
       if (r.kind === 'material' && r.materialId === 'authorsInk') at.push(d);
     }
     expect(at.length, 'never dropped').toBeGreaterThan(0);
-    expect([...new Set(at)], 'it came up somewhere other than the floor').toEqual([40]);
+    expect(Math.min(...at), 'it came up above the Core\'s reach').toBeGreaterThanOrEqual(36);
   });
 });
 
@@ -336,28 +341,38 @@ describe('3 — the last four combat orphans, by place (§16.4)', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * A TEST THAT ASSERTS A GAP, so the gap stays a known shape instead of being
- * rediscovered as a bug (the same job §45's "the ~100s income blackout" row
- * does in the ledger).
+ * THIS TEST ASSERTED A GAP AT A.90 AND ASSERTS ITS CLOSURE AT A.91, and keeping
+ * it in one place is the point: the finding, the ruling and the fix read as one
+ * story rather than as a row in a ledger nobody re-checks.
  *
- * `RARITY_GATES` opens the bands at ABSOLUTE depths whose own comment says
- * "Shell I", and `shellDef('aleph').floorDepth` is 40. Three of Aleph's ten
- * materials therefore sit above the deepest band the shell can roll, by any
- * route, at any compaction. No arrangement of six stations inside forty depths
- * can fix that; it is a gate question, not a geography one.
+ * A.90 measured it: `RARITY_GATES` opened the bands at ABSOLUTE depths whose own
+ * comment said "Shell I", `shellDef('aleph').floorDepth` is 40, and three of
+ * Aleph's ten materials therefore sat above the deepest band the shell could
+ * roll — by any route, at any compaction. No arrangement of six stations inside
+ * forty depths could fix it; it was a gate question.
+ *
+ * A.91 re-keyed the gates to the shell's own shaft, so the ladder COMPRESSES
+ * into a short one. Aleph's bands now open at 0 / 3 / 11 / 19 / 29 / 40.
  */
-describe('4 — THE ALEPH GATE GAP, asserted rather than hidden', () => {
-  it('three Aleph materials cannot be rolled anywhere in Aleph', () => {
+describe('4 — THE ALEPH GATE GAP, CLOSED (A.90 found it, A.91 fixed it)', () => {
+  it('NOTHING in Aleph sits above the deepest band the shell can roll', () => {
     const floor = shellDef('aleph').floorDepth;
     const unreachable = MATERIALS
       .filter((m) => m.shellId === 'aleph' && !m.worked && !m.source)
-      .filter((m) => RARITY_GATES[m.rarity].minDepth > floor)
+      .filter((m) => gateDepth('aleph', m.rarity) > floor)
       .map((m) => m.id)
       .sort();
-    expect(unreachable).toEqual(['alephite', 'paradoxa', 'worldseed']);
+    expect(unreachable, 'the gate gap is back').toEqual([]);
+    // The ladder, compressed into forty depths.
+    expect(RARITIES.map((r) => gateDepth('aleph', r))).toEqual([0, 3, 11, 19, 29, 40]);
+    // ...and it is UNCHANGED for every shell with a shaft long enough to hold
+    // it, which is the guarantee that this was a re-keying and not a re-balance.
+    for (const id of ['loam', 'ferrite', 'verdance', 'glassmere', 'cinder', 'hollow']) {
+      expect(RARITIES.map((r) => gateDepth(id, r)), `${id} moved`).toEqual([0, 10, 40, 70, 110, 150]);
+    }
   });
 
-  it('...and 45,000 rolls across the whole shell confirm it — none of them appears', () => {
+  it('...and 45,000 rolls across the whole shell produce ALL THREE', () => {
     const rng = seeded(20260903);
     const seen = new Set<string>();
     for (let i = 0; i < 45_000; i++) {
@@ -365,19 +380,53 @@ describe('4 — THE ALEPH GATE GAP, asserted rather than hidden', () => {
       if (r.kind === 'material') seen.add(r.materialId!);
     }
     for (const id of ['alephite', 'worldseed', 'paradoxa']) {
-      expect(seen.has(id), `${id} dropped after all — re-open the finding`).toBe(false);
+      expect(seen.has(id), `${id} still cannot be dug in Aleph`).toBe(true);
     }
-    // The control: the bands the shell CAN reach do all pay.
+    // The control: the bands that always worked still do.
     for (const id of ['firstiron', 'protolith', 'axiomdust', 'axiomite2', 'sigilstone', 'lawgold']) {
       expect(seen.has(id), `${id} should be diggable in Aleph`).toBe(true);
     }
   });
 
-  it('and no Aleph seam pool names one of the three — the Roll does not lie', () => {
+  it('and each of the three only appears at or below its own gate', () => {
+    const rng = seeded(20260905);
+    const at = new Map<string, number[]>();
+    for (let i = 0; i < 45_000; i++) {
+      const d = i % 41;
+      const r = rollDrop('aleph', d, rng);
+      // PUSH, never spread-and-reassign. Aleph holds nine ordinary stones, so a
+      // common accumulates ~15,000 entries and `[...prev, d]` makes that O(n²)
+      // — the same 45,000-roll sweep that costs 40ms in a shell with thirty
+      // materials timed out here. The A.90 sweeps use the spread and get away
+      // with it because their pools are wide.
+      if (r.kind === 'material') {
+        const list = at.get(r.materialId!) ?? [];
+        if (list.length === 0) at.set(r.materialId!, list);
+        list.push(d);
+      }
+    }
+    for (const id of ['alephite', 'worldseed', 'paradoxa']) {
+      const gate = gateDepth('aleph', materialDef(id).rarity);
+      expect(at.get(id)!.filter((d) => d < gate), `${id} came up under its gate (${gate})`)
+        .toEqual([]);
+    }
+  });
+
+  /**
+   * WHAT THE ROLL PROMISES IS STILL HONEST. Aleph's seam pools were authored
+   * against the OLD gates and named none of the three; the re-keying makes them
+   * legal to seam but does not retroactively put them anywhere. That is the
+   * right outcome — a gate fix should not silently rewrite a geography — and it
+   * is asserted so the next pass knows the pools are a deliberate leftover.
+   */
+  it('the Aleph seam pools still name none of the three — deliberately', () => {
     const seamed = new Set(authoredRoll('aleph').flatMap((d) => d.seams ?? []));
     for (const id of ['alephite', 'worldseed', 'paradoxa']) {
-      expect(seamed.has(id), `a station promises ${id} and cannot produce it`).toBe(false);
+      expect(seamed.has(id), `${id} was seamed without a ruling`).toBe(false);
     }
+    // They reach the player through the ORDINARY rarity pool, which is what the
+    // 45,000-roll sweep above proves, and through the deep-entry ladder.
+    expect(materialDef('paradoxa').source, 'paradoxa is pool-eligible').toBeUndefined();
   });
 });
 

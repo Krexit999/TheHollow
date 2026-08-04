@@ -58,6 +58,21 @@ export function shellDef(id: string): ShellContentDef {
   return def;
 }
 
+/**
+ * THE SAME LOOKUP THAT DOES NOT THROW, for callers on a hot path that have a
+ * sensible answer for "not registered yet".
+ *
+ * `RARITY_GATES` needs a shell's floor twelve times per drop roll (A.91), and
+ * the shell registry is EMPTY until an engine is created — the `allShells()`
+ * trap, ledgered at A.58. Asking through `shellDef` meant a THROW per ask in
+ * any context with no engine: `export-spine.test.ts` went from 130ms to 5.3
+ * seconds and timed out, on a change that made the engine no slower at all.
+ * An exception is not a control-flow primitive on a path taken 200,000 times.
+ */
+export function shellDefOrNull(id: string): ShellContentDef | null {
+  return registry.get(id) ?? null;
+}
+
 export function allShells(): ShellContentDef[] {
   return order.map((id) => registry.get(id)!);
 }
