@@ -64,6 +64,7 @@ import { MATERIAL_TRAITS, TRAITS, traitsOf, type TraitId } from '../traits';
 import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } from './plant';
 import { machineSpeed } from './condition';
 import { addMaterial, materialCount } from './forge';
+import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 
@@ -381,14 +382,14 @@ export function pour(state: GameState, ctx: EngineCtx, parts: PourPart[]): Actio
   }
 
   const def = ensureAlloy(state.shell?.current ?? 'loam', preview.traits, preview.rarity);
-  addMaterial(state, def.id, preview.purity, 1);
+  const got = deliver(state, 'crucible', def.id, preview.purity, 1);
   // A POUR IS A CONVERSION, NOT A FIND. `addMaterial` counts drops.
   state.materials.totalDrops -= 1;
   const fresh = !c.found.includes(def.id);
   if (fresh) c.found.push(def.id);
-  ctx.emit({ type: 'poured', alloyId: def.id, traits: preview.traits, grog: false });
+  ctx.emit({ type: 'poured', alloyId: got, traits: preview.traits, grog: false });
   ctx.dirty();
-  return { ok: true, data: { alloyId: def.id, traits: preview.traits, fresh, spent: preview.units } };
+  return { ok: true, data: { alloyId: got, traits: preview.traits, fresh, spent: preview.units } };
 }
 
 /**

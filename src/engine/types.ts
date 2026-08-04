@@ -689,6 +689,8 @@ export interface GameState {
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
   essence?: import('./systems/infuser').EssenceState;
+  /** WITNESSING (§13, Hollow) — what the unwatched plant left, and the Hush. */
+  witness?: import('./systems/witness').WitnessState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -858,6 +860,8 @@ export type GameEvent =
   | { type: 'distilled'; materialId: string; trait: string; into: string }
   | { type: 'infused'; materialId: string; trait: string; into: string }
   | { type: 'pressed'; materialId: string; form: string; into: string }
+  | { type: 'condensed'; residue: number; hush: number }
+  | { type: 'witnessed'; materialId: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
   | { type: 'machineUnbuilt'; machineId: string; parts: number }
   | { type: 'poured'; alloyId: string; traits: string[]; grog: boolean }
@@ -1145,6 +1149,11 @@ export type GameAction =
   // ESSENCE WORK (§14.1) — the Still and the Infuser, one keystone, two ends.
   | { type: 'buildStill' }
   | { type: 'distil'; materialId: string; band: PurityBand; trait: import('./traits').TraitId }
+  // WITNESSING (§13, Hollow) — the Condenser and the Witness, one economy.
+  | { type: 'buildCondenser' }
+  | { type: 'condense' }
+  | { type: 'buildWitness' }
+  | { type: 'witness'; materialId: string; band: PurityBand; into: string }
   // DRAWING (§13) — the Press, and the one verb it has.
   | { type: 'buildPress' }
   | {

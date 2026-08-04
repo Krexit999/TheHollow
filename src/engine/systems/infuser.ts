@@ -62,7 +62,7 @@ import {
 } from '../traits';
 import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } from './plant';
 import { machineSpeed } from './condition';
-import { addMaterial } from './forge';
+import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 
@@ -349,7 +349,7 @@ export function infuse(
 
   const def = registerInfusedForm(materialId, vial.trait);
   if (!def) return { ok: false, reason: 'It would not take.' };
-  addMaterial(state, def.id, purity, 1);
+  const got = deliver(state, 'infuser', def.id, purity, 1);
   // An INFUSION is a conversion, not a find. `addMaterial` counts drops, and
   // letting one inflate `totalDrops` moves several achievements and the Record.
   state.materials.totalDrops -= 1;
@@ -358,9 +358,9 @@ export function infuse(
   if (fresh) e.made.push(def.id);
   const dug = def.source === undefined && !def.worked;
 
-  ctx.emit({ type: 'infused', materialId, trait: vial.trait, into: def.id });
+  ctx.emit({ type: 'infused', materialId, trait: vial.trait, into: got });
   ctx.dirty();
-  return { ok: true, data: { into: def.id, band: bandOf(purity), fresh, dug } };
+  return { ok: true, data: { into: got, band: bandOf(purity), fresh, dug } };
 }
 
 /**

@@ -32,6 +32,7 @@ import { tickKiln } from './systems/kiln';
 import { tickPlant } from './systems/plant';
 import { tickCircuit } from './systems/circuit';
 import { tickCondition } from './systems/condition';
+import { tickResidue } from './systems/witness';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
 import { tickDrills } from './systems/drills';
@@ -197,6 +198,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // the second cannot matter. Deliberately not per-frame — a four-minute
       // ratchet sampled twelve times a second is eleven wasted samples.
       tickCondition(state, mods, verdAcc);
+      // ...and the half of Hollow's rule a machine cannot hold on its own: what
+      // an unwatched plant leaves behind (§13, systems/witness.ts). Same block,
+      // same field — it reads the condition tickCondition just wrote.
+      tickResidue(state, verdAcc);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

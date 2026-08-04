@@ -39,6 +39,7 @@ import { SievePanel } from './sieve';
 import { StillPanel } from './still';
 import { InfuserPanel } from './infuser';
 import { PressPanel } from './press';
+import { WitnessPanel } from './witness';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -361,6 +362,8 @@ export function KilnPanel() {
       <InfuserPanel />
       {/* DRAWING (§13) — the Press, and the three shapes you cannot pour. */}
       <PressPanel />
+      {/* WITNESSING (§13, Hollow) — the Condenser and the Witness, one economy. */}
+      <WitnessPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}

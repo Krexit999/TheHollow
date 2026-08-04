@@ -52,7 +52,7 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import { materialDef } from '../materials';
 import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } from './plant';
 import { machineSpeed } from './condition';
-import { addMaterial } from './forge';
+import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 import { partMelt } from './forgeParts';
@@ -170,13 +170,13 @@ export function breakPart(state: GameState, ctx: EngineCtx, partId: number): Act
   const part = rack[i]!;
   const n = breakYield(part);
   rack.splice(i, 1);
-  addMaterial(state, part.materialId, part.purity, n);
+  const got = deliver(state, 'breaker', part.materialId, part.purity, n);
   // A RETURN IS NOT A FIND. `addMaterial` counts drops; letting a salvage
   // inflate the drop total would move several achievements and the Record.
   state.materials.totalDrops -= n;
-  ctx.emit({ type: 'partBroken', materialId: part.materialId, units: n });
+  ctx.emit({ type: 'partBroken', materialId: got, units: n });
   ctx.dirty();
-  return { ok: true, data: { materialId: part.materialId, units: n } };
+  return { ok: true, data: { materialId: got, units: n } };
 }
 
 /**

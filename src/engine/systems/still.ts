@@ -49,7 +49,7 @@ import { traitsOf, type TraitId } from '../traits';
 import { TRAPS, isTrap, registerStilledForm, stilledId, trapDef } from '../content/traps';
 import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } from './plant';
 import { machineSpeed } from './condition';
-import { addMaterial } from './forge';
+import { deliver } from './witness';
 import { addVial } from './infuser';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
@@ -231,15 +231,15 @@ export function distil(
   // that remembers the stone — one strip, one vial, and the vial is the only
   // thing an Infuser will take.
   addVial(state, trait, materialId);
-  addMaterial(state, def.id, purity, 1);
+  const got = deliver(state, 'still', def.id, purity, 1);
   // `addMaterial` counts every unit as a drop; a stilled unit is a CONVERSION,
   // not a find, and letting it inflate `totalDrops` would quietly move a
   // statistic several achievements and the Record read off.
   state.materials.totalDrops -= 1;
 
-  ctx.emit({ type: 'distilled', materialId, trait, into: def.id });
+  ctx.emit({ type: 'distilled', materialId, trait, into: got });
   ctx.dirty();
-  return { ok: true, data: { into: def.id, band: bandOf(purity) } };
+  return { ok: true, data: { into: got, band: bandOf(purity) } };
 }
 
 /** Every stilled form this save has actually made — the Codex line. */

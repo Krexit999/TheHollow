@@ -61,7 +61,7 @@ import {
 import { MATERIAL_TRAITS, traitsOf } from '../traits';
 import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } from './plant';
 import { machineSpeed } from './condition';
-import { addMaterial } from './forge';
+import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 import type { PartShape } from '../content/forgeParts';
@@ -250,12 +250,12 @@ export function press(
 
   const def = registerStock(materialId, form);
   if (!def) return { ok: false, reason: 'It would not draw.' };
-  addMaterial(state, def.id, purity, 1);
+  const got = deliver(state, 'press', def.id, purity, 1);
   // A DRAW IS A CONVERSION, NOT A FIND.
   state.materials.totalDrops -= 1;
-  ctx.emit({ type: 'pressed', materialId, form, into: def.id });
+  ctx.emit({ type: 'pressed', materialId, form, into: got });
   ctx.dirty();
-  return { ok: true, data: { into: def.id, band: bandOf(purity) } };
+  return { ok: true, data: { into: got, band: bandOf(purity) } };
 }
 
 /**

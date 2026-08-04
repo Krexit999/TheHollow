@@ -55,6 +55,7 @@ import type { SocketFill } from './toolSockets';
 import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
 import { formForShape, formOf } from './press';
+import { isMaybe } from './witness';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -563,6 +564,19 @@ export function chargeCrucible(
   if (fits <= 0) return { ok: false, reason: 'The tub is full' };
   const have = materialCount(state, materialId);
   if (have <= 0) return { ok: false, reason: `No ${materialDef(materialId).name} in the Hold` };
+  /**
+   * A MAYBE IS NOT STOCK (§13, Hollow). Something an unwatched machine made has
+   * not settled on being anything, so there is nothing to melt — the Witness
+   * decides what it was, and only then can it go in the tub. This is the whole
+   * consequence of an undecided unit, and it is one line because it needs to be:
+   * a maybe you could simply use would be a cosmetic prefix.
+   */
+  if (isMaybe(materialId)) {
+    return {
+      ok: false,
+      reason: `${materialDef(materialId).name} has not decided what it is. Take it to the Witness.`,
+    };
+  }
 
   const existing = c.queue.find((q) => q.materialId === materialId);
   if (!existing && c.queue.length >= QUEUE_MAX) {

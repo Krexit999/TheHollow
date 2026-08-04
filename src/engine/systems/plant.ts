@@ -257,6 +257,20 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * once, so a thin plant feels this before it feels anything else.
    */
   press: { flow: 0, surge: 20 },
+  /**
+   * THE CONDENSER (§13, Hollow) — pure FLOW, and the smallest in the plant.
+   * It does not fire; it stands there while something slowly stops being
+   * nothing, which is the Kiln's shape at a whisper. Small on purpose: a
+   * machine that collects what the plant's NEGLECT leaves must not itself be
+   * the reason the plant is starved.
+   */
+  condenser: { flow: 0.8, surge: 0 },
+  /**
+   * THE WITNESS (§13, Hollow) — pure SURGE. Looking at a thing hard enough that
+   * it has to be something is one act, not a process, and it is the only
+   * machine in the plant whose draw is paid for an act of attention.
+   */
+  witness: { flow: 0, surge: 12 },
 };
 
 export function demandOf(machineId: string): Demand {
@@ -281,6 +295,7 @@ function flowDrawers(state: GameState): string[] {
   if (tierOf(state, 'still') > 0) out.push('still');
   if (tierOf(state, 'crucible') > 0) out.push('crucible');
   if (tierOf(state, 'balance') > 0) out.push('balance');
+  if (tierOf(state, 'condenser') > 0) out.push('condenser');
   return out;
 }
 

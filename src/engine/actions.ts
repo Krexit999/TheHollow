@@ -21,6 +21,7 @@ import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sie
 import { buildStill, distil } from './systems/still';
 import { buildInfuser, infuse } from './systems/infuser';
 import { buildPress, press } from './systems/press';
+import { buildCondenser, buildWitness, condense, witness } from './systems/witness';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
 import { buildLine, holdLine, runLine, setLine } from './systems/line';
@@ -212,6 +213,18 @@ export function handleAction(
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
+
+    case 'buildCondenser':
+      return buildCondenser(state, ctx);
+
+    case 'condense':
+      return condense(state, ctx);
+
+    case 'buildWitness':
+      return buildWitness(state, ctx);
+
+    case 'witness':
+      return witness(state, ctx, action.materialId, action.band, action.into);
 
     case 'buildPress':
       return buildPress(state, ctx);
