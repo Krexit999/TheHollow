@@ -32,6 +32,7 @@ import { buildBoiler } from './systems/boiler';
 import { buildVentArray, setHoldLine, setValve } from './systems/vents';
 import { buildRetort, reduce } from './systems/retort';
 import { buildCultivarBench, cropBed, seedBed } from './systems/cultivar';
+import { buildCoil } from './systems/coil';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -275,6 +276,9 @@ export function handleAction(
 
     case 'cropBed':
       return cropBed(state, ctx, action.quad);
+
+    case 'buildCoil':
+      return buildCoil(state, ctx);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

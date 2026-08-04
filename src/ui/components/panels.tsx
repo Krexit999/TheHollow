@@ -48,6 +48,7 @@ import { LapidaryPanel } from './lapidary';
 import { QuenchPanel } from './quench';
 import { RetortPanel } from './retort';
 import { CultivarPanel } from './cultivar';
+import { CoilPanel } from './coil';
 import { BreakerPanel } from './breaker';
 import { CruciblePanel } from './crucible';
 import { LinePanel } from './line';
@@ -390,6 +391,8 @@ export function KilnPanel() {
       <RetortPanel />
 
       <CultivarPanel />
+
+      <CoilPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
       {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}

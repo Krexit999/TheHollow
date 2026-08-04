@@ -1184,6 +1184,7 @@ export type GameAction =
   | { type: 'buildVentArray' }
   | { type: 'buildRetort' }
   | { type: 'buildCultivarBench' }
+  | { type: 'buildCoil' }
   | { type: 'seedBed'; quad: import('./systems/cultivar').QuadrantId; strainId: string | null }
   | { type: 'cropBed'; quad: import('./systems/cultivar').QuadrantId }
   | { type: 'reduce'; fromId: string; band: PurityBand }

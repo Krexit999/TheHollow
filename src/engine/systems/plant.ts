@@ -47,6 +47,7 @@ import { conditionRetainsBand, conditionTraits } from './condition';
 import { overclockDraw } from './governor';
 /** §3.2's plant shapes. Runtime-only cycle: every call is inside a function. */
 import { boilerFlow, boilerShell, boilerSurge } from './boiler';
+import { coilSurge } from './coil';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -183,7 +184,7 @@ export function flowCap(state: GameState): number {
 /** How big the burst can be. */
 export function surgeCap(state: GameState): number {
   return SURGE_FLOOR + SURGE_PER_RANK * coreNodeLevel(state, 'surgeCapacity')
-    + boilerSurge(state);
+    + boilerSurge(state) + coilSurge(state);
 }
 
 export function surgeRegen(state: GameState): number {
@@ -372,6 +373,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * rule rather than an event.
    */
   cultivar: { flow: 1.0, surge: 0 },
+  /**
+   * THE COIL (§13, Ferrite) — IT DRAWS NOTHING, for the Boiler's reason: it is
+   * not a machine on the plant, it IS the plant. §3.2 calls Ferrite's shape
+   * "pure Surge", and a bank that charged itself Surge would be a loop.
+   */
+  coil: { flow: 0, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {
