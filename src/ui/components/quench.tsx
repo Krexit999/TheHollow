@@ -87,7 +87,15 @@ export function QuenchPanel() {
               Nothing on the rack. Pour something first.
             </p>
           )}
-          <div className="mt-1 space-y-1.5">
+          {/*
+            THE RACK IS UNBOUNDED AND SO WAS THIS LIST. Found by the driver:
+            its fixture leaves ninety parts on the rack — which is an ordinary
+            state for anyone who has been pouring — and the panel grew to
+            SEVEN THOUSAND PIXELS with no way to scroll past it. The harness
+            noticing is the bug report; the fix belongs here, not there. Same
+            cap the Refinery's trough already uses.
+          */}
+          <div className="mt-1 max-h-80 space-y-1.5 overflow-y-auto scroll-thin">
             {parts.map(({ part, where }) => {
               const media = mediaFor(part.materialId);
               const done = part.quench ? TEMPER_BY_ID.get(part.quench) : null;
