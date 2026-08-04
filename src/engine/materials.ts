@@ -47,7 +47,7 @@ export interface MaterialDef {
    * material out of ordinary chips AND out of cracked geodes; `remains` then
    * puts a place back under it, which `combat` never had once the fighting went.
    */
-  source?: 'combat' | 'deep' | 'remains' | 'still';
+  source?: 'combat' | 'deep' | 'remains' | 'still' | 'alloy';
   /**
    * WORKED materials are made, never found: refinery byproducts, salvage
    * residue, transmutation intermediates, tempering media. rollDrop filters

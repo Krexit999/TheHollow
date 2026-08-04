@@ -681,6 +681,8 @@ export interface GameState {
   circuit?: import('./systems/circuit').CircuitState;
   /** SORTING (§14.3) — saved predicates and what they are pointed at. */
   sorting?: import('./systems/sieve').SortingState;
+  /** ALLOYING (§14.2) — which alloys have been poured, and how much grog. */
+  crucible?: import('./systems/crucible').CrucibleState;
   /** THE STANDOFF (§27): the live fight, if there is one, plus the drill line
    *  chosen for the NEXT one — which is the only moment it can be chosen. */
   standoff?: import('./systems/standoff').StandoffState;
@@ -850,6 +852,7 @@ export type GameEvent =
   | { type: 'distilled'; materialId: string; trait: string; into: string }
   | { type: 'partBroken'; materialId: string; units: number }
   | { type: 'machineUnbuilt'; machineId: string; parts: number }
+  | { type: 'poured'; alloyId: string; traits: string[]; grog: boolean }
   | { type: 'crushed'; materialId: string; output: number; band: string; byproduct: number }
   | { type: 'drillStrike'; drill: number; cell: number; dust: Decimal }
   | { type: 'brick'; count: Decimal }
@@ -1137,6 +1140,9 @@ export type GameAction =
   | { type: 'breakPart'; partId: number }
   | { type: 'breakRack' }
   | { type: 'unbuildMachine'; machineId: string }
+  // ALLOYING (§14.2) — the Crucible, and the one verb it has.
+  | { type: 'buildCrucible' }
+  | { type: 'pour'; parts: import('./systems/crucible').PourPart[] }
   | { type: 'buildCrusher' }
   | { type: 'crush'; materialId: string; band: PurityBand }
   /** THE CIRCUIT (§7.3, §25.3). A null `row` deletes the row at `index`;

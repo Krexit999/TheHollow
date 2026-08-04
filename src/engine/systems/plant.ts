@@ -212,6 +212,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    */
   breaker: { flow: 0, surge: 11 },
   /**
+   * THE ALLOY CRUCIBLE (§14.2) — FLOW AND SURGE, and the heaviest of both. It
+   * holds a melt and then pours it in one go, which is the Refinery's shape and
+   * the Crusher's at once. It is the machine a lopsided plant cannot run.
+   */
+  crucible: { flow: 3.2, surge: 9 },
+  /**
    * THE STILL (§14.1) — FLOW AND SURGE, like the Refinery, and for the same
    * reason: it holds a slow heat and then takes one thing out in a single
    * separation. It is the second machine that punishes a lopsided plant.
@@ -239,6 +245,7 @@ function flowDrawers(state: GameState): string[] {
   // standing rule consulted on every reach for stock, not an event.
   if (tierOf(state, 'sieve') > 0) out.push('sieve');
   if (tierOf(state, 'still') > 0) out.push('still');
+  if (tierOf(state, 'crucible') > 0) out.push('crucible');
   return out;
 }
 

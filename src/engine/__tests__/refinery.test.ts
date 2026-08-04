@@ -274,7 +274,26 @@ describe('transmutation makes the 132 a graph', () => {
       }
     };
     walk(root);
-    const src = parts.join('\n');
+    /**
+     * COMMENTS ARE STRIPPED, and this is the FOURTH sighting of the "names
+     * without wanting" class — the first three were fixed by excluding whole
+     * FILES (a filename A.84, a path pattern A.87, a registry A.88/A.89).
+     *
+     * A.91 broke it again from a new direction: `systems/crucible.ts` explains
+     * WHY the machine is mandatory by listing the seven three-trait stones in
+     * its header — "(`voidstar`, `nothing`, `paradoxa`, `thornmind`, ...)" — and
+     * `thornmind` instantly read as consumed, stripping `ashFromThorn` of the
+     * only justification it had. Nothing about the economy had changed; a
+     * sentence had.
+     *
+     * Excluding a FILE cannot fix that, because the file is a real consumer of
+     * other things. A PROSE MENTION IS NOT A CONSUMER, so the scan stops
+     * reading prose. That closes the whole class rather than its fourth
+     * instance, and it means a comment can go on explaining itself.
+     */
+    const src = parts.join('\n')
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .replace(/^[ \t]*\/\/.*$/gm, ' ');
     const wasOrphan = (id: string) => !new RegExp(`['"\`]${id}['"\`]|\\b${id}\\s*:`).test(src);
 
     /**

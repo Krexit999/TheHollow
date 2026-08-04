@@ -38,6 +38,7 @@ import { PlantPanel, CrusherPanel, ConditionPanel } from './plant';
 import { SievePanel } from './sieve';
 import { StillPanel } from './still';
 import { BreakerPanel } from './breaker';
+import { CruciblePanel } from './crucible';
 import { CircuitPanel } from './circuit';
 import { StandoffPanel } from './standoff';
 import { FaceVerbs } from './faceVerbs';
@@ -354,6 +355,8 @@ export function KilnPanel() {
       <StillPanel />
       {/* SALVAGE (§13) — the Breaker, and the props it hands back. */}
       <BreakerPanel />
+      {/* ALLOYING (§14.2) — the Crucible, and the ratios it turns into a third stone. */}
+      <CruciblePanel />
       {/* THE CIRCUIT sits above the machines it throws (§37: THE PLANT holds
           the machine list, Flow/Surge, and the Circuit). */}
       <CircuitPanel />

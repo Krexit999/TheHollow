@@ -20,6 +20,7 @@ import { recastMachine, setMachineBand } from './systems/condition';
 import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sieve';
 import { buildStill, distil } from './systems/still';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
+import { buildCrucible, pour } from './systems/crucible';
 import { beginStandoff, dismissStandoff, exchange, setDrillLine } from './systems/standoff';
 import { MAX_BENCH_TIER, beginSample, ensureAssayBench } from './systems/assayBench';
 import { ensureShop, isForked } from './systems/shopFork';
@@ -180,6 +181,12 @@ export function handleAction(
 
     case 'unbuildMachine':
       return unbuildMachine(state, ctx, action.machineId);
+
+    case 'buildCrucible':
+      return buildCrucible(state, ctx);
+
+    case 'pour':
+      return pour(state, ctx, action.parts);
 
     case 'distil':
       return distil(state, ctx, action.materialId, action.band, action.trait);
