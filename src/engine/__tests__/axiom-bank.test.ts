@@ -178,8 +178,12 @@ describe('a rule changes what the world DOES, never what it pays', () => {
         .map(([k, v]) => [k, v.toString()]).sort(),
     );
     const before = purse(s);
+    // A SITTING IS BOUNDED (two rules at the last tier), so the loop bumps the
+    // Recursion count between rules — which also exercises the detection that
+    // reopens the sitting without a reset hook.
     let wrote = 0;
     for (const a of offered(s)) {
+      s.recursion.count += 1;
       if (writeRule(s, ctx(), a.id).ok) wrote += 1;
     }
     expect(wrote, 'no rule was writable — the arm is vacuous').toBeGreaterThan(6);

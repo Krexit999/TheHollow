@@ -19,13 +19,18 @@
  * its own header requires.
  * ─────────────────────────────────────────────────────────────────────────────
  *
- * TIERS ARE CAPABILITY (§15.4) — five different sentences, never five sizes:
+ * TIERS ARE CAPABILITY (§15.4) — three different sentences, never three sizes:
  *
- *   I    one rule, and only rules this world has shown you
+ *   I    one rule a Recursion, and only rules this world has shown you
  *   II   ...and it says what a rule will change BEFORE you write it
- *   III  ...and a rule may be REDRAFTED once, its Axioms returned
- *   IV   ...and two rules from one sitting
- *   V    ...and every rule you can afford, in one commit
+ *   III  ...and a rule may be REDRAFTED once, and two written from one sitting
+ *
+ * THREE AND NOT FIVE, and that is a correction. §15.4's table says "every
+ * machine runs I–V"; `MAX_MACHINE_TIER` is **3** and has been for the whole
+ * project, which is why all twenty-two machines built before this one carry a
+ * four-row ladder. A.97 wrote six rows here and two of them described tiers no
+ * player could ever build. PILLARS: where a sentence disagrees with the code,
+ * the code is right and the sentence is the bug.
  *
  * PILLAR 2 IS THE REASON THE HERESY IS NOT AUTHORED. One slot in `laws.ts`
  * multiplies the regen ceiling; it is marked a heresy there and it stays
@@ -54,11 +59,9 @@ export const AXIOM_WRECK = 'THE AXIOM ENGINE';
 
 export const TIER_CAPABILITY_AXIOM = [
   'not built',
-  'one rule, and only rules this world has shown you',
+  'one rule a Recursion, and only rules this world has shown you',
   '...and it says what a rule will change before you write it',
-  '...and a rule may be redrafted once, its Axioms returned',
-  '...and two rules from one sitting',
-  '...and every rule you can afford, in one commit',
+  '...and a rule may be redrafted once, and two written from one sitting',
 ] as const;
 
 export interface AxiomEngineState {
@@ -115,15 +118,14 @@ export function showsTheChange(state: GameState): boolean {
 
 /** Tier III: one written rule may be taken back per Recursion. */
 export function canRedraft(state: GameState): boolean {
-  return tierOf(state, 'axiomEngine') >= 3;
+  return tierOf(state, 'axiomEngine') >= MAX_MACHINE_TIER;
 }
 
-/** Rules this Engine will write in one Recursion. Tier IV lifts it, V removes it. */
+/** Rules this Engine will write in one Recursion. The last tier writes two. */
 export function sittingLimit(state: GameState): number {
   const t = tierOf(state, 'axiomEngine');
   if (t <= 0) return 0;
-  if (t >= 5) return Infinity;
-  return t >= 4 ? 2 : 1;
+  return t >= MAX_MACHINE_TIER ? 2 : 1;
 }
 
 export function nextAxiomTierCost(state: GameState): number | null {
@@ -186,7 +188,7 @@ export function writeBlocker(state: GameState, id: string): string | null {
   if (a.writtenThisRecursion >= sittingLimit(state)) {
     return sittingLimit(state) === 1
       ? 'One rule a Recursion. A deeper Engine writes two.'
-      : 'Two is all this Engine writes in one Recursion.';
+      : 'Two is all it writes in one Recursion.';
   }
   const have = getCurrency(state, 'axiom');
   if (have.lt(def.cost)) {

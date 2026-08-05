@@ -29,8 +29,10 @@
  *   I    it reads the frame, and names what each empty seat still wants
  *   II   ...and one bequest survives the Recursion
  *   III  ...and two
- *   IV   ...and three
- *   V    ...and all four — the whole desk comes with you
+ *
+ * THREE AND NOT FIVE (corrected A.98). `MAX_MACHINE_TIER` is 3, so the five-row
+ * ladder A.97 wrote described two tiers nobody could build. It lands better this
+ * way: TWO of four bequests is a CHOICE, and "all four" was a checklist.
  *
  * PILLAR 2. Every bequest is a fact about the WORLD you have already changed —
  * a wreck already looted, a wall already broken, a band already timbered, a
@@ -54,9 +56,7 @@ export const TIER_CAPABILITY_SEATING = [
   'not built',
   'it reads the frame, and names what each empty seat still wants',
   '...and one bequest survives the Recursion',
-  '...and two',
-  '...and three',
-  '...and all four — the whole desk comes with you',
+  '...and two — which two is the last decision the desk asks you for',
 ] as const;
 
 export const BEQUESTS = ['opendoor', 'brokenwall', 'longstair', 'standing'] as const;

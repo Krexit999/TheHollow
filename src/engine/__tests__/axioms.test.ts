@@ -14,6 +14,7 @@ import { createEngine } from '../index';
 import { D } from '../decimal';
 import { AXIOMS, AXIOM_BY_ID } from '../content/axioms';
 import { NUM_LAWS, lawFlag, lawNum, registerLawContribution } from '../laws';
+import { MAX_MACHINE_TIER } from '../systems/plant';
 import { dpsMax } from '../systems/face';
 import { ModifierCache } from '../modifiers';
 import {
@@ -148,13 +149,16 @@ describe('the menu is drawn from what this world has shown you', () => {
   });
 });
 
-describe('tiers are five different sentences', () => {
-  it('I writes one rule a Recursion; IV writes two; V is unbounded', () => {
+describe('tiers are three different sentences', () => {
+  /**
+   * THREE, NOT FIVE (corrected A.98). `MAX_MACHINE_TIER` is 3 and always was;
+   * A.97 wrote a five-rung ladder here and two rungs of it were unreachable.
+   */
+  it('I writes one rule a Recursion; the last tier writes two', () => {
     expect(sittingLimit(fresh())).toBe(0);
     expect(sittingLimit(engineAt(1))).toBe(1);
-    expect(sittingLimit(engineAt(3))).toBe(1);
-    expect(sittingLimit(engineAt(4))).toBe(2);
-    expect(sittingLimit(engineAt(5))).toBe(Infinity);
+    expect(sittingLimit(engineAt(2))).toBe(1);
+    expect(sittingLimit(engineAt(MAX_MACHINE_TIER))).toBe(2);
   });
 
   it('a tier-I Engine refuses the second rule of a Recursion', () => {
@@ -179,13 +183,13 @@ describe('tiers are five different sentences', () => {
     expect(axiomRead(engineAt(2)).rows[0]!.preview).toBe(AXIOM_BY_ID.get('unemptying')!.rule);
   });
 
-  it('III takes one rule back and returns its Axioms; I cannot', () => {
+  it('the last tier takes one rule back and returns its Axioms; I cannot', () => {
     const low = engineAt(1);
     expect(writeRule(low, ctx(), 'unemptying').ok).toBe(true);
     expect(canRedraft(low)).toBe(false);
     expect(redraft(low, ctx(), 'unemptying')).toMatchObject({ ok: false, reason: /does not take a rule back/ });
 
-    const s = engineAt(3, 5);
+    const s = engineAt(MAX_MACHINE_TIER, 5);
     expect(writeRule(s, ctx(), 'unemptying').ok).toBe(true);
     expect(s.currencies['axiom']!.toNumber()).toBe(4);
     expect(redraft(s, ctx(), 'unemptying').ok).toBe(true);
@@ -204,7 +208,7 @@ describe('a rule costs Axioms and is permanent', () => {
   });
 
   it('writing spends exactly the cost, and a written rule cannot be written twice', () => {
-    const s = engineAt(5, 10);
+    const s = engineAt(MAX_MACHINE_TIER, 10);
     expect(writeRule(s, ctx(), 'insomniacCamp').ok).toBe(false); // not shown: never been away
     s.stats.longestOfflineSec = 60;
     expect(writeRule(s, ctx(), 'insomniacCamp').ok).toBe(true);

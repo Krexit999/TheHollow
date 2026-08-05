@@ -48,21 +48,32 @@
  *     reads "above what the world produces — only a refine reaches here", which
  *     is §4's "aberrant needs Refinery V" said in the other vocabulary. So the
  *     seats want `pristine`, and that is the same requirement.
- *  3. "a six-band Lens at full intensity" (Seat IV) CANNOT BE SATISFIED. The
- *     Prism holds `INTENSITY = 3` points across `BAND_COUNT = 6` bands, so six
- *     lit bands is arithmetically out of reach and no tier lifts it. The seat
- *     asks for the true reading — the Prism at its last tier with every point
- *     spent — and the gap is ledgered rather than papered over by inventing a
- *     Lens the build does not have.
+ *  3. "a six-band Lens at full intensity" (Seat IV) CANNOT BE SATISFIED, and
+ *     A.98 RE-CUT THE SEAT rather than lifting the Prism. The choice was between
+ *     those two and the code already made it: `prism.ts` says of INTENSITY
+ *     "it never grows: a tier buys a different KIND of freedom, never a bigger
+ *     budget, because a bigger budget is the multiplier §15.4 forbids wearing a
+ *     hat." Lifting three points to six to satisfy one seat would break that
+ *     ruling for the whole shell, and Glassmere's Surge ceiling is literally the
+ *     points you did NOT spend (`shellPlants.PRISM_SURGE_PER_FREE`) — so a
+ *     bigger budget is a bigger plant as well.
+ *
+ *     A LENS is also not the Prism. Glassmere has lens STOCK (`starlens`,
+ *     `groundlens`) and `recursionSys` lists "lenses solved" in the survive
+ *     ledger, so §4 is naming an object this build does not have. The seat now
+ *     asks the deepest thing the Prism CAN say: white in the mix — which only
+ *     its last tier reaches — with every point of intensity spent. Satisfiable,
+ *     and still a real decision, because spending all three leaves Glassmere
+ *     with nothing free to burst on.
  */
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import type { PartType } from '../content/forgeParts';
 import type { RackPart } from './casting';
 import { bandOf, materialDef } from '../materials';
 import { allShells, shellDefOrNull } from '../shells';
-import { tierOf } from './plant';
+import { MAX_MACHINE_TIER, tierOf } from './plant';
 import { MAX_COMPACTION } from './compaction';
-import { INTENSITY, prismBuilt, spent } from './prism';
+import { INTENSITY, intensityOf, prismBuilt, reachesWhite, spent } from './prism';
 import { COIL_BANK, chainRead, coilBuilt } from './coil';
 import { retortBuilt } from './retort';
 import { valvesSet } from './vents';
@@ -98,6 +109,9 @@ export const SEAT_BAND = 'pristine';
  */
 export const WITNESS_FIXED_FOR_SEAT = 1000;
 
+/** Band 0 is white, and only the Prism's last tier reaches it. */
+export const WHITE_BAND = 0;
+
 /** §4's Seat III: a strain carried across this many Collapses. */
 export const STRAIN_COLLAPSES = 3;
 
@@ -122,7 +136,7 @@ export const SEATS: SeatDef[] = [
   },
   {
     id: 'IV', part: 'edge', shellId: 'glassmere', materialId: 'truelight',
-    sits: 'the Prism at its last tier with every point of intensity spent',
+    sits: 'white in the beam, and every point of intensity spent on it',
     keeps: 'Glassmere\'s refraction is yours through the Recursion.',
     flavor: 'You cannot see the edge. You can see what is behind it, slightly to the left.',
   },
@@ -256,7 +270,10 @@ export function seatCondition(state: GameState, id: SeatId): string | null {
       if (deepestCompaction(state) < MAX_COMPACTION) {
         return `No cell has reached compaction ${MAX_COMPACTION}.`;
       }
-      if (tierOf(state, 'refinery') < 5) return 'The Refinery is not at its last tier.';
+      // AT ITS LAST TIER — which is `MAX_MACHINE_TIER`, and that is 3.
+      // A.97 wrote `< 5` here and made this seat unsatisfiable too; the same
+      // mistake, in the same file, one seat apart from the one that was found.
+      if (tierOf(state, 'refinery') < MAX_MACHINE_TIER) return 'The Refinery is not at its last tier.';
       return null;
     }
     case 'II': {
@@ -274,7 +291,8 @@ export function seatCondition(state: GameState, id: SeatId): string | null {
     }
     case 'IV': {
       if (!prismBuilt(state)) return 'No Prism.';
-      if (tierOf(state, 'prism') < 5) return 'The Prism is not at its last tier.';
+      if (!reachesWhite(state)) return 'This Prism cannot put white in the mix. A deeper one can.';
+      if (intensityOf(state, WHITE_BAND) <= 0) return 'There is no white in the beam.';
       if (spent(state) < INTENSITY) return 'The Prism is not at full intensity.';
       return null;
     }
