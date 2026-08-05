@@ -46,12 +46,54 @@ import type { StationDef } from '../content/shell1/roll';
 import { shellRoll, contentsOf, isCleared, isFlooded, isLooted, typeOf } from './roll';
 import { bands, isShored } from './shoring';
 import { availableReads, ensureCircuit } from './circuit';
+import { ensureGear } from './gear';
+import { gearDef, type GearSlot } from '../content/shell1/gear';
 import { lawFlag } from '../laws';
 import { maxToolTier } from '../shells';
 import { materialDef } from '../materials';
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE GEAR LOADOUT (§25.4) — "a crew is a tool from your rack, a GEAR LOADOUT
+ * and a circuit". A.99 shipped two of the three and said so; this is the third.
+ *
+ * IT IS A SNAPSHOT OF WHAT YOU ARE WEARING, taken at dispatch, exactly as the
+ * tool tier and the circuit reads are. That is not a shortcut — it is what
+ * makes the brief's item 6 STRUCTURAL instead of a check:
+ *
+ *   gear swaps at a REST (`gear.equipGear`)
+ *   a crew carries what you were wearing
+ *   → the only way to change what a crew carries is to change what YOU wear
+ *   → which needs a REST
+ *
+ * There is no verb that sets a crew's gear, so there is nothing to guard and
+ * nothing to get wrong. `crews.test.ts` asserts no such action exists.
+ *
+ * WHAT EACH SLOT DOES FOR A CREW, read off the gear's own authored effect
+ * rather than invented for this:
+ *
+ *   LAMP    what it can SEE. Both lamps are about legibility on the ladder, so
+ *           a crew with one NAMES the hazard it withdrew from instead of
+ *           reporting a shape. §25.4's own example finding is "Withdrew from a
+ *           Deepwrought at 40% condition" — that is a lit crew talking.
+ *   BOOTS   how fast it covers ground. Marching Boots "covers two squares a
+ *           stroke", so a shod crew walks the drift quicker.
+ *   GLOVES  NOTHING, and that is stated rather than faked. Both glove effects
+ *           are about YOUR hand at the rock ("pockets you dig by hand", "a
+ *           swing that finds nothing") and a crew does not chip. Inventing a
+ *           crew-shaped reading would be authoring content to fill a table.
+ *
+ * PILLAR 2: a lamp changes what a finding SAYS and boots change how fast an
+ * index moves. Neither adds a unit of anything — the module still has no route
+ * to a currency, a stack or the face, asserted.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 /** How many crews you may have out at once. Small — each is a commitment. */
 export const MAX_CREWS = 3;
+
+/** Boots that cover ground. A shod crew walks its drift this much quicker. */
+export const BOOT_PACE = 0.6;
 
 /** Seconds a crew spends on one station before it moves to the next. */
 export const STATION_SEC = 45;
@@ -79,6 +121,11 @@ export interface Crew {
   tier: number;
   /** Circuit reads it carries, by id. Yours, at the moment you dispatched it. */
   reads: string[];
+  /**
+   * THE GEAR LOADOUT (§25.4, A.100) — slot → gear id. Yours, at the moment you
+   * dispatched it. See `GEAR_READS` for what a crew does with each slot.
+   */
+  gear: Partial<Record<GearSlot, string>>;
   /** Where it is now. */
   atIndex: number;
   /** Seconds banked toward the next station. */
@@ -107,6 +154,7 @@ export function ensureCrews(state: GameState): CrewsState {
   for (const crew of c.crews) {
     crew.findings ??= [];
     crew.reads ??= [];
+    crew.gear ??= {};
     crew.recalled ??= false;
   }
   return c;
@@ -123,6 +171,16 @@ export function ensureCrews(state: GameState): CrewsState {
  */
 export function driftsAvailable(state: GameState): StationDef[] {
   return shellRoll(state).filter((d) => isShored(state, d.id));
+}
+
+/** The lamp a crew is carrying, or null. Decides what it can report. */
+export function crewLamp(crew: Crew): string | null {
+  return crew.gear?.lamp ?? null;
+}
+
+/** Seconds this crew spends on one station. Boots cover ground. */
+export function crewPace(crew: Crew): number {
+  return crew.gear?.boots ? STATION_SEC * BOOT_PACE : STATION_SEC;
 }
 
 /** The stations a crew on this drift will walk, shallowest first. */
@@ -160,6 +218,9 @@ export function dispatchCrew(state: GameState, ctx: EngineCtx, driftId: string):
     driftId,
     tier: maxToolTier(state),
     reads: availableReads(state).map((r) => r.id),
+    // A SNAPSHOT, exactly like the tool and the reads — and that is what makes
+    // item 6 structural rather than a check. See the header.
+    gear: { ...ensureGear(state).worn },
     atIndex: 0,
     timer: 0,
     recalled: false,
@@ -219,13 +280,21 @@ export function findingAt(state: GameState, crew: Crew, def: StationDef): Findin
     }
   }
 
-  // "Withdrew from a Deepwrought." A hazard is not fought — combat is gone
-  // (A.7x) — so the crew does the only sensible thing and comes back.
+  /**
+   * "Withdrew from a Deepwrought at 40% condition." A hazard is not fought —
+   * combat is gone (A.7x) — so the crew comes back either way. WHAT IT CAN TELL
+   * YOU is the loadout's job: a lit crew names the place and how bad it was, an
+   * unlit one reports a shape in the dark.
+   */
   if (kind === 'hazard') {
+    const lit = crewLamp(crew) !== null;
+    const bite = contentsOf(state, def.id).hazard;
     return {
       kind: 'hazard', stationId: def.id,
-      line: `Withdrew from ${def.name}. It is not a place a crew goes.`,
-      wants: 'you, or a different drift',
+      line: lit
+        ? `Withdrew from ${def.name}, hazard ${bite}. It is not a place a crew goes.`
+        : 'Withdrew from something in the dark. It did not stay to look.',
+      wants: lit ? 'you, or a different drift' : 'you, or a lamp',
     };
   }
 
@@ -292,8 +361,9 @@ export function tickCrews(state: GameState, ctx: EngineCtx, dt: number): void {
     const stops = driftStations(state, crew.driftId);
     if (stops.length === 0 || crew.atIndex >= stops.length) continue;
     crew.timer += dt;
-    while (crew.timer >= STATION_SEC && crew.atIndex < stops.length) {
-      crew.timer -= STATION_SEC;
+    const pace = crewPace(crew);
+    while (crew.timer >= pace && crew.atIndex < stops.length) {
+      crew.timer -= pace;
       const def = stops[crew.atIndex]!;
       crew.atIndex += 1;
       const found = findingAt(state, crew, def);
@@ -351,6 +421,8 @@ export interface CrewRow {
   at: string;
   tier: number;
   reads: number;
+  /** Slot → the kit's NAME, for the panel. Empty slots are absent. */
+  gear: Array<{ slot: string; name: string }>;
   recalled: boolean;
   walking: boolean;
   findings: Finding[];
@@ -373,6 +445,10 @@ export function crewsRead(state: GameState): {
       at: done ? 'walked the whole drift' : `at ${here?.name ?? '—'}`,
       tier: crew.tier,
       reads: crew.reads.length,
+      gear: Object.entries(crew.gear ?? {}).map(([slot, id]) => ({
+        slot,
+        name: gearDef(id as string)?.name ?? (id as string),
+      })),
       recalled: crew.recalled,
       walking: (!crew.recalled || keepWalking) && !done && crew.findings.length < FINDING_CAP,
       findings: crew.findings,

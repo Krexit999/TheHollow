@@ -28,8 +28,8 @@ export function CrewsPanel() {
         </span>
       </div>
       <p className="mt-1 text-[11px] italic leading-snug text-cave-400">
-        A crew carries the tool you built and the circuit you wrote. It walks a drift alone and
-        stops at everything a decision cannot cover.
+        A crew carries the tool you built, the circuit you wrote and the kit you were wearing.
+        It walks a drift alone and stops at everything a decision cannot cover.
       </p>
 
       {/* WHO IS DOWN THERE */}
@@ -49,6 +49,20 @@ export function CrewsPanel() {
                 <span className="tnum shrink-0 text-[9px] text-cave-500">
                   tool {row.tier} · {row.reads} read{row.reads === 1 ? '' : 's'}
                 </span>
+              </div>
+              {/* THE LOADOUT it walked out with — §25.4's third thing. */}
+              <div className="mt-0.5 flex flex-wrap gap-1" data-testid={`crew-${row.id}-gear`}>
+                {row.gear.length === 0 && (
+                  <span className="text-[9px] text-cave-600">no kit — it went as it was</span>
+                )}
+                {row.gear.map((g) => (
+                  <span
+                    key={g.slot}
+                    className="rounded border border-cave-800 px-1 py-0.5 text-[9px] text-cave-400"
+                  >
+                    {g.name}
+                  </span>
+                ))}
               </div>
               <div className="mt-0.5 text-[10px] leading-snug text-cave-400">
                 {row.drift} — {row.at}
@@ -109,8 +123,8 @@ export function CrewsPanel() {
         <div className="mt-2 border-t border-cave-800 pt-2">
           <div className="flex items-baseline justify-between">
             <span className="text-[9px] uppercase tracking-widest text-cave-500">Send one down</span>
-            <span className="tnum text-[9px] text-cave-500">
-              carries tool {st.forge?.tools?.length ? '' : ''}· {readsNow(st)} reads
+            <span className="tnum text-[9px] text-cave-500" data-testid="crew-carries">
+              carries your kit · {readsNow(st)} reads
             </span>
           </div>
           <div className="mt-1 space-y-1" data-testid="drift-rows">

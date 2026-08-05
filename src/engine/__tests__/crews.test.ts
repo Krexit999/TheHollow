@@ -16,6 +16,7 @@ import { markReached, shellRoll } from '../systems/roll';
 import {
   FINDING_CAP, MAX_CREWS, STATION_SEC, crewBlocker, crewsRead, dispatchCrew, dismissCrew,
   driftStations, ensureCrews, findingAt, recallCrew, resolveFindings, tickCrews,
+  BOOT_PACE, crewPace,
 } from '../systems/crews';
 import type { GameState } from '../types';
 
@@ -232,5 +233,128 @@ describe('ITEM 11 — a crew produces NOTHING, which is the whole design', () =>
     const s = createEngine({ nowMs: 0 }).getState() as GameState;
     expect(resolveFindings(s)).toEqual([]);
     expect(() => tickCrews(s, ctx(), 10)).not.toThrow();
+  });
+});
+
+/**
+ * THE GEAR LOADOUT (§25.4, A.100) — the third of the three things a crew is.
+ *
+ * The assertion that carries item 6 is the LAST one: there is no verb that sets
+ * a crew's gear, so a crew's loadout cannot become a way around the REST rule.
+ * It is not guarded, it is impossible.
+ */
+describe('a crew carries the kit you were wearing', () => {
+  it('the loadout is a snapshot taken at dispatch', async () => {
+    const { equipGear } = await import('../systems/gear');
+    const { s, driftId } = withDrift();
+    s.gear = { worn: {}, owned: ['ashlamp', 'marchboots'] };
+    // Stand at a REST and put the kit on — the only way it ever goes on.
+    const rest = shellRoll(s).find((d) => d.type === 'rest')!;
+    s.depth = rest.depth;
+    expect(equipGear(s, 'ashlamp', 'lamp').ok).toBe(true);
+
+    dispatchCrew(s, ctx(), driftId);
+    expect(ensureCrews(s).crews[0]!.gear.lamp).toBe('ashlamp');
+
+    // Change your own kit afterwards; the crew keeps what it left with.
+    expect(equipGear(s, null, 'lamp').ok).toBe(true);
+    expect(ensureCrews(s).crews[0]!.gear.lamp).toBe('ashlamp');
+    expect(s.gear.worn.lamp).toBeUndefined();
+  });
+
+  it('a bare crew carries nothing, and says so rather than inventing kit', () => {
+    const { s, driftId } = withDrift();
+    s.gear = { worn: {}, owned: [] };
+    dispatchCrew(s, ctx(), driftId);
+    expect(ensureCrews(s).crews[0]!.gear).toEqual({});
+    expect(crewsRead(s).rows[0]!.gear).toEqual([]);
+  });
+
+  it('THE LAMP: a lit crew names what it withdrew from; an unlit one cannot', async () => {
+    const { s, driftId } = withDrift();
+    const hazard = shellRoll(s).find((d) => d.type === 'hazard');
+    if (!hazard) return;                      // not every shell authors one
+    dispatchCrew(s, ctx(), driftId);
+    const crew = ensureCrews(s).crews[0]!;
+
+    crew.gear = {};
+    const dark = findingAt(s, crew, hazard)!;
+    expect(dark.kind).toBe('hazard');
+    expect(dark.line).not.toContain(hazard.name);
+    expect(dark.wants).toMatch(/lamp/);
+
+    crew.gear = { lamp: 'ashlamp' };
+    const lit = findingAt(s, crew, hazard)!;
+    expect(lit.line).toContain(hazard.name);
+    expect(lit.wants).not.toMatch(/lamp/);
+  });
+
+  it('THE BOOTS: a shod crew covers the drift quicker, and that is all', () => {
+    const { s, driftId } = withDrift();
+    dispatchCrew(s, ctx(), driftId);
+    const crew = ensureCrews(s).crews[0]!;
+    expect(crewPace(crew)).toBe(STATION_SEC);
+    crew.gear = { boots: 'marchboots' };
+    expect(crewPace(crew)).toBe(STATION_SEC * BOOT_PACE);
+    expect(BOOT_PACE).toBeLessThan(1);
+  });
+
+  it('...and a shod crew reaches further in the same time', () => {
+    const bare = withDrift();
+    dispatchCrew(bare.s, ctx(), bare.driftId);
+    walk(bare.s, STATION_SEC * 2);
+    const shod = withDrift();
+    dispatchCrew(shod.s, ctx(), shod.driftId);
+    ensureCrews(shod.s).crews[0]!.gear = { boots: 'marchboots' };
+    walk(shod.s, STATION_SEC * 2);
+    expect(ensureCrews(shod.s).crews[0]!.atIndex)
+      .toBeGreaterThanOrEqual(ensureCrews(bare.s).crews[0]!.atIndex);
+  });
+
+  it('GLOVES DO NOTHING, and that is stated rather than faked', () => {
+    const { s, driftId } = withDrift();
+    dispatchCrew(s, ctx(), driftId);
+    const crew = ensureCrews(s).crews[0]!;
+    const before = crewPace(crew);
+    crew.gear = { gloves: 'gravegloves' };
+    expect(crewPace(crew)).toBe(before);
+    const wreck = shellRoll(s).find((d) => d.type === 'wreck')!;
+    const withGloves = findingAt(s, crew, wreck);
+    crew.gear = {};
+    expect(JSON.stringify(findingAt(s, crew, wreck))).toBe(JSON.stringify(withGloves));
+  });
+});
+
+describe('ITEM 6 — a loadout is not a way around the REST rule', () => {
+  it('there is NO action that sets a crew loadout — it cannot be got at', () => {
+    const types = readFileSync('src/engine/types.ts', 'utf8');
+    const actions = readFileSync('src/engine/actions.ts', 'utf8');
+    for (const src of [types, actions]) {
+      expect(/crewGear|setCrewGear|equipCrew|loadoutCrew/i.test(src)).toBe(false);
+    }
+  });
+
+  it('gear still only swaps at a REST, with a crew out or not', async () => {
+    const { equipGear } = await import('../systems/gear');
+    const { s, driftId } = withDrift();
+    s.gear = { worn: {}, owned: ['ashlamp'] };
+    // Away from a REST: refused, and it names where to go.
+    s.depth = 999;
+    const away = equipGear(s, 'ashlamp', 'lamp');
+    expect(away.ok).toBe(false);
+    expect(String(away.reason)).toMatch(/rest/i);
+
+    dispatchCrew(s, ctx(), driftId);
+    // Still refused with a crew in the field — a crew changes nothing about it.
+    expect(equipGear(s, 'ashlamp', 'lamp').ok).toBe(false);
+  });
+
+  it('standing a crew down returns nothing to your hands — it carried a copy', () => {
+    const { s, driftId } = withDrift();
+    s.gear = { worn: {}, owned: ['ashlamp'] };
+    dispatchCrew(s, ctx(), driftId);
+    const before = JSON.stringify(s.gear);
+    dismissCrew(s, ctx(), ensureCrews(s).crews[0]!.id);
+    expect(JSON.stringify(s.gear)).toBe(before);
   });
 });
