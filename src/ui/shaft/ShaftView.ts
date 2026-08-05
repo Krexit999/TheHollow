@@ -192,6 +192,24 @@ export class ShaftView {
     guardPixiRender(this.app, 'shaft'); // covers chunk bakes AND the stage render
     this.host.appendChild(this.app.canvas);
     this.app.canvas.style.touchAction = 'none';
+    /**
+     * AND IT MAY NOT BE WIDER THAN THE THING IT IS IN, EVEN ASLEEP (A.97).
+     *
+     * `layout()` DEFERS while the view is inactive, and that deferral is right —
+     * it is A.38's lesson, and destroying RenderTextures while the Face owns the
+     * live renderer is what killed the Face. But the Shaft mounts hidden, so
+     * `resizeTo` measures nothing and Pixi keeps its own default of 800×600, and
+     * the CANVAS ELEMENT then sat 800px wide inside a 362px container —
+     * overflowing a 380px phone by 429px for the entire time the Shaft was
+     * closed, which is almost the whole game.
+     *
+     * Found by the A.97 driver's overflow sweep, which reported a canvas nobody
+     * was looking at. This is CSS on the element and touches neither the
+     * renderer nor its batcher, so the deferral above is unaffected: the moment
+     * the Shaft wakes, `layout()` runs and sets the real size.
+     */
+    this.app.canvas.style.maxWidth = '100%';
+    this.app.canvas.style.maxHeight = '100%';
 
     this.shellId = this.engine.getState().shell.current;
     this.lampDepth = this.targetDepth = this.lastPlayerDepth = this.engine.getState().depth;

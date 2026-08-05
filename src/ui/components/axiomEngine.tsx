@@ -76,7 +76,10 @@ export function AxiomEnginePanel() {
             </span>
           </div>
 
-          <div className="mt-1 space-y-1" data-testid="axiom-rows">
+          {/* CAPPED, and measured rather than guessed: fourteen rules drew a
+              1,407px wall at 380px wide. Same fix the Quench Tank's rack took
+              at A.94 — the list scrolls inside itself instead of the page. */}
+          <div className="mt-1 max-h-80 space-y-1 overflow-y-auto" data-testid="axiom-rows">
             {r.rows.map((row) => (
               <div
                 key={row.id}

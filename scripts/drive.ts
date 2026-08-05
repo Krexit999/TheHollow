@@ -132,7 +132,21 @@ export async function dismiss(page: Page): Promise<void> {
     // was missing here for several phases: any run that revealed exactly one
     // new system hit a full-screen modal this helper could not close, and the
     // failure surfaced as an unrelated click timing out 57 times.
-    for (const label of [/Begin again/, /One at a time/, /Go on, then/, /^Got it$/, /^Continue$/, /^Close$/]) {
+    /**
+     * `/^Begin again$/` IS ANCHORED, AND THAT IS A BUG FIX (A.97).
+     *
+     * The run-summary modal's button says exactly "Begin again" (`qol.tsx`).
+     * The RECURSION button says "Begin again, knowing — RECURSION n"
+     * (`hollow.tsx`) — and the unanchored pattern matched BOTH, so every driver
+     * run that opened the rewrite tab silently fired the third reset layer in
+     * the game while trying to close a modal. It cost A.97 three failing checks
+     * that read as engine bugs: a pour "refused", a Recursion count one higher
+     * than the driver had counted, and a rack the reset had emptied.
+     *
+     * An instrument that cannot tell "closed a dialog" from "ended the world"
+     * is the recurring failure mode this file was written about.
+     */
+    for (const label of [/^Begin again$/, /One at a time/, /Go on, then/, /^Got it$/, /^Continue$/, /^Close$/]) {
       const b = page.getByRole('button', { name: label }).first();
       if ((await b.count()) > 0 && !(await b.isDisabled().catch(() => true))) {
         await b.click({ timeout: 700 }).catch(() => {});

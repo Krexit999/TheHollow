@@ -102,16 +102,30 @@ export interface CrucibleState {
   found: string[];
   /** Pours that came out grog — the cost of guessing, counted. */
   grog: number;
+  /**
+   * THE WIDEST POUR THIS SAVE HAS MADE, in metals. §4's Seat II asks for "a
+   * four-metal alloy", which is a fact about the POUR and not about the stone
+   * that came out — a four-metal pour can blend down to two surviving traits
+   * and it is still a four-metal alloy. Absent on every save written before
+   * this, which reads as zero: nobody was counting.
+   */
+  widest?: number;
+}
+
+/** The widest pour this save has made, in metals. §4, Seat II. */
+export function widestPour(state: GameState): number {
+  return state.crucible?.widest ?? 0;
 }
 
 export function defaultCrucibleState(): CrucibleState {
-  return { found: [], grog: 0 };
+  return { found: [], grog: 0, widest: 0 };
 }
 
 export function ensureCrucible(state: GameState): CrucibleState {
   const c = (state.crucible ??= defaultCrucibleState());
   c.found ??= [];
   if (typeof c.grog !== 'number' || Number.isNaN(c.grog)) c.grog = 0;
+  if (typeof c.widest !== 'number' || Number.isNaN(c.widest)) c.widest = 0;
   return c;
 }
 
@@ -371,6 +385,9 @@ export function pour(state: GameState, ctx: EngineCtx, parts: PourPart[]): Actio
   }
 
   const c = ensureCrucible(state);
+  // COUNTED WHETHER IT WORKS OR NOT — a grog pour of four metals was still a
+  // four-metal pour, and the doc's condition is about what you attempted.
+  c.widest = Math.max(c.widest ?? 0, parts.length);
   if (!preview.ok) {
     c.grog += 1;
     ensureGrog();

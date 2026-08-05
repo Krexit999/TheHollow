@@ -59,7 +59,6 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import type { PartType } from '../content/forgeParts';
 import type { RackPart } from './casting';
 import { bandOf, materialDef } from '../materials';
-import { traitsOf } from '../traits';
 import { allShells, shellDefOrNull } from '../shells';
 import { tierOf } from './plant';
 import { MAX_COMPACTION } from './compaction';
@@ -68,6 +67,7 @@ import { COIL_BANK, chainRead, coilBuilt } from './coil';
 import { retortBuilt } from './retort';
 import { valvesSet } from './vents';
 import { carriedStrain } from './cultivar';
+import { widestPour } from './crucible';
 import { unitsFixed } from './witness';
 import { specLive } from './specify';
 
@@ -233,17 +233,6 @@ function deepestCompaction(state: GameState): number {
   return n;
 }
 
-/** How many distinct metals the deepest alloy you have poured was made of. */
-function widestAlloy(state: GameState): number {
-  let n = 0;
-  for (const id of Object.keys(state.materials?.stacks ?? {})) {
-    const traits = traitsOf(id);
-    // An alloy is registered with its blend as traits; four traits is §14.2's
-    // cap and a four-metal pour is the only thing that reaches it.
-    if (id.startsWith('alloy') && traits.length > n) n = traits.length;
-  }
-  return n;
-}
 
 /**
  * WHAT THE SEAT IS WAITING FOR, or null when it is satisfied. Each reads a
@@ -271,7 +260,7 @@ export function seatCondition(state: GameState, id: SeatId): string | null {
       return null;
     }
     case 'II': {
-      if (widestAlloy(state) < 4) return 'You have never poured a four-metal alloy.';
+      if (widestPour(state) < 4) return 'You have never poured a four-metal alloy.';
       if (!coilBuilt(state)) return 'No Coil.';
       if (chainRead(state) < COIL_BANK) return 'The Coil is not saturated.';
       return null;
