@@ -183,14 +183,42 @@ describe('a poured world puts physics in the wrong places', () => {
 });
 
 describe('every defect costs, through a seam something already reads', () => {
-  it('four defects, each naming its seam, and every row is named', () => {
-    expect(DEFECTS).toHaveLength(4);
-    expect(DEFECT_DEFS).toHaveLength(4);
+  it('five defects, each naming its seam, and every row is named', () => {
+    // FOUR at A.97; the fifth (crew-facing) was ledgered as having no seam to
+    // bite on because crews did not exist. They have since A.99.
+    expect(DEFECTS).toHaveLength(5);
+    expect(DEFECT_DEFS).toHaveLength(5);
     for (const d of DEFECT_DEFS) {
       expect(d.name.length, d.id).toBeGreaterThan(0);
       expect(d.costs.length, d.id).toBeGreaterThan(0);
       expect(d.bites.length, d.id).toBeGreaterThan(0);
     }
+  });
+
+  it('NOTHING DOWN THERE ANSWERS: a fully-read crew cannot call a seam', async () => {
+    const crews = await import('../systems/crews');
+    const { shellRoll } = await import('../systems/roll');
+
+    const seamOf = (s: ReturnType<typeof fresh>) =>
+      shellRoll(s).find((d) => (d.seams ?? []).length > 0 && d.type === 'seam')!;
+
+    // A crew that CAN call it, in an ordinary world.
+    const bare = fresh();
+    bare.roll = { rolled: {}, cleared: [], looted: [], shored: [], flooded: [], rolls: 0 } as GameState['roll'];
+    const def = seamOf(bare);
+    bare.roll!.rolled[def.id] = { seam: def.seams![0]!, feature: 'plain', hazard: 0 } as never;
+    const crew = { id: 1, name: 'Crew I', driftId: def.id, tier: 9, reads: ['seam'],
+      gear: {}, atIndex: 0, timer: 0, recalled: false, findings: [] };
+    expect(crews.findingAt(bare, crew as never, def)).toBeNull();
+
+    // The same crew, the same station, in a world you specified.
+    const s = lived('blindcrews');
+    s.roll = { rolled: {}, cleared: [], looted: [], shored: [], flooded: [], rolls: 0 } as GameState['roll'];
+    s.roll!.rolled[def.id] = { seam: def.seams![0]!, feature: 'plain', hazard: 0 } as never;
+    const blind = crews.findingAt(s, crew as never, def);
+    expect(blind?.kind).toBe('call');
+    // ...and it still WALKS. The defect costs a capability, not the system.
+    expect(crews.driftStations(s, def.id).length).toBeGreaterThanOrEqual(0);
   });
 
   it('HARD WALLS: every wall asks one tier more', () => {

@@ -49,6 +49,7 @@ import { availableReads, ensureCircuit } from './circuit';
 import { ensureGear } from './gear';
 import { gearDef, type GearSlot } from '../content/shell1/gear';
 import { lawFlag } from '../laws';
+import { crewsBlind } from './specify';
 import { maxToolTier } from '../shells';
 import { materialDef } from '../materials';
 
@@ -327,8 +328,15 @@ export function findingAt(state: GameState, crew: Crew, def: StationDef): Findin
    * crew without the `seam` read cannot say what it is standing on, so it logs
    * the double it left on the table rather than guessing.
    */
+  /**
+   * ...AND A SPECIFIED WORLD CAN TAKE THE READ AWAY (§31's fifth defect,
+   * A.101). "Nothing down there answers": the physics are in the wrong places,
+   * so a circuit written against a real shell is written against nothing, and
+   * even a fully-read crew cannot call a seam. It still walks — the defect
+   * costs you a capability rather than removing the system.
+   */
   const seam = contentsOf(state, def.id).seam;
-  if (seam && !crew.reads.includes('seam')) {
+  if (seam && (crewsBlind(state) || !crew.reads.includes('seam'))) {
     return {
       kind: 'call', stationId: def.id,
       line: `A seam at ${def.name} whose call it cannot make.`,

@@ -44,11 +44,13 @@
  * `chipYield`. Every defect only ever TAKES. `specify.test.ts` pours the
  * harshest legal world and reads the ceiling unmoved at the same depth.
  *
- * FOUR DEFECTS, NOT SIX, AND THE DIFFERENCE IS THE SAME RULE THE AXIOMS FOLLOW:
+ * FIVE DEFECTS, NOT SIX, AND THE DIFFERENCE IS THE SAME RULE THE AXIOMS FOLLOW:
  * each one below has a live reader, named in its `bites` field and asserted by
- * a test. §31 lists six; two of them ("no journals" is already cut by §43, and
- * a crew-facing one) have no seam in this build to bite on, and a defect that
- * costs nothing is not a defect. Ledgered rather than authored as a name.
+ * a test. §31 lists six. FOUR shipped at A.97; the fifth — the crew-facing one —
+ * was ledgered as having "no seam in this build to bite on" because crews did
+ * not exist. **They have since A.99**, so NOTHING DOWN THERE ANSWERS is authored
+ * here and the row is closed. The sixth stays cut: "no journals" was already cut
+ * by §43, and a defect that costs nothing is not a defect.
  */
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { allShells, currentShell, shellDefOrNull } from '../shells';
@@ -75,7 +77,7 @@ export function bandOfDepth(depth: number): number {
 // The defects
 // ---------------------------------------------------------------------------
 
-export const DEFECTS = ['hardwalls', 'halfdraw', 'coldroll', 'quickrot'] as const;
+export const DEFECTS = ['hardwalls', 'halfdraw', 'coldroll', 'quickrot', 'blindcrews'] as const;
 export type DefectId = (typeof DEFECTS)[number];
 
 export interface DefectDef {
@@ -114,6 +116,26 @@ export const DEFECT_DEFS: DefectDef[] = [
     bites: 'conditionRate',
     shown: (s) => Object.keys(s.plant?.condition ?? {}).length > 0
       || Object.keys(s.plant?.tiers ?? {}).length > 0,
+  },
+  /**
+   * §31'S CREW-FACING DEFECT (authored A.101, unblocked when crews shipped).
+   *
+   * A specified world has its physics in the wrong places, so a circuit written
+   * against a real shell is written against nothing. A crew can still WALK — it
+   * is not disabled, which would be removing a system rather than costing you
+   * one — but it can no longer make a CALL anywhere, so every seam it passes
+   * comes back as a finding it could not resolve and its six slots fill with
+   * work you have to do yourself.
+   *
+   * WHY IT COSTS, in the same shape as the other four: it takes a capability
+   * you have, and the thing it takes is exactly the thing crews are FOR. A
+   * player who has never sent one down is never offered it (`shown`).
+   */
+  {
+    id: 'blindcrews', name: 'Nothing down there answers',
+    costs: 'Your circuits mean nothing here. No crew can make a call, at any station.',
+    bites: 'crewsBlind',
+    shown: (s) => (s.crews?.crews?.length ?? 0) > 0,
   },
 ];
 
@@ -338,6 +360,11 @@ export function rollFrozen(state: GameState): boolean {
 /** DEFECT: conditions write twice as fast. Read by `tickCondition`. */
 export function conditionRate(state: GameState): number {
   return defectLive(state, 'quickrot') ? 2 : 1;
+}
+
+/** DEFECT: a circuit is worth nothing here. Read by `crews.findingAt`. */
+export function crewsBlind(state: GameState): boolean {
+  return defectLive(state, 'blindcrews');
 }
 
 // ---------------------------------------------------------------------------
