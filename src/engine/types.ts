@@ -4,6 +4,7 @@
 import type { Decimal } from './decimal';
 import type { MaterialRarity, PurityBand, RolledDrop } from './materials';
 import type { RollState } from './systems/roll';
+import type { DeadState } from './systems/dead';
 
 // ---------------------------------------------------------------------------
 // Materials, tools, assay (Phase 3)
@@ -669,6 +670,11 @@ export interface GameState {
   recursion: RecursionState;
   /** The long tail (Phase 12). */
   spiral: SpiralState;
+  /** THE DEAD (§48.1, A.105) — which of the twelve delvers' thirty-six objects
+   *  you have walked past, and whose trail has closed by absence. Permanent
+   *  through Collapse, Breach and Recursion; pays nothing, ever. Optional so a
+   *  save written before A.105 loads without a migration. */
+  dead?: DeadState;
   relics: RelicsState;
   /** Cross-system confluences the player has FOUND (v13). A record of play.
    *  B3 (Interlock): `slots` is THE ATTENDED MARGIN — Echo-bought attention.
@@ -999,6 +1005,12 @@ export type GameEvent =
   | { type: 'recursion'; count: number; axiomsGained: number }
   // --- Phase 12: the long tail -------------------------------------------
   | { type: 'spiral'; count: number; spiralGained: number }
+  // --- A.105: THE DEAD (§48.1) ---------------------------------------------
+  | { type: 'delverObjectFound'; objectId: string; delverId: string }
+  /** The absence resolved: everything of theirs found, and the ground under the
+   *  last of it walked. This is the only event in the union that fires for
+   *  something the player did NOT do. */
+  | { type: 'delverTrailClosed'; delverId: string }
   // --- A.103: the ten inversions ------------------------------------------
   | { type: 'challengeStarted'; id: string }
   | { type: 'challengeAbandoned'; id: string }

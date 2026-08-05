@@ -12,6 +12,7 @@ import { grantXP } from './xp';
 import { D } from '../decimal';
 import { requiredTier } from './forge';
 import { markReached } from './roll';
+import { findAt, tickDead } from './dead';
 
 /**
  * WHAT ONE TIER SHORT COSTS AT THE STAIR, compounding per tier. Three was the
@@ -206,6 +207,15 @@ function finishDescend(state: GameState, mods: ModifierCache, ctx: EngineCtx): A
   for (const id of markReached(state, state.depth, effectiveToolTier(state))) {
     ctx.emit({ type: 'stationReached', id, depth: state.depth });
   }
+  /**
+   * AND THE DEAD ARE LYING ON IT (§48.1). Same walking-in, same permanence, and
+   * deliberately NOT inside `markReached` — that function returns station ids
+   * for `stationReached`, and a ghost is not a station. `tickDead` runs even
+   * when nothing was found, because a trail also closes by going DEEPER than
+   * the last thing somebody left, which is a descent and not a pickup.
+   */
+  findAt(state, ctx, currentShell(state).id, state.depth);
+  tickDead(state, ctx);
   ctx.dirty(); // Depth Pressure modifier changed
   ctx.emit({ type: 'descend', depth: state.depth });
   return { ok: true, data: { depth: state.depth } };

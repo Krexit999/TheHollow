@@ -30,9 +30,16 @@ describe('the nav fold', () => {
     expect(ids).not.toContain('journal');
   });
 
-  it('exactly one codex surface: parallel', () => {
+  it('two codex surfaces: parallel, and THE DEAD', () => {
+    // B5's rule is that a codex surface is a reference you READ — reachable
+    // like any tab, exempt from the payoff floor, outside the counted system
+    // number. THE DEAD (§48.1, A.105) is the second one and it is the purest
+    // case in the game: it produces nothing at all, deliberately, and
+    // `dead.test.ts` §5 reads dpsMax either side of finding every object to
+    // hold that. Counting it as a system would demand a payoff it exists not
+    // to have.
     const codex = ALL_SYSTEMS.filter((sys) => sys.codex).map((sys) => sys.id).sort();
-    expect(codex).toEqual(['parallel']);
+    expect(codex).toEqual(['dead', 'parallel']);
   });
 
   /**

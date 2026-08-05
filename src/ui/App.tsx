@@ -28,6 +28,7 @@ import { PanelErrorBoundary } from './components/ErrorBoundary';
 import { SYSTEM_COPY } from './systemCopy';
 import { SpiralPanel, RelicsPanel } from './components/longtail';
 import { InversionsPanel } from './components/inversions';
+import { DeadPanel } from './components/dead';
 import { Compendium } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 import { RollPanel } from './components/roll';
@@ -83,6 +84,7 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
       {only('inversions') && <InversionsPanel />}
+      {only('dead') && <DeadPanel />}
       {only('relics') && <RelicsPanel />}
     </>
   );

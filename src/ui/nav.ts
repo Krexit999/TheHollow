@@ -93,6 +93,14 @@ export const CLUSTERS: ClusterDef[] = [
       // ladder puts them ("Spiral: challenges, parallel shells, Automation
       // Grid"). Never before it: the room would be ten runs you cannot start.
       { id: 'inversions', label: 'Inversions', visible: (s) => s.spiral.count >= 1 },
+      /*
+       * THE DEAD open on the FIRST OBJECT and never before — there is no room
+       * to visit until you have picked something up off the floor, which is
+       * the difference between a record and a checklist. It is a CODEX
+       * SURFACE: a thing you read, owing no payoff, and outside the counted
+       * system number, because it produces nothing by design (§48.3).
+       */
+      { id: 'dead', label: 'The Dead', visible: (s) => (s.dead?.found?.length ?? 0) > 0, codex: true },
       { id: 'grid', label: 'Achievements', visible: always },
       { id: 'vault', label: 'Vault', visible: always },
     ],
