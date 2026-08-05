@@ -25,6 +25,7 @@
  */
 import { D } from '../decimal';
 import { axiomsForEchoes } from '../prestigeMath';
+import { keptSignatures } from './seats';
 import type { ActionResult, EngineCtx, GameState, ToolInstance } from '../types';
 import { initialState } from '../state';
 import { getTotal } from '../resources';
@@ -113,6 +114,24 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
   };
   next.currencies['axiom'] = (next.currencies['axiom'] ?? D(0)).add(gained);
   next.totals['axiom'] = (next.totals['axiom'] ?? D(0)).add(gained);
+
+  /**
+   * THE SEATS RIDE, AND THEY BRING THEIR SIGNATURES (§4, A.97).
+   *
+   * A Seat is "seated permanently"; the Recursion is the only reset that would
+   * otherwise take it, and a terminal craft you have to restart every Recursion
+   * is not a terminal craft. So the frame carries — and so does what it pays:
+   * §31.1 calls this era "the inheritance", and a seated Seat hands that
+   * shell's signature forward into a world that begins at Shell I with none.
+   *
+   * REACH, NOT RATE. A carried signature is exactly what a Breach already
+   * grants; nothing here changes what one produces.
+   */
+  next.seats = state.seats;
+  const kept = keptSignatures(next);
+  if (kept.length > 0) {
+    next.shell.signatures = [...new Set([...(next.shell.signatures ?? []), ...kept])];
+  }
 
   // Axioms that rewrite the beginning itself.
   if (lawFlag(next, 'structuresRemember')) {

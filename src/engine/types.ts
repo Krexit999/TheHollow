@@ -698,6 +698,8 @@ export interface GameState {
   cultivar?: import('./systems/cultivar').CultivarState;
   /** THE RECONSTRUCTION FRAME (A.96) — what the next rebuilt cell comes back as. */
   frame?: import('./systems/frame').FrameState;
+  /** THE SEVEN SEATS (§4, A.97) — the terminal craft's frame. Rides Recursion. */
+  seats?: import('./systems/seats').SeatsState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -943,6 +945,8 @@ export type GameEvent =
   | { type: 'flood'; depth: number }
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
   | { type: 'cellRebuilt'; cell: number; total: number; grains?: string[] }
+  | { type: 'recordMade' }
+  | { type: 'seatFilled'; seat: string; filled: number }
   | { type: 'faceWhole' }
   | { type: 'coreTouched' }
   | { type: 'recursion'; count: number; axiomsGained: number }
@@ -1189,6 +1193,8 @@ export type GameAction =
   | { type: 'buildCultivarBench' }
   | { type: 'buildCoil' }
   | { type: 'buildFrame' }
+  | { type: 'seatPart'; seat: import('./systems/seats').SeatId }
+  | { type: 'makeRecord' }
   | { type: 'setGrain'; grain: import('./systems/frame').GrainId }
   | { type: 'setGrainHold'; hold: boolean }
   | { type: 'setFineness'; how: import('./systems/crusher').Fineness }

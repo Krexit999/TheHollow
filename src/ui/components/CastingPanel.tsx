@@ -25,6 +25,7 @@
  *    you have ever poured stops being readable at about a dozen.
  */
 import { useMemo, useState } from 'react';
+import { SeatsPanel } from './seats';
 import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
 import {
@@ -1571,6 +1572,10 @@ function TheStation({ state }: { state: GameState }) {
           <div className="mt-1 text-center text-[11px] text-cave-300" data-testid="build-note">{note}</div>
         )}
       </div>
+
+      {/* THE SEVEN SEATS (§4). The frame opens at Breach 1 and renders null
+          before it, so a first-run station is untouched. */}
+      <SeatsPanel />
 
       <RackShelf state={state} want={want} onWant={setWant} />
       <CrucibleBar state={state} want={want} onWant={setWant} />

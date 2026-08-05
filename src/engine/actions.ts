@@ -34,6 +34,7 @@ import { buildRetort, reduce } from './systems/retort';
 import { buildCultivarBench, cropBed, seedBed } from './systems/cultivar';
 import { buildCoil } from './systems/coil';
 import { buildFrame, setGrain, setHold } from './systems/frame';
+import { makeRecord, seatPart } from './systems/seats';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -283,6 +284,12 @@ export function handleAction(
 
     case 'buildFrame':
       return buildFrame(state, ctx);
+
+    case 'seatPart':
+      return seatPart(state, ctx, action.seat);
+
+    case 'makeRecord':
+      return makeRecord(state, ctx);
 
     case 'setGrain':
       return setGrain(state, ctx, action.grain);

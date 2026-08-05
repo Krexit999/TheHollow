@@ -69,17 +69,48 @@ export interface CultivarState {
   beds: Partial<Record<QuadrantId, string>>;
   /** Strains you have actually cropped — a small Codex. */
   cropped: string[];
+  /**
+   * COLLAPSES EACH BED HAS SURVIVED WITHOUT BEING RE-SEEDED.
+   *
+   * Nothing in `doCollapse` touches this slice, so a seeded bed already
+   * survives a fall — but nobody was COUNTING, and §4's Seat III wants a strain
+   * "carried across three Collapses". Reset to zero the moment a bed is
+   * re-seeded, which is what makes it a carry rather than a tally.
+   */
+  through?: Partial<Record<QuadrantId, number>>;
 }
 
 export function defaultCultivarState(): CultivarState {
-  return { beds: {}, cropped: [] };
+  return { beds: {}, cropped: [], through: {} };
 }
 
 export function ensureCultivar(state: GameState): CultivarState {
   const c = (state.cultivar ??= defaultCultivarState());
   c.beds ??= {};
   c.cropped ??= [];
+  c.through ??= {};
   return c;
+}
+
+/**
+ * A COLLAPSE HAS HAPPENED — count every bed still holding what it held.
+ * Called by `doCollapse`, and the only place `through` ever goes up.
+ */
+export function noteCollapse(state: GameState): void {
+  const c = state.cultivar;
+  if (!c) return;                       // no bench, nothing to carry
+  c.through ??= {};
+  for (const q of QUADRANTS) {
+    if (c.beds[q]) c.through[q] = (c.through[q] ?? 0) + 1;
+  }
+}
+
+/** The most Collapses any one bed has carried its strain through. §4, Seat III. */
+export function carriedStrain(state: GameState): number {
+  const t = state.cultivar?.through ?? {};
+  let n = 0;
+  for (const q of QUADRANTS) if ((t[q] ?? 0) > n) n = t[q] ?? 0;
+  return n;
 }
 
 export function cultivarStation(): { shellId: string; depth: number; name: string } | null {
@@ -216,13 +247,19 @@ export function seedBed(
   if (strainId === null) {
     const c = ensureCultivar(state);
     delete c.beds[quad];
+    delete c.through![quad];            // a bed torn up has carried nothing
     ctx.dirty();
     return { ok: true, data: { quad, strain: null } };
   }
   const blocked = seedBlocker(state, quad, strainId);
   if (blocked) return { ok: false, reason: blocked };
   const c = ensureCultivar(state);
+  const was = c.beds[quad];
   c.beds[quad] = strainId;
+  // RE-SEEDING RESTARTS THE CARRY. A different strain into the same bed is a
+  // re-plant, not a carry — otherwise Seat III would be three Collapses of
+  // pressing one button.
+  if (was !== strainId) c.through![quad] = 0;
   ctx.emit({ type: 'bedSeeded', quad, strainId });
   ctx.dirty();
   return { ok: true, data: { quad, strain: strainId } };

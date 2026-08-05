@@ -100,10 +100,17 @@ export interface WitnessState {
   hush: number;
   /** Materials this save has named out of a maybe — the Codex line. */
   named: string[];
+  /**
+   * UNITS FIXED, lifetime. `named` is a set of KINDS and cannot answer "how
+   * much has this Witness decided", which is what §4's Seat VI asks for
+   * (1,000 units). Absent on every save written before this, which reads as
+   * zero — the honest answer for a save that was never counting.
+   */
+  fixed?: number;
 }
 
 export function defaultWitnessState(): WitnessState {
-  return { residue: 0, hush: 0, named: [] };
+  return { residue: 0, hush: 0, named: [], fixed: 0 };
 }
 
 export function ensureWitness(state: GameState): WitnessState {
@@ -111,7 +118,13 @@ export function ensureWitness(state: GameState): WitnessState {
   if (typeof w.residue !== 'number' || Number.isNaN(w.residue)) w.residue = 0;
   if (typeof w.hush !== 'number' || Number.isNaN(w.hush)) w.hush = 0;
   w.named ??= [];
+  if (typeof w.fixed !== 'number' || Number.isNaN(w.fixed)) w.fixed = 0;
   return w;
+}
+
+/** Units this save's Witnesses have fixed, lifetime. §4's Seat VI reads it. */
+export function unitsFixed(state: GameState): number {
+  return state.witness?.fixed ?? 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +426,7 @@ export function witness(
   // A WITNESSING IS A DECISION, NOT A FIND.
   state.materials.totalDrops -= 1;
   if (!w.named.includes(into)) w.named.push(into);
+  w.fixed = (w.fixed ?? 0) + 1;
   ctx.emit({ type: 'witnessed', materialId, into });
   ctx.dirty();
   return { ok: true, data: { into, band: bandOf(purity) } };
