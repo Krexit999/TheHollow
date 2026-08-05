@@ -29,6 +29,7 @@ import { SYSTEM_COPY } from './systemCopy';
 import { SpiralPanel, RelicsPanel } from './components/longtail';
 import { InversionsPanel } from './components/inversions';
 import { DeadPanel } from './components/dead';
+import { UntoldPanel } from './components/untold';
 import { Compendium } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 import { RollPanel } from './components/roll';
@@ -84,6 +85,9 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
       {only('inversions') && <InversionsPanel />}
+      {/* THE LONG SHELF (§48.3) — a RECORD, not a location. Both things that
+          go on it live here: what the dead left, and what you fell into. */}
+      {only('dead') && <UntoldPanel />}
       {only('dead') && <DeadPanel />}
       {only('relics') && <RelicsPanel />}
     </>

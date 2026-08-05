@@ -79,7 +79,7 @@ async function main(): Promise<void> {
   const shut = await page.evaluate(() => {
     const w = window as unknown as Record<string, any>;
     const tabs = Array.from(document.querySelectorAll('button')).map((b) => (b.textContent ?? '').trim());
-    return { tabHere: tabs.includes('The Dead'), found: (w['__engine'].getState().dead?.found ?? []).length };
+    return { tabHere: tabs.includes('The Long Shelf'), found: (w['__engine'].getState().dead?.found ?? []).length };
   });
   check(shut.found, 0, 1, 'B1 nothing found yet');
   check(shut.tabHere, false, true, 'B2 the room is not in the nav at all — absent, not a locked row');
@@ -247,6 +247,56 @@ async function main(): Promise<void> {
   check(screen.panelH > 0 && screen.panelH < 9000, true, false, `I4 panel height bounded (${screen.panelH}px)`);
   check(errors.length, 0, 1, `I5 zero page errors${errors.length ? ` — ${errors[0]}` : ''}`);
   await page.screenshot({ path: `${OUT}/i-the-dead.png`, fullPage: true });
+
+  // ═══ J — THE UNTOLD: the tell first, then the thing ═══════════════════════
+  console.log('\n== J — an accident, told about before it happens =================');
+  await tab(page, 'dig');
+  // Three-quarters of the way to Loam's accident, arranged in state because
+  // packing one cell to 26 by hand takes longer than a driver has. What is
+  // being checked is the TELL and the ROOM, not the arithmetic of the
+  // condition — untold.test.ts §2 drives every one of the six to true.
+  await setup(page, `
+    const s = engine.getState();
+    s.untold = { known: [], told: [] };
+    s.face.compaction = new Array(s.face.w * s.face.h).fill(0);
+    s.face.compaction[3] = 20;      // 20/26 — past the tell, short of the thing
+    s.face.lastHandCell = 3;
+  `);
+  await page.waitForTimeout(1600);
+  const near = await page.evaluate(() => {
+    const s = (window as unknown as Record<string, any>)['__engine'].getState();
+    const toast = Array.from(document.querySelectorAll('*'))
+      .map((e) => (e.textContent ?? '').trim())
+      .find((t) => t.startsWith('Something is off.'));
+    return { told: [...(s.untold?.told ?? [])], known: [...(s.untold?.known ?? [])], toast: toast ?? '' };
+  });
+  console.log(`  told ${JSON.stringify(near.told)} · known ${JSON.stringify(near.known)}`);
+  check(near.told.includes('patientcell'), true, false, 'J1 the tell fired at 20/26');
+  check(near.known.includes('patientcell'), false, true, 'J2 ...and it did NOT hand the discovery over');
+  await page.screenshot({ path: `${OUT}/j-the-tell.png`, fullPage: true });
+
+  await setup(page, `
+    const s = engine.getState();
+    s.face.compaction[3] = 26;
+  `);
+  await page.waitForTimeout(1600);
+  await tab(page, 'dead');
+  await dismiss(page);
+  const found = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="untold-patientcell"]');
+    const panel = document.querySelector('[data-testid="untold-panel"]') as HTMLElement | null;
+    return {
+      text: (el?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+      rows: document.querySelectorAll('[data-testid^="untold-"]').length - (panel ? 1 : 0),
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  console.log(`  ${found.text.slice(0, 170)}`);
+  check(found.text.includes('THE PATIENT CELL'), true, false, 'J3 the room names it');
+  check(found.text.length > 200, true, false, 'J4 ...and prints where it points, not what it paid');
+  check(found.rows, 1, 0, 'J5 exactly one row — never six with five greyed');
+  check(found.overflow, 0, 20, 'J6 zero horizontal overflow at 380px');
+  await page.screenshot({ path: `${OUT}/j-the-untold.png`, fullPage: true });
 
   await browser.close();
   console.log(`\nshots -> ${OUT}`);

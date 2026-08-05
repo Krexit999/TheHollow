@@ -100,7 +100,18 @@ export const CLUSTERS: ClusterDef[] = [
        * SURFACE: a thing you read, owing no payoff, and outside the counted
        * system number, because it produces nothing by design (§48.3).
        */
-      { id: 'dead', label: 'The Dead', visible: (s) => (s.dead?.found?.length ?? 0) > 0, codex: true },
+      /*
+       * THE LONG SHELF is §48.3's own name for the record, and it holds both
+       * halves of this layer — THE DEAD (§48.1) and THE UNTOLD (§47/§49).
+       * Naming the room after either would have meant two codex tabs for two
+       * lists of things that produce nothing, which is clutter, not clarity.
+       */
+      {
+        id: 'dead',
+        label: 'The Long Shelf',
+        visible: (s) => (s.dead?.found?.length ?? 0) > 0 || (s.untold?.known?.length ?? 0) > 0,
+        codex: true,
+      },
       { id: 'grid', label: 'Achievements', visible: always },
       { id: 'vault', label: 'Vault', visible: always },
     ],

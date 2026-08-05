@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt, fmtDuration, currentShell } from '../../engine';
 import { ACHIEVEMENTS } from '../../engine/content/shell1/achievements';
+import { untoldDef } from '../../engine/content/untold';
+import { objectDef, delverDef } from '../../engine/content/dead';
 import { gemDef, materialDef } from '../../engine/materials';
 import { ABILITY_BY_ID } from '../../engine/content/drillAlloys';
 import { RUNE_NAMES, RUNE_PAIRS } from '../../engine/content/shell4/runes';
@@ -196,6 +198,28 @@ export function Toasts() {
             color: RARITY_COLOR[ev.rarity],
           });
         }
+      } else if (ev.type === 'untoldTell') {
+        /*
+         * THE TELL (§49.1). No title naming the thing, no percentage, no arrow
+         * — one strange sentence, once, in a colour nothing else in this list
+         * uses. §49.1's honest finding was that eleven of seventeen secrets had
+         * no tell at all, which makes "accidental" mean "never found". This is
+         * the whole answer to that, and it is deliberately unhelpful.
+         */
+        fresh.push({ key: entry.seq, title: 'Something is off.', body: ev.tell, color: '#a89bc4' });
+      } else if (ev.type === 'untoldFound') {
+        const def = untoldDef(ev.id);
+        if (def) fresh.push({ key: entry.seq, title: def.name, body: def.did, color: '#a89bc4' });
+      } else if (ev.type === 'delverObjectFound') {
+        const o = objectDef(ev.objectId);
+        const who = delverDef(ev.delverId);
+        if (o && who) fresh.push({ key: entry.seq, title: o.name, body: `${who.name} left it here.`, color: '#d8c98a' });
+      } else if (ev.type === 'delverTrailClosed') {
+        const who = delverDef(ev.delverId);
+        // NOT the epitaph — that is the room's, and it is long. This is only
+        // the fact that there is nothing more of them anywhere, which is a
+        // thing you learn by having walked, and it deserves a beat.
+        if (who) fresh.push({ key: entry.seq, title: who.name, body: 'There is nothing more of theirs, anywhere.', color: '#b9a98a' });
       } else if (ev.type === 'gemFound') {
         const def = gemDef(ev.gemId);
         fresh.push({ key: entry.seq, title: `A gem: ${def.name}`, body: def.flavor, color: def.color });

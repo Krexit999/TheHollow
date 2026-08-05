@@ -36,6 +36,8 @@ import { canSpiral } from '../src/engine/systems/spiral';
 import { dpsMax, cellRegen, cellCap } from '../src/engine/systems/face';
 import { nextPipeCost, VENT_SHAFT_CELL, holdLine, heatCeiling } from '../src/engine/systems/pressure';
 import { ventArrayBuilt } from '../src/engine/systems/vents';
+import { UNTOLD } from '../src/engine/content/untold';
+import { progressOf, NEAR_AT } from '../src/engine/systems/untold';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { REMAINS_TUNING } from '../src/engine/materials';
 import {
@@ -173,6 +175,7 @@ interface Args {
    * measurement rather than a memory. Off by default; the run is unchanged.
    */
   census: boolean;
+  untold: boolean;
 }
 
 function parseArgs(): Args {
@@ -222,6 +225,7 @@ function parseArgs(): Args {
     cinderDepth: Number(get('cinder-depth') ?? 70),
     pipes: get('pipes') !== 'off',
     census: argv.includes('--census'),
+    untold: argv.includes('--untold'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -585,6 +589,11 @@ let heatStance: Args['heat'] = 'balanced';
 /** A.104's floor arm. Module-scoped for the same reason `heatStance` is. */
 let plumbs = true;
 const cinderMetrics = { heatSum: 0, heatSamples: 0, purges: 0 };
+/** A.105 — the HIGH-WATER MARK of each accident's condition across the run.
+ *  Peak rather than final: several of them decay (a chain breaks, a corner gets
+ *  worked), so a reading taken at the end would report zero for a condition the
+ *  run spent ten minutes three-quarters of the way into. */
+const untoldPeak: Record<string, number> = {};
 
 function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
   if (currentShell(s).id !== 'cinder') return;
@@ -1919,6 +1928,12 @@ function main(): void {
       packedLevels(s, 'blade') + packedLevels(s, 'soil') + packedLevels(s, 'roots'),
     );
     engine.tick(1);
+    if (args.untold) {
+      for (const def of UNTOLD) {
+        const v = progressOf(s, def);
+        if (v > (untoldPeak[def.id] ?? 0)) untoldPeak[def.id] = v;
+      }
+    }
     noteRtpTick(s.shell.current, s.depthRecords[s.shell.current] ?? 0, s.depth, sec);
     if (args.opening) {
       opCeilInt += dpsMax(s, mods).toNumber();
@@ -2317,6 +2332,30 @@ function main(): void {
       + `· materials ${Object.keys(s.materials.stacks).length} · notes ${s.reading?.notes?.length ?? 0} `
       + `· figures ${s.figures?.found?.length ?? 0} · relics ${s.relics?.found ?? 0} `
       + `· drifts ${s.roll?.shored?.length ?? 0} · crews ${s.crews?.crews?.length ?? 0}`);
+  }
+  /**
+   * THE UNTOLD (A.105) — how close an ordinary run gets to each accident.
+   *
+   * NOT "did it fire". The sim's policy is not a player: it never forgets a
+   * corner, never leaves a choke shut, never walks away from a cell. Asking it
+   * whether it stumbled would measure the policy and report it as odds. What it
+   * CAN honestly say is how far along each condition the run drifted without
+   * anybody aiming at it, which is the number the design question actually
+   * wants — a condition a 3h run never gets a quarter of the way to is one an
+   * ordinary player will not meet by accident either.
+   */
+  if (args.untold) {
+    console.error('');
+    console.error(`UNTOLD @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · shell ${currentShell(s).id}`);
+    for (const def of UNTOLD) {
+      const peak = untoldPeak[def.id] ?? 0;
+      const known = s.untold?.known?.includes(def.id) ? 'FOUND' : peak >= NEAR_AT ? 'told ' : '     ';
+      const reachable = def.shell === currentShell(s).id || (s.depthRecords[def.shell] ?? 0) > 0;
+      console.error(
+        `  ${def.shell.padEnd(10)} ${def.id.padEnd(14)} peak ${(peak * 100).toFixed(0).padStart(3)}%  ${known}` +
+        `${reachable ? '' : '  (shell never entered — 0 by construction)'}`,
+      );
+    }
   }
   const avgHeat = cinderMetrics.heatSamples > 0 ? cinderMetrics.heatSum / cinderMetrics.heatSamples : 0;
   console.error(

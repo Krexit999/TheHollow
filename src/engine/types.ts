@@ -5,6 +5,7 @@ import type { Decimal } from './decimal';
 import type { MaterialRarity, PurityBand, RolledDrop } from './materials';
 import type { RollState } from './systems/roll';
 import type { DeadState } from './systems/dead';
+import type { UntoldState } from './systems/untold';
 
 // ---------------------------------------------------------------------------
 // Materials, tools, assay (Phase 3)
@@ -675,6 +676,10 @@ export interface GameState {
    *  through Collapse, Breach and Recursion; pays nothing, ever. Optional so a
    *  save written before A.105 loads without a migration. */
   dead?: DeadState;
+  /** THE UNTOLD (§47/§49, A.105) — the six per-shell accidents you have fallen
+   *  into, and which of their tells the world has already spoken. Permanent;
+   *  pays nothing. Optional so a pre-A.105 save loads without a migration. */
+  untold?: UntoldState;
   relics: RelicsState;
   /** Cross-system confluences the player has FOUND (v13). A record of play.
    *  B3 (Interlock): `slots` is THE ATTENDED MARGIN — Echo-bought attention.
@@ -1005,6 +1010,10 @@ export type GameEvent =
   | { type: 'recursion'; count: number; axiomsGained: number }
   // --- Phase 12: the long tail -------------------------------------------
   | { type: 'spiral'; count: number; spiralGained: number }
+  // --- A.105: THE UNTOLD (§47/§49) -----------------------------------------
+  | { type: 'untoldFound'; id: string }
+  /** The world being odd, once, near a condition. Names nothing (§49.1). */
+  | { type: 'untoldTell'; id: string; tell: string }
   // --- A.105: THE DEAD (§48.1) ---------------------------------------------
   | { type: 'delverObjectFound'; objectId: string; delverId: string }
   /** The absence resolved: everything of theirs found, and the ground under the

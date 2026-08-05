@@ -34,6 +34,7 @@ import { tickCircuit } from './systems/circuit';
 import { tickCondition } from './systems/condition';
 import { tickResidue } from './systems/witness';
 import { tickCrews } from './systems/crews';
+import { tickUntold } from './systems/untold';
 import { tickChallenges } from './systems/challenges';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
@@ -215,6 +216,12 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // depth moves by half a dozen routes — a multi-descend, a drift fall, a
       // Collapse taking it back to zero — and a beat cannot be routed around.
       tickChallenges(state, ctx);
+      // THE UNTOLD (§47/§49). Same 1Hz block, and for the same reason as the
+      // inversions: every condition it watches is written by a DIFFERENT system
+      // for that system's own reasons — compaction by the face, the chain by
+      // the Coil, fullSince by growth — so there is no one action to hook and
+      // no counter pointed at any of them. That is what keeps them accidents.
+      tickUntold(state, ctx);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;
