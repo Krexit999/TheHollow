@@ -139,11 +139,49 @@ export const CINDER_ROLL: StationDef[] = [
     seams: ['magmajade', 'cindersteel', 'pyrite'], remains: ['charsinew'],
     line: 'It has been alight since before the shaft, and it will be alight after.',
   },
+  /**
+   * ─────────────────────────────────────────────────────────────────────────
+   * THE HEATWORKS — a sluice, a bank, and an overflow (§36.1, authored A.101).
+   *
+   * A.100 measured what nobody had checked: only a `flood` station can ever be
+   * flooded, Cinder was the only shell with any, it had TWO, and they sat 145
+   * depths apart against a `LEAK_REACH` of 20. So the HEAT CORRIDOR — four
+   * consequences of §36.1, the mechanism shipped at A.99 — could not be built
+   * by any save. The mechanism was reachable only from a test that wrote
+   * `roll.flooded` directly, which is the failure PILLARS names as "a test that
+   * a function works is not a test that anything calls it".
+   *
+   * These two rows are the fix, and they are authored as ONE THING with The
+   * Bank rather than as two more floodable rooms at convenient depths: a sluice
+   * that feeds it, and an overflow that takes what it cannot hold. Flooding all
+   * three is flooding a works that was built as a works — which is why the
+   * corridor reads as a place rather than as an arithmetic result.
+   *
+   * THE SPACING IS THE MECHANISM. 196 · 210 · 224, so a delver standing at the
+   * Bank has all three inside the leak, and one standing at either end has two.
+   * The corridor is something you stand in the middle of.
+   *
+   * Both are FAR side of THE SLUMP (174, hardness 14), so the corridor is late
+   * Cinder exactly as §36.1 asks — "what late Cinder now does: you SPEND
+   * pressure, on the world".
+   * ─────────────────────────────────────────────────────────────────────────
+   */
+  {
+    id: 'thesluice', depth: 196, name: 'The Sluice', type: 'flood',
+    seams: ['pyrite', 'cindersteel'], floodSeams: ['heartflame', 'pyroclast'],
+    line: 'A cut channel with a gate at the end of it, and the gate is the newest thing down here.',
+  },
   {
     id: 'thebank', depth: 210, name: 'The Bank', type: 'flood',
     seams: ['pyrite', 'heartflame'], floodSeams: ['heartflame', 'coronaite'],
     remains: ['pyregland'],
     line: 'Built to hold heat and never emptied. It would take a great deal more, if you had it.',
+  },
+  {
+    id: 'theoverflow', depth: 224, name: 'The Overflow', type: 'flood',
+    seams: ['heartflame', 'obsidianheart'], floodSeams: ['coronaite', 'howlbasalt'],
+    remains: ['charsinew'],
+    line: 'Where the Bank goes when the Bank has had enough. Somebody dug it in a hurry and then never needed it.',
   },
   {
     id: 'breakerslag', depth: 260, name: "Breaker's Slag", type: 'wreck', wreck: 'THE BREAKER',

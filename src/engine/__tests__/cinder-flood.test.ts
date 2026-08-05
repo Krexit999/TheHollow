@@ -67,10 +67,12 @@ beforeEach(() => { s = inCinder(); });
 
 describe('the fixture is real', () => {
   it('twenty stations, floor at 470 — the registry\'s number', () => {
-    // TWENTY since A.94: The Slake (96) carries §13's QUENCH TANK, which §6
-    // gives no wreck. It buries nothing, so the drop economy is untouched.
+    // TWENTY at A.94: The Slake (96) carries §13's QUENCH TANK, which §6 gives
+    // no wreck. TWENTY-TWO at A.101: the Sluice (196) and the Overflow (224),
+    // authored either side of the Bank so §36.1's HEAT CORRIDOR is reachable at
+    // all — see `corridor-reach.test.ts` for what those two rows fixed.
     const roll = authoredRoll('cinder');
-    expect(roll.length).toBe(20);
+    expect(roll.length).toBe(22);
     expect(roll[roll.length - 1]!.name).toBe('FLASHPOINT');
     expect(roll[roll.length - 1]!.depth).toBe(470);
   });
@@ -89,17 +91,18 @@ describe('the fixture is real', () => {
 // ---------------------------------------------------------------------------
 
 describe('the FLOOD type', () => {
-  it('Cinder authors exactly two, and NO other shell has one', () => {
+  it('Cinder authors exactly four, and NO other shell has one', () => {
     const byShell = Object.fromEntries(AUTHORED_SHELLS.map((id) =>
       [id, authoredRoll(id).filter((d) => d.type === 'flood').map((d) => d.name)]));
-    expect(byShell['cinder']).toEqual(['The Bank', 'The Choke']);
+    // THE HEATWORKS (196 · 210 · 224) and then the Choke, alone at 355.
+    expect(byShell['cinder']).toEqual(['The Sluice', 'The Bank', 'The Overflow', 'The Choke']);
     for (const id of AUTHORED_SHELLS) {
       if (id === 'cinder') continue;
       expect(byShell[id], `${id} should author no flood station`).toEqual([]);
     }
   });
 
-  it('and both carry a deep-stock pool the one permanent seam is drawn from', () => {
+  it('and every one carries a deep-stock pool the permanent seam is drawn from', () => {
     for (const def of authoredRoll('cinder').filter((d) => d.type === 'flood')) {
       expect((def.floodSeams ?? []).length, def.name).toBeGreaterThan(0);
       for (const id of def.floodSeams!) expect(materialDef(id).shellId).toBe('cinder');
@@ -173,7 +176,9 @@ describe('WHAT A FLOOD CHANGES — the question that makes it not a hazard', () 
     floodStation(st, ctx, 'thebank', seeded(7));
     expect(isFlooded(st, 'thebank')).toBe(true);
     expect(floodBlocker(st, 'thebank')).toBe('Already drowned.');
-    expect(floodable(st).map((d) => d.id)).toEqual(['heatchoke']);
+    // Everything else in the shell is still floodable; the drowned one is not.
+    expect(floodable(st).map((d) => d.id))
+      .toEqual(['thesluice', 'theoverflow', 'heatchoke']);
   });
 
   it('it costs the climb to it, and takes cast parts off the rack', () => {
