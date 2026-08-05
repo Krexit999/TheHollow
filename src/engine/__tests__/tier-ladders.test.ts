@@ -20,7 +20,7 @@
  * typecheck against a constant. So it gets a test.
  */
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { MAX_MACHINE_TIER } from '../systems/plant';
 import type { GameState } from '../types';
@@ -65,7 +65,36 @@ describe('a capability ladder has exactly one row per buildable tier', () => {
   });
 });
 
-describe('nothing gates on a tier that cannot be built', () => {
+/**
+ * ...AND THE SWEEP GOES WIDER THAN `systems/` (A.99).
+ *
+ * The first version of this guard read only `src/engine/systems`, which is
+ * where the production bug was — and a wider sweep at A.99 found NINETEEN more
+ * sites, every one of them a TEST OR DRIVER FIXTURE writing `tiers['x'] = 5`.
+ *
+ * That is not cosmetic. A fixture that seats a tier above the cap is asserting
+ * against a world no player can ever stand in, so the test is green about
+ * nothing — the same failure as an unsatisfiable gate, arriving from the other
+ * side. Both halves are swept now.
+ */
+function allSources(): Array<{ file: string; src: string }> {
+  const out: Array<{ file: string; src: string }> = [];
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir)) {
+      const p = join(dir, e);
+      if (statSync(p).isDirectory()) walk(p);
+      // This file is full of deliberately-bad literals. It cannot sweep itself.
+      else if (/\.tsx?$/.test(e) && !p.includes('tier-ladders')) {
+        out.push({ file: p, src: readFileSync(p, 'utf8') });
+      }
+    }
+  };
+  walk('src');
+  walk('scripts');
+  return out;
+}
+
+describe('nothing gates on — or fixtures — a tier that cannot be built', () => {
   it('no tierOf() comparison in any system names a number above the cap', () => {
     const bad: string[] = [];
     for (const { file, src } of systemSources()) {
@@ -77,6 +106,24 @@ describe('nothing gates on a tier that cannot be built', () => {
         }
       }
     }
+    expect(bad).toEqual([]);
+  });
+
+  it('and no test or driver SEATS one either — src/ and scripts/, both swept', () => {
+    const bad: string[] = [];
+    let swept = 0;
+    for (const { file, src } of allSources()) {
+      swept += 1;
+      const lines = src.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const g = lines[i]!.match(/tiers\[[^\]]+\]\s*=\s*(\d+)/)
+          ?? lines[i]!.match(/tierOf\([^)]*\)\s*[<>]=?\s*(\d+)/);
+        if (g && Number(g[1]) > MAX_MACHINE_TIER) {
+          bad.push(`${file}:${i + 1}  ${lines[i]!.trim().slice(0, 80)}`);
+        }
+      }
+    }
+    expect(swept).toBeGreaterThan(300);     // it really walked the tree
     expect(bad).toEqual([]);
   });
 

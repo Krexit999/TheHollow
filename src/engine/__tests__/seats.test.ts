@@ -119,7 +119,7 @@ describe('a seat wants its condition AND its part', () => {
     standEverywhere(s);
     s.face.compaction = new Array(s.face.cells.length).fill(26);
     (s.plant ??= { tiers: {}, builtOf: {} } as never);
-    s.plant!.tiers['refinery'] = 5;
+    s.plant!.tiers['refinery'] = 3;
     expect(seatCondition(s, 'I')).toBeNull();
     expect(seatBlocker(s, 'I')).toMatch(/Deepgrave/);
     rackPart(s, 'I');
@@ -142,7 +142,7 @@ describe('a seat wants its condition AND its part', () => {
     standEverywhere(s);
     s.face.compaction = new Array(s.face.cells.length).fill(26);
     (s.plant ??= { tiers: {}, builtOf: {} } as never);
-    s.plant!.tiers['refinery'] = 5;
+    s.plant!.tiers['refinery'] = 3;
     rackPart(s, 'I');
     expect(seatPart(s, ctx(), 'I').ok).toBe(true);
     expect(s.casting.rack).toHaveLength(0);
@@ -242,7 +242,7 @@ describe('what a seat pays is reach, and reach only', () => {
     standEverywhere(s);
     s.face.compaction = new Array(s.face.cells.length).fill(26);
     (s.plant ??= { tiers: {}, builtOf: {} } as never);
-    s.plant!.tiers['refinery'] = 5;
+    s.plant!.tiers['refinery'] = 3;
     rackPart(s, 'I');
     const before = JSON.stringify(Object.entries(s.currencies).map(([k, v]) => [k, v.toString()]));
     seatPart(s, ctx(), 'I');

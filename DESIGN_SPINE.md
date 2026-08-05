@@ -1307,7 +1307,7 @@ ERA VII  AXIOM ENGINE ──▶ capacity ceiling ──▶ Refinery V ──▶ 
 
 ## 15.4 Machine tiers, restated as capability
 
-Every machine runs I–V. A tier is **built from cast parts of a given tier plus Draw
+Every machine runs **I–III**. A tier is **built from cast parts of a given tier plus Draw
 capacity**, never bought with currency.
 
 | Tier | Capability | Later requirement that forces it |
@@ -1315,16 +1315,31 @@ capacity**, never bought with currency.
 | I | commons only | — |
 | II | **retains the input's purity band** | `pure` unreachable otherwise → tier III |
 | III | **emits byproducts at all** | shards → abrasive → `flawless` → tier VI |
-| IV | **two recipes in parallel** | 6-step chains don't fit a run otherwise |
-| V | **batch: one cycle per stack** | tiers XII+ need volumes per-unit machines can't reach |
+
+**TRIMMED FROM FIVE TO THREE (A.99), and this is a correction, not a deferral.**
+`MAX_MACHINE_TIER` has been **3** for the entire life of the project, and all
+twenty-two machines written before A.97 carry a three-rung ladder because their
+authors read the code. This table said five, so A.97 wrote six-row ladders for
+the Axiom Engine and the Seating and **four of those rows described tiers no
+player could reach** — and the same belief put `tierOf(...) < 5` into two Seat
+conditions, which made **Seat I and Seat IV permanently unsatisfiable**.
+
+The two cut rows were *"IV — two recipes in parallel"* and *"V — batch: one cycle
+per stack"*. Neither is deferred: raising the cap means authoring two new
+capability sentences for each of twenty-four machines, which is content nobody
+has asked for, and the three that exist already carry §15.4's argument (a tier
+buys a KIND of freedom, never a bigger number). `tier-ladders.test.ts` fails the
+build if any machine describes a rung above the cap, or gates on one.
 
 **Upgrade slots** (2–4 per machine, each a small cast part): *Coupler* (Draw efficiency) ·
 *Regulator* (purity retention) · *Sieve Plate* (byproduct rate) · *Twin Chamber* (queue two)
 · *Trait Filter* (Sorting, per-machine) · *Governor Head* (overclock band) · *Lining*
 (reduces wear on the shell's aggressive medium — Cinder heat, Hollow silence).
 
-**40 machines × 5 tiers × up to 4 slots ≈ 200 construction events and ~600 slot decisions**,
-every one of them made of cast parts, every one of them therefore downstream of the Forge.
+**41 machines × 3 tiers × up to 4 slots**, every one of them made of cast parts, every one
+of them therefore downstream of the Forge. (The old line read "40 machines × 5 tiers ≈ 200
+construction events and ~600 slot decisions"; both factors were wrong and the products
+were arithmetic on them.)
 
 ---
 

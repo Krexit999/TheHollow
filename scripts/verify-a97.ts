@@ -62,8 +62,8 @@ const BEEN_EVERYWHERE = `
   s.plant = s.plant || {};
   s.plant.surge = 99999;
   s.plant.tiers = s.plant.tiers || {};
-  s.plant.tiers['axiomEngine'] = 5;
-  s.plant.tiers['seating'] = 5;
+  s.plant.tiers['axiomEngine'] = 3;
+  s.plant.tiers['seating'] = 3;
   s.plant.tiers['crusher'] = 2;
   s.casting.rack = [];
   s.casting.nextId = 40000;
@@ -265,8 +265,8 @@ async function main(): Promise<void> {
   await setup(page, `
     const s = engine.getState();
     s.face.compaction = new Array(s.face.cells.length).fill(26);
-    s.plant.tiers['refinery'] = 5;
-    s.plant.tiers['prism'] = 5;
+    s.plant.tiers['refinery'] = 3;
+    s.plant.tiers['prism'] = 3;
     s.plant.tiers['coil'] = 1;
     s.plant.tiers['retort'] = 1;
     s.prism = { intensity: [1,1,1,0,0,0] };
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
     const forge = await import(/* @vite-ignore */ '/src/engine/systems/forge' + '.ts');
     const w = window as unknown as Record<string, { getState: () => never }>;
     const s = w['__engine']!.getState() as unknown as { plant: { tiers: Record<string, number> } };
-    s.plant.tiers['crucible'] = 5;
+    s.plant.tiers['crucible'] = 3;
     const metals = ['ironbloom', 'scalechip', 'greyflux', 'bloomrust'];
     for (const m of metals) forge.addMaterial(s, m, 60, 3);
     // `new Function` and not `() => {}`: esbuild's keepNames rewrites a named

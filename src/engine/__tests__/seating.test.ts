@@ -159,7 +159,7 @@ describe('the pour is gated on a finished frame', () => {
   it('the dispatched pour is refused by the same gate', () => {
     const engine = createEngine({ nowMs: 0 });
     const s = engine.getState() as GameState;
-    s.plant!.tiers['seating'] = 5;
+    s.plant!.tiers['seating'] = 3;
     s.shell.current = 'aleph';
     s.aleph.coreTouched = true;
     const bad = engine.dispatch({ type: 'pourWorld' });
@@ -170,10 +170,20 @@ describe('the pour is gated on a finished frame', () => {
   it('THE POUR IS A RECURSION — same ledger, recorded, frame kept', () => {
     const engine = createEngine({ nowMs: 0 });
     const s = engine.getState() as GameState;
-    s.plant!.tiers['seating'] = 5;
-    s.plant!.tiers['crusher'] = 4;
+    s.plant!.tiers['seating'] = 3;
+    s.plant!.tiers['crusher'] = 3;
     s.roll = { rolled: {}, cleared: ['w1'], looted: ['k1'], shored: [], rolls: 0 } as never;
-    ensureSeating(s).bequests = ['opendoor', 'brokenwall', 'standing'];
+    /**
+     * TWO BEQUESTS, NOT THREE — corrected A.99 with the tier cap.
+     *
+     * This fixture used to seat the Seating at tier 5 and nominate three. The
+     * last tier is THREE and carries TWO, so the third was silently sliced off
+     * and the assertion below it read `undefined`. Nominating a third here now
+     * proves the cap BITES rather than quietly testing a world that cannot
+     * exist — which is the same defect as an unsatisfiable gate, from the other
+     * side.
+     */
+    ensureSeating(s).bequests = ['opendoor', 'standing', 'brokenwall'];
     ensureSeating(s).machine = 'crusher';
     seatAll(s);
     s.shell.current = 'aleph';
@@ -187,9 +197,10 @@ describe('the pour is gated on a finished frame', () => {
     expect(next.shell.current).toBe('loam');
     expect(next.seating!.poured).toBe(1);
     expect(next.seats!.seated['VII']).toBeDefined();    // the frame is kept
-    expect(next.roll!.looted).toContain('k1');
-    expect(next.roll!.cleared).toContain('w1');
-    expect(next.plant!.tiers['crusher']).toBe(1);
+    expect(next.roll!.looted).toContain('k1');          // 1st bequest: the open door
+    expect(next.plant!.tiers['crusher']).toBe(1);       // 2nd: the standing machine
+    // ...and the THIRD did not carry, because two is what this desk holds.
+    expect(next.roll!.cleared).not.toContain('w1');
   });
 
   it('an ordinary Recursion carries the bequests too, and does not record a pour', () => {
@@ -217,7 +228,7 @@ describe('PILLAR 2 — a bequest is reach, and the ceiling does not move', () =>
 
     const s = fresh();
     s.depth = 48;                                       // THE SAME DEPTH BOTH ARMS
-    s.plant!.tiers['seating'] = 5;
+    s.plant!.tiers['seating'] = 3;
     s.plant!.tiers['crusher'] = 3;
     s.roll = { rolled: {}, cleared: ['w1'], looted: ['k1'], shored: ['b1'], rolls: 0 } as never;
     ensureSeating(s).bequests = [...BEQUESTS];
@@ -243,7 +254,7 @@ describe('PILLAR 2 — a bequest is reach, and the ceiling does not move', () =>
   it('and no currency is granted by a pour', () => {
     const engine = createEngine({ nowMs: 0 });
     const s = engine.getState() as GameState;
-    s.plant!.tiers['seating'] = 5;
+    s.plant!.tiers['seating'] = 3;
     seatAll(s);
     s.shell.current = 'aleph';
     s.aleph.coreTouched = true;

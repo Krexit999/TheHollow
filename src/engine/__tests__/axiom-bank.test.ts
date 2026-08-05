@@ -162,7 +162,7 @@ describe('a rule changes what the world DOES, never what it pays', () => {
 
   it('writing every rule moves no purse but the Axiom purse', () => {
     const s = createEngine({ nowMs: 0 }).getState() as GameState;
-    s.plant!.tiers['axiomEngine'] = 5;
+    s.plant!.tiers['axiomEngine'] = 3;
     s.currencies['axiom'] = D(99);
     // Show it everything, so every rule is on the menu.
     s.kiln.built = true; s.drills.bayBuilt = true;
