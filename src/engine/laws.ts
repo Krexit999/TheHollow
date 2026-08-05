@@ -126,19 +126,24 @@ export function registerLawContribution(axiomId: string, c: LawContribution): vo
  * Registered from content (challenges.ts) the same way axioms register, so
  * laws.ts still imports nothing from content.
  */
+/*
+ * THREE NUMERIC LAWS CUT AT A.102 — `faceCells`, `encounterMult`, `axiomCap`.
+ *
+ * Same treatment A.82 gave four dead SEALS, for the same reason and with the
+ * same sweep behind it: each was declared here and read by NOTHING. One of them
+ * is combat, which went at A.7x. Authoring a challenge around any of the three
+ * would be the dead-name class coming back through the door A.82 closed.
+ *
+ * The three that remain — `heatRateMult`, `regenMult`, `depthCap` — each have a
+ * live reader, and `seals.test.ts` now fails the build if one loses it.
+ */
 export interface ChallengeLaws {
-  /** Hard cap on the number of face cells. */
-  faceCells?: number;
   /** Heat climbs this much faster (Cinder). */
   heatRateMult?: number;
-  /** Multiplies cell regen — the inverse lesson to faceCells. */
+  /** Multiplies cell regen. */
   regenMult?: number;
   /** Hard cap on depth for the run. */
   depthCap?: number;
-  /** Multiplies encounter frequency. */
-  encounterMult?: number;
-  /** Hard cap on how many Axioms may be owned. */
-  axiomCap?: number;
   sealWiden?: boolean;
   sealKiln?: boolean;
   sealHand?: boolean;
@@ -207,7 +212,7 @@ export function sealed(state: GameState, seal: ChallengeSeal): boolean {
 /** A numeric challenge override, or the given base when none is in force. */
 export function challengeNum(
   state: GameState,
-  key: 'faceCells' | 'heatRateMult' | 'regenMult' | 'depthCap' | 'encounterMult' | 'axiomCap',
+  key: 'heatRateMult' | 'regenMult' | 'depthCap',
   base: number,
 ): number {
   return activeLaws(state)?.[key] ?? base;

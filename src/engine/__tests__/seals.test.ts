@@ -90,3 +90,55 @@ describe('and every seal reads FALSE while no challenge runs', () => {
     for (const seal of ALL_SEALS) expect(sealed(s, seal), seal).toBe(false);
   });
 });
+
+/**
+ * ...AND THE NUMERIC HALF, ADDED A.102.
+ *
+ * `ChallengeLaws` carries numeric overrides beside the ten booleans, and the
+ * guard above never looked at them. A sweep found THREE with no reader
+ * anywhere: `faceCells`, `encounterMult` (combat, deleted at A.7x) and
+ * `axiomCap`. Same dead-name class A.82 cut four seals for, surviving in the
+ * same file because the guard was pointed at one half of it.
+ *
+ * They are deleted. This is the check that stops the next one arriving.
+ */
+describe('every numeric challenge law has a live reader too', () => {
+  /** The fields declared on `ChallengeLaws`, read off the source. */
+  function declaredNumeric(): string[] {
+    const src = readFileSync(join('src', 'engine', 'laws.ts'), 'utf8');
+    const block = src.match(/export interface ChallengeLaws \{([\s\S]*?)\n\}/)![1]!;
+    return [...block.matchAll(/^\s{2}(\w+)\?:\s*number;/gm)].map((m) => m[1]!);
+  }
+
+  /** ...and whether anything outside `laws.ts` asks `challengeNum` for it. */
+  function reads(key: string): boolean {
+    for (const [file, body] of BODIES) {
+      if (file.includes(LAWS)) continue;
+      // The call may wrap across lines, so the window spans newlines.
+      if (new RegExp(`challengeNum[\\s\\S]{0,120}?'${key}'`).test(body)) return true;
+    }
+    return false;
+  }
+
+  it('the declared numeric laws are exactly the ones something reads', () => {
+    const declared = declaredNumeric();
+    expect(declared.length, 'it really found the fields').toBeGreaterThan(0);
+    const dead = declared.filter((k) => !reads(k));
+    expect(dead, 'numeric challenge laws with a name and no reader').toEqual([]);
+  });
+
+  it('...and the sweep can SEE a dead one — red-tested against a planted name', () => {
+    // `faceCells` was real until A.102 and is read by nothing now. If a future
+    // pass re-adds it without a reader, the check above fails; this proves the
+    // check is capable of failing rather than merely passing.
+    expect(reads('faceCells')).toBe(false);
+    expect(reads('encounterMult')).toBe(false);
+    expect(reads('axiomCap')).toBe(false);
+    expect(declaredNumeric()).not.toContain('faceCells');
+  });
+
+  it('the three that remain are read, and named', () => {
+    expect(declaredNumeric().sort()).toEqual(['depthCap', 'heatRateMult', 'regenMult']);
+    for (const k of declaredNumeric()) expect(reads(k), k).toBe(true);
+  });
+});
