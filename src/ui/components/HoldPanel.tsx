@@ -26,6 +26,7 @@ import { GemIcon, GeodeIcon, MaterialIcon } from './MaterialIcon';
 import { HoldButton, TraitTag } from './shared';
 import { traitsOf } from '../../engine/traits';
 import { AutoRefineControl, PinnedStrip, ShortfallReadout } from './qol';
+import { reservedList } from '../../engine/systems/reserve';
 
 const RARITY_LABEL: Record<MaterialRarity, string> = {
   common: 'Common', rich: 'Rich', pure: 'Pure', flawless: 'Flawless', starred: 'Starred', aberrant: 'Aberrant',
@@ -45,14 +46,16 @@ export function HoldPanel() {
   if (!state) return null;
   mods.invalidate();
 
-  const pinned = new Set(state.qol.pins);
+  // RESERVE (§25.5, A.100). The star was a sort order; it is a safety primitive
+  // now, and fourteen machines refuse a starred stack by name.
+  const pinned = new Set(reservedList(state as never));
   const loam = materialsOfShell('loam');
   const owned = loam
     .map((def) => ({ def, count: materialCount(state, def.id) }))
     .filter((e) => e.count > 0 && (filter === 'all' || e.def.rarity === filter))
     .sort(
       (a, b) =>
-        // Pinned first, then rarity, then count — a pin outranks everything.
+        // Reserved first, then rarity, then count — a reserve outranks everything.
         (pinned.has(b.def.id) ? 1 : 0) - (pinned.has(a.def.id) ? 1 : 0) ||
         RARITIES.indexOf(b.def.rarity) - RARITIES.indexOf(a.def.rarity) ||
         b.count - a.count,
@@ -103,11 +106,15 @@ export function HoldPanel() {
           return (
             <div key={def.id} className="panel px-2.5 py-1.5 transition-colors hover:border-cave-600">
               <div className="flex items-center gap-2">
-                {/* Pin — separate control, never nested in the expand button. */}
+                {/* RESERVE — one tap, separate control, never nested in the expand button. */}
                 <button
                   onClick={() => dispatch({ type: 'togglePin', materialId: def.id })}
                   aria-pressed={isPinned}
-                  aria-label={isPinned ? `Unpin ${def.name}` : `Pin ${def.name}`}
+                  data-testid={`reserve-${def.id}`}
+                  title={isPinned
+                    ? 'Reserved — no machine will take it. Tap to release.'
+                    : 'Reserve it — nothing automatic will touch it.'}
+                  aria-label={isPinned ? `Release ${def.name}` : `Reserve ${def.name}`}
                   className={`shrink-0 px-0.5 text-sm leading-none ${isPinned ? 'text-lamp-400' : 'text-cave-600 hover:text-cave-400'}`}
                 >
                   {isPinned ? '★' : '☆'}

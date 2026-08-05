@@ -65,6 +65,7 @@ import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 import type { PartShape } from '../content/forgeParts';
+import { reservedBlocker } from './reserve';
 
 /** The wreck it is found in — Verdance, Pressyard 120 (§6). */
 export const PRESS_WRECK = 'THE PRESS';
@@ -215,6 +216,9 @@ export function pressBlocker(
   state: GameState, materialId: string, band: PurityBand, form: StockForm,
 ): string | null {
   if (!pressBuilt(state)) return 'The Press is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return reserved;
   if (machineSpeed(state, 'press') <= 0) return 'It has cracked. Re-cast it before it will run.';
   const def = FORM_BY_ID.get(form);
   if (!def) return 'No such form.';

@@ -30,6 +30,7 @@ import {
 } from './plant';
 import { machineSpeed } from './condition';
 import { accepts, filterOf, filterSentence } from './sieve';
+import { isReserved, reservedBlocker } from './reserve';
 import {
   ensurePlant, builtWith, noteBuiltOf,
 } from './plant';
@@ -177,6 +178,12 @@ export function crush(
   if (machineSpeed(state, 'crusher') <= 0) {
     return { ok: false, reason: 'The liner has cracked. Re-cast it before it will run.' };
   }
+  // RESERVE (§25.5). A.85 checked this in the CIRCUIT and not in the verb, so a
+  // reserved stack was safe from the automatic Crusher and fair game for the
+  // manual one — protection you could walk around by pressing the button
+  // yourself. It lives in the verb now, and the Circuit reads the same flag.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return { ok: false, reason: reserved };
   /**
    * AND IT SAYS NO BY NAME. A refusal that reads "Needs 4 of the same band"
    * over a Hold holding forty is the class of bug this project has shipped
@@ -253,6 +260,10 @@ export function crushable(state: GameState): { materialId: string; band: PurityB
   for (const [materialId, perMat] of Object.entries(state.materials.stacks)) {
     // A machine does not eat its own output, or the chain becomes a loop.
     if (materialId === CRUSH_PRODUCT || materialId === CRUSH_BYPRODUCT) continue;
+    // ...nor anything you reserved (§25.5). Filtered HERE rather than refused
+    // at the verb, because a picker that keeps choosing a stack it may not have
+    // would spend every cycle failing on the one thing you protected.
+    if (isReserved(state, materialId)) continue;
     let def;
     try { def = materialDef(materialId); } catch { continue; }
     if (def.worked) continue;

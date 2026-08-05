@@ -503,10 +503,14 @@ export const ACTS: ActDef[] = [
   },
   {
     /**
-     * RUN THE CRUSHER on the biggest stack it can take. NEVER a stack the Hold
-     * has PINNED — §25.5's first automation problem ("it consumes what you were
-     * saving") and the RESERVE flag it asks to ship with, which this build
-     * already has as `qol.pins`.
+     * RUN THE CRUSHER on the biggest stack it can take. NEVER a RESERVED one —
+     * §25.5's first automation problem ("it consumes what you were saving").
+     *
+     * A.85 read `qol.pins` inline here, and that was the whole of the reserve:
+     * one act, of one machine, honoured the flag. `crushable` filters reserved
+     * stacks out at source now (A.100), so this act does not need to know the
+     * rule — which is the point. The Circuit is a consumer of RESERVE, not its
+     * only enforcer.
      *
      * PILLAR 2: a batch is four stone in and two out. It converts at a LOSS and
      * costs Surge to do it, so no amount of circuitry makes this a faucet.
@@ -515,8 +519,7 @@ export const ACTS: ActDef[] = [
     avail: (s) => crusherBuilt(s),
     holds: () => false,
     apply: (s, ctx) => {
-      const pins = new Set(s.qol?.pins ?? []);
-      const pick = crushable(s).find((c) => !pins.has(c.materialId));
+      const pick = crushable(s)[0];
       if (!pick) return false;
       return crush(s, ctx, pick.materialId, pick.band).ok;
     },
@@ -535,10 +538,11 @@ export const ACTS: ActDef[] = [
  *     WHEN the seam here is Umberjade  → take only what is dense
  *
  * §25.5's first automation problem is "it consumes what you were saving", and
- * its shipped answer is the blunt RESERVE flag (`qol.pins`, which `run the
- * Crusher` already honours). This is the granular one the section asks for, and
- * it is granular in the way that matters: a pin names a STACK, a filter names a
- * PROPERTY, so it goes on applying to stone you have not mined yet.
+ * it now has BOTH answers the section asks for. RESERVE (`systems/reserve.ts`,
+ * A.100) is the blunt one and every consumer honours it; this is the granular
+ * one, and it is granular in the way that matters: a reserve names a STACK, a
+ * filter names a PROPERTY, so it goes on applying to stone you have not mined
+ * yet.
  *
  * Generated rather than authored — the same shape as the kiln fuels above — so
  * a filter written today is throwable today, without a registry entry.

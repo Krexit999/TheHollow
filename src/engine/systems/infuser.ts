@@ -65,6 +65,7 @@ import { machineSpeed } from './condition';
 import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
+import { reservedBlocker } from './reserve';
 
 /** The wreck it is found in — Verdance, The Grafthouse 225. */
 export const INFUSER_WRECK = 'THE INFUSER';
@@ -272,6 +273,9 @@ export function infuseBlocker(
   state: GameState, vial: Vial, materialId: string, band: PurityBand,
 ): string | null {
   if (!infuserBuilt(state)) return 'The Infuser is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return reserved;
   if (machineSpeed(state, 'infuser') <= 0) return 'It has cracked. Re-cast it before it will run.';
   let def: MaterialDef;
   try { def = materialDef(materialId); } catch { return 'No such stone.'; }

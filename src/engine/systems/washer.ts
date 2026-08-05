@@ -58,6 +58,7 @@ import { MAX_MACHINE_TIER, TIER_PART_COST, ensurePlant, noteBuiltOf, tierOf } fr
 import { conditionOf } from './condition';
 import { CRUSH_BYPRODUCT, CRUSH_PRODUCT } from './crusher';
 import { deliver } from './witness';
+import { reservedBlocker } from './reserve';
 
 /** What one wash eats. A batch, like the Crusher's — not a tap. */
 export const WASH_BATCH = 4;
@@ -202,6 +203,9 @@ export function washBlocker(
   state: GameState, materialId: string, band: PurityBand,
 ): string | null {
   if (!washerBuilt(state)) return 'The Washer is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return reserved;
   if (conditionOf(state, 'washer')?.seized) return 'It has cracked. Re-cast it before it will run.';
   if (!washable(state).includes(materialId)) {
     let name = materialId;

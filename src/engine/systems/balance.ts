@@ -43,6 +43,7 @@ import { machineSpeed } from './condition';
 import { addMaterial, consumeMaterial, materialCount } from './forge';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
+import { reservedBlocker } from './reserve';
 
 /** The wreck it is found in — Glassmere, The Balance House 130 (§6). */
 export const BALANCE_WRECK = 'THE BALANCE';
@@ -194,6 +195,9 @@ export function balanceBlocker(
   state: GameState, fromId: string, toId: string, units: number,
 ): string | null {
   if (!balanceBuilt(state)) return 'The Balance is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, fromId);
+  if (reserved) return reserved;
   if (machineSpeed(state, 'balance') <= 0) return 'It has cracked. Re-cast it before it will run.';
   if (fromId === toId) return 'That is the same thing.';
   let from; let to;

@@ -59,6 +59,7 @@ import { isLooted } from './roll';
 import { worth } from './balance';
 import { rollOffSpec } from './governor';
 import { allAuthoredStations } from '../content/rolls';
+import { reservedBlocker } from './reserve';
 
 export const WITNESS_WRECK = 'THE WITNESS';
 export const CONDENSER_WRECK = 'THE CONDENSER';
@@ -383,6 +384,9 @@ export function witnessBlocker(
   state: GameState, materialId: string, band: PurityBand, into: string,
 ): string | null {
   if (!witnessBuilt(state)) return 'The Witness is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return reserved;
   if (machineSpeed(state, 'witness') <= 0) return 'It has cracked. Re-cast it before it will run.';
   const was = wasGoingToBe(materialId);
   if (was === null) return 'That has already decided what it is.';

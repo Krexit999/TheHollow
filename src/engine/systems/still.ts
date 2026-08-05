@@ -53,6 +53,7 @@ import { deliver } from './witness';
 import { addVial } from './infuser';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
+import { reservedBlocker } from './reserve';
 
 /** The wreck the Still is found in — Verdance, Stillwright's Bower 30 (§6). */
 export const STILL_WRECK = 'THE STILL';
@@ -180,6 +181,9 @@ export function distilBlocker(
   state: GameState, materialId: string, band: PurityBand, trait: TraitId,
 ): string | null {
   if (!stillBuilt(state)) return 'The Still is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return reserved;
   if (machineSpeed(state, 'still') <= 0) return 'It has cracked. Re-cast it before it will run.';
   let def;
   try { def = materialDef(materialId); } catch { return 'No such stone.'; }

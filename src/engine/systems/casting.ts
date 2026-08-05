@@ -56,6 +56,7 @@ import { materialDef } from '../materials';
 import { consumeMaterial, materialCount } from './forge';
 import { formForShape, formOf } from './press';
 import { isMaybe } from './witness';
+import { reservedBlocker } from './reserve';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -564,6 +565,10 @@ export function chargeCrucible(
   if (fits <= 0) return { ok: false, reason: 'The tub is full' };
   const have = materialCount(state, materialId);
   if (have <= 0) return { ok: false, reason: `No ${materialDef(materialId).name} in the Hold` };
+  // RESERVE (§25.5). The tub is where stock stops being stock, so this is the
+  // last place a reserve can still mean anything.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return { ok: false, reason: reserved };
   /**
    * A MAYBE IS NOT STOCK (§13, Hollow). Something an unwatched machine made has
    * not settled on being anything, so there is nothing to melt — the Witness

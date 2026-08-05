@@ -58,6 +58,7 @@ import { consumeMaterial, materialCount } from './forge';
 import { deliver } from './witness';
 import { REDUCTIONS, REDUCTION_BY_FROM, ensurePyreBath, type ReductionDef } from '../content/reductions';
 import { riskedHeat } from './boiler';
+import { reservedBlocker } from './reserve';
 
 /** The wreck it is found in — Cinder, Retort Hall 120. Authored with the shell. */
 export const RETORT_WRECK = 'THE RETORT';
@@ -144,6 +145,9 @@ export function reductionOf(state: GameState, fromId: string): ReductionDef | un
 
 export function reduceBlocker(state: GameState, fromId: string, band: PurityBand): string | null {
   if (!retortBuilt(state)) return 'The Retort is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, fromId);
+  if (reserved) return reserved;
   if (conditionOf(state, 'retort')?.seized) return 'A neck has cracked. Re-cast it before it will hold.';
   const def = REDUCTION_BY_FROM.get(fromId);
   if (!def) {

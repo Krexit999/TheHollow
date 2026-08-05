@@ -41,6 +41,7 @@ import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
 import { SPLITS, SPLIT_BY_ORE, splitOnly, type SplitDef } from '../content/splits';
 import { deliver } from './witness';
+import { reservedBlocker } from './reserve';
 
 /** The wreck it is found in — Ferrite, The Long Spin 126. */
 export const CENTRIFUGE_WRECK = 'THE CENTRIFUGE';
@@ -124,6 +125,9 @@ export function spinBlocker(
   state: GameState, materialId: string, band: PurityBand,
 ): string | null {
   if (!centrifugeBuilt(state)) return 'The Centrifuge is not standing.';
+  // RESERVE (§25.5) — asked FIRST, so "it is reserved" is what you are told.
+  const reserved = reservedBlocker(state, materialId);
+  if (reserved) return reserved;
   if (conditionOf(state, 'centrifuge')?.seized) return 'It has cracked. Re-cast it before it will run.';
   const def = SPLIT_BY_ORE.get(materialId);
   if (!def) {

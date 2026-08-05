@@ -67,6 +67,7 @@ import { addMaterial, materialCount } from './forge';
 import { deliver } from './witness';
 import { isLooted } from './roll';
 import { allAuthoredStations } from '../content/rolls';
+import { anyReserved } from './reserve';
 
 /** The wreck it is found in — Ferrite, Alloyer's End 70 (§6). */
 export const CRUCIBLE_WRECK = 'THE ALLOY CRUCIBLE';
@@ -339,6 +340,9 @@ export function diggableWith(shellId: string, traits: TraitId[]): string | null 
 
 export function pourBlocker(state: GameState, parts: PourPart[]): string | null {
   if (!crucibleBuilt(state)) return 'The Crucible is not standing.';
+  // RESERVE (§25.5) — a pour names several stones, so it asks about all of them.
+  const reserved = anyReserved(state, parts.map((p) => p.materialId));
+  if (reserved) return reserved;
   if (machineSpeed(state, 'crucible') <= 0) return 'It has cracked. Re-cast it before it will run.';
   if (parts.length < 2) return 'A pour wants at least two metals.';
   const limit = metalLimit(state);

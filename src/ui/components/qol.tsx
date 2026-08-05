@@ -215,7 +215,7 @@ export function PinnedStrip({ compact }: { compact?: boolean }) {
 
   return (
     <div className={`panel flex flex-wrap items-center gap-1.5 ${compact ? 'p-1.5' : 'p-2'}`}>
-      <span className="text-[9px] font-semibold uppercase tracking-widest text-lamp-400/80">Pinned</span>
+      <span className="text-[9px] font-semibold uppercase tracking-widest text-lamp-400/80" data-testid="reserved-strip">Reserved</span>
       {pins.map((id) => {
         let name = id;
         try { name = materialDef(id).name; } catch { /* keep id */ }
@@ -224,7 +224,7 @@ export function PinnedStrip({ compact }: { compact?: boolean }) {
           <button
             key={id}
             onClick={() => dispatch({ type: 'togglePin', materialId: id })}
-            title="Unpin"
+            title="Reserved — no machine will take it. Tap to release."
             className="tnum flex items-center gap-1 rounded-md border border-cave-700 bg-cave-950/50 px-1.5 py-0.5 text-[10px] text-cave-300 hover:border-cave-500"
           >
             <span aria-hidden className="text-lamp-500">★</span>

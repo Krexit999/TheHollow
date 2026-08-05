@@ -350,6 +350,13 @@ describe('drops ride the ceiling (pillar 2)', () => {
    * inside cannot leak a deterministic `Math.random` into every test after it.
    * The claim is unchanged; only its variance is gone.
    */
+  /**
+   * AN EXPLICIT TIMEOUT (A.100). Twelve level-5 drills through an hour of
+   * ticks is the longest single test in the suite; it passes alone every time
+   * and timed out once at vitest's 5s default under full-suite parallelism.
+   * A test that depends on how busy the machine is has a harness bug, not a
+   * flaky subject — so the budget is stated rather than left to luck.
+   */
   it('an hour of drilling accumulates materials for idle players', () => {
     const { engine, s } = fresh();
     s.drills.bayBuilt = true;
@@ -369,7 +376,7 @@ describe('drops ride the ceiling (pillar 2)', () => {
     } finally {
       Math.random = real;
     }
-  });
+  }, 20_000);
 });
 
 describe('possessions survive Collapse', () => {

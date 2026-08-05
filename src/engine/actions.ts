@@ -102,6 +102,7 @@ import { allShells, convCurrencyId, resolveCurrencyId } from './shells';
 import { MAX_DRILLS, newDrill, defaultDrillName } from './systems/drills';
 import { grantXP } from './systems/xp';
 import { initialState } from './state';
+import { toggleReserve } from './systems/reserve';
 
 /** 999Qa in this game's own suffix scale (decimal.ts SUFFIXES: Qa = 10^15) —
  *  the dev "Give All" cheat's flat amount for every wallet in the game. */
@@ -1171,13 +1172,14 @@ export function handleAction(
       return { ok: true };
     }
 
-    case 'togglePin': {
-      const pins = state.qol.pins;
-      const idx = pins.indexOf(action.materialId);
-      if (idx >= 0) pins.splice(idx, 1);
-      else pins.push(action.materialId);
-      return { ok: true };
-    }
+    /**
+     * RESERVE, IN ONE TAP (§25.5). The action keeps its old name so no save,
+     * no test and no button had to move; what changed is that the array it
+     * writes is now a SAFETY primitive with fourteen readers rather than a
+     * sort order with one. `reserve.ts` owns the meaning.
+     */
+    case 'togglePin':
+      return { ok: true, data: { reserved: toggleReserve(state, action.materialId) } };
 
     case 'setRefinePreset': {
       const presets = state.qol.refinePresets;
