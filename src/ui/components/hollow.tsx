@@ -3,6 +3,7 @@
  * The Hollow (Silence + Reconstruction), the Echo Chamber, the Rewrite (the
  * Core, Recursion, Axioms), and the Parallel View — all real data, no polish.
  */
+import { FramePanel } from './frame';
 import { fmt, getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
 import { ModifierCache } from '../../engine/modifiers';
@@ -112,6 +113,8 @@ export function HollowPanel() {
           </>
         )}
       </div>
+      {/* §13's RECONSTRUCTION FRAME — what the next cell comes back AS. */}
+      <FramePanel />
     </div>
   );
 }

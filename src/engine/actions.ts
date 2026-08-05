@@ -33,6 +33,7 @@ import { buildVentArray, setHoldLine, setValve } from './systems/vents';
 import { buildRetort, reduce } from './systems/retort';
 import { buildCultivarBench, cropBed, seedBed } from './systems/cultivar';
 import { buildCoil } from './systems/coil';
+import { buildFrame, setGrain, setHold } from './systems/frame';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -279,6 +280,15 @@ export function handleAction(
 
     case 'buildCoil':
       return buildCoil(state, ctx);
+
+    case 'buildFrame':
+      return buildFrame(state, ctx);
+
+    case 'setGrain':
+      return setGrain(state, ctx, action.grain);
+
+    case 'setGrainHold':
+      return setHold(state, ctx, action.hold);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

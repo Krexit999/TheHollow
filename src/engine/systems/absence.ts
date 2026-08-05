@@ -26,6 +26,7 @@ import type { ModifierCache } from '../modifiers';
 import { addCurrency, spendCurrency } from '../resources';
 import { registerSignature, runVoidTick } from '../signatures';
 import { currentShell } from '../shells';
+import { applyGrain } from './frame';
 
 export const SILENCE_MUTE_MAX = 0.7; // at 100 stacks, carried income runs at 30%
 export const SILENCE_PER_MIN_BASE = 1.1; // stacks/min at depth 0...
@@ -114,8 +115,16 @@ export function rebuildCell(state: GameState, ctx: EngineCtx, cell: number): Act
   state.hollow.rebuilt.push(cell);
   state.hollow.voidSpent = D(state.hollow.voidSpent).add(cost).toString();
   state.face.cells[cell] = 0; // it begins empty. It begins.
+  /**
+   * ...UNLESS A FRAME SAYS OTHERWISE (§13, A.96). One call, at the end of a
+   * rebuild that has already succeeded: the Frame cannot refuse a rebuild,
+   * change its price, or rebuild anything. Same shape and same reasoning as
+   * `pressure.ts` calling `answerKlaxon` — the signature keeps every rule it
+   * had, and the machine decides only WHAT the cell comes back as.
+   */
+  const grains = applyGrain(state, cell);
   ctx.dirty();
-  ctx.emit({ type: 'cellRebuilt', cell, total: state.hollow.rebuilt.length });
+  ctx.emit({ type: 'cellRebuilt', cell, total: state.hollow.rebuilt.length, grains });
   if (state.hollow.rebuilt.length >= state.face.cells.length) ctx.emit({ type: 'faceWhole' });
   return { ok: true };
 }

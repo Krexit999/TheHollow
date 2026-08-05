@@ -389,6 +389,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * "pure Surge", and a bank that charged itself Surge would be a loop.
    */
   coil: { flow: 0, surge: 0 },
+  /**
+   * THE RECONSTRUCTION FRAME (§13, Hollow) — pure SURGE, and large. Putting a
+   * cell of the world back is one enormous act and then nothing, which is the
+   * Press's shape; and it is Hollow income, so it should cost the plant.
+   */
+  frame: { flow: 0, surge: 15 },
 };
 
 export function demandOf(machineId: string): Demand {

@@ -696,6 +696,8 @@ export interface GameState {
   vents?: import('./systems/vents').VentArrayState;
   /** THE CULTIVAR BENCH (A.95) — what is seeded in each quadrant. Self-heals. */
   cultivar?: import('./systems/cultivar').CultivarState;
+  /** THE RECONSTRUCTION FRAME (A.96) — what the next rebuilt cell comes back as. */
+  frame?: import('./systems/frame').FrameState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -940,7 +942,7 @@ export type GameEvent =
   | { type: 'purged'; heat: number }
   | { type: 'flood'; depth: number }
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
-  | { type: 'cellRebuilt'; cell: number; total: number }
+  | { type: 'cellRebuilt'; cell: number; total: number; grains?: string[] }
   | { type: 'faceWhole' }
   | { type: 'coreTouched' }
   | { type: 'recursion'; count: number; axiomsGained: number }
@@ -1185,6 +1187,9 @@ export type GameAction =
   | { type: 'buildRetort' }
   | { type: 'buildCultivarBench' }
   | { type: 'buildCoil' }
+  | { type: 'buildFrame' }
+  | { type: 'setGrain'; grain: import('./systems/frame').GrainId }
+  | { type: 'setGrainHold'; hold: boolean }
   | { type: 'seedBed'; quad: import('./systems/cultivar').QuadrantId; strainId: string | null }
   | { type: 'cropBed'; quad: import('./systems/cultivar').QuadrantId }
   | { type: 'reduce'; fromId: string; band: PurityBand }
