@@ -79,10 +79,16 @@ import { materialDef } from '../materials';
  *           Deepwrought at 40% condition" — that is a lit crew talking.
  *   BOOTS   how fast it covers ground. Marching Boots "covers two squares a
  *           stroke", so a shod crew walks the drift quicker.
- *   GLOVES  NOTHING, and that is stated rather than faked. Both glove effects
- *           are about YOUR hand at the rock ("pockets you dig by hand", "a
- *           swing that finds nothing") and a crew does not chip. Inventing a
- *           crew-shaped reading would be authoring content to fill a table.
+ *   GLOVES  what it LEAVES BEHIND. A.99 said this slot did nothing and A.100
+ *           agreed; the read was there in the authored effect the whole time.
+ *           Chalked Grips: *"a swing that finds nothing still leaves a mark on
+ *           the rock."* A gloved crew MARKS the stations it walked and found
+ *           nothing at, so you learn what it has CLEARED and not only where it
+ *           stopped — which is the difference between "this drift is exhausted"
+ *           and "they have not got there yet". Information, never yield.
+ *
+ *           The SLOT reads, not the piece, exactly as the lamp and boots do:
+ *           either glove marks, because both are the hand at the rock.
  *
  * PILLAR 2: a lamp changes what a finding SAYS and boots change how fast an
  * index moves. Neither adds a unit of anything — the module still has no route
@@ -134,6 +140,8 @@ export interface Crew {
   /** Recalled crews stop — unless the law says otherwise. */
   recalled: boolean;
   findings: Finding[];
+  /** GLOVES: stations walked with nothing to report. A record of clean rock. */
+  checked?: string[];
 }
 
 export interface CrewsState {
@@ -156,6 +164,7 @@ export function ensureCrews(state: GameState): CrewsState {
     crew.findings ??= [];
     crew.reads ??= [];
     crew.gear ??= {};
+    crew.checked ??= [];
     crew.recalled ??= false;
   }
   return c;
@@ -177,6 +186,11 @@ export function driftsAvailable(state: GameState): StationDef[] {
 /** The lamp a crew is carrying, or null. Decides what it can report. */
 export function crewLamp(crew: Crew): string | null {
   return crew.gear?.lamp ?? null;
+}
+
+/** Gloves on? Then what it finds nothing at is still worth writing down. */
+export function crewMarks(crew: Crew): boolean {
+  return crew.gear?.gloves !== undefined;
 }
 
 /** Seconds this crew spends on one station. Boots cover ground. */
@@ -222,6 +236,7 @@ export function dispatchCrew(state: GameState, ctx: EngineCtx, driftId: string):
     // A SNAPSHOT, exactly like the tool and the reads — and that is what makes
     // item 6 structural rather than a check. See the header.
     gear: { ...ensureGear(state).worn },
+    checked: [],
     atIndex: 0,
     timer: 0,
     recalled: false,
@@ -375,6 +390,11 @@ export function tickCrews(state: GameState, ctx: EngineCtx, dt: number): void {
       const def = stops[crew.atIndex]!;
       crew.atIndex += 1;
       const found = findingAt(state, crew, def);
+      // GLOVES — a swing that finds nothing still leaves a mark on the rock.
+      if (!found && crewMarks(crew)) {
+        crew.checked ??= [];
+        if (!crew.checked.includes(def.id)) crew.checked.push(def.id);
+      }
       if (found && !crew.findings.some((f: Finding) => f.stationId === found.stationId && f.kind === found.kind)) {
         crew.findings.push(found);
         ctx.emit({ type: 'crewFinding', crew: crew.name, line: found.line });
@@ -431,6 +451,10 @@ export interface CrewRow {
   reads: number;
   /** Slot → the kit's NAME, for the panel. Empty slots are absent. */
   gear: Array<{ slot: string; name: string }>;
+  /** GLOVES: how many stations it has walked and found nothing at. */
+  cleared: number;
+  /** ...and whether it is keeping that record at all. */
+  marking: boolean;
   recalled: boolean;
   walking: boolean;
   findings: Finding[];
@@ -457,6 +481,8 @@ export function crewsRead(state: GameState): {
         slot,
         name: gearDef(id as string)?.name ?? (id as string),
       })),
+      cleared: (crew.checked ?? []).length,
+      marking: crewMarks(crew),
       recalled: crew.recalled,
       walking: (!crew.recalled || keepWalking) && !done && crew.findings.length < FINDING_CAP,
       findings: crew.findings,

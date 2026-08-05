@@ -64,8 +64,9 @@ export function CrewsPanel() {
                   </span>
                 ))}
               </div>
-              <div className="mt-0.5 text-[10px] leading-snug text-cave-400">
+              <div className="mt-0.5 text-[10px] leading-snug text-cave-400" data-testid={`crew-${row.id}-where`}>
                 {row.drift} — {row.at}
+                {row.marking ? ` · ${row.cleared} walked clean` : ''}
                 {row.recalled && !row.walking ? ' · recalled' : ''}
                 {row.recalled && row.walking ? ' · recalled, still working' : ''}
               </div>

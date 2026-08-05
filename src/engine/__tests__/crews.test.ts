@@ -16,7 +16,7 @@ import { markReached, shellRoll } from '../systems/roll';
 import {
   FINDING_CAP, MAX_CREWS, STATION_SEC, crewBlocker, crewsRead, dispatchCrew, dismissCrew,
   driftStations, ensureCrews, findingAt, recallCrew, resolveFindings, tickCrews,
-  BOOT_PACE, crewPace,
+  BOOT_PACE, crewPace, crewMarks,
 } from '../systems/crews';
 import type { GameState } from '../types';
 
@@ -311,17 +311,52 @@ describe('a crew carries the kit you were wearing', () => {
       .toBeGreaterThanOrEqual(ensureCrews(bare.s).crews[0]!.atIndex);
   });
 
-  it('GLOVES DO NOTHING, and that is stated rather than faked', () => {
+  /**
+   * THE GLOVES (A.101). A.99 shipped this slot doing nothing and said so; A.100
+   * agreed and left it. The read was in the authored effect the whole time —
+   * Chalked Grips, "a swing that finds nothing still leaves a mark on the rock".
+   */
+  it('THE GLOVES: a gloved crew marks what it found nothing at', () => {
+    const bare = withDrift();
+    dispatchCrew(bare.s, ctx(), bare.driftId);
+    walk(bare.s, STATION_SEC * 12);
+    expect(ensureCrews(bare.s).crews[0]!.checked ?? []).toEqual([]);
+
+    const gloved = withDrift();
+    dispatchCrew(gloved.s, ctx(), gloved.driftId);
+    ensureCrews(gloved.s).crews[0]!.gear = { gloves: 'chalkgloves' };
+    walk(gloved.s, STATION_SEC * 12);
+    expect((ensureCrews(gloved.s).crews[0]!.checked ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('...and it marks CLEAN rock only — never a station it had something to say about', () => {
+    const { s, driftId } = withDrift();
+    dispatchCrew(s, ctx(), driftId);
+    const crew = ensureCrews(s).crews[0]!;
+    crew.gear = { gloves: 'gravegloves' };
+    expect(crewMarks(crew)).toBe(true);
+    walk(s, STATION_SEC * 20);
+    const marked = new Set(crew.checked ?? []);
+    for (const f of crew.findings) {
+      expect(marked.has(f.stationId), `${f.stationId} was both a finding and clean`).toBe(false);
+    }
+    // ...and every marked station really does read clean.
+    for (const id of marked) {
+      const def = shellRoll(s).find((d) => d.id === id)!;
+      expect(findingAt(s, crew, def), id).toBeNull();
+    }
+  });
+
+  it('gloves change nothing else — not the pace, not a finding', () => {
     const { s, driftId } = withDrift();
     dispatchCrew(s, ctx(), driftId);
     const crew = ensureCrews(s).crews[0]!;
     const before = crewPace(crew);
+    const wreck = shellRoll(s).find((d) => d.type === 'wreck')!;
+    const withoutGloves = JSON.stringify(findingAt(s, crew, wreck));
     crew.gear = { gloves: 'gravegloves' };
     expect(crewPace(crew)).toBe(before);
-    const wreck = shellRoll(s).find((d) => d.type === 'wreck')!;
-    const withGloves = findingAt(s, crew, wreck);
-    crew.gear = {};
-    expect(JSON.stringify(findingAt(s, crew, wreck))).toBe(JSON.stringify(withGloves));
+    expect(JSON.stringify(findingAt(s, crew, wreck))).toBe(withoutGloves);
   });
 });
 
