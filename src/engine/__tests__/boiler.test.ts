@@ -69,12 +69,22 @@ describe('§0 — THE MEASUREMENT: §3.2 gave every shell a plant and none had o
       s.shell.current = shell.id;
       shapes[shell.id] = flowCap(s);
     }
-    // Six of seven read the Hearth exactly, as they always have.
-    for (const id of ['loam', 'ferrite', 'verdance', 'glassmere', 'hollow', 'aleph']) {
+    /**
+     * A.96 FINISHED THE TABLE, so this reads the finished one.
+     *
+     * THREE shells still read the Hearth for FLOW, and each for a stated
+     * reason: Loam's shape IS the Hearth; Ferrite's shape is the COIL, which
+     * is pure Surge (§3.2) and says nothing about sustain; and Aleph has no
+     * shape in §3.2's table at all.
+     */
+    for (const id of ['loam', 'ferrite', 'aleph']) {
       expect(shapes[id], `${id} stopped reading the Hearth`).toBe(HEARTH_FLOOR);
     }
-    // Cinder is the one that changed, and it changed to ZERO (§13).
+    // Cinder is dead without its machine (§13); the other three have their own.
     expect(shapes['cinder']).toBe(0);
+    expect(shapes['verdance'], 'the Bloom did not take Verdance').toBe(HEARTH_FLOOR);
+    expect(shapes['glassmere'], 'Glassmere without a Prism has no plant').toBe(0);
+    expect(shapes['hollow'], 'the Null did not take the Hollow').toBe(HEARTH_FLOOR);
   });
 
   it('A LOAM PLANT IS BIT-IDENTICAL — a hot Kiln, unchanged arithmetic', () => {

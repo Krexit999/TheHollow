@@ -144,8 +144,19 @@ export function chainRead(state: GameState): number {
   return coilRemembers(state) ? Math.max(live, p.bestChain ?? 0) : live;
 }
 
-/** What the Coil adds to the bank. Zero anywhere it is not standing. */
+/**
+ * What the Coil adds to the bank. Zero anywhere it is not standing.
+ *
+ * ...AND THAT SENTENCE WAS A LIE UNTIL A.96. `coilShell` was written at A.95
+ * and never called: a Coil wound in Ferrite banked forty-two Surge while the
+ * player stood in GLASSMERE, which is the identical defect the same pass found
+ * on `boilerSurge` and fixed on one of the two. A helper that exists and is
+ * never asked is worse than one that does not exist, because the comment above
+ * it reads as a guarantee. Found by A.96's sweep of every plant reader across
+ * every shell — the thing the brief asked for by name.
+ */
 export function coilSurge(state: GameState): number {
+  if (!coilShell(state)) return 0;
   if (!coilBuilt(state)) return 0;
   let bank = COIL_BANK;
   if (chainBanks(state)) bank += COIL_PER_LINK * chainRead(state);

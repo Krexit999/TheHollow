@@ -161,8 +161,18 @@ export function riskedHeat(state: GameState): number {
   return Math.max(0, (state.pressure?.heat ?? 0) - holdLine(state));
 }
 
-/** Cinder's sustained draw. ZERO without a Boiler — §13, literally. */
+/**
+ * Cinder's sustained draw. ZERO without a Boiler — §13, literally.
+ *
+ * AND ZERO OUTSIDE ITS SHELL. A.95 put the shell condition on `boilerSurge`
+ * and NOT on this one, because the surge side was the half the driver caught.
+ * `flowCap` happened to ask `boilerShell` before calling it, so the plant was
+ * right and the function was wrong — which is a landmine, not a bug: the panel
+ * calls it through `boilerRead`, and the next caller would have inherited it.
+ * Found by A.96's sweep of every plant reader across every shell.
+ */
 export function boilerFlow(state: GameState): number {
+  if (!boilerShell(state)) return 0;
   if (!boilerBuilt(state)) return 0;
   let flow = BOILER_FLOOR;
   if (sustainGrowsWithRisk(state)) flow += BOILER_FLOW_PER_RISK * riskedHeat(state);

@@ -12,6 +12,8 @@ import {
   MACHINE_DEMAND, TIER_CAPABILITY, demandOf, flowCap, flowDemand, flowSatisfaction,
   surgeCap, surgeRegen, tierOf, MAX_MACHINE_TIER,
 } from '../../engine/systems/plant';
+import { shellPlantRead } from '../../engine/systems/shellPlants';
+import { boilerRead, boilerShell } from '../../engine/systems/boiler';
 import { CRUSH_BATCH, crushPreview, crushable, nextCrusherTierCost } from '../../engine/systems/crusher';
 import { materialDef, BAND_LABELS } from '../../engine/materials';
 import {
@@ -54,7 +56,22 @@ export function PlantPanel() {
   useGame((s) => s.rev);
   if (!state) return null;
   const st = state as GameState;
-  if (!st.kiln.built) return null; // the Hearth is the Kiln; no kiln, no plant
+  /**
+   * §3.2 — THE CARD NAMES THE SHELL'S OWN PLANT (A.96). It used to say THE
+   * HEARTH everywhere and return null without a Kiln, which was right while all
+   * seven shells ran the Hearth and is wrong now: a Verdance player has never
+   * needed a Kiln to have a Bloom.
+   */
+  const own = shellPlantRead(st);
+  const boiler = boilerShell(st) ? boilerRead(st) : null;
+  if (!own && !boiler && !st.kiln.built) return null;
+
+  const title = own ? own.name : boiler ? 'The Boiler' : 'The Hearth';
+  const shape = own
+    ? own.line
+    : boiler
+      ? (boiler.built ? `heat ${boiler.heat.toFixed(0)}° · risking ${boiler.risked.toFixed(0)}°` : 'No Boiler. Nothing here makes power.')
+      : 'pure Flow, small';
 
   const cap = flowCap(st);
   const want = flowDemand(st);
@@ -62,10 +79,10 @@ export function PlantPanel() {
   const sCap = surgeCap(st);
 
   return (
-    <div className="panel p-3">
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-cave-400">The Hearth</span>
-        <span className="text-[10px] text-cave-500">pure Flow, small</span>
+    <div className="panel p-3" data-testid="plant-card" data-plant={own?.id ?? (boiler ? 'boiler' : 'hearth')}>
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-widest text-cave-400">{title}</span>
+        <span className="truncate text-[10px] text-cave-500">{shape}</span>
       </div>
 
       <div className="space-y-2">

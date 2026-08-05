@@ -48,6 +48,7 @@ import { overclockDraw } from './governor';
 /** §3.2's plant shapes. Runtime-only cycle: every call is inside a function. */
 import { boilerFlow, boilerShell, boilerSurge } from './boiler';
 import { coilSurge } from './coil';
+import { shellFlow, shellSurge } from './shellPlants';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -163,20 +164,29 @@ export function ensurePlant(state: GameState): PlantState {
  * different sizes — which is the exact criticism §3 opens with about v4's
  * single global Draw.
  *
- * The shape is the SHELL'S OWN MACHINE now. A shell that has one is powered by
- * it; a shell that does not keeps the Hearth, which is what it has always had.
- * The Boiler and the Coil are the two that exist; the Bloom, the Prism ceiling
- * and the Null are still the Hearth and are ledgered as such.
+ * The shape is the SHELL'S OWN now. **A.96 finished the table**: six of §3.2's
+ * six shapes exist, and the only shell still running the Hearth is LOAM, whose
+ * shape the Hearth IS. Two are §13 machines (the Coil, the Boiler); three are
+ * read off systems their shells already had (`shellPlants.ts` — the Bloom, the
+ * Prism's ceiling, the Null), because §13's map of forty-one contains none of
+ * them and a plant nobody has to build is not a construction event.
+ *
+ * EVERY SHAPE ASKS ITS OWN SHELL FIRST. A.95 shipped `boilerSurge` without a
+ * shell condition and a Cinder Boiler banked Surge in Ferrite; that is the
+ * defect this ordering exists to make impossible to repeat.
  *
  * DELIBERATE RUNTIME-ONLY CYCLE, same arrangement as `plant ↔ condition`:
- * `boiler.ts` and `coil.ts` import `tierOf` from here and are called from
- * inside function bodies below, never at module scope.
+ * `boiler.ts`, `coil.ts` and `shellPlants.ts` import from here and are called
+ * from inside function bodies below, never at module scope.
  */
 export function flowCap(state: GameState): number {
   const cores = FLOW_PER_RANK * coreNodeLevel(state, 'flowCapacity');
   // CINDER RUNS ON THE BOILER, and on nothing else (§13: "blocks ALL Cinder
   // power"). A hearth is a fire you feed; there is nothing to feed here.
   if (boilerShell(state)) return boilerFlow(state) + cores;
+  // ...and Verdance, Glassmere and the Hollow each run their own (§3.2).
+  const own = shellFlow(state);
+  if (own !== null) return own + cores;
   const hearth = state.kiln.built ? HEARTH_FLOOR + HEARTH_PER_HEAT * state.kiln.heat : 0;
   return hearth + cores;
 }
@@ -184,7 +194,7 @@ export function flowCap(state: GameState): number {
 /** How big the burst can be. */
 export function surgeCap(state: GameState): number {
   return SURGE_FLOOR + SURGE_PER_RANK * coreNodeLevel(state, 'surgeCapacity')
-    + boilerSurge(state) + coilSurge(state);
+    + boilerSurge(state) + coilSurge(state) + shellSurge(state);
 }
 
 export function surgeRegen(state: GameState): number {
