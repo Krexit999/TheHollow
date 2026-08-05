@@ -321,9 +321,15 @@ export function ConditionPanel() {
                       </span>
                     ))}
                   </div>
-                  <div className="mt-0.5 text-[9px] leading-snug text-cave-600">
-                    It started at the {machineName(cascadeChain(st, id)[0]!)}. Put that right and
-                    this comes back.
+                  {/*
+                    `machineName` already carries the article — "The Kiln", not
+                    "Kiln" — so "at the {name}" printed "at the The Kiln". Caught
+                    in a screenshot, by reading it, after every automated check
+                    on this panel had passed.
+                  */}
+                  <div className="mt-0.5 text-[9px] leading-snug text-cave-400">
+                    It started at {machineName(cascadeChain(st, id)[0]!)}. Put that right and this
+                    comes back.
                   </div>
                 </div>
               )}

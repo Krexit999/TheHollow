@@ -132,7 +132,26 @@ function StationRow({ row, tier, pinned, shored, mark, gone }: {
       <div className="flex h-[15px] items-baseline gap-2 text-[10px] leading-[15px] text-cave-600">
         <span className="tnum w-8 shrink-0 text-right">{row.def.depth}</span>
         <span className="min-w-0 flex-1 truncate">{row.def.name}</span>
-        <span className="shrink-0 text-cave-700">·</span>
+        {/*
+          ...AND THE MARK SURVIVES THE FOG (§53 rule 1, and this was a real bug).
+          The marks land on the DEEP half of the Roll, which is exactly the half
+          below the lamp — so a mark only rendered on legible rows was a mark
+          that could never be seen at the moment it appeared. §53's whole
+          "holy-shit moment" is "a station's row CHANGED and you did not do
+          anything to it", and a row you cannot read changing is a better
+          version of that, not a worse one: something happened down there.
+        */}
+        {mark ? (
+          <span
+            className="shrink-0 text-[9px] font-semibold tracking-wide text-[#a8794a]"
+            data-testid={`station-mark-${row.def.id}`}
+            title="the shell changed here. You took enough out of it that it noticed."
+          >
+            {mark}
+          </span>
+        ) : (
+          <span className="shrink-0 text-cave-700">·</span>
+        )}
       </div>
     );
   }

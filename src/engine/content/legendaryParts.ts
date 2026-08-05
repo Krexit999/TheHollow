@@ -82,7 +82,9 @@ export const LEGENDARY_BOOST_MAX = 1.6;
 const deepest = (s: GameState, shell: string): number => s.depthRecords?.[shell] ?? 0;
 const achievementCount = (s: GameState): number =>
   Object.keys(s.achievements?.unlocked ?? {}).length;
-// Combat is gone (A.7x); every past Breach implied a floor was overcome, so
+// The Wardens are gone (A.7x) — not combat; THE STANDOFF is live and fought at
+// the five hazard stations (types.ts). No warden means no felling, so instead:
+// every past Breach implied a floor was overcome, so
 // breachCount is the surviving proxy for wardens felled.
 const wardensFelled = (s: GameState): number => s.shell?.breachCount ?? 0;
 

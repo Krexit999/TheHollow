@@ -153,6 +153,40 @@ export const ABSORB_PER_COMPACTION = 0.55;
  */
 export const MIN_STRIKE_FRACTION = 0.15;
 
+/**
+ * THE TOOL'S OWN STRIKE, WIRED (A.106 ruling: "`strikePower` is computed,
+ * displayed and read by nothing. Wire it or cut it — say which.").
+ *
+ * WIRED, HERE, AND NOWHERE ELSE. The Standoff was already the only place in the
+ * game where the fiction is "you hit something", and it read the tool's TIER
+ * while the tool shelf printed a Strike number beside its Chip number that
+ * nothing anywhere consulted. Two displayed stats, one of them scenery.
+ *
+ * IT IS A LEAN, NOT A LADDER. What is read is the RATIO of the tool's strike to
+ * its chip against the base pick's 3:1 — so a tool forged strike-heavy hits
+ * harder here and one forged chip-heavy hits softer, and the total is
+ * zero-sum-ish rather than a second power curve. Clamped hard in both
+ * directions, because an unclamped ratio is a balance change wearing a
+ * legibility hat: the Deepwrought's HP, the compaction curve and every drop
+ * number underneath it were tuned against `STRIKE_BASE + 3·tier`, and this may
+ * shift that by a quarter at the very most.
+ *
+ * PILLAR 2 IS UNTOUCHED — there is no path from this file to `cellCap`,
+ * `cellRegen` or `chipYield`, which is the same thing this file's header has
+ * said about equipment since it shipped.
+ */
+export const STRIKE_LEAN_BASE = 3;
+export const STRIKE_LEAN_MIN = 0.8;
+export const STRIKE_LEAN_MAX = 1.25;
+
+/** How this particular tool fights, against a plain one of any tier. */
+export function strikeLean(state: GameState): number {
+  const t = state.forge?.tools?.[state.forge.equipped ?? 0];
+  if (!t || !(t.chipPower > 0) || !(t.strikePower > 0)) return 1;
+  const ratio = (t.strikePower / t.chipPower) / STRIKE_LEAN_BASE;
+  return Math.max(STRIKE_LEAN_MIN, Math.min(STRIKE_LEAN_MAX, ratio));
+}
+
 /** The drill line's own contribution, per exchange. */
 export const LINE_DAMAGE: Record<DrillLine, number> = { fullest: 4, sweep: 2, chain: 1 };
 /** CHAIN adds this much per uninterrupted exchange, on top of its base. */
@@ -298,7 +332,7 @@ export function beginStandoff(state: GameState, ctx: EngineCtx): ActionResult {
 /** What a strike is worth right now, after compaction has eaten into it. */
 export function strikeDamage(state: GameState, halved: boolean): number {
   const s = ensureStandoff(state);
-  const base = STRIKE_BASE + STRIKE_PER_TIER * effectiveToolTier(state);
+  const base = (STRIKE_BASE + STRIKE_PER_TIER * effectiveToolTier(state)) * strikeLean(state);
   const landed = Math.max(base * MIN_STRIKE_FRACTION, base - ABSORB_PER_COMPACTION * s.compaction);
   return halved ? landed / 2 : landed;
 }

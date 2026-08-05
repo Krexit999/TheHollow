@@ -326,7 +326,25 @@ export function markReached(state: GameState, depth: number, toolTier: number): 
  * INVERTED, FERAL, BENT, BURNT, DEEP.
  */
 export function markedHere(state: GameState): string[] {
-  return markedStations(state, shellRoll(state).map((d) => ({ id: d.id, depth: d.depth })));
+  return markedStations(state, markable(state));
+}
+
+/**
+ * WHAT CAN BE MARKED, AND WHY THE FLOOR CANNOT.
+ *
+ * The marks land on the deep half of the Roll and the unstable one is always
+ * the deepest of them — which, unfiltered, is the FLOOR. Driven, that is
+ * exactly what happened: SUBSIDENCE took Deepgrave, the way out of the shell,
+ * and a Loam save that crossed its own threshold could no longer Breach.
+ *
+ * A threshold changes what the world DOES. Taking the exit is not a change, it
+ * is a dead end, and §55's "a hole in your geography" is a hole you can walk
+ * around. The floor is not geography; it is the door.
+ */
+function markable(state: GameState): Array<{ id: string; depth: number }> {
+  return shellRoll(state)
+    .filter((d) => d.type !== 'floor')
+    .map((d) => ({ id: d.id, depth: d.depth }));
 }
 
 /**
@@ -339,13 +357,13 @@ export function markedHere(state: GameState): string[] {
  */
 export function crackedHere(state: GameState): string[] {
   if (!subsided(state) || thresholdFor(currentShell(state).id)?.id !== 'subsidence') return [];
-  return markedStations(state, shellRoll(state).map((d) => ({ id: d.id, depth: d.depth })));
+  return markedStations(state, markable(state));
 }
 
 /** ...and the one that is unstable, if this world has one. Loam's, likewise. */
 export function unstableHere(state: GameState): string | null {
   if (crackedHere(state).length === 0) return null;
-  return unstableStation(state, shellRoll(state).map((d) => ({ id: d.id, depth: d.depth })));
+  return unstableStation(state, markable(state));
 }
 
 export function isGone(state: GameState, id: string): boolean {

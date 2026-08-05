@@ -81,7 +81,9 @@ export type FlagLaw =
  *   wardenOptional    "the floor opens without the warden felled" — `breach.ts`
  *                     says it plainly: "Combat is gone (A.7x) — the Floor Warden
  *                     gate went with it". The law would remove a gate that was
- *                     already removed.
+ *                     already removed. (A.106: that quoted comment means the
+ *                     WARDENS, not combat — THE STANDOFF is live. Either way
+ *                     there is no warden gate on the floor for a law to lift.)
  *   guildRemembers    "the Lamphouse is open from minute one of a Recursion" —
  *                     the Guild slice survives only as a stub in
  *                     `migrations.ts` and as achievement LABELS. It is not in

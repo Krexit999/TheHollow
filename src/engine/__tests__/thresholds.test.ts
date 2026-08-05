@@ -212,8 +212,20 @@ describe('§5 LOAM — the marks, the wall that is down, and the hole', () => {
     const rows = shellRoll(s);
     expect(cracked.length, 'nothing cracked').toBeGreaterThan(0);
     expect(cracked.length, 'the whole shell cracked').toBeLessThan(rows.length);
-    const deepest = Math.max(...rows.filter((r) => !cracked.includes(r.id)).map((r) => r.depth));
-    const shallowest = Math.min(...rows.filter((r) => cracked.includes(r.id)).map((r) => r.depth));
+    /**
+     * ...OF EVERYTHING BUT THE FLOOR, and that exception is not tidying. The
+     * unstable station is always the deepest marked row, and unfiltered that is
+     * the FLOOR — driven, SUBSIDENCE took Deepgrave, and a Loam save that
+     * crossed its own threshold could no longer Breach out of the shell. A hole
+     * in your geography is one you walk around. The floor is the door.
+     */
+    const floor = rows.filter((r) => r.type === 'floor');
+    expect(floor.length, 'no floor row to exclude').toBeGreaterThan(0);
+    for (const f of floor) expect(cracked, 'the way out of the shell cracked').not.toContain(f.id);
+
+    const body = rows.filter((r) => r.type !== 'floor');
+    const deepest = Math.max(...body.filter((r) => !cracked.includes(r.id)).map((r) => r.depth));
+    const shallowest = Math.min(...body.filter((r) => cracked.includes(r.id)).map((r) => r.depth));
     expect(shallowest, 'the marks are not the deep half').toBeGreaterThan(deepest);
   });
 

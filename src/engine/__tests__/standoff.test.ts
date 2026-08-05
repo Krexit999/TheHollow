@@ -10,8 +10,9 @@ import { createEngine } from '../index';
 import type { Engine, EngineCtx, GameState } from '../types';
 import {
   COUNTER_STRIKE, DRILL_LINES, ITS_STRIKE, MIN_STRIKE_FRACTION, STANCE_LABEL, STRIKE_BASE,
+  STRIKE_LEAN_BASE, STRIKE_LEAN_MAX, STRIKE_LEAN_MIN,
   beginStandoff, dismissStandoff, ensureStandoff, exchange, hazardHere,
-  lineDamage, setDrillLine, standoffLive, strikeDamage,
+  lineDamage, setDrillLine, standoffLive, strikeDamage, strikeLean,
 } from '../systems/standoff';
 import { shellRoll } from '../systems/roll';
 
@@ -258,5 +259,49 @@ describe('WHAT WAS DELIBERATELY NOT BUILT', () => {
     exchange(st, ctx, 'pry' as never);
     expect(s.exchange).toBe(1);
     expect(s.log.some((l) => /You strike for/.test(l))).toBe(true);
+  });
+});
+
+/**
+ * A.106 RULING — `strikePower` was computed, displayed on the tool shelf beside
+ * Chip, and READ BY NOTHING. It is wired here, in the one place in the game
+ * where the fiction is "you hit something", and these are the checks that it is
+ * genuinely read and genuinely bounded.
+ */
+describe('THE TOOL\'S OWN STRIKE, WIRED (A.106)', () => {
+  /** Forge nothing — just set the two numbers the shelf already prints. */
+  function withTool(chip: number, strike: number): GameState {
+    const st = atHazard();
+    const t = st.forge.tools[st.forge.equipped]!;
+    t.chipPower = chip;
+    t.strikePower = strike;
+    return st;
+  }
+
+  it('a plain 3:1 tool fights exactly as it always did', () => {
+    const st = withTool(1, STRIKE_LEAN_BASE);
+    expect(strikeLean(st)).toBe(1);
+    expect(strikeDamage(st, false)).toBeCloseTo(STRIKE_BASE + 3 * 1, 6);
+  });
+
+  it('a strike-leaning tool hits harder, and a chip-leaning one softer', () => {
+    const plain = strikeDamage(withTool(1, 3), false);
+    const heavy = strikeDamage(withTool(1, 9), false);
+    const light = strikeDamage(withTool(3, 3), false);
+    expect(heavy, 'strikePower is still read by nothing').toBeGreaterThan(plain);
+    expect(light, 'a chip-leaning tool fights the same').toBeLessThan(plain);
+  });
+
+  it('...and it is CLAMPED, hard, in both directions', () => {
+    // Absurd in both directions: a hundred-to-one and a one-to-a-hundred.
+    expect(strikeLean(withTool(1, 100))).toBe(STRIKE_LEAN_MAX);
+    expect(strikeLean(withTool(100, 1))).toBe(STRIKE_LEAN_MIN);
+    expect(STRIKE_LEAN_MAX, 'the clamp is not a clamp').toBeLessThan(1.5);
+    expect(STRIKE_LEAN_MIN).toBeGreaterThan(0.5);
+  });
+
+  it('a tool with no numbers at all fights as a plain one, never as nothing', () => {
+    expect(strikeLean(withTool(0, 0))).toBe(1);
+    expect(strikeDamage(withTool(0, 0), false)).toBeGreaterThan(0);
   });
 });

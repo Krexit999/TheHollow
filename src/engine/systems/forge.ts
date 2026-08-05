@@ -648,7 +648,9 @@ export function registerForgeModifiers(): void {
       return v;
     },
   });
-  // Combat is gone (A.7x). Every gem's combat face (strike/HP) fed only
+  // The Wardens are gone (A.7x) — NOT combat, which came back as THE STANDOFF
+  // thirteen commits later and has been live since (see types.ts). What went
+  // with them is the gem face below: every gem's combat face (strike/HP) fed only
   // combat.ts, which is deleted — the modifier that stacked strike
   // multipliers into a bucket, and gemHpBonus() that summed HP for it, went
   // with it rather than being left registering into the wrong bucket.

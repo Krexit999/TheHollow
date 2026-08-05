@@ -7,6 +7,15 @@ import { IndexedDBStorage } from './platform/idb';
 import { PersistenceController } from './platform/persistence';
 import { startLoop } from './platform/loop';
 import { bindEngine, useGame } from './ui/store';
+import { ModifierCache } from './engine/modifiers';
+import { allUpgrades } from './engine/upgrades';
+import { dpsMax } from './engine/systems/face';
+import { cascadeChain, conditionedMachines } from './engine/systems/condition';
+import { strikeDamage } from './engine/systems/standoff';
+import { shellRoll, unstableHere } from './engine/systems/roll';
+import { THRESHOLDS, thresholdFor } from './engine/content/thresholds';
+import { allAuthoredStations } from './engine/content/rolls';
+import type { GameState } from './engine';
 
 async function boot(): Promise<void> {
   const engine = createEngine({ nowMs: Date.now() });
@@ -22,6 +31,31 @@ async function boot(): Promise<void> {
     const dev = window as unknown as Record<string, unknown>;
     dev['__engine'] = engine;
     dev['__ui'] = useGame;
+    /**
+     * ...AND THE REGISTRIES, so a driver can PROBE rather than transcribe.
+     *
+     * Every one of these is a live registry read or a live engine function. A
+     * verification script that hardcodes "there are six thresholds" or "the
+     * machines are kiln, crusher, refinery" is asserting its own fixture, and
+     * the moment a seventh is authored the instrument keeps passing while the
+     * thing it claims to check has changed underneath it.
+     */
+    dev['__probe'] = {
+      machines: () => conditionedMachines(),
+      chain: (s: GameState, id: string) => cascadeChain(s, id),
+      dps: () => String(dpsMax(engine.getState() as GameState, new ModifierCache())),
+      strike: (s: GameState, halved: boolean) => strikeDamage(s, halved),
+      thresholdIds: () => THRESHOLDS.map((t) => t.id),
+      thresholdAt: (shellId: string) => thresholdFor(shellId)?.at ?? 0,
+      unstable: (s: GameState) => unstableHere(s),
+      shellRoll: (s: GameState) => shellRoll(s).map((d) => ({ id: d.id, depth: d.depth, type: d.type })),
+      upgrades: (s: GameState) => allUpgrades().filter((u) => u.visible?.(s) ?? true).map((u) => u.id),
+      wrecks: () => Object.fromEntries(
+        allAuthoredStations()
+          .filter((x) => x.def.wreck && x.shellId === 'loam')
+          .map((x) => [x.def.wreck as string, { id: x.def.id, name: x.def.name, depth: x.def.depth }]),
+      ),
+    };
   }
 
   // No StrictMode: its deliberate double-mount forces a create+destroy of the
