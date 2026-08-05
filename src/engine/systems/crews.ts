@@ -297,10 +297,12 @@ export function findingAt(state: GameState, crew: Crew, def: StationDef): Findin
   }
 
   /**
-   * "Withdrew from a Deepwrought at 40% condition." A hazard is not fought —
-   * combat is gone (A.7x) — so the crew comes back either way. WHAT IT CAN TELL
-   * YOU is the loadout's job: a lit crew names the place and how bad it was, an
-   * unlit one reports a shape in the dark.
+   * "Withdrew from a Deepwrought at 40% condition." A hazard IS fought — THE
+   * STANDOFF (§27) is live and starts at exactly these stations — but a CREW
+   * never fights one; it walks up to it, reads it, and comes back either way.
+   * That is the division: a crew scouts the hazard, the player answers it.
+   * WHAT IT CAN TELL YOU is the loadout's job: a lit crew names the place and
+   * how bad it was, an unlit one reports a shape in the dark.
    */
   if (kind === 'hazard') {
     const lit = crewLamp(crew) !== null;

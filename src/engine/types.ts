@@ -29,7 +29,11 @@ export interface ToolInstance {
   formerTier?: number;
   /** Live: a dustYield multiplier while equipped. */
   chipPower: number;
-  /** Computed and displayed; does nothing until combat (Phase 5). */
+  /**
+   * Computed and displayed. STILL READ BY NOTHING: THE STANDOFF sizes a strike
+   * off `effectiveToolTier`, not off this (standoff.ts `strikeDamage`). A live
+   * combat system exists and this number is not in it — see types.ts:88.
+   */
   strikePower: number;
   sockets: (string | null)[];
   /** Alloy slots (tier IV+) — the affix system: alloys slot into tools. */
@@ -85,7 +89,12 @@ export interface PolarityState {
 }
 
 // Crucible removed A.7x (crucibleSystem.ts + shell2/alloys.ts cut).
-// Combat removed A.7x (combat/* cut).
+// COMBAT: `combat/*` was cut A.7x (cdffaff) and REBUILT two days later as THE
+// STANDOFF (`systems/standoff.ts`, c5a2c3b, §27) — live, dispatched from
+// actions.ts, panelled in ui/standoff.tsx, fought at the five `hazard` stations
+// in the authored Rolls. What is gone is the old module, the Wardens, gear and
+// species. A comment in this repo saying "combat is gone" means THAT, and
+// several said it in the present tense for twenty phases (corrected A.105).
 
 export interface MaterialsState {
   /** materialId -> band -> stack. Possessions: survive Collapse. */

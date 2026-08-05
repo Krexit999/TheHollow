@@ -3,9 +3,11 @@
  * contracts, and relics. Materials are DATA: 132 across seven shells, each
  * visually defined as palette + facet count + shimmer profile (the art is
  * generated, never drawn). Most are mineable; SIX are Loam REMAINS, dug at named
- * places (`remainsAt`); TWENTY-SIX still say `source: 'combat'` and are therefore
- * obtainable by no route at all, combat having been cut — that is a known, open
- * gap covering five shells, not a description of a working system.
+ * places (`remainsAt`). The twenty-six that once said `source: 'combat'` are
+ * ZERO as of A.90 — re-sourced by PLACE across seven passes. That work was
+ * correct even though combat came back (THE STANDOFF, §27): a Standoff pays out
+ * the STATION's seam (`contentsOf(...).seam`), never `material.source`, so a
+ * combat-tagged stone was unreachable whether or not anything was fighting.
  *
  * Every drop rolls a purity 0-100. Distributions are tight at low rarities
  * and wide at high ones — a Flawless stone with a bad roll should sting.
@@ -37,10 +39,10 @@ export interface MaterialDef {
   shimmer: Shimmer;
   /**
    * MATERIALS THAT DO NOT COME OUT OF THE RARITY TABLE.
-   *   'combat'  — the Deepwrought dropped them. COMBAT IS CUT (types.ts:88),
-   *               so every one of these is unobtainable by any route. 31 of the
-   *               registry's orphans are stranded here; A.84 re-sourced Loam's
-   *               six and the other 26 are ledgered, not fixed.
+   *   'combat'  — the Deepwrought dropped them. NOW UNUSED: the count is zero
+   *               (A.90) and the member is kept only so a save written before
+   *               then still parses. Do not tag anything with it. Combat is
+   *               live again (THE STANDOFF) and does not read this field.
    *   'deep'    — the compaction gates drop them (systems/compaction.ts).
    *   'remains' — they are IN THE ROCK, at named places. See `remainsAt`.
    * Every pool in this file filters on `!m.source`, so one flag keeps a

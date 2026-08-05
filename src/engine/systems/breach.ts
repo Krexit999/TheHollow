@@ -39,8 +39,10 @@ export function canBreach(state: GameState): boolean {
   return (
     state.depth >= currentShell(state).floorDepth &&
     nextShell(state) !== null &&
-    // Combat is gone (A.7x) — the Floor Warden gate went with it, a wall
-    // with no door dropped rather than left standing.
+    // The Floor WARDEN gate went with `combat/*` at A.7x — a wall with no door
+    // dropped rather than left standing. Wardens did NOT come back with THE
+    // STANDOFF (§27 ships one enemy, at hazard stations, optional), so there is
+    // still nothing to fight at a floor and this stays a keystone gate.
     // THE KEYSTONE (Part B): the floor must be shored — by the shell's own
     // system, or the Guild's slow haul. No def, no gate (stubs III–VII).
     keystoneSatisfied(state) &&

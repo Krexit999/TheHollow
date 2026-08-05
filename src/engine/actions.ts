@@ -892,7 +892,8 @@ export function handleAction(
     case 'touchCore': {
       if (state.shell.current !== 'aleph') return { ok: false, reason: 'The Core is at the bottom of everything, not here' };
       if (state.depth < 40) return { ok: false, reason: 'Deeper. It is always deeper' };
-      // Combat is gone (A.7x) — the final Warden gate went with it.
+      // The final WARDEN gate went with `combat/*` at A.7x. THE STANDOFF (§27)
+      // did not restore Wardens, so touching the Core is still ungated.
       state.aleph.coreTouched = true;
       ctx.emit({ type: 'coreTouched' });
       return { ok: true };
