@@ -54,6 +54,7 @@ import type { EngineCtx, GameState } from '../types';
 import type { ModifierCache } from '../modifiers';
 import { traitsOf, type TraitId } from '../traits';
 import { currentShell } from '../shells';
+import { shellRoll } from './roll';
 import { MACHINE_DEMAND, ensurePlant, tierOf } from './plant';
 /**
  * THE THIRD DELIBERATE CYCLE, and it follows the same discipline as the two
@@ -162,6 +163,66 @@ export interface ConditionRule {
   writing: (state: GameState, machineId: string, mods: ModifierCache) => boolean;
 }
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THE FLOOD LEAK (§36.1 clause 4), WIRED AT A.99 — and it is a CUT WHOSE REASON
+ * DISSOLVED, which PILLARS says to go back and re-test rather than treat as
+ * settled.
+ *
+ * `flood.ts` cut this at A.89 and said exactly why: *"its heat leaks into any
+ * machine working there (§7.2) — E2 is not built. A machine has tiers,
+ * served-Flow and the parts it was cast from, and no CONDITION a station could
+ * warp."* **E2 shipped at A.90.** The machine has a condition now, so the only
+ * thing the cut was waiting for is standing right here.
+ *
+ * WHAT LEAKS: a drowned station is permanently hot, so working the band it sits
+ * in reads hotter than the shaft actually is. The bonus is per flooded station
+ * in reach, which is what makes §36.1's HEAT CORRIDOR a real thing — flooding
+ * three adjacent stations does not just make three hot places, it makes the
+ * stretch between them warp a plant faster than any of them would alone.
+ *
+ * IT COSTS IN BOTH DIRECTIONS, and that is §36.1's own wording. `baked` is not
+ * a bonus: a machine cast `warm` gets quicker as it bakes, and one cast
+ * `brittle` SEIZES and will not run until it is re-cast. So a corridor is a
+ * place your `warm` plant loves and your `brittle` plant dies in, and you chose
+ * where it is.
+ *
+ * PILLAR 2 AND ITEM 8 — THE TERRAFORM STILL PAYS NOTHING. This writes a
+ * CONDITION and nothing else. `flood.test.ts` has asserted since A.89 that the
+ * drop table is bit-identical either side of a flood, and this file's own header
+ * states there is no path from a condition to `cellCap`, `cellRegen` or
+ * `chipYield`. What a flood buys is still certainty — a seam that never
+ * re-rolls — and what it now also buys is a place with weather.
+ *
+ * NOTHING IS WRITTEN TO `pressure.ts`. The shaft's real heat is untouched;
+ * this is a read-side term, used by exactly one rule, and the Cinder signature
+ * cannot tell the difference.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+/** How far up-shaft a drowned station is still felt. */
+export const LEAK_REACH = 20;
+/** ...and how much each one in reach adds to what the plant thinks it is in. */
+export const LEAK_PER_STATION = 14;
+
+/** Flooded stations whose heat reaches the depth the player is working at. */
+export function leakingStations(state: GameState): string[] {
+  const drowned = state.roll?.flooded ?? [];
+  if (drowned.length === 0) return [];
+  const here = state.depth ?? 0;
+  const out: string[] = [];
+  for (const def of shellRoll(state)) {
+    if (!drowned.includes(def.id)) continue;
+    if (Math.abs(def.depth - here) <= LEAK_REACH) out.push(def.id);
+  }
+  return out;
+}
+
+/** The heat a machine working here BELIEVES it is in. Never written anywhere. */
+export function leakedHeat(state: GameState): number {
+  return (state.pressure?.heat ?? 0) + LEAK_PER_STATION * leakingStations(state).length;
+}
+
 export const CONDITION_RULES: ConditionRule[] = [
   {
     shellId: 'cinder',
@@ -169,8 +230,9 @@ export const CONDITION_RULES: ConditionRule[] = [
     label: 'Baked',
     effect: 'A warm frame runs quicker the longer it bakes. A brittle one cracks.',
     // The shell's own heat, which `pressure.ts` keeps for its own reasons. This
-    // READS the signature and never writes to it.
-    writing: (s) => (s.pressure?.heat ?? 0) >= BAKE_HEAT,
+    // READS the signature and never writes to it — plus whatever a drowned
+    // station leaks into the band you are standing in (§36.1, wired A.99).
+    writing: (s) => leakedHeat(s) >= BAKE_HEAT,
   },
   {
     shellId: 'verdance',

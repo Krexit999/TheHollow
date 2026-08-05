@@ -21,6 +21,7 @@ import {
 import { materialDef, BAND_LABELS } from '../../engine/materials';
 import {
   RECAST_PART_COST, bandOfMachine, conditionLine, conditionedMachines, litBands,
+  leakedHeat, leakingStations,
   observePlant, recastBlocker, ruleFor,
 } from '../../engine/systems/condition';
 import {
@@ -209,6 +210,24 @@ export function ConditionPanel() {
         <span className="text-[10px] text-cave-500">{rule.label}</span>
       </div>
       <p className="mb-1.5 text-[9px] leading-snug text-cave-500">{rule.effect}</p>
+
+      {/**
+        * THE FLOOD LEAK, SAID OUT LOUD (§36.1, A.99). A drowned station makes
+        * the band it sits in read hotter than the shaft is, and a player whose
+        * plant is suddenly baking at heat 40 deserves to be told why rather
+        * than left to infer a corridor. LAW 3 — show the destination.
+        */}
+      {leakingStations(st).length > 0 && (
+        <div
+          className="mb-1.5 rounded border border-[#7a4426]/60 bg-[#1c1210]/60 px-1.5 py-1 text-[9px] leading-snug text-[#c98a5e]"
+          data-testid="flood-leak-line"
+        >
+          {leakingStations(st).length} drowned station
+          {leakingStations(st).length === 1 ? '' : 's'} in this band.
+          The plant works as though the shaft were at {Math.round(leakedHeat(st))}, not{' '}
+          {Math.round(st.pressure?.heat ?? 0)}.
+        </div>
+      )}
 
       <div className="space-y-1">
         {machines.map((id) => {

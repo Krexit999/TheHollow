@@ -37,11 +37,23 @@
  *   "its grain collapses to a single direction"  — GRAIN IS CUT (bd9f3ae).
  *                                                  There is no direction to set.
  *   "its heat leaks into any machine working
- *    there (§7.2)"                              — E2 is not built. A machine has
- *                                                  tiers, served-Flow and the
- *                                                  parts it was cast from, and no
- *                                                  CONDITION a station could warp.
- *                                                  Ledgered unbuilt since A.85.
+ *    there (§7.2)"                              — **WIRED AT A.99.** This cut
+ *                                                  named its blocker exactly —
+ *                                                  "E2 is not built... no
+ *                                                  CONDITION a station could
+ *                                                  warp" — and E2 SHIPPED AT
+ *                                                  A.90, nine passes ago. The
+ *                                                  reason dissolved and the cut
+ *                                                  outlived it, which is the
+ *                                                  failure PILLARS warns about
+ *                                                  under "a cut is provisional".
+ *                                                  It lives in `condition.ts` as
+ *                                                  `leakedHeat`: a drowned
+ *                                                  station makes its band read
+ *                                                  hotter than the shaft is, so
+ *                                                  `warm` frames quicken and
+ *                                                  `brittle` ones SEIZE — both
+ *                                                  directions, as §36.1 asks.
  *
  * THE PRICE IS EMBER, NOT THE HEAT BANK. §36.1 says "a full heat bank"; Cinder's
  * heat lives in `systems/pressure.ts`, which is the shell's LOCKED signature, and
