@@ -183,6 +183,14 @@ export const AXIOMS: AxiomDef[] = [
     shown: (s) => (s.runes?.carveTrail?.length ?? 0) > 0,
   },
   {
+    id: 'standingorder', name: 'The Standing Order',
+    rule: 'A recalled crew keeps working from the stair.',
+    flavor: 'You told them to come up. They said they would finish the row first.',
+    cost: 2, slot: 'crewAlwaysWorks', flags: ['crewAlwaysWorks'],
+    // The subject arrived in the same pass this rule did (§25.4, A.99).
+    shown: (s) => (s.crews?.crews?.length ?? 0) > 0,
+  },
+  {
     id: 'greenmantle', name: 'The Green Mantle',
     rule: 'A harvested cell comes back already vined.',
     flavor: 'You take the fruit and put the cell down and it has not let go.',

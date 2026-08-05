@@ -33,6 +33,7 @@ import { tickPlant } from './systems/plant';
 import { tickCircuit } from './systems/circuit';
 import { tickCondition } from './systems/condition';
 import { tickResidue } from './systems/witness';
+import { tickCrews } from './systems/crews';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
 import { tickDrills } from './systems/drills';
@@ -202,6 +203,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // an unwatched plant leaves behind (§13, systems/witness.ts). Same block,
       // same field — it reads the condition tickCondition just wrote.
       tickResidue(state, verdAcc);
+      // CREWS (§25.4). Same 1Hz block, and for the same reason: a crew moves
+      // every 45s and appends strings. It mines nothing, so nothing downstream
+      // of it cares when in the second it ran.
+      tickCrews(state, ctx, verdAcc);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

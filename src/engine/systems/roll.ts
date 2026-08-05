@@ -30,6 +30,7 @@ import {
   FEATURE_LABEL, ROLL_FEATURES, authoredRoll, type RollFeature, type StationDef, type StationType,
 } from '../content/rolls';
 import { currentShell } from '../shells';
+import { resolveFindings } from './crews';
 import { isRemembered, isSampled } from './assayBench';
 import { grantWreckGear, wearing } from './gear';
 
@@ -250,6 +251,15 @@ export function markReached(state: GameState, depth: number, toolTier: number): 
       }
     }
   }
+  /**
+   * ...AND A CREW'S FINDING IS RESOLVED BY BEING STOOD IN (§25.4, A.99).
+   *
+   * Hung here rather than given a verb of its own, because "go down there and
+   * resolve it personally" is not a button — it is the same walking-into that
+   * loots a wreck and clears a wall, three lines above. A finding cannot be
+   * cleared by spending, waiting, or clicking, which is the entire loop.
+   */
+  resolveFindings(state);
   return newly;
 }
 

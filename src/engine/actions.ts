@@ -35,6 +35,7 @@ import { buildCultivarBench, cropBed, seedBed } from './systems/cultivar';
 import { buildCoil } from './systems/coil';
 import { buildFrame, setGrain, setHold } from './systems/frame';
 import { makeRecord, seatPart } from './systems/seats';
+import { dismissCrew, dispatchCrew, recallCrew } from './systems/crews';
 import { buildAxiomEngine, redraft, writeRule } from './systems/axiomEngine';
 import { buildSeating, setBequest, setBequestMachine } from './systems/seating';
 import { endSpecified, pourSpecified, setBand, setDefect } from './systems/specify';
@@ -317,6 +318,15 @@ export function handleAction(
 
     case 'redraftRule':
       return redraft(state, ctx, action.axiomId);
+
+    case 'dispatchCrew':
+      return dispatchCrew(state, ctx, action.driftId);
+
+    case 'recallCrew':
+      return recallCrew(state, ctx, action.id);
+
+    case 'dismissCrew':
+      return dismissCrew(state, ctx, action.id);
 
     case 'seatPart':
       return seatPart(state, ctx, action.seat);

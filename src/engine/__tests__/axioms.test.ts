@@ -96,14 +96,13 @@ describe('every Axiom writes a slot something actually reads', () => {
     expect(all.length).toBeGreaterThan(15);          // it really found the slots
     const unread = all.filter((slot) => !reads(slot));
     /**
-     * ONE LEFT, AND IT IS NAMED RATHER THAN TOLERATED. `crewAlwaysWorks` is
-     * "recalled crew keep working from the stair", and crews are the next thing
-     * this brief builds — so its subject is arriving, unlike the four cut
-     * beside it. This assertion is exact, not a floor: when `crews.ts` lands
-     * the expected value becomes `[]` and this line has to change, which is the
-     * point. A `toHaveLength(<= 1)` here would let a second one in silently.
+     * NONE LEFT. This read `['crewAlwaysWorks']` for exactly one commit — the
+     * slot had a name and no subject since Phase 10, and `crews.ts` gave it one
+     * in the next commit of the same pass. The assertion is exact rather than a
+     * threshold on purpose: a `toHaveLength(<= 1)` would have let a second dead
+     * name in without anybody noticing, which is how the first eight got there.
      */
-    expect(unread, 'slots with a name and no reader').toEqual(['crewAlwaysWorks']);
+    expect(unread, 'slots with a name and no reader').toEqual([]);
   });
 
   it('no two Axioms share an id, and every declared slot matches its payload', () => {

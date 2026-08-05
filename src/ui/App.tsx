@@ -30,6 +30,7 @@ import { SpiralPanel, RelicsPanel } from './components/longtail';
 import { Compendium } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 import { RollPanel } from './components/roll';
+import { CrewsPanel } from './components/crews';
 
 /**
  * Only the ACTIVE panel renders. `hidden` is a CSS class — React still builds
@@ -58,6 +59,8 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
           screen rather than a card inside another room, because "where am I
           going" is a question you ask by clicking SHAFT. */}
       {only('shaft') && <RollPanel />}
+      {/* CREWS (§25.4) walk the drifts, so they live beside them. */}
+      {only('shaft') && <CrewsPanel />}
       {/* THE DRIFTS are a thing you do TO the Roll, so they live under it. */}
       {only('shaft') && <ShoringPanel />}
       {only('shaft') && <FloodPanel />}

@@ -706,6 +706,8 @@ export interface GameState {
   axiomEngine?: import('./systems/axiomEngine').AxiomEngineState;
   /** THE SEVEN SEATS (§4, A.97) — the terminal craft's frame. Rides Recursion. */
   seats?: import('./systems/seats').SeatsState;
+  /** CREWS (§25.4, A.99) — who is down a drift, and what they could not decide. */
+  crews?: import('./systems/crews').CrewsState;
   /** TRANSMUTATION (§14.4) — the worth ledger, and what the bench has eaten. */
   balance?: import('./systems/balance').BalanceState;
   /** ESSENCE WORK (§14.1) — vials the Still drew, and what the Infuser made. */
@@ -952,6 +954,8 @@ export type GameEvent =
   | { type: 'silenceHarvest'; stacks: number; voidGained: Decimal }
   | { type: 'cellRebuilt'; cell: number; total: number; grains?: string[] }
   | { type: 'recordMade' }
+  | { type: 'crewSent'; crew: string; drift: string }
+  | { type: 'crewFinding'; crew: string; line: string }
   | { type: 'ruleWritten'; axiomId: string; owned: number }
   | { type: 'worldPoured'; poured: number; carried: string[] }
   | { type: 'worldSpecified'; bands: string[]; defect: string }
@@ -1213,6 +1217,9 @@ export type GameAction =
   | { type: 'buildAxiomEngine' }
   | { type: 'writeRule'; axiomId: string }
   | { type: 'redraftRule'; axiomId: string }
+  | { type: 'dispatchCrew'; driftId: string }
+  | { type: 'recallCrew'; id: number }
+  | { type: 'dismissCrew'; id: number }
   | { type: 'seatPart'; seat: import('./systems/seats').SeatId }
   | { type: 'makeRecord' }
   | { type: 'setGrain'; grain: import('./systems/frame').GrainId }
