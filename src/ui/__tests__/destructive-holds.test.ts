@@ -105,6 +105,13 @@ describe('a reset layer is never one click away', () => {
  * found the game bug and the next one will be found the same way.
  */
 describe('a driver may not match a destructive button by prefix', () => {
+  /**
+   * THE RULE IS ANCHORED, NOT ONE EXACT STRING. Two different controls begin
+   * with these words and a driver may legitimately want either — the modal's
+   * dismiss (`/^Begin again$/`) or the RECURSION itself
+   * (`/^Begin again, knowing/`). What is forbidden is the UNANCHORED form,
+   * which matches both and picks whichever is first in the DOM.
+   */
   it('every "Begin again" matcher in every script is anchored', () => {
     const bad: string[] = [];
     for (const f of readdirSync('scripts')) {
@@ -115,9 +122,14 @@ describe('a driver may not match a destructive button by prefix', () => {
         const l = lines[i]!;
         if (!l.includes('Begin again')) continue;
         if (l.includes('//') || l.includes('*')) continue;      // a comment about it
-        if (!l.includes('/^Begin again$/')) bad.push(`scripts/${f}:${i + 1}  ${l.trim()}`);
+        if (!l.includes('/^Begin again')) bad.push(`scripts/${f}:${i + 1}  ${l.trim()}`);
       }
     }
     expect(bad).toEqual([]);
+  });
+
+  it('...and it rejects the unanchored form, which is the one that bit', () => {
+    const loose = `const b = page.getByRole('button', { name: /Begin again/ });`;
+    expect(loose.includes('Begin again') && !loose.includes('/^Begin again')).toBe(true);
   });
 });
