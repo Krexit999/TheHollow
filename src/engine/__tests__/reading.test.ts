@@ -9,6 +9,7 @@
  * here is a STRUCTURAL check against the source, not a behavioural one.
  */
 import { describe, expect, it } from 'vitest';
+import { raiseWreck } from './wrecks';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngine } from '../index';
@@ -106,6 +107,15 @@ describe('notes are novelty, never repetition', () => {
     const { s } = fresh();
     expect(visiblePropositions(s)).toHaveLength(0);
     note(s, ctx, 'firstGate');
+    /**
+     * ...AND UNTIL THE DESK IS FOUND (A.106). Quillrest, Loam 98, carries THE
+     * READING and was read by nothing. A note is something you NOTICED and
+     * needs no desk; a proposition is a sentence that changes a rule, and you
+     * cannot have one until you have found the desk somebody wrote it at.
+     * Holding the note is now necessary and not sufficient.
+     */
+    expect(visiblePropositions(s), 'a question arrived before its desk').toHaveLength(0);
+    raiseWreck(s, 'THE READING');
     const shown = visiblePropositions(s);
     expect(shown.length).toBeGreaterThan(0);
     expect(shown.every((p) => p.notes <= 1)).toBe(true);

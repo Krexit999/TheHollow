@@ -79,7 +79,27 @@ export const VERDANCE_ROLL: StationDef[] = [
     line: 'Six kinds of root arguing over one seam, and all six of them winning.',
   },
   {
-    id: 'mulchworks', depth: 22, name: 'The Mulchworks', type: 'wreck', wreck: 'THE RENDERY',
+    /**
+     * THE RENDERY IS GONE FROM THIS ROW, and it is the one of A.106's six that
+     * could not be wired: THERE IS NO RENDERY. MACHINE_DEMAND holds twenty-nine
+     * machines and no rendery is among them, and Verdance's five - Still 30,
+     * Cultivar Bench 40, Press 120, Line 172, Infuser 225 - each already has
+     * its own wreck. There was nothing to gate.
+     *
+     * The three machines with no wreck were each wrong for a different reason:
+     * the WASHER is explicitly built at the Crusher rather than at a station
+     * (washer.ts says so, and gives the reason), and the ASSAY BENCH and
+     * LAPIDARY are not Verdance machines. Inventing a Rendery to justify one
+     * word would be a whole system authored to make a label true - LAW 7's
+     * warning arriving through the content door.
+     *
+     * So the payload comes OFF rather than being pointed at something it does
+     * not mean. The Mulchworks stays exactly what it is: a WRECK, still
+     * lootable, still paying its gear (which is keyed on the STATION id, not on
+     * this field). It simply stops advertising a machine this game lacks. Its
+     * line already says what happened here without naming a device.
+     */
+    id: 'mulchworks', depth: 22, name: 'The Mulchworks', type: 'wreck',
     seams: ['mosscoal', 'chlorite'], remains: ['mothspool'],
     line: 'It rendered green things down to something that would keep. It is still warm and it still drips.',
   },

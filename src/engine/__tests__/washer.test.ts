@@ -8,6 +8,7 @@
  *   4  PILLAR 2
  */
 import { describe, expect, it } from 'vitest';
+import { raiseWreck } from './wrecks';
 import { createEngine } from '../index';
 import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
@@ -169,11 +170,12 @@ describe('2 — grit + solvent → concentrate + silt', () => {
   });
 
   it('AND THE REFINERY EATS IT — §13\'s "everything the Refinery eats"', () => {
+    // A.106: the bench opens at Sinter Row, Loam 60 — not at Ferrite mastery.
     const st = withWasher(1);
     addMaterial(st, CRUSH_PRODUCT, 50, 16);
     for (let i = 0; i < 4; i++) wash(st, ctx, CRUSH_PRODUCT, 'fair');
     expect(materialCount(st, CONCENTRATE)).toBe(4);
-    st.depthRecords['ferrite'] = 400;                 // the Refinery's own gate
+    raiseWreck(st, 'REFINERY');                       // Sinter Row, Loam 60 (A.106)
     const r = refine(st, ctx, CONCENTRATE, 'good');
     expect(r.ok, r.reason).toBe(true);
     expect(Object.keys(st.materials.stacks[CONCENTRATE] ?? {})).toContain('fine');

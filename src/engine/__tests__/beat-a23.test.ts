@@ -20,6 +20,8 @@
  * band wide enough to always pass.
  */
 import { describe, expect, it } from 'vitest';
+import { wreckFound } from '../systems/roll';
+import { KILN_WRECK } from '../systems/kiln';
 import { createEngine } from '../index';
 import type { Engine, GameState } from '../types';
 import { fieldDims } from '../systems/face';
@@ -73,6 +75,22 @@ function playActive(engine: Engine, minutes: number): BeatResult {
     }
 
     if (Math.floor(t) !== Math.floor(t - STEP)) {
+      /**
+       * ...AND IT WALKS (A.106). The Kiln is raised at Kiln Yard, LOAM 9 — the
+       * row is invisible until the wreck is looted — so a policy that only
+       * chips and buys can never light it, and this driver measured null for
+       * every beat downstream of it.
+       *
+       * That is the pacing change stated as code rather than as a claim: §23's
+       * Kiln beat used to be a PRICE (500 Dust, payable at depth 0) and is now
+       * a WALK. The driver descends whenever it can afford the next step, which
+       * is what an active player does anyway and what  has always done.
+       */
+      // ...but only until the Yard is under its feet. An UNBOUNDED descender
+      // spends every coin on the next step and never banks the 500 for the
+      // Kiln — the first draft of this measured 24:55 for that reason, which is
+      // a harness artifact and not a beat. A player walks to nine and stops.
+      if (!wreckFound(s, KILN_WRECK)) engine.dispatch({ type: 'descend' });
       if (upgradeLevel(s, 'kilnBuild') === 0) {
         const r = engine.dispatch({ type: 'buyUpgrade', id: 'kilnBuild' });
         if (r.ok && result.kilnBuiltAt === null) {
@@ -106,6 +124,7 @@ describe('§23 beats, against the live path (bands, not floors)', () => {
   it('the Kiln goes up near 3:00 — measured band 1:00-4:00', () => {
     const engine = createEngine({ nowMs: 0 });
     const r = playActive(engine, SIM_MINUTES);
+    console.log('  A.106 MEASURED  kiln lit at ' + r.kilnBuiltAt?.toFixed(0) + 's, depth-9 walk included');
     expect(r.kilnBuiltAt).not.toBeNull();
     expect(r.kilnBuiltAt!).toBeGreaterThanOrEqual(60);
     expect(r.kilnBuiltAt!).toBeLessThanOrEqual(240);
@@ -164,6 +183,7 @@ describe('§23 beats, against the live path (bands, not floors)', () => {
   it('field 8x8 is NOT reached by 12:00 against the live path — it lands near 30:00', () => {
     const engine = createEngine({ nowMs: 0 });
     const r = playActive(engine, SIM_MINUTES);
+    console.log('  A.106 MEASURED  8x8 at ' + r.field8x8At?.toFixed(0) + 's');
     expect(r.field8x8At).not.toBeNull();
     // The prose's claim, stated as a band around 12:00 — and disproven.
     expect(r.field8x8At!).toBeGreaterThan(15 * 60);

@@ -101,18 +101,60 @@ for (const [key, wreck] of [...wreckOf].sort()) {
  * This is a REPORT, not a failure. Wiring a payload to its system would change
  * WHEN that system unlocks, which is pacing, and pacing is a ruling.
  */
+const STRIP = (s: string) => s
+  .replace(/\/\*[\s\S]*?\*\//g, ' ')
+  .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
+  .replace(/`(?:[^`\\]|\\.)*`/g, ' ');
+
 const wreckReaders = new Set<string>();
 for (const dir of [SYS, join('src', 'engine'), join('src', 'ui')]) {
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.ts') || x.endsWith('.tsx'))) {
-    for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/'([A-Z][A-Z ']{2,})'/g)) {
+    /**
+     * A PROSE MENTION IS NOT A READER (A.91, and again here). The raw scan
+     * counts a wreck name written in a comment explaining why something is NOT
+     * wired — which is exactly the sentence a dead payload attracts. Comments
+     * and template literals come out before matching, and the probe below
+     * plants both cases every run so this cannot quietly stop working.
+     */
+    for (const m of STRIP(readFileSync(join(dir, f), 'utf8')).matchAll(/'([A-Z][A-Z ']{2,})'/g)) {
       wreckReaders.add(m[1]!);
     }
   }
 }
+/**
+ * ── THE PAYLOAD-WITH-NO-READER CHECK IS NOW A FAILURE (A.106, item 4) ────────
+ *
+ * It shipped at A.104 as a REPORT, on the stated grounds that wiring a payload
+ * changes WHEN a system unlocks and pacing is a ruling. The ruling came: all
+ * six were dealt with — five wired to their machines, and THE RENDERY struck
+ * from its row because no such machine exists. With the class closed, leaving
+ * the check advisory would let the next one accumulate exactly as these six
+ * did: silently, for the whole project, behind a green audit.
+ *
+ * So a station whose `wreck:` names something nothing reads is a BUILD FAILURE.
+ * Author a payload and you wire it in the same pass, or you do not write it.
+ */
 const inert: string[] = [];
 for (const st of stations) {
   if (st.def.wreck && !wreckReaders.has(st.def.wreck)) {
     inert.push(`   ${st.shellId} ${String(st.def.depth).padStart(4)}  ${st.def.name} — "${st.def.wreck}" is read by nothing`);
+  }
+}
+
+/**
+ * AND THE CHECK CHECKS ITSELF, in both directions, every run. An audit that has
+ * quietly stopped matching reports a clean sheet, which is indistinguishable
+ * from the thing it exists to find.
+ */
+const selfTest: string[] = [];
+{
+  const hit = (src: string, name: string) =>
+    [...STRIP(src).matchAll(/'([A-Z][A-Z ']{2,})'/g)].some((m) => m[1] === name);
+  if (!hit(`const X = 'A PLANTED WRECK';`, 'A PLANTED WRECK')) {
+    selfTest.push('the wreck-reader scan no longer matches a real declaration');
+  }
+  if (hit(`/* nothing reads 'A PROSE ONLY WRECK' */`, 'A PROSE ONLY WRECK')) {
+    selfTest.push('the wreck-reader scan counts a comment as a reader');
   }
 }
 
@@ -307,9 +349,15 @@ for (const r of rows) {
 }
 
 if (inert.length > 0) {
-  console.log('\n── STATIONS WHOSE WRECK PAYLOAD IS READ BY NOTHING (a report, not a failure) ──');
+  console.log('\n!! STATIONS WHOSE WRECK PAYLOAD IS READ BY NOTHING — BUILD FAILURE (A.106) !!');
   for (const i of inert) console.log(i);
-  console.log('   Each system is still reachable by another gate; the named PLACE pays nothing.');
+  console.log('   A named place that pays nothing is §22.5 as scenery. Wire it, or strike the row.');
+  bad += inert.length;
+}
+if (selfTest.length > 0) {
+  console.log('\n!! THE WRECK-READER SCAN IS BROKEN — its own probe failed !!');
+  for (const s of selfTest) console.log(`   ${s}`);
+  bad += selfTest.length;
 }
 
 if (walls.length > 0) {

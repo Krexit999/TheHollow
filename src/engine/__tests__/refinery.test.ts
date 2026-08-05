@@ -18,9 +18,10 @@ import { isRollSource } from '../content/rolls';
 import type { GameState } from '../types';
 import { MATERIALS, gateOfMaterial, materialDef, BANDS, BAND_RANGES, bandOf, workedMaterials, materialsOfShell, rollDrop } from '../materials';
 import { addMaterial, materialCount, recipeDef, equippedTool } from '../systems/forge';
+import { wreckStation } from '../systems/roll';
 import {
   CHAINS, climbPreview, findChain, refine, refinePreview, refineTo, transmute, REFINE_RATIO,
-  REFINERY_MASTERY, refineryUnlocked, transmuteUnlocked, SLAG_MATERIAL,
+  REFINERY_WRECK, refineryUnlocked, transmuteUnlocked, SLAG_MATERIAL,
 } from '../systems/refinery';
 import { allBridges, needsCatalyst } from '../systems/reaction';
 import { salvageTool, salvagePreview, SALVAGE_RESIDUE } from '../systems/salvage';
@@ -32,9 +33,14 @@ const fresh = () => {
   return { engine, s: engine.getState() as GameState };
 };
 /** Open the whole bench. */
+/**
+ * THE BENCH OPENS AT ITS WRECK (A.106), not at Ferrite mastery. Sinter Row is
+ * LOAM 60, and the gate used to read two shells away from it - so this fixture
+ * used to stand the player in Ferrite to open a Loam station's room.
+ */
 const openBench = (s: GameState) => {
-  s.depthRecords['ferrite'] = 200;
-  s.shell.current = 'ferrite';
+  const at = wreckStation(REFINERY_WRECK)!;
+  (s.roll ??= { rolled: {}, cleared: [], looted: [], rolls: 0 }).looted.push(at.def.id);
 };
 
 describe('salvage never throws on the starter tool (the Refinery black-screen)', () => {
@@ -72,8 +78,15 @@ describe('refining makes purity workable', () => {
     const { s } = fresh();
     expect(refineryUnlocked(s)).toBe(false);
     expect(refine(s, ctx, 'marl', 'poor').ok).toBe(false);
-    s.depthRecords['ferrite'] = REFINERY_MASTERY * 10;
+    // Ferrite mastery does NOT open it any more - the wreck does, and the wreck
+    // is in LOAM. A world with maxed Ferrite and an unraised Sinter Row is shut.
+    s.depthRecords['ferrite'] = 500;
+    expect(refineryUnlocked(s), 'mastery still opens the bench').toBe(false);
+    openBench(s);
     expect(refineryUnlocked(s)).toBe(true);
+    // ...and it is LOAM 60, which is the whole point of the ruling.
+    const at = wreckStation(REFINERY_WRECK)!;
+    expect([at.shellId, at.def.depth]).toEqual(['loam', 60]);
   });
 
   it('turns three of a band into one of the band above', () => {

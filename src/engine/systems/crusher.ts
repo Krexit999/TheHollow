@@ -29,6 +29,7 @@ import {
   canFire, emitsByproduct, fire, retainsBand, tierOf, TIER_PART_COST, MAX_MACHINE_TIER,
 } from './plant';
 import { machineSpeed } from './condition';
+import { wreckBlocker, wreckFound } from './roll';
 import { accepts, filterOf, filterSentence } from './sieve';
 import { isReserved, reservedBlocker } from './reserve';
 import {
@@ -81,7 +82,26 @@ export function nextCrusherTierCost(state: GameState): number | null {
  * stock, and a player who has poured a legendary head should not lose it to a
  * machine chassis because it happened to be at the front of the list.
  */
+/** The wreck it is in: The Long Cut, Loam 47 (S6, S22.5). */
+export const CRUSHER_WRECK = 'CRUSHER';
+
+export function crusherFound(state: GameState): boolean {
+  return wreckFound(state, CRUSHER_WRECK);
+}
+
+/**
+ * THE LONG CUT IS THE GATE (A.106). S22.5 authors it - "a crusher drum with a
+ * shattered liner at 47" - and the row said CRUSHER while the machine cost
+ * nothing but cast parts and was buildable from depth zero. The place was
+ * scenery.
+ *
+ * Checked FIRST, before the parts, so the refusal names the walk rather than
+ * the price: a player who has the parts and not the place is told where to go,
+ * which is LAW 3 in one line.
+ */
 export function buildCrusher(state: GameState, ctx: EngineCtx): ActionResult {
+  const blocked = wreckBlocker(state, CRUSHER_WRECK);
+  if (blocked) return { ok: false, reason: blocked };
   const cost = nextCrusherTierCost(state);
   if (cost === null) return { ok: false, reason: 'The Crusher is at its last tier' };
   const rack = state.casting.rack ?? [];

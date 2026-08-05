@@ -10,13 +10,14 @@
  * you what came out. Found chains live in the Codex below it.
  */
 import { useState } from 'react';
+import { wreckBlocker } from '../../engine/systems/roll';
 import { getCurrency, fmt } from '../../engine';
 import type { GameState } from '../../engine';
 import { BANDS, BAND_LABELS, materialDef, type PurityBand } from '../../engine/materials';
 import { materialCount, toolRecipeName, equippedTool } from '../../engine/systems/forge';
 import {
   refineryUnlocked, transmuteUnlocked, refinePreview, climbPreview, foundChains,
-  REFINE_RATIO, REFINERY_MASTERY, benchReading, scentOf,
+  REFINE_RATIO, REFINERY_WRECK, benchReading, scentOf,
 } from '../../engine/systems/refinery';
 import {
   catalystReading, catalystsHeld, needsCatalyst, pairClass,
@@ -104,8 +105,10 @@ export function RefineryPanel() {
   if (!refineryUnlocked(state)) {
     return (
       <div className="panel p-4 text-center text-xs italic text-cave-400">
-        A stone trough, a bellows, and a rack of tongs, all of it cold. It answers to Ferrite
-        Mastery {REFINERY_MASTERY} — the smiths will not open it for an apprentice.
+        {/* LAW 3: name the PLACE, never the price. The old copy named a Ferrite
+            mastery level for a bench standing in Loam. */}
+        A stone trough, a bellows, and a rack of tongs, all of it cold. There is one already
+        built and nobody has been back for it. {wreckBlocker(state as GameState, REFINERY_WRECK)}
       </div>
     );
   }

@@ -7,10 +7,11 @@ import { D } from '../../decimal';
 import { registerModifier } from '../../modifiers';
 import { registerUpgrade, stat, upgradeLevel } from '../../upgrades';
 import type { GameState } from '../../types';
-import { newDrill, defaultDrillName, MAX_DRILLS } from '../../systems/drills';
+import { newDrill, defaultDrillName, DRILL_WRECK, MAX_DRILLS } from '../../systems/drills';
+import { KILN_WRECK } from '../../systems/kiln';
 import { rigFound } from '../../systems/shoring';
 import { floodgateFound } from '../../systems/flood';
-import { ensureRoll } from '../../systems/roll';
+import { ensureRoll, wreckFound } from '../../systems/roll';
 
 const hasKiln = (s: GameState) => s.kiln.built;
 const hasBay = (s: GameState) => s.drills.bayBuilt;
@@ -128,6 +129,18 @@ export function registerShell1Upgrades(): void {
     id: 'kilnBuild',
     name: 'Raise the Kiln',
     currency: 'CHIP',
+    /**
+     * THE WRECK IS THE GATE (S22.5, A.106). Kiln Yard sits at Loam 9 and its
+     * row has read 'THE KILN' since the Roll was authored, wired to nothing.
+     * Before this, the first machine in the game was a 500-Dust purchase you
+     * could make standing at depth 0, and the named place that is supposed to
+     * BE the Kiln was scenery you walked past on the way to buying one.
+     *
+     * PACING MOVES, AND THAT IS THE POINT rather than a side effect: S23's Kiln
+     * beat becomes the walk to nine instead of the price. Measured either side
+     * and reported; deliberately not tuned back.
+     */
+    visible: (s) => wreckFound(s, KILN_WRECK),
     baseCost: D(500),
     ratio: 1,
     maxLevel: 1,
@@ -170,8 +183,27 @@ export function registerShell1Upgrades(): void {
     resetsOnCollapse: false,
     // The bay's rails need deeper anchoring. Once proven (or once you've
     // breached), the technique is yours in every shell.
-    visible: (s) => hasKiln(s)
-      && ((s.depthRecords['loam'] ?? 0) >= BAY_DEPTH_UNLOCK.depth || s.shell.breachCount > 0),
+    /**
+     * THE UNDERSILL, LOAM 28.
+     *
+     * NOT the A.42 inversion - THAT WAS ALREADY FIXED, and claiming otherwise
+     * here would be exactly the second-hand assertion PILLARS warns about.
+     * PILLARS still describes the bay unlocking at depth record 55 against a
+     * tier-II wall at 44; the CODE has read BAY_DEPTH_UNLOCK = { depth: 35 }
+     * since 24c3ab5, which is nine depths clear of the wall. The document is
+     * the stale one. Measured before writing this comment.
+     *
+     * So what this changes is smaller, and different in kind: 35 -> 28, and a
+     * DEPTH becomes a PLACE. S22.5 authored the place - "a seized drill at 28"
+     * - and the row has said A DRILL since the Roll existed, read by nothing,
+     * while the bay opened on a bare depth record seven depths past it. The
+     * gate was never wrong; it was never anywhere.
+     *
+     * BAY_DEPTH_UNLOCK is kept and asserted against the wreck's depth in test,
+     * so the two numbers cannot drift into disagreeing quietly. A Breach still
+     * carries the technique, exactly as before.
+     */
+    visible: (s) => hasKiln(s) && (wreckFound(s, DRILL_WRECK) || s.shell.breachCount > 0),
     description: () => `Rails, a winch, and a place to bolt down machines that dig while you think. The anchoring needed depth ${BAY_DEPTH_UNLOCK.depth} to hold.`,
     onPurchase: (s) => {
       s.drills.bayBuilt = true;

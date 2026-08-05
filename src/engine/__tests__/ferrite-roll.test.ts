@@ -15,6 +15,7 @@
  *   6  what the shell can now support: shoring, the Circuit, gear at a REST
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { wreckStation } from '../systems/roll';
 import { createEngine } from '../index';
 import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
@@ -148,11 +149,33 @@ describe('1 — the geography (§1, §1.1)', () => {
     }
   });
 
-  it('every WRECK names what was lost there', () => {
-    for (const { shellId, def } of allAuthoredStations()) {
-      if (def.type !== 'wreck') continue;
-      expect(def.wreck, `${shellId}/${def.id}`).toBeTruthy();
+  it('every WRECK that names a machine names one that EXISTS (A.106)', () => {
+    /**
+     * THE ASSERTION CHANGED SHAPE, and the weaker-sounding version is the
+     * stronger one. It used to demand that every wreck carry a `wreck:` label,
+     * which is satisfied by writing any words at all — and that is exactly how
+     * six payloads (THE KILN, A DRILL, CRUSHER, REFINERY, THE READING, THE
+     * RENDERY) sat naming machines nothing read, for the whole project, under a
+     * green test.
+     *
+     * A label is not a payload. What matters is that the name resolves to
+     * something the game HAS, so this asserts the readable half instead:
+     * `wreckFound` must answer for it. The Mulchworks now carries no label at
+     * all, deliberately — there is no Rendery in `MACHINE_DEMAND` and Verdance's
+     * five machines each have their own wreck, so the row was struck rather
+     * than pointed at something it does not mean. `audit-reach` is the check
+     * that a LABELLED payload has a live reader; this is the check that a
+     * labelled payload is at least resolvable.
+     */
+    const labelled = allAuthoredStations().filter((x) => x.def.type === 'wreck' && x.def.wreck);
+    expect(labelled.length).toBeGreaterThan(25);
+    for (const { shellId, def } of labelled) {
+      expect(wreckStation(def.wreck!), `${shellId}/${def.id} names "${def.wreck}"`).toBeTruthy();
     }
+    // ...and the one that carries none is named here, so removing it silently
+    // is a failing test rather than a quiet drift back to scenery.
+    const bare = allAuthoredStations().filter((x) => x.def.type === 'wreck' && !x.def.wreck);
+    expect(bare.map((x) => x.def.id)).toEqual(['mulchworks']);
   });
 
   it('every station says one line, and no station is nameless', () => {

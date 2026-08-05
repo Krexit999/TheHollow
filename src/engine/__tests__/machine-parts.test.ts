@@ -11,6 +11,8 @@
  * MUCH it returns. `CRUSH_OUTPUT` is asserted identical across every build.
  */
 import { describe, expect, it } from 'vitest';
+import { raiseWreck } from './wrecks';
+import { CRUSHER_WRECK } from '../systems/crusher';
 import { createEngine } from '../index';
 import type { Engine, EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
@@ -30,6 +32,7 @@ function bench(materialId: string, tier = 1): { engine: Engine; s: GameState } {
   }));
   const p = ensurePlant(s);
   p.surge = 9999;
+  raiseWreck(s, CRUSHER_WRECK); // The Long Cut, Loam 47 (A.106)
   for (let t = 0; t < tier; t++) engine.dispatch({ type: 'buildCrusher' });
   p.surge = 9999;
   return { engine, s };

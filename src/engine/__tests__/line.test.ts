@@ -43,6 +43,12 @@ function racked(st: GameState, n: number): GameState {
 /** A player who has walked Ferrite AND Verdance — the Line is Verdance's. */
 function walked(): GameState {
   const st = createEngine({ nowMs: 0 }).getState() as GameState;
+  // LOAM FIRST (A.106): the Crusher is gated on The Long Cut at Loam 47, so a
+  // fixture that starts a Line with a Crusher in it has to have walked Loam,
+  // exactly like a player. Through markReached, not by writing roll.looted —
+  // the point of the gate is that it is crossed the same way in both.
+  st.shell.current = 'loam';
+  markReached(st, 150, 15);
   st.shell.current = 'verdance';
   markReached(st, 290, 15);
   st.shell.current = 'ferrite';

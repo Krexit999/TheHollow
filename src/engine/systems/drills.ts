@@ -77,6 +77,12 @@ export function defaultDrillName(index: number): string {
   return DRILL_NAMES[index] ?? `Drill ${index + 1}`;
 }
 
+/**
+ * THE WRECK THE BAY IS IN: The Undersill, Loam 28 (S22.5) - A.106. Declared
+ * beside the machine; see KILN_WRECK for why that placement is load-bearing.
+ */
+export const DRILL_WRECK = 'A DRILL';
+
 export function newDrill(name?: string): DrillState {
   return { level: 0, timer: 0, lastCell: 0, use: {}, name };
 }

@@ -62,6 +62,18 @@ export function lightOverstoke(state: GameState, mods: ModifierCache): { ok: boo
   return { ok: true };
 }
 
+/**
+ * THE WRECK IT IS IN: Kiln Yard, Loam 9 (S6, S22.5) - A.106.
+ *
+ * Declared HERE and not at the upgrade row that reads it, which is the
+ * convention STILL_WRECK, PRESS_WRECK, LINE_WRECK and SHORING_RIG_WRECK already
+ * follow. It is not tidiness: audit-reach's payload-with-no-reader scan walks
+ * systems/, src/engine and src/ui, and NOT the per-shell content directories,
+ * so a wreck name living only in a content file reads as unwired even when it
+ * is wired. The audit caught exactly that, the first time this shipped.
+ */
+export const KILN_WRECK = 'THE KILN';
+
 // 2 dust/sec base: ~70% of idle income (2.88/s) or ~12% of active income —
 // feeding the kiln is a real early-game tension, not a tax you can't refuse.
 export const KILN_BASE_RATE = 2;

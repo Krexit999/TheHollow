@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { raiseWreck } from './wrecks';
 import { D } from '../decimal';
 import { createEngine } from '../index';
 import { deserialize, serialize, type SavePayload } from '../save/codec';
@@ -12,6 +13,10 @@ function populatedState(): GameState {
   const s = engine.getState() as GameState;
   engine.dispatch({ type: 'debug', op: 'grant', currency: 'dust', amount: 1e6 });
   engine.dispatch({ type: 'buyUpgrade', id: 'blade', count: 5 });
+  // A.106: the Kiln row is invisible until Kiln Yard (Loam 9) is raised, so the
+  // purchase below refuses without this — the fixture buys through the REAL
+  // dispatch, which is why it caught the gate at all.
+  raiseWreck(s, 'THE KILN');
   engine.dispatch({ type: 'buyUpgrade', id: 'kilnBuild' });
   s.currencies['dust'] = D('1.23e45'); // force a genuinely big Decimal
   s.depth = 17;
@@ -32,6 +37,11 @@ describe('save round-trip', () => {
 
   it('preserves structure: face, upgrades, kiln, depth', () => {
     const s = populatedState();
+    // A.106: the Kiln is raised at Kiln Yard, Loam 9. The fixture sets
+    // `kiln.built` directly, which is still what a purchase writes — but the
+    // ROLL has to remember the walk, or the round-trip restores a Kiln whose
+    // gate is shut and the save is not the state that produced it.
+    raiseWreck(s, 'THE KILN');
     const back = deserialize(serialize(s, 0));
     expect(back.face.w).toBe(s.face.w);
     expect(back.face.cells).toEqual(s.face.cells);

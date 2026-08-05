@@ -4,6 +4,7 @@
  * here; these are the guarantees the UI leans on.
  */
 import { describe, expect, it, beforeEach } from 'vitest';
+import { raiseWreck } from './wrecks';
 import { createEngine } from '../index';
 import type { Engine, GameState } from '../types';
 import { getCurrency } from '../resources';
@@ -219,7 +220,7 @@ describe('auto-refine — a standing rule that only ever converts (pillar 2)', (
   it('pushes a low band up toward the target, losing count on the way', () => {
     const { s } = fresh();
     const st = s();
-    st.depthRecords['ferrite'] = 30; // mastery 3 opens the Refinery
+    raiseWreck(st, 'REFINERY'); // Sinter Row, Loam 60 — the wreck IS the gate (A.106)
     expect(refineryUnlocked(st)).toBe(true);
     addMaterial(st, 'marl', 5, 30); // 30 units at the 'poor' floor
     st.qol.refinePresets.push({ materialId: 'marl', toBand: 'good', enabled: true });

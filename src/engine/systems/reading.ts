@@ -22,6 +22,7 @@
  */
 import type { EngineCtx, GameState } from '../types';
 import { NOTES, PROPOSITIONS, propositionById, type Tally } from '../content/shell1/reading';
+import { wreckFound } from './roll';
 
 export interface ReadingState {
   /** Note ids held. Novelty, so a Set semantically — an array on the save. */
@@ -112,7 +113,34 @@ export function noteCount(state: GameState): number {
 
 /** Propositions whose note cost is met. LAW 3: the player sees these as
  *  QUESTIONS; nothing below this line is visible at all. */
+/** The wreck the desk is in: Quillrest, Loam 98 (S6, S22.5). */
+export const READING_WRECK = 'THE READING';
+
+export function readingFound(state: GameState): boolean {
+  return wreckFound(state, READING_WRECK);
+}
+
+/**
+ * QUILLREST GATES THE PROPOSITIONS, NOT THE NOTES (A.106).
+ *
+ * S22.5's row at Loam 98 says THE READING and was read by nothing. The obvious
+ * wiring - gate the whole Desk on the wreck - would have been wrong: notes
+ * accrue from the first deep gate, minutes in, and a room that opens on your
+ * first note is an authored early beat. Gating it at 98 would have deleted that
+ * beat to pay for this one.
+ *
+ * So the split follows what the two halves ARE. A NOTE is something you
+ * noticed, and you can notice things without a desk. A PROPOSITION is a
+ * sentence that changes a rule, and you cannot have one of those until you have
+ * found the desk somebody wrote them at. Before Quillrest the room is your own
+ * notes; after it, the questions arrive.
+ *
+ * LAW 3 holds either way: an unproven proposition shows its QUESTION and never
+ * its effect, and before the wreck it shows nothing at all - no locked list, no
+ * count, no silhouette of nine rows you cannot open.
+ */
 export function visiblePropositions(state: GameState): typeof PROPOSITIONS {
+  if (!readingFound(state)) return [];
   const held = noteCount(state);
   return PROPOSITIONS.filter((p) => p.notes <= held);
 }

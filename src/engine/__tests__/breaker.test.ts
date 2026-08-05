@@ -12,6 +12,8 @@
  *   6  PILLAR 2 — it returns what you spent, at a loss, and never a unit more
  */
 import { beforeEach, describe, expect, it } from 'vitest';
+import { raiseWreck } from './wrecks';
+import { CRUSHER_WRECK } from '../systems/crusher';
 import { createEngine } from '../index';
 import { D } from '../decimal';
 import { ModifierCache } from '../modifiers';
@@ -329,6 +331,7 @@ describe('6 — PILLAR 2: it returns what you spent, never more', () => {
 describe('7 — a built machine back to its parts', () => {
   function withCrusher(tier: number): GameState {
     const st = withBreaker(1);
+    raiseWreck(st, CRUSHER_WRECK); // The Long Cut, Loam 47 (A.106)
     racked(st, 12, 'ironbloom');
     for (let i = 0; i < tier; i++) buildCrusher(st, ctx);
     return st;

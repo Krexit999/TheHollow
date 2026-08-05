@@ -27,7 +27,7 @@ import type { GameState } from '../types';
 /** §31.2's COLD ROLL defect. False outside a live poured world. Runtime-only. */
 import { rollFrozen } from './specify';
 import {
-  FEATURE_LABEL, ROLL_FEATURES, authoredRoll, type RollFeature, type StationDef, type StationType,
+  FEATURE_LABEL, ROLL_FEATURES, allAuthoredStations, authoredRoll, type RollFeature, type StationDef, type StationType,
 } from '../content/rolls';
 import { currentShell } from '../shells';
 import { resolveFindings } from './crews';
@@ -210,6 +210,42 @@ export function isFlooded(state: GameState, id: string): boolean {
 
 export function isLooted(state: GameState, id: string): boolean {
   return state.roll?.looted.includes(id) ?? false;
+}
+
+/**
+ * THE WRECK IS THE GATE (S22.5, A.106) - one mechanism, for all of them.
+ *
+ * Six wreck payloads named a machine and were read by NOTHING for the whole
+ * project: THE KILN, A DRILL, CRUSHER, REFINERY, THE READING, THE RENDERY.
+ * Three are S6 keystones. Every one of those systems was still reachable by a
+ * different gate, so every structural check passed while six named places on
+ * the Roll paid exactly nothing - S22.5 existing as scenery.
+ *
+ * The pattern was already here, written longhand in five separate files
+ * (STILL_WRECK, PRESS_WRECK, LINE_WRECK, CULTIVAR_WRECK, SHORING_RIG_WRECK),
+ * each with its own xFound. That duplication is why six more could be authored
+ * without one: there was no single symbol to be missing from. There is now, and
+ * audit-reach counts its call sites as a build failure rather than a report.
+ *
+ * SEARCHES EVERY AUTHORED SHELL, not the one you are standing in. A looted
+ * wreck is permanent through Collapse, Breach and Recursion, so "have I ever
+ * raised this" must not depend on where I happen to be.
+ */
+export function wreckFound(state: GameState, wreck: string): boolean {
+  const at = allAuthoredStations().find((s) => s.def.wreck === wreck);
+  return at ? isLooted(state, at.def.id) : false;
+}
+
+/** Where it lies, for the refusal line. LAW 3: name the PLACE, never the price. */
+export function wreckStation(wreck: string): { shellId: string; def: StationDef } | null {
+  return allAuthoredStations().find((s) => s.def.wreck === wreck) ?? null;
+}
+
+/** "It is still in the wreck at Sinter Row, loam 60." Worded once. */
+export function wreckBlocker(state: GameState, wreck: string): string | null {
+  if (wreckFound(state, wreck)) return null;
+  const at = wreckStation(wreck);
+  return at ? `It is still in the wreck at ${at.def.name}, ${at.shellId} ${at.def.depth}.` : `No ${wreck}.`;
 }
 
 /** What a station reads as NOW: a looted WRECK is a WORKS, forever. */

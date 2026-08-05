@@ -35,6 +35,7 @@ import {
   VIOLENT_BONUS, bridges, catalystReading, pairClass,
   type CatalystRead, type PairClass,
 } from './reaction';
+import { wreckFound } from './roll';
 
 // ---------------------------------------------------------------------------
 // Refining — purity becomes workable
@@ -44,10 +45,27 @@ import {
 export const REFINE_RATIO = 3;
 
 /** The Refinery opens on Ferrite Mastery — it is a Ferrite-era bench. */
-export const REFINERY_MASTERY = 3;
+/** The wreck it is actually in: Sinter Row, Loam 60 (S6, S22.5). */
+export const REFINERY_WRECK = 'REFINERY';
 
+/**
+ * THE REFINERY OPENS AT SINTER ROW, WHICH IS WHERE IT IS (A.106 ruling).
+ *
+ * It used to read masteryLevel(state, 'ferrite') >= 3 while Sinter Row - the
+ * station whose row says REFINERY - sits at LOAM 60. Two shells apart. S6's own
+ * line is "Sinter Row 60 - THE REFINERY - every part stays common; the game
+ * ends at Bricklight", and Bricklight is Loam's tier-II wall at 44, so S6
+ * stated a consequence that could not happen: no Loam player could reach the
+ * room at all. A.104's three-hour census measured exactly that - depth records
+ * of 138-145 with the Refinery dark.
+ *
+ * The mastery gate was not wrong so much as UNRELATED: it described a
+ * Ferrite-era bench, and the geography had already decided otherwise.
+ * REFINERY_MASTERY is gone rather than kept as a second condition - two gates
+ * on one door is how the first one stops being read.
+ */
 export function refineryUnlocked(state: GameState): boolean {
-  return masteryLevel(state, 'ferrite') >= REFINERY_MASTERY;
+  return wreckFound(state, REFINERY_WRECK);
 }
 
 /** The band above this one, or null at the top. */
@@ -404,9 +422,20 @@ export function benchReading(
   };
 }
 
+/**
+ * TRANSMUTATION KEEPS A MASTERY GATE, and that is deliberate.
+ *
+ * The wreck gates the BENCH - the room, the door, the place. What the deeper
+ * half of the bench asks for is competence, not geography, and shell mastery is
+ * the only thing in this codebase that measures competence. The two gates
+ * answer different questions and neither is a spare copy of the other; the
+ * constant is named here rather than derived from a deleted one, so nothing
+ * reads as though it were the same rule applied twice.
+ */
+export const TRANSMUTE_MASTERY = 6;
+
 export function transmuteUnlocked(state: GameState): boolean {
-  // Transmutation is the deeper half of the same bench.
-  return masteryLevel(state, 'ferrite') >= REFINERY_MASTERY + 3;
+  return masteryLevel(state, 'ferrite') >= TRANSMUTE_MASTERY;
 }
 
 /**

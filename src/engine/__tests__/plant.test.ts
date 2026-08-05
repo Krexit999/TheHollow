@@ -7,6 +7,7 @@
  * capability-versus-capability.
  */
 import { describe, expect, it } from 'vitest';
+import { raiseWreck } from './wrecks';
 import { createEngine } from '../index';
 import type { Engine, EngineCtx, GameState } from '../types';
 import { ModifierCache } from '../modifiers';
@@ -157,6 +158,12 @@ describe('MACHINE TIERS ARE CAPABILITIES (§15.4), built from cast parts', () =>
   it('is built out of the rack, not bought with currency', () => {
     const { s } = fresh();
     const st = s();
+    // A.106: The Long Cut, Loam 47, before the rack means anything. The refusal
+    // ordering is deliberate — the PLACE is checked before the price — so this
+    // has to be raised first or the "empty rack" line below tests the wrong
+    // refusal and passes for the wrong reason.
+    expect(buildCrusher(st, nullCtx).reason).toContain('The Long Cut');
+    raiseWreck(st, 'CRUSHER');
     expect(buildCrusher(st, nullCtx).ok).toBe(false); // empty rack
     st.casting.rack = Array.from({ length: 2 }, (_, i) => ({
       id: i + 1, type: 'head', materialId: 'marl', purity: 50,
