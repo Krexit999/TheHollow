@@ -13,6 +13,7 @@ import { D } from '../decimal';
 import { requiredTier } from './forge';
 import { markReached } from './roll';
 import { findAt, tickDead } from './dead';
+import { stationGaveWay } from './roll';
 
 /**
  * WHAT ONE TIER SHORT COSTS AT THE STAIR, compounding per tier. Three was the
@@ -206,6 +207,17 @@ function finishDescend(state: GameState, mods: ModifierCache, ctx: EngineCtx): A
    */
   for (const id of markReached(state, state.depth, effectiveToolTier(state))) {
     ctx.emit({ type: 'stationReached', id, depth: state.depth });
+  }
+  /**
+   * ...AND ONE OF THEM MAY NOT BE THERE WHEN YOU ARRIVE (§53 SUBSIDENCE, §55
+   * row 6). You are put back up the shaft and the station is off the Roll for
+   * the rest of this world. Deliberately AFTER the reach loop: everything on
+   * the way down still counts, and what you lose is the arrival.
+   */
+  const fell = stationGaveWay(state, state.depth);
+  if (fell) {
+    state.depth = fell.to;
+    ctx.emit({ type: 'stationCollapse', id: fell.id, to: fell.to });
   }
   /**
    * AND THE DEAD ARE LYING ON IT (§48.1). Same walking-in, same permanence, and

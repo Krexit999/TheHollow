@@ -51,6 +51,7 @@
  *                           polarity chain is long, and READ by the Sieve.
  */
 import type { EngineCtx, GameState } from '../types';
+import { bandCount } from './thresholds';
 import type { ModifierCache } from '../modifiers';
 import { traitsOf, type TraitId } from '../traits';
 import { currentShell } from '../shells';
@@ -337,17 +338,22 @@ export function ruleOf(id: ConditionId): ConditionRule | undefined {
  * the rule happen.
  */
 export function bandOfMachine(state: GameState, machineId: string): number {
+  // THE BEND (§53) opens a seventh. Everything that reads a band reads the
+  // count, so the new one is a real place to stand a machine and not a label —
+  // and a plant spread over seven has fewer neighbours one band along, which is
+  // the cascade above reading the threshold without being told about it.
+  const n = bandCount(state);
   const set = state.plant?.bands?.[machineId];
-  if (typeof set === 'number') return Math.max(0, Math.min(5, set));
+  if (typeof set === 'number') return Math.max(0, Math.min(n - 1, set));
   const idx = conditionedMachines().indexOf(machineId);
-  return idx < 0 ? 0 : idx % 6;
+  return idx < 0 ? 0 : idx % n;
 }
 
 export function setMachineBand(state: GameState, machineId: string, band: number): boolean {
   if (!conditionedMachines().includes(machineId)) return false;
   const p = ensurePlant(state);
   p.bands ??= {};
-  p.bands[machineId] = Math.max(0, Math.min(5, Math.floor(band)));
+  p.bands[machineId] = Math.max(0, Math.min(bandCount(state) - 1, Math.floor(band)));
   return true;
 }
 
@@ -369,20 +375,20 @@ export function setMachineBand(state: GameState, machineId: string, band: number
 export function litBands(state: GameState): Set<number> {
   const out = new Set<number>();
   if (currentShell(state).id !== 'glassmere') {
-    for (let i = 0; i < 6; i++) out.add(i);
+    for (let i = 0; i < bandCount(state); i++) out.add(i);
     return out;
   }
   const carried = carriedBands(state);
   if (carried.length > 0) {
     for (const b of carried) out.add(b);
-    if (out.has(0)) for (let i = 0; i < 6; i++) out.add(i); // white IS all of them
+    if (out.has(0)) for (let i = 0; i < bandCount(state); i++) out.add(i); // white IS all of them
     return out;
   }
   // Imported lazily through the state rather than the module so this file does
   // not depend on the renderer's trace cache. `refraction.path` is what the
   // beam last traced, which is what the player can see.
   for (const seg of state.refraction?.path ?? []) out.add(seg.color ?? 0);
-  if (out.has(0)) for (let i = 0; i < 6; i++) out.add(i); // pre-Split white lights everything
+  if (out.has(0)) for (let i = 0; i < bandCount(state); i++) out.add(i); // pre-Split white lights everything
   return out;
 }
 

@@ -38,6 +38,8 @@ import { nextPipeCost, VENT_SHAFT_CELL, holdLine, heatCeiling } from '../src/eng
 import { ventArrayBuilt } from '../src/engine/systems/vents';
 import { UNTOLD } from '../src/engine/content/untold';
 import { progressOf, NEAR_AT } from '../src/engine/systems/untold';
+import { THRESHOLDS } from '../src/engine/content/thresholds';
+import { crossed, takenIn } from '../src/engine/systems/thresholds';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { REMAINS_TUNING } from '../src/engine/materials';
 import {
@@ -176,6 +178,7 @@ interface Args {
    */
   census: boolean;
   untold: boolean;
+  thresholds: boolean;
 }
 
 function parseArgs(): Args {
@@ -226,6 +229,7 @@ function parseArgs(): Args {
     pipes: get('pipes') !== 'off',
     census: argv.includes('--census'),
     untold: argv.includes('--untold'),
+    thresholds: argv.includes('--thresholds'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -2344,6 +2348,28 @@ function main(): void {
    * wants — a condition a 3h run never gets a quarter of the way to is one an
    * ordinary player will not meet by accident either.
    */
+  /**
+   * §53 (A.106) — HOW FAR THIS RUN GOT INTO EACH SHELL'S THRESHOLD.
+   *
+   * The same question `--untold` asks, for the same reason: a threshold the run
+   * never gets a quarter of the way to is one an ordinary player will not cross
+   * by accident either, and `at` is a claim until this prints a percentage
+   * beside it. Not a tuning knob — a reading.
+   */
+  if (args.thresholds) {
+    console.error('');
+    console.error(`THRESHOLDS @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · shell ${currentShell(s).id}`);
+    for (const def of THRESHOLDS) {
+      const got = takenIn(s, def.shellId);
+      const pct = def.at > 0 ? (got / def.at) * 100 : 0;
+      const entered = def.shellId === currentShell(s).id || (s.depthRecords[def.shellId] ?? 0) > 0;
+      console.error(
+        `  ${def.shellId.padEnd(10)} ${def.id.padEnd(11)} ${got.toFixed(0).padStart(7)}/${String(def.at).padEnd(6)} ` +
+        `${pct.toFixed(1).padStart(6)}%  ${crossed(s, def.id) ? 'CROSSED' : '       '}` +
+        `${entered ? '' : '  (shell never entered — 0 by construction)'}`,
+      );
+    }
+  }
   if (args.untold) {
     console.error('');
     console.error(`UNTOLD @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · shell ${currentShell(s).id}`);

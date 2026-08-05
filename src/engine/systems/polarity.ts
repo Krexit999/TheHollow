@@ -15,6 +15,7 @@
  * their column 85% toward the chosen pole — determinism, purchased.
  */
 import { D, Decimal } from '../decimal';
+import { bankChain, flipped } from './thresholds';
 import type { ModifierCache } from '../modifiers';
 import { addCurrency, spendCurrency } from '../resources';
 import type { ActionResult, EngineCtx, GameState } from '../types';
@@ -67,8 +68,17 @@ export function defaultPolarityState(): GameState['polarity'] {
 function rollSign(state: GameState, cell: number): number {
   const col = cell % state.face.w;
   const pole = state.polarity.magnets[col] ?? 0;
-  if (pole !== 0 && Math.random() < magnetBias(state)) return pole;
-  return Math.random() < 0.5 ? 1 : -1;
+  /**
+   * THE GREAT FLIP (§53). The shell inverted, so every sign it rolls from here
+   * reads the other way — INCLUDING the one a Keeper Magnet rigs, which is the
+   * whole cost of the threshold: the columns you paid to make predictable are
+   * the ones your hands are most wrong about. The DISTRIBUTION is untouched
+   * (still half and half, still `magnetBias` on a rigged column), so nothing
+   * about what the face pays moves; what moves is which way you cut.
+   */
+  const flip = flipped(state) ? -1 : 1;
+  if (pole !== 0 && Math.random() < magnetBias(state)) return pole * flip;
+  return (Math.random() < 0.5 ? 1 : -1) * flip;
 }
 
 /** Keep the sign array in step with the face (expansion, rebuilds). */
@@ -117,6 +127,11 @@ function polarityChipMult(
     pol.chain = Math.min(pol.chain + 1, chainCap(state));
     mult = Math.pow(chainBase(state, mods, strength), pol.chain - 1);
     if (pol.chain > pol.bestChain) pol.bestChain = pol.chain;
+    // §53 — "total chain length banked", the one measure the shell was not
+    // already keeping a running total of. Banked into the THRESHOLD slice
+    // rather than onto PolarityState, so it survives a Collapse that washes
+    // the board and resets with the world, which is the whole ruling.
+    bankChain(state, 1);
     if (pol.chain >= LODESTONE_CHAIN_MIN) {
       // Long chains shed Lodestone — scaled by signature strength so carried
       // polarity keeps old currencies alive in later shells (by design).

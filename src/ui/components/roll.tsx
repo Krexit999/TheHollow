@@ -18,7 +18,8 @@
  * that for itself could drift out of agreement with the fog.
  */
 import { useGame } from '../store';
-import { rollRows, floorRow, FEATURE_LABEL, type RollRow } from '../../engine/systems/roll';
+import { rollRows, floorRow, isGone, markedHere, FEATURE_LABEL, type RollRow } from '../../engine/systems/roll';
+import { thresholdFor } from '../../engine/content/thresholds';
 import { TYPE_LABEL } from '../../engine/content/shell1/roll';
 import { materialDef } from '../../engine/materials';
 import { effectiveToolTier } from '../../engine/systems/toolMining';
@@ -80,9 +81,35 @@ function contentsLine(row: RollRow, tier: number): { text: string; tone: string 
  * engine one: `legible` stays false for the floor, because the fog over its
  * contents is real.
  */
-function StationRow({ row, tier, pinned, shored }: { row: RollRow; tier: number; pinned?: boolean; shored?: boolean }) {
+function StationRow({ row, tier, pinned, shored, mark, gone }: {
+  row: RollRow; tier: number; pinned?: boolean; shored?: boolean; mark?: string; gone?: boolean;
+}) {
   const t = TYPE_LABEL[row.type];
   const tone = TYPE_TONE[row.type] ?? 'text-cave-400';
+
+  /**
+   * §53 RULE 3 — THE HOLE (§55 row 6). A station this world took back reads as
+   * a struck row and nothing else: no type, no seam, no hardness, because there
+   * is nothing there to read. It is left ON the Roll rather than removed from
+   * it, which is the entire point — "a 300-hour save has two or three holes in
+   * its Roll and they are the most legible thing on it."
+   */
+  if (gone) {
+    return (
+      <div className="flex items-baseline gap-2 py-[4px] text-[12px] opacity-70" data-testid={`station-${row.def.id}`}>
+        <span className="w-2 shrink-0 text-transparent">▸</span>
+        <span className="tnum w-8 shrink-0 text-right text-cave-600">{row.def.depth}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold text-cave-600 line-through">{row.def.name}</span>
+        <span
+          className="shrink-0 text-[9px] font-semibold tracking-wide text-[#8a5a4a]"
+          data-testid={`station-gone-${row.def.id}`}
+          title="it gave way while you were in it, and it does not come back"
+        >
+          GONE
+        </span>
+      </div>
+    );
+  }
 
   if (pinned && !row.legible) {
     return (
@@ -129,6 +156,21 @@ function StationRow({ row, tier, pinned, shored }: { row: RollRow; tier: number;
         one will never hold anything else — otherwise the price of the drift is
         only legible on the screen that sold it to you.
       */}
+      {/*
+        §53 RULE 3 — VISIBLE ON THE ROLL. "The Roll becomes a record of what you
+        did to the place." The word is the threshold's own — CRACKED, INVERTED,
+        FERAL, BENT, BURNT, DEEP — so the marker names what happened rather than
+        printing a generic badge the player has to go and look up.
+      */}
+      {mark && (
+        <span
+          className="shrink-0 text-[9px] font-semibold tracking-wide text-[#a8794a]"
+          data-testid={`station-mark-${row.def.id}`}
+          title="the shell changed here. You took enough out of it that it noticed."
+        >
+          {mark}
+        </span>
+      )}
       {shored && (
         <span className="shrink-0 text-[10px] text-[#c9a86a]" title="timbered — the fall drops through it, and its contents never re-roll">
           ⌸
@@ -153,6 +195,9 @@ export function RollPanel() {
   const tier = effectiveToolTier(state as GameState);
   // The floor is pinned separately, so it is never the row that scrolls away.
   const listed = rows.filter((r) => r.def.type !== 'floor');
+  // §53 — what this world has done to this shell, read off the Roll itself.
+  const marked = new Set(markedHere(state as GameState));
+  const word = thresholdFor((state as GameState).shell.current)?.mark;
 
   return (
     <div className="panel p-3">
@@ -167,7 +212,14 @@ export function RollPanel() {
           not a list of where you are going — it is a menu. */}
       <div className="overflow-x-hidden">
         {listed.map((r) => (
-          <StationRow key={r.def.id} row={r} tier={tier} shored={isShored(state as GameState, r.def.id)} />
+          <StationRow
+            key={r.def.id}
+            row={r}
+            tier={tier}
+            shored={isShored(state as GameState, r.def.id)}
+            mark={marked.has(r.def.id) ? word : undefined}
+            gone={isGone(state as GameState, r.def.id)}
+          />
         ))}
       </div>
       {floor && (

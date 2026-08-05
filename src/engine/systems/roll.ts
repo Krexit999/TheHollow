@@ -25,6 +25,8 @@
  */
 import type { GameState } from '../types';
 /** §31.2's COLD ROLL defect. False outside a live poured world. Runtime-only. */
+import { markedStations, subsided, unstableStation } from './thresholds';
+import { thresholdFor } from '../content/thresholds';
 import { rollFrozen } from './specify';
 import {
   FEATURE_LABEL, ROLL_FEATURES, allAuthoredStations, authoredRoll, type RollFeature, type StationDef, type StationType,
@@ -54,6 +56,16 @@ export interface RollState {
   rolled: Record<string, RolledContents>;
   /** WALL stations broken. PERMANENT — survives Collapse and Breach. */
   cleared: string[];
+  /**
+   * §53 SUBSIDENCE (A.106) — stations this world has LOST. The only permanent
+   * loss in the game (§55 row 6), and it is a hole in your geography rather
+   * than a punishment: you took enough out of the shell that it gave way.
+   *
+   * Per-world, like the threshold that writes it. It rides Collapse and Breach
+   * with the rest of the Roll and washes with the world, because a Recursion
+   * digs the shaft again and the new one has not been mined yet.
+   */
+  gone?: string[];
   /** WRECK stations looted. PERMANENT; a looted wreck reads as a WORKS. */
   looted: string[];
   /**
@@ -78,7 +90,7 @@ export interface RollState {
 }
 
 export function defaultRollState(): RollState {
-  return { rolled: {}, cleared: [], looted: [], rolls: 0 };
+  return { rolled: {}, cleared: [], looted: [], rolls: 0, gone: [] };
 }
 
 /**
@@ -117,6 +129,7 @@ export function ensureRoll(state: GameState, rng: () => number = Math.random): v
   const r = (state.roll ??= defaultRollState());
   r.rolled ??= {};
   r.cleared ??= [];
+  r.gone ??= [];
   r.looted ??= [];
   r.shored ??= [];
   r.flooded ??= [];
@@ -270,10 +283,17 @@ export function markReached(state: GameState, depth: number, toolTier: number): 
   ensureRoll(state);
   const r = state.roll!;
   const newly: string[] = [];
+  /**
+   * SUBSIDENCE'S OPPORTUNITY (§53). A cracked station has already given way, so
+   * the wall at it is DOWN — no tool tier, no breaking. Reach, which is what
+   * pillar 2 permits, and the shell handing it over rather than an upgrade
+   * selling it. The cost is one station lower down; see `stationGaveWay`.
+   */
+  const cracked = new Set(crackedHere(state));
   for (const def of shellRoll(state)) {
     if (def.depth > depth) continue;
     if (def.type === 'wall') {
-      if (!isCleared(state, def.id) && toolTier >= (def.hardness ?? 1)) {
+      if (!isCleared(state, def.id) && (cracked.has(def.id) || toolTier >= (def.hardness ?? 1))) {
         r.cleared.push(def.id);
         newly.push(def.id);
       }
@@ -297,6 +317,66 @@ export function markReached(state: GameState, depth: number, toolTier: number): 
    */
   resolveFindings(state);
   return newly;
+}
+
+/**
+ * Which stations in this shell carry the mark (§53 rule 3). Derived, never
+ * stored — every shell that has crossed its own threshold marks the deep half
+ * of its Roll, and what the mark READS is the threshold's own word: CRACKED,
+ * INVERTED, FERAL, BENT, BURNT, DEEP.
+ */
+export function markedHere(state: GameState): string[] {
+  return markedStations(state, shellRoll(state).map((d) => ({ id: d.id, depth: d.depth })));
+}
+
+/**
+ * ...and the subset that is SUBSIDENCE, which is a different question.
+ *
+ * A mark is universal; a wall that has already given way is Loam's opportunity
+ * and Loam's alone (§53), as is the station that goes with you in it (§55 row
+ * 6, "Loam subsidence"). Without this guard the Ferrite flip would drop every
+ * wall in Ferrite, which is a threshold paying out somebody else's trade.
+ */
+export function crackedHere(state: GameState): string[] {
+  if (!subsided(state) || thresholdFor(currentShell(state).id)?.id !== 'subsidence') return [];
+  return markedStations(state, shellRoll(state).map((d) => ({ id: d.id, depth: d.depth })));
+}
+
+/** ...and the one that is unstable, if this world has one. Loam's, likewise. */
+export function unstableHere(state: GameState): string | null {
+  if (crackedHere(state).length === 0) return null;
+  return unstableStation(state, shellRoll(state).map((d) => ({ id: d.id, depth: d.depth })));
+}
+
+export function isGone(state: GameState, id: string): boolean {
+  return state.roll?.gone?.includes(id) ?? false;
+}
+
+/**
+ * SUBSIDENCE'S COST — STATION COLLAPSE (§55 row 6), the only permanent loss in
+ * the game, and the reason it gets a verb of its own rather than a branch
+ * inside `markReached`: this is not a place you reached. You went in and it
+ * was not there afterwards.
+ *
+ * IT IS NOT ROLLED FOR. `unstableStation` is always the deepest marked row, so
+ * a player who has read their own Roll knows precisely which station will go
+ * and can decide never to walk back into it. A hole you went into with your
+ * eyes open is a story; one that fires on a die roll is a tax.
+ *
+ * Returns the depth to eject to — one station up — or null if nothing gave way.
+ */
+export function stationGaveWay(state: GameState, depth: number): { id: string; to: number } | null {
+  const id = unstableHere(state);
+  if (!id || isGone(state, id)) return null;
+  const rows = shellRoll(state);
+  const at = rows.find((d) => d.id === id);
+  if (!at || depth < at.depth) return null;
+  ensureRoll(state);
+  state.roll!.gone!.push(id);
+  const above = rows
+    .filter((d) => d.depth < at.depth)
+    .sort((a, b) => b.depth - a.depth)[0];
+  return { id, to: above?.depth ?? 0 };
 }
 
 // ---------------------------------------------------------------------------

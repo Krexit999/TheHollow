@@ -35,6 +35,7 @@ import { tickCondition } from './systems/condition';
 import { tickResidue } from './systems/witness';
 import { tickCrews } from './systems/crews';
 import { tickUntold } from './systems/untold';
+import { tickThresholds } from './systems/thresholds';
 import { tickChallenges } from './systems/challenges';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
@@ -222,6 +223,16 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // the Coil, fullSince by growth — so there is no one action to hook and
       // no counter pointed at any of them. That is what keeps them accidents.
       tickUntold(state, ctx);
+      /**
+       * §53's THRESHOLDS, in the same 1Hz block and for a third version of the
+       * same reason: every measure is a number the shell was already keeping
+       * for its own reasons, read here as a delta rather than hooked at the
+       * site that writes it. That is what makes it "never announced" — no
+       * action in the game knows it is being counted. The crossing emits, once,
+       * and what the player sees is the Roll.
+       */
+      const wrought = tickThresholds(state, verdAcc);
+      if (wrought) ctx.emit({ type: 'worldChanged', id: wrought.id, name: wrought.name });
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

@@ -6,6 +6,7 @@ import type { MaterialRarity, PurityBand, RolledDrop } from './materials';
 import type { RollState } from './systems/roll';
 import type { DeadState } from './systems/dead';
 import type { UntoldState } from './systems/untold';
+import type { ThresholdsState } from './systems/thresholds';
 
 // ---------------------------------------------------------------------------
 // Materials, tools, assay (Phase 3)
@@ -680,6 +681,22 @@ export interface GameState {
    *  into, and which of their tells the world has already spoken. Permanent;
    *  pays nothing. Optional so a pre-A.105 save loads without a migration. */
   untold?: UntoldState;
+  /**
+   * §53 (A.106) — WHAT THIS WORLD HAS TAKEN OUT OF EACH SHELL, and which
+   * thresholds it has therefore crossed.
+   *
+   * PER-SHELL-PER-WORLD, and both halves are load-bearing. Per-shell because a
+   * Loam subsidence keyed on the cross-shell `materials.totalDrops` would fire
+   * in Verdance; per-world because a counter that outlives a Recursion opens
+   * the second world with THE GREAT FLIP already gone.
+   *
+   * IT NEEDS NO LADDER CHANGE TO BE EITHER. `doRecursion` copies survivors
+   * across from `initialState()` BY NAME, so a slice it does not name resets
+   * with the world; `doCollapse` and `doBreach` mutate in place, so a slice
+   * they do not name survives them. Optional so a pre-A.106 save loads without
+   * a migration — an old save simply starts this world's count from here.
+   */
+  thresholds?: ThresholdsState;
   relics: RelicsState;
   /** Cross-system confluences the player has FOUND (v13). A record of play.
    *  B3 (Interlock): `slots` is THE ATTENDED MARGIN — Echo-bought attention.
@@ -1014,6 +1031,11 @@ export type GameEvent =
   | { type: 'untoldFound'; id: string }
   /** The world being odd, once, near a condition. Names nothing (§49.1). */
   | { type: 'untoldTell'; id: string; tell: string }
+  // --- A.106: §53 WORLD-CHANGE THRESHOLDS ----------------------------------
+  /** The shell noticed. Emitted once, ever, per world per shell. */
+  | { type: 'worldChanged'; id: string; name: string }
+  /** A station gave way under you. The only permanent loss in the game. */
+  | { type: 'stationCollapse'; id: string; to: number }
   // --- A.105: THE DEAD (§48.1) ---------------------------------------------
   | { type: 'delverObjectFound'; objectId: string; delverId: string }
   /** The absence resolved: everything of theirs found, and the ground under the

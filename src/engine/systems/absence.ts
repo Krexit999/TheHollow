@@ -22,6 +22,7 @@
  */
 import { D, type Decimal } from '../decimal';
 import type { ActionResult, EngineCtx, GameState } from '../types';
+import { deepening } from './thresholds';
 import type { ModifierCache } from '../modifiers';
 import { addCurrency, spendCurrency } from '../resources';
 import { registerSignature, runVoidTick } from '../signatures';
@@ -141,7 +142,11 @@ function tickAbsence(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: 
   // this is the shell's own faucet, sized by carry investment, not regen.
   addCurrency(state, 'void', D(voidRate(state, mods) * dt));
   // The Silence climbs.
-  h.silence = Math.min(100, h.silence + (silenceRatePerMin(state) / 60) * dt);
+  // THE DEEPENING (§53): the Silence thickened. It climbs faster, which is both
+  // halves of the trade at once — the Null pays for gathering it, and the
+  // UNDECIDED condition (`condition.ts`) is written off the same number, so more
+  // of the plant stops committing.
+  h.silence = Math.min(100, h.silence + (silenceRatePerMin(state) / 60) * deepening(state) * dt);
   // The auto-listener: the idle floor. Set it and the quiet farms itself.
   if (h.listenAt > 0 && h.silence >= h.listenAt) listen(state, mods, ctx);
 }

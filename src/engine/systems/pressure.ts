@@ -40,6 +40,7 @@
  * is HARD-CAPPED at 90 — heat that matters, and cannot flood.
  */
 import { D } from '../decimal';
+import { burnFloor } from './thresholds';
 import type { ModifierCache } from '../modifiers';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { registerSignature } from '../signatures';
@@ -246,7 +247,15 @@ function addHeat(state: GameState, amount: number, native: boolean): void {
   // Additions clamp to the ceiling; heat already above it (you just released
   // the choke at 98) is not teleported down — the relief valve decays it.
   const ceiling = Math.max(heatCeiling(state, native), Math.min(state.pressure.heat, 100));
-  state.pressure.heat = Math.max(0, Math.min(ceiling, state.pressure.heat + amount));
+  /**
+   * THE BURN (§53): the shell will not cool back to where it started. A FLOOR,
+   * not a bonus — the gauge is the same gauge and the flood line is still 100.
+   * Both halves of the trade fall out of the one number: the shell holds more
+   * standing heat than it was built with, and the margin between resting and
+   * flooding is permanently narrower. Nothing here touches what a chip pays.
+   */
+  const floor = Math.min(burnFloor(state), ceiling);
+  state.pressure.heat = Math.max(floor, Math.min(ceiling, state.pressure.heat + amount));
   if (state.pressure.heat > state.pressure.peakHeat) state.pressure.peakHeat = state.pressure.heat;
 }
 

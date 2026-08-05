@@ -24,6 +24,7 @@
  * not trash a cultivation.
  */
 import { D } from '../decimal';
+import { feralSpread } from './thresholds';
 import type { ModifierCache } from '../modifiers';
 import { addCurrency } from '../resources';
 import type { EngineCtx, GameState } from '../types';
@@ -124,7 +125,10 @@ function tickGrowth(state: GameState, mods: ModifierCache, ctx: EngineCtx, dt: n
   // A.72: weather's bloom-season and the Still's Greenmantle brew both hastened
   // aging; both are cut, so this is just the base rate now.
   const aging = dt * strength;
-  g.spreadTimer += dt;
+  // THE FERAL (§53): the growth stopped being containable, so the spread pass
+  // comes round sooner. A rate, never a yield — a fruit is worth what a fruit
+  // was worth, and there are simply more of them in your way.
+  g.spreadTimer += dt * feralSpread(state);
   const spreadPass = g.spreadTimer >= SPREAD_EVERY_SEC;
   if (spreadPass) g.spreadTimer = 0;
 
