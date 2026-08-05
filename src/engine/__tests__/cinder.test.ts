@@ -55,7 +55,13 @@ function cindery(): { engine: Engine; s: GameState; mods: ModifierCache } {
 }
 
 describe('pressure: the four laws', () => {
-  // A real 16-hour simulation (576k fixed steps) — allow the wall-clock room.
+  /**
+   * A real 16-hour simulation (576k fixed steps) — allow the wall-clock room.
+   * RAISED 20s → 60s at A.101: it took 31.9s under full-suite parallelism and
+   * 4.6s alone, so the old budget was sized on a quiet machine and failed on a
+   * busy one. A test that depends on how busy the machine is has a harness bug,
+   * not a flaky subject — the same call A.100 made for the drill-hour test.
+   */
   it('LAW 2 — an idle shaft NEVER floods: 16h untouched holds at the line', () => {
     const { engine, s } = cindery();
     s.depth = 300; // deep = hottest ambient; the worst case is the tested case
@@ -66,7 +72,7 @@ describe('pressure: the four laws', () => {
     expect(s.pressure.heat).toBeLessThanOrEqual(holdLine(s) + 1);
     // And the line itself is structurally below the flood line.
     expect(holdLine(s)).toBeLessThanOrEqual(75);
-  }, 20000);
+  }, 60_000);
 
   it("THE GOVERNOR — ordinary mining, however furious, can't flood: only the choke can", () => {
     const { engine, s } = cindery();

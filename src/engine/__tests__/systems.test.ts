@@ -61,6 +61,11 @@ describe('the kiln', () => {
 });
 
 describe('drills', () => {
+  /**
+   * A LIVE-STEPPED HOUR with twenty-four drills — the second-longest test in
+   * the suite, and it timed out at vitest's 5s default under full parallelism
+   * at A.101 while passing in well under a second alone. Budget stated.
+   */
   it('harvest is bounded by what the field holds (pillar 2)', () => {
     const engine = createEngine({ nowMs: 0 });
     const s = engine.getState() as GameState;
@@ -73,7 +78,7 @@ describe('drills', () => {
     const budget = 288 + 36 * 0.08 * 1.03 * 3600;
     expect(s.stats.totalChargeChipped.toNumber()).toBeLessThanOrEqual(budget + 1e-6);
     expect(s.stats.totalChargeChipped.toNumber()).toBeGreaterThan(budget * 0.9);
-  });
+  }, 30_000);
 
   // A.53: the four selectable behaviours are gone. One rule — the fullest
   // workable cell — because a dropdown per drill was the definition of

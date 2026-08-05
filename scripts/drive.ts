@@ -154,8 +154,36 @@ export async function dismiss(page: Page): Promise<void> {
         await page.waitForTimeout(250);
       }
     }
+    /**
+     * ...AND THEN CHECK IT IS ACTUALLY GONE (A.101).
+     *
+     * The gate opens on a RENDER, so a helper that clicks once and returns can
+     * lose the race with the render that reveals the next batch — which is what
+     * it did here: block L's hold arm failed twice with the modal sitting over
+     * the RECURSION button, and `hover()` timed out for thirty seconds saying
+     * only "intercepts pointer events".
+     *
+     * ESCAPE IS THE RELIABLE LEVER — `DisclosureGate` supports it by design
+     * ("a modal that can only be closed by one button is..."), so it does not
+     * depend on this file keeping a list of button labels in sync with the UI.
+     * Loop until no full-screen dialog remains.
+     */
+    const stillUp = await page.evaluate(() =>
+      document.querySelectorAll('[role="dialog"][aria-modal="true"]').length);
+    if (stillUp > 0) {
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.waitForTimeout(250);
+      clicked = true;
+    }
     if (!clicked) return;
   }
+}
+
+/** Every full-screen modal currently over the page, by its accessible name. */
+export async function modalsUp(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"]'))
+      .map((n) => n.getAttribute('aria-label') ?? '(unnamed)'));
 }
 
 /** Jump to a room by id (see src/ui/store.ts Tab) rather than by label. */
