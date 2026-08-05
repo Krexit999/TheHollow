@@ -4,6 +4,7 @@
  * Core, Recursion, Axioms), and the Parallel View — all real data, no polish.
  */
 import { FramePanel } from './frame';
+import { AxiomEnginePanel } from './axiomEngine';
 import { fmt, getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
 import { ModifierCache } from '../../engine/modifiers';
@@ -176,9 +177,12 @@ export function RewritePanel() {
           </span>
         </div>
         <div className="mt-1 text-[10px] italic leading-snug text-cave-400">
-          Writing a law with them is gone with axioms.ts (A.7x) — the count still banks.
+          Banked, and now spendable: the Engine below writes them into the world.
         </div>
       </div>
+
+      {/* §13's AXIOM ENGINE — the writer `laws.ts` has been missing since P10. */}
+      <AxiomEnginePanel />
     </div>
   );
 }

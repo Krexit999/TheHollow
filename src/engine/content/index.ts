@@ -1,4 +1,5 @@
 import { ensurePyreBath } from './reductions';
+import { registerAxioms } from './axioms';
 /**
  * Content bootstrap. Registration is explicit (not import side effects) so
  * tests and the sim can rebuild registries deterministically. Adding a shell
@@ -112,6 +113,9 @@ export function ensureContentLoaded(): void {
   registerChains();
   registerTemperModifiers();
   registerReferenceKeystones();
+  // THE AXIOMS (§21).  has had live readers and no writer since
+  // Phase 10 — this is the writer. Registered at LOAD, the same way seals are.
+  registerAxioms();
   registerShell2Upgrades();
   registerShell2UpgradeModifiers();
 

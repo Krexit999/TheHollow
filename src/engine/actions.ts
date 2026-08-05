@@ -35,6 +35,7 @@ import { buildCultivarBench, cropBed, seedBed } from './systems/cultivar';
 import { buildCoil } from './systems/coil';
 import { buildFrame, setGrain, setHold } from './systems/frame';
 import { makeRecord, seatPart } from './systems/seats';
+import { buildAxiomEngine, redraft, writeRule } from './systems/axiomEngine';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -284,6 +285,15 @@ export function handleAction(
 
     case 'buildFrame':
       return buildFrame(state, ctx);
+
+    case 'buildAxiomEngine':
+      return buildAxiomEngine(state, ctx);
+
+    case 'writeRule':
+      return writeRule(state, ctx, action.axiomId);
+
+    case 'redraftRule':
+      return redraft(state, ctx, action.axiomId);
 
     case 'seatPart':
       return seatPart(state, ctx, action.seat);

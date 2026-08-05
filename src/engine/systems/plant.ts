@@ -398,6 +398,13 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * Press's shape; and it is Hollow income, so it should cost the plant.
    */
   frame: { flow: 0, surge: 15 },
+  /**
+   * THE AXIOM ENGINE (§13, Aleph) — a small STANDING Flow and no Surge.
+   * Writing a rule is not an event the plant feels; keeping one written is, and
+   * §21 says an Axiom is permanent, so the draw is permanent and low. The one
+   * machine in the game whose demand is for something it did in a past world.
+   */
+  axiomEngine: { flow: 1.2, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {

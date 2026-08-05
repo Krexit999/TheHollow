@@ -174,7 +174,7 @@ describe('the RECORD is made out of a life, not a rock', () => {
     s.shell.breachCount = 6;
     standEverywhere(s);
     s.recursion.count = 1;
-    s.reading.proven = ['a', 'b', 'c', 'd'];
+    s.reading!.proven = ['a', 'b', 'c', 'd'];
     s.delver.level = 60;
     const seats = ensureSeats(s);
     for (const d of SEATS.filter((x) => x.id !== 'VII')) {
