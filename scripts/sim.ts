@@ -34,7 +34,8 @@ import { canBreach } from '../src/engine/systems/breach';
 import { magnetArrayUnlocked } from '../src/engine/systems/polarity';
 import { canSpiral } from '../src/engine/systems/spiral';
 import { dpsMax, cellRegen, cellCap } from '../src/engine/systems/face';
-import { nextPipeCost, VENT_SHAFT_CELL } from '../src/engine/systems/pressure';
+import { nextPipeCost, VENT_SHAFT_CELL, holdLine, heatCeiling } from '../src/engine/systems/pressure';
+import { ventArrayBuilt } from '../src/engine/systems/vents';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { REMAINS_TUNING } from '../src/engine/materials';
 import {
@@ -139,6 +140,30 @@ interface Args {
    * touches compaction.
    */
   hand: 'fullest' | 'concentrated';
+  /**
+   * WHERE `--scenario cinder` PUTS YOU (A.104). Default 70 reproduces the
+   * existing arm byte for byte.
+   *
+   * §6 says THE VENT ARRAY's absence makes the shell "impassable", and the
+   * Array is at Vent Row 58 — BEHIND THE CLINKER, a tier-13 wall at 54. If
+   * that claim is true it is an A.42 inversion: the thing that makes a stretch
+   * survivable, locked behind the stretch. The only honest way to ask is to
+   * stand a player at 40 (just past the Boiler, before the wall) with no Array
+   * and no way to reach one, and read the gauge. Both arms are this binary one
+   * flag apart.
+   */
+  cinderDepth: number;
+  /**
+   * ...AND WHETHER THE POLICY PLUMBS AT ALL (A.104). Default `true` is the
+   * existing arm exactly.
+   *
+   * The Array is not the only source of vent capacity — `networkCapacity` is
+   * the PIPE BFS plus the Array's valves, and pipe costs Obsidian, which is
+   * Cinder-native and on sale from depth 0 of the shell. So "no Array" is not
+   * the floor case; "no Array AND no pipe" is, and that is the arm that says
+   * what the shell does to a player who has built nothing at all.
+   */
+  pipes: boolean;
 }
 
 function parseArgs(): Args {
@@ -185,6 +210,8 @@ function parseArgs(): Args {
     holdCap: Number(get('hold-cap') ?? HOLD_TUNING.cap),
     seed: get('seed') !== undefined ? Number(get('seed')) : null,
     hand: (get('hand') ?? 'fullest') as Args['hand'],
+    cinderDepth: Number(get('cinder-depth') ?? 70),
+    pipes: get('pipes') !== 'off',
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -545,6 +572,8 @@ function glassmerePlay(engine: Engine, s: GameState, log: (msg: string) => void)
 // ---------------------------------------------------------------------------
 
 let heatStance: Args['heat'] = 'balanced';
+/** A.104's floor arm. Module-scoped for the same reason `heatStance` is. */
+let plumbs = true;
 const cinderMetrics = { heatSum: 0, heatSamples: 0, purges: 0 };
 
 function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
@@ -554,7 +583,9 @@ function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): v
   cinderMetrics.heatSamples += 1;
 
   // The Vent Network: every stance plumbs — headroom is never the wrong buy.
-  if ((s.currencies['obsidian']?.toNumber() ?? 0) > nextPipeCost(s) * 3) {
+  // `--pipes off` is the floor arm (A.104): nothing plumbed, no Array, and the
+  // question is whether the shell can still be crossed.
+  if (plumbs && (s.currencies['obsidian']?.toNumber() ?? 0) > nextPipeCost(s) * 3) {
     const route = [
       VENT_SHAFT_CELL, VENT_SHAFT_CELL + 1, VENT_SHAFT_CELL + 2, VENT_SHAFT_CELL + 3,
       VENT_SHAFT_CELL + 4, VENT_SHAFT_CELL + 5, VENT_SHAFT_CELL + 6, // right-mid outlet
@@ -1573,9 +1604,13 @@ function main(): void {
     s.depthRecords['ferrite'] = 250;
     s.depthRecords['verdance'] = 290;
     s.depthRecords['glassmere'] = 380;
-    s.depthRecords['cinder'] = 70;
-    s.depth = 70;
-    s.maxDepthRecord = 70;
+    // `--cinder-depth` (A.104). 70 is the shipped stage; 40 stands the player
+    // between the Boiler and THE CLINKER, which is the stretch §6 claims is
+    // impassable without a machine that sits on the far side of it.
+    const cd = args.cinderDepth;
+    s.depthRecords['cinder'] = cd;
+    s.depth = cd;
+    s.maxDepthRecord = cd;
     s.collapse.count = 60;
     s.forge.built = true;
     s.kiln.built = true;
@@ -1749,6 +1784,7 @@ function main(): void {
   const started = Date.now();
   growthPolicy = args.growth;
   heatStance = args.heat;
+  plumbs = args.pipes;
   snapshot();
   const beats = { tLoamFloor: 0, tBreach: 0, tFerrite150: 0, tBreach2: 0, tVerd150: 0, tBreach3: 0, tGlass150: 0, tBreach4: 0, tCinder150: 0, tBreach5: 0, tBreach6: 0, tRecursion1: 0, tFaceWhole: 0 };
   // Pillar-2 audit: sampled chip income vs the W·H·regen·Y ceiling over
@@ -2253,6 +2289,18 @@ function main(): void {
       `overpressures ${s.pressure.overpressures} (purges ${cinderMetrics.purges}) | ` +
       `pipes ${s.pressure.pipes.filter((p: number) => p > 0).length} (vented ${fmt(s.pressure.ventedTotal)})`,
   );
+  // THE CLINKER GATE (A.104). The claim under test is §6's "the shell is
+  // impassable" without THE VENT ARRAY, which sits at 58 behind a tier-13 wall
+  // at 54 — so what matters is the CEILING the plumbing you can reach imposes,
+  // and whether the run ever got near the flood line under it.
+  if (currentShell(s).id === 'cinder' || (s.depthRecords['cinder'] ?? 0) > 0) {
+    console.error(
+      `clinker gate: started ${args.cinderDepth} → record ${s.depthRecords['cinder'] ?? 0} | `
+        + `array ${ventArrayBuilt(s) ? `built (${s.vents?.valves?.length ?? 0} valves)` : 'NOT BUILT'} | `
+        + `holdLine ${holdLine(s).toFixed(0)} · unchoked ceiling ${heatCeiling(s, true).toFixed(0)} `
+        + `· flood line 100 | floods ${s.pressure.floods}`,
+    );
+  }
   console.error(
     `hollow/aleph: void ${fmt(s.totals['void'] ?? 0)} total | silence now ${s.hollow.silence.toFixed(0)} ` +
       `(harvested ${p10Metrics.silenceHarvests}, lifetime stacks ${fmt(s.hollow.silenceHarvested)}) | ` +

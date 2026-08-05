@@ -12,7 +12,9 @@ import { getCurrency } from '../resources';
 import {
   emergencyPurge, floodRun, holdLine, layPipe, networkCapacity,
   setChoke, ventRate, yieldMult, VENT_SHAFT_CELL, VENT_W,
+  heatCeiling, HOLD_LINE_BASE, ACTIVE_MARGIN, GOVERNOR_MAX,
 } from '../systems/pressure';
+import { ventArrayBuilt } from '../systems/vents';
 import { runMigrations, SAVE_VERSION } from '../save/migrations';
 import { serialize } from '../save/codec';
 
@@ -183,6 +185,69 @@ describe('pressure: the four laws', () => {
     // Pulling pipe back up is free — re-routing is the whole game here.
     expect(layPipe(s, VENT_SHAFT_CELL + 3).ok).toBe(true);
     expect(networkCapacity(s)).toBe(0); // the line is cut
+  });
+});
+
+/**
+ * IS THE SHELL IMPASSABLE WITHOUT THE VENT ARRAY? (§6, measured A.104)
+ *
+ * §6's keystone table says of Vent Row 58: **"the shell is impassable"**. The
+ * Array sits at 58, BEHIND THE CLINKER — a tier-13 wall at 54 — so if that
+ * sentence were true of the build it would be the A.42 inversion in its purest
+ * form: the thing that makes a stretch survivable, locked behind the stretch.
+ * `audit-reach.ts` flagged it at A.102 and explicitly declined to claim it
+ * either way, because only a sim could answer it.
+ *
+ * SIX ARMS, `scripts/sim.ts` one flag apart (`--cinder-depth 40`, three heat
+ * stances × `--pipes on|off`), 4h each from depth 40 with no Array: **every one
+ * reached the shell floor at 470 with ZERO floods**, including the floor case
+ * with nothing plumbed at all.
+ *
+ * The reason is the Governor, and it is structural rather than lucky — which is
+ * what this test pins. Heat cannot pass `holdLine + ACTIVE_MARGIN` unless you
+ * deliberately choke, and with no network at all that ceiling is 40 against a
+ * flood line of 100. So the Array is an INCOME machine (it raises the line you
+ * can safely ride, and heat yield is convex in heat), not a survival gate.
+ *
+ * §6's row is the bug, and it is corrected there. This is the check that stops
+ * it being re-asserted.
+ */
+describe('§6 says Cinder is impassable without the Vent Array. It is not.', () => {
+  it('with NOTHING plumbed and no Array, the unchoked ceiling is far under the flood line', () => {
+    const { s } = cindery();
+    expect(networkCapacity(s), 'no pipe, no valves').toBe(0);
+    expect(ventArrayBuilt(s), 'and no Array').toBe(false);
+    // The ceiling an ordinary player faces, against the line that ends a run.
+    expect(heatCeiling(s, true)).toBe(HOLD_LINE_BASE + ACTIVE_MARGIN);
+    expect(heatCeiling(s, true)).toBeLessThan(100);
+  });
+
+  it('...and no amount of furious mining crosses it — 20 minutes, unplumbed', () => {
+    const { engine, s } = cindery();
+    for (let i = 0; i < 12_000; i++) {
+      engine.dispatch({ type: 'chip', cell: i % s.face.cells.length });
+      engine.tick(0.1);
+    }
+    // NOT VACUOUS: the gauge must actually have been driven at the ceiling,
+    // or "it never crossed" is a statement about a shaft nobody worked.
+    expect(s.pressure.peakHeat, 'the gauge really was pushed to the line')
+      .toBeGreaterThan(HOLD_LINE_BASE + ACTIVE_MARGIN - 1);
+    expect(s.pressure.floods, 'a run that never chokes never ends').toBe(0);
+    expect(s.pressure.heat).toBeLessThanOrEqual(HOLD_LINE_BASE + ACTIVE_MARGIN + 0.001);
+  });
+
+  it('the Array is INCOME, not survival — it raises a line you could already hold', () => {
+    // What the Array buys is valve capacity, which is a `networkCapacity` term
+    // exactly as pipe is; both raise `holdLine` and neither is required to be
+    // under 100. Pillar 2 is untouched either way: heat is a `dustYield` term
+    // and never reaches `cellRegen`, so this changes what a run is WORTH at a
+    // depth, never what the field can produce there.
+    const { engine, s } = cindery();
+    const bare = heatCeiling(s, true);
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'obsidian', amount: 100000 });
+    for (let c = 0; c < VENT_W; c++) layPipe(s, VENT_SHAFT_CELL + c);
+    expect(heatCeiling(s, true)).toBeGreaterThan(bare);
+    expect(heatCeiling(s, true)).toBeLessThanOrEqual(GOVERNOR_MAX);
   });
 });
 

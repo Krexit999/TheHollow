@@ -576,7 +576,7 @@ WRECK three rungs out.
 | Patternwright's Rest 90 | **THE PATTERN BENCH** | tier IX+ pour volume |
 | The Balance House 130 | **THE BALANCE** | **every tier V+** — the shell-above material is gone |
 | Boilerworks 40 | **THE BOILER** | no Cinder power |
-| Vent Row 58 | **THE VENT ARRAY** | the shell is impassable |
+| Vent Row 58 | **THE VENT ARRAY** | ~~the shell is impassable~~ — **FALSE, measured A.104 (see below)** |
 | Retort Hall 120 | **THE RETORT** | no route to `starred` |
 | Witness Hall 140 | **THE WITNESS** | Hollow's entire material economy |
 | Condenser Wreck 55 | **THE CONDENSER** | Witnesses cannot run |
@@ -584,6 +584,36 @@ WRECK three rungs out.
 | The Reading Room 32 | **THE SEATING** | the game does not end |
 
 **Twenty-one keystones, 41 machines, every one at a place you could see coming.**
+
+**THE VENT ARRAY IS NOT A KEYSTONE, AND THE ROW ABOVE WAS THE ONLY A.42-SHAPED CLAIM IN THIS
+TABLE (A.104).** `audit-reach.ts` flagged it at A.102 and declined to rule: the Array sits at
+Vent Row **58**, behind THE CLINKER — a tier-13 wall at **54** — so if its absence really made
+the shell impassable, the thing that makes a stretch survivable would be locked behind the
+stretch, which PILLARS names the worst bug this project has shipped.
+
+Measured instead of argued. Six arms, `scripts/sim.ts` one flag apart (`--cinder-depth 40`,
+three heat stances × `--pipes on|off`), four hours each from depth 40 with no Array:
+
+| stance | plumbed | holdLine | unchoked ceiling | floods | record reached |
+|---|---|---|---|---|---|
+| safe / balanced / greedy | yes | 42 | 57 | **0** | **470 (the floor)** |
+| safe / balanced / greedy | no | 25 | 40 | **0** | **470 (the floor)** |
+
+**Every arm crossed the whole shell, including the floor case with nothing plumbed at all.** The
+reason is structural, not lucky: THE GOVERNOR caps unchoked heat at `holdLine + 15` against a
+flood line of 100, so a player who never deliberately chokes cannot end a run however furiously
+they mine. And the Array is not even the only source of vent capacity — `networkCapacity` is the
+pipe BFS **plus** the Array's valves, and pipe is bought with Obsidian, which is Cinder-native
+and on sale from depth 0 of the shell.
+
+So the Array is an **income** machine: it raises the line you can safely ride, and heat yield is
+convex in heat. That is a perfectly ordinary thing to put behind a wall inside its own shell —
+the same shape as twenty other machines the audit prints. `cinder.test.ts` §"§6 says Cinder is
+impassable without the Vent Array. It is not." pins the ceiling so the claim cannot come back.
+
+**Nothing moved.** The station stays at 58, the wall stays at 54, and the correction is to this
+document — which is the standing rule (*"where a number here disagrees with `src/engine/`, the
+registry is right and this document is the bug"*).
 
 ---
 

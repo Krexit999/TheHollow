@@ -215,6 +215,17 @@ for (const id of unaudited) {
  * the system that makes the crossing possible was locked behind the crossing."
  * It cannot be decided automatically (only a human knows what a machine is FOR)
  * so this PRINTS the ordering and lets a reader see an inversion.
+ *
+ * THE ONE THIS FLAGGED HAS BEEN RULED (A.104). A.102 named THE VENT ARRAY at
+ * cinder 58, behind THE CLINKER at 54, as the row to re-check — §6 said the
+ * Array's absence made "the shell impassable". Six sim arms from depth 40 with
+ * no Array reached the shell FLOOR at 470 with zero floods, including the arm
+ * with nothing plumbed: the Governor caps unchoked heat at holdLine+15 against
+ * a flood line of 100, so the Array is an income machine and not a survival
+ * gate. §6's row was the bug and is corrected there. Nothing moved.
+ *
+ * The list below still prints, because the next inversion will look exactly
+ * like the twenty entries that are the intended shape.
  */
 const walls: string[] = [];
 for (const id of ORDER) {
