@@ -16,7 +16,7 @@ import {
 import { axiomsFromEchoes, canRecurse } from '../../engine/systems/recursionSys';
 import { materialCount } from '../../engine/systems/forge';
 import { dispatch, useGame } from '../store';
-import { Amount } from './shared';
+import { Amount, HoldButton } from './shared';
 
 const uiMods = new ModifierCache();
 
@@ -158,13 +158,34 @@ export function RewritePanel() {
                 your Codex, your name, and your tools (blunted to heirlooms). And you keep{' '}
                 <span className="text-[#e8d88c]">{pending} Axiom{pending === 1 ? '' : 's'}</span> banked for whatever writes on them next.
               </div>
-              <button
-                className="btn btn-warm mt-2 w-full py-2 text-sm"
+              {/**
+                * IT HOLDS NOW, AND IT IS THE ONLY ONE THAT DID NOT (A.98).
+                *
+                * The four destructive verbs in this game: Collapse holds,
+                * Breach holds 2000ms, "erase everything" holds 1500ms — and
+                * the RECURSION, which is bigger than all but the last of them
+                * (every shell, every Echo, every material, back to Shell I),
+                * was a single unguarded click.
+                *
+                * Found from the other end: the A.97 driver's `dismiss` helper
+                * matched `/Begin again/` and this button's label starts with
+                * those exact two words, so it fired a Recursion on every run
+                * that opened this tab. That is a harness bug AND a report — a
+                * player who has just clicked "Begin again" to close a run
+                * summary and taps the same region here has ended their world
+                * with no confirmation and no undo.
+                *
+                * A hold fixes both at once: a stray click cannot fire it, and
+                * neither can a stray selector.
+                */}
+              <HoldButton
+                onConfirm={() => dispatch({ type: 'recurse' })}
                 disabled={!canRecurse(state as GameState)}
-                onClick={() => dispatch({ type: 'recurse' })}
+                holdMs={2000}
+                className="btn btn-warm mt-2 w-full py-2 text-sm"
               >
                 Begin again, knowing — RECURSION {state.recursion.count + 1}
-              </button>
+              </HoldButton>
             </>
           )}
         </div>

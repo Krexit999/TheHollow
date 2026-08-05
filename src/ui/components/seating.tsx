@@ -10,6 +10,7 @@ import {
   BEQUEST_DEFS, TIER_CAPABILITY_SEATING, bequestBlocker, nextSeatingTierCost,
   seatingFound, seatingRead, seatingStation, type BequestId,
 } from '../../engine/systems/seating';
+import { HoldButton } from './shared';
 import { MAX_MACHINE_TIER, tierOf } from '../../engine/systems/plant';
 import { MACHINE_DEMAND } from '../../engine/systems/plant';
 import type { GameState } from '../../engine';
@@ -134,15 +135,17 @@ export function SeatingPanel() {
             </div>
           )}
 
-          <button
-            className="btn btn-warm mt-2 w-full py-2 text-xs"
+          {/* THE POUR IS A RECURSION (A.97), so it holds like one (A.98). */}
+          <HoldButton
+            onConfirm={() => dispatch({ type: 'pourWorld' })}
             disabled={r.pour !== null}
-            title={r.pour ?? ''}
-            onClick={() => dispatch({ type: 'pourWorld' })}
-            data-testid="seating-pour"
+            holdMs={2000}
+            className="btn btn-warm mt-2 w-full py-2 text-xs"
           >
-            {r.pour ?? 'POUR A WORLD — the tool is finished'}
-          </button>
+            <span data-testid="seating-pour" title={r.pour ?? ''}>
+              {r.pour ?? 'POUR A WORLD — the tool is finished'}
+            </span>
+          </HoldButton>
           {r.poured > 0 && (
             <div className="mt-1 text-center text-[9px] text-cave-500" data-testid="seating-poured">
               worlds poured: {r.poured}

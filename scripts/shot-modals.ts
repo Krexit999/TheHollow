@@ -45,7 +45,10 @@ async function main(): Promise<void> {
   await page.screenshot({ path: `${OUT}/modal-1-postfall.png` });
   if (n1 > 1) problems.push(`${n1} full-screen dialogs stacked after the fall`);
 
-  const begin = page.getByRole('button', { name: /Begin again/ }).first();
+  // ANCHORED (A.98). The RECURSION button's label also begins "Begin again",
+  // and the unanchored form fired the third reset layer on every run that had
+  // the rewrite tab open. The modal's button is exactly these two words.
+  const begin = page.getByRole('button', { name: /^Begin again$/ }).first();
   if ((await begin.count()) === 0) problems.push('no run-summary page after a hand-pulled fall');
   else {
     await begin.click();
