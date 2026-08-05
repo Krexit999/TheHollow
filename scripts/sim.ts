@@ -51,7 +51,8 @@ import {
 } from '../src/engine/systems/shopFork';
 import { resetCompaction } from '../src/engine/systems/compaction';
 import { BAY_DEPTH_UNLOCK } from '../src/engine/content/shell1/upgrades';
-import { ensurePlant } from '../src/engine/systems/plant';
+import { ensurePlant, MACHINE_DEMAND } from '../src/engine/systems/plant';
+import { ALL_SYSTEMS } from '../src/ui/nav';
 import { MAX_OVERCLOCK, ensureGovernor } from '../src/engine/systems/governor';
 
 interface Args {
@@ -164,6 +165,14 @@ interface Args {
    * what the shell does to a player who has built nothing at all.
    */
   pipes: boolean;
+  /**
+   * THE CENSUS (A.104). §23 guards the first 45 minutes and nothing guards what
+   * happens after them. This prints, at run end, every ROOM the player can see,
+   * every MACHINE they have standing, and — the half that matters — everything
+   * still dark, so "a three-hour player has never met the Refinery" is a
+   * measurement rather than a memory. Off by default; the run is unchanged.
+   */
+  census: boolean;
 }
 
 function parseArgs(): Args {
@@ -212,6 +221,7 @@ function parseArgs(): Args {
     hand: (get('hand') ?? 'fullest') as Args['hand'],
     cinderDepth: Number(get('cinder-depth') ?? 70),
     pipes: get('pipes') !== 'off',
+    census: argv.includes('--census'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -2282,6 +2292,32 @@ function main(): void {
       `runes ${Object.entries(s.runes.found).map(([r, n]) => `${r}:${n}`).join(' ') || '—'} | ` +
       `pairs known ${s.runes.pairsSeen.length}/14`,
   );
+  /*
+   * THE CENSUS (A.104) — what this player HAS, and what they have never seen.
+   *
+   * §23 authors the first 45 minutes beat by beat and `verify-*.ts` checks its
+   * opening numbers on a reset state. Nothing has ever asked what the screen
+   * looks like at hour three. The second list is the one worth having: a room
+   * that is still dark at hour three is either a deliberate late beat or a
+   * system nobody meets, and the two are indistinguishable from inside.
+   */
+  if (args.census) {
+    const lit = ALL_SYSTEMS.filter((sys) => sys.visible(s));
+    const dark = ALL_SYSTEMS.filter((sys) => !sys.visible(s));
+    const built = Object.keys(MACHINE_DEMAND).filter((m) => (s.plant?.tiers?.[m] ?? 0) > 0);
+    const unbuilt = Object.keys(MACHINE_DEMAND).filter((m) => (s.plant?.tiers?.[m] ?? 0) === 0);
+    console.error('');
+    console.error(`CENSUS @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · shell ${currentShell(s).id} `
+      + `· depth ${s.depth} (record ${s.maxDepthRecord}) · collapses ${s.collapse.count} · L${s.delver.level}`);
+    console.error(`  rooms LIT   ${lit.length}/${ALL_SYSTEMS.length}: ${lit.map((x) => x.id).join(' ')}`);
+    console.error(`  rooms DARK  ${dark.length}/${ALL_SYSTEMS.length}: ${dark.map((x) => x.id).join(' ')}`);
+    console.error(`  machines UP ${built.length}/${Object.keys(MACHINE_DEMAND).length}: ${built.join(' ') || '—'}`);
+    console.error(`  machines -- ${unbuilt.length}: ${unbuilt.join(' ')}`);
+    console.error(`  touched: tools ${s.forge.tools.length} · rack ${s.casting.rack?.length ?? 0} `
+      + `· materials ${Object.keys(s.materials.stacks).length} · notes ${s.reading?.notes?.length ?? 0} `
+      + `· figures ${s.figures?.found?.length ?? 0} · relics ${s.relics?.found ?? 0} `
+      + `· drifts ${s.roll?.shored?.length ?? 0} · crews ${s.crews?.crews?.length ?? 0}`);
+  }
   const avgHeat = cinderMetrics.heatSamples > 0 ? cinderMetrics.heatSum / cinderMetrics.heatSamples : 0;
   console.error(
     `cinder[${heatStance}]: slag ${fmt(s.totals['slag'] ?? 0)} total | heat now ${s.pressure.heat.toFixed(0)} ` +

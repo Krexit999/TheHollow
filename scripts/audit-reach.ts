@@ -84,6 +84,39 @@ for (const [key, wreck] of [...wreckOf].sort()) {
 }
 
 // ---------------------------------------------------------------------------
+// 1b. WRECK PAYLOADS NOTHING READS — the mirror of section 1 (A.104)
+// ---------------------------------------------------------------------------
+/**
+ * Section 1 asks "does this system's wreck have a station". This asks the
+ * question the other way round, and it had never been asked: **does this
+ * station's wreck have a system?**
+ *
+ * A station carries `wreck: 'X'`. If no code anywhere reads the string 'X',
+ * the player walks into a named place, loots it, and NOTHING HAPPENS. The
+ * system it is named after is still reachable — by some other gate entirely —
+ * so every structural check in the project passes and the audit above reports
+ * green. It is "reachable and useless" in its purest form: the gate is real,
+ * the reward behind it is not.
+ *
+ * This is a REPORT, not a failure. Wiring a payload to its system would change
+ * WHEN that system unlocks, which is pacing, and pacing is a ruling.
+ */
+const wreckReaders = new Set<string>();
+for (const dir of [SYS, join('src', 'engine'), join('src', 'ui')]) {
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.ts') || x.endsWith('.tsx'))) {
+    for (const m of readFileSync(join(dir, f), 'utf8').matchAll(/'([A-Z][A-Z ']{2,})'/g)) {
+      wreckReaders.add(m[1]!);
+    }
+  }
+}
+const inert: string[] = [];
+for (const st of stations) {
+  if (st.def.wreck && !wreckReaders.has(st.def.wreck)) {
+    inert.push(`   ${st.shellId} ${String(st.def.depth).padStart(4)}  ${st.def.name} — "${st.def.wreck}" is read by nothing`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 2. STATION TYPES A SYSTEM NEEDS — a verb with no place to happen is dead
 // ---------------------------------------------------------------------------
 
@@ -184,7 +217,17 @@ for (const o of OTHER) {
 const FREE_BY_DESIGN = new Set([
   'kiln',      // §6's first keystone — raised with Brick, no wreck
   'crusher',   // the opening machine
-  'refinery',  // Sinter Row is a WALL-adjacent keystone, raised not looted
+  /*
+   * `refinery` — AND THIS COMMENT WAS WRONG (corrected A.104). It read "Sinter
+   * Row is a WALL-adjacent keystone, raised not looted", which excused the row
+   * by hand on a claim the Roll contradicts: Sinter Row is `type: 'wreck'`
+   * carrying `wreck: 'REFINERY'`, so it IS looted — and the string 'REFINERY'
+   * is read by nothing, so the looting pays nothing. The room opens on FERRITE
+   * mastery 3 (`refineryUnlocked`), two shells from the station named after it.
+   * It stays excused here because the room is genuinely reachable; the dead
+   * payload is reported by section 1b instead of hidden by this list.
+   */
+  'refinery',
   'washer',    // ships with the Refinery
   'assayBench',
 ]);
@@ -261,6 +304,12 @@ for (const r of rows) {
   const mark = r.ok ? '  ' : '!!';
   const at = r.depth !== null ? String(r.depth).padStart(4) : '   —';
   console.log(`${mark} ${at}  ${r.system.padEnd(22)} ${r.why}`);
+}
+
+if (inert.length > 0) {
+  console.log('\n── STATIONS WHOSE WRECK PAYLOAD IS READ BY NOTHING (a report, not a failure) ──');
+  for (const i of inert) console.log(i);
+  console.log('   Each system is still reachable by another gate; the named PLACE pays nothing.');
 }
 
 if (walls.length > 0) {
