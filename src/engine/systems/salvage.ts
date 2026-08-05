@@ -23,6 +23,7 @@ import type { ActionResult, EngineCtx, GameState } from '../types';
 import { spendCurrency } from '../resources';
 import { convCurrencyId } from '../shells';
 import { addMaterial, recipeById } from './forge';
+import { keptLaw } from '../laws';
 
 /** Share of a recipe's inputs that come back. The rest is residue. */
 export const SALVAGE_RETURN = 0.5;
@@ -146,12 +147,39 @@ export function salvageTool(
     }
   }
 
-  // Each returned material comes back at ITS OWN part's purity — a fine haft
-  // salvages fine, even off a tool whose head was filthy.
-  for (const [matId, units] of Object.entries(preview.returns)) {
-    addMaterial(state, matId, Math.max(1, Math.round(preview.returnPurity[matId] ?? tool.purity)), units);
+  /*
+   * THE EMPTY HAND's grant, and its only reader: the CAST PARTS come back
+   * whole, and the raw return does not happen at all.
+   *
+   * IT IS A TRADE, NOT A BETTER RATE. `SALVAGE_RETURN` stays 0.5 for everyone
+   * forever — a grant that moved it would be a permanent number behind a
+   * restriction, which is the thing §20.2's own table gets wrong four times.
+   * What changes is the KIND of thing that comes back: three parts at their own
+   * purities instead of a scatter of half-units and residue. Parts are what the
+   * rack spends (castings, shoring props, the Seats), materials are what
+   * recipes spend, and they are not interchangeable — so this is reversibility,
+   * not yield. A tool that predates parts has none to hand back and falls
+   * through to the ordinary path.
+   */
+  const partsBack = keptLaw(state, 'emptyhand') && tool.parts !== undefined;
+  if (partsBack) {
+    for (const slot of ['head', 'haft', 'binding'] as const) {
+      const part = tool.parts![slot];
+      (state.casting.rack ??= []).push({
+        id: state.casting.nextId++,
+        type: slot === 'head' ? 'head' : slot === 'haft' ? 'handle' : 'binding',
+        materialId: part.materialId,
+        purity: part.purity,
+      });
+    }
+  } else {
+    // Each returned material comes back at ITS OWN part's purity — a fine haft
+    // salvages fine, even off a tool whose head was filthy.
+    for (const [matId, units] of Object.entries(preview.returns)) {
+      addMaterial(state, matId, Math.max(1, Math.round(preview.returnPurity[matId] ?? tool.purity)), units);
+    }
+    if (preview.residue > 0) addMaterial(state, SALVAGE_RESIDUE, 5, preview.residue);
   }
-  if (preview.residue > 0) addMaterial(state, SALVAGE_RESIDUE, 5, preview.residue);
 
   // The tool, and anything still set into it, is gone.
   state.forge.tools = state.forge.tools.filter((t) => t.id !== toolId);

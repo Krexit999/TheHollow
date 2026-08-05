@@ -40,7 +40,10 @@ describe('the nav fold', () => {
    */
   it('the counted-system number matches the three surviving clusters', () => {
     // 18 since A.77: THE DESK (A.76, the Reading) and GEAR joined their clusters.
-    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(18);
+    // 19 since A.103: THE INVERSIONS joined at the Spiral — the room the ten
+    // rule-inversions are started from, which is a system with a payoff and not
+    // a codex surface, so it counts.
+    expect(ALL_SYSTEMS.filter((sys) => !sys.codex).length).toBe(19);
     expect(CLUSTERS.length).toBe(3);
   });
 });

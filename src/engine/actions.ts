@@ -103,6 +103,8 @@ import { MAX_DRILLS, newDrill, defaultDrillName } from './systems/drills';
 import { grantXP } from './systems/xp';
 import { initialState } from './state';
 import { toggleReserve } from './systems/reserve';
+import { startChallenge, abandonChallenge } from './systems/challenges';
+import { reshapeFace } from './systems/face';
 
 /** 999Qa in this game's own suffix scale (decimal.ts SUFFIXES: Qa = 10^15) —
  *  the dev "Give All" cheat's flat amount for every wallet in the game. */
@@ -906,6 +908,15 @@ export function handleAction(
     // --- Phase 12: the long tail ------------------------------------------
     case 'spiral':
       return doSpiral(state, ctx, deps.replaceState);
+
+    case 'startChallenge':
+      return startChallenge(state, ctx, action.id);
+
+    case 'abandonChallenge':
+      return abandonChallenge(state, ctx);
+
+    case 'reshapeFace':
+      return reshapeFace(state, mods, ctx);
 
     case 'buyGridSlot': {
       const cost = gridSlotCost(state.spiral.slots);

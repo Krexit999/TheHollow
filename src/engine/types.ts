@@ -353,16 +353,35 @@ export interface SpiralState {
   grid: Record<number, string>;
   /** Module ids unlocked (by challenges), available to place. */
   modules: string[];
+  /** Inversions completed. This is ALSO the permanent-grant store — see
+   *  `keptLaw` in laws.ts. One list, because two would drift. */
   challengeDone: string[];
-  /** The challenge being run by hand right now. */
-  activeChallenge: { id: string; startedAtPlaySec: number } | null;
+  /**
+   * The challenge being run by hand right now.
+   *
+   * `startDepth` and `best` are what make the goal RELATIVE (A.103): a run is
+   * won by carrying it N depths below wherever you began, so the same
+   * inversion is a real run for a shallow player and for a deep one. `best` is
+   * tracked rather than read off `depth` because a Collapse mid-run takes
+   * depth to zero and the ground was still made.
+   */
+  activeChallenge: {
+    id: string;
+    startedAtPlaySec: number;
+    startDepth: number;
+    best: number;
+  } | null;
   shells: ParallelShell[];
   /** Which shell is in hand; null = the ordinary single-world game. */
   inHand: string | null;
-  /** Your real world, put down whole while a challenge runs. Serialized with
-   * the save codec so Decimals round-trip; restored on finish or abandon. A
-   * challenge can therefore never cost you the run you were playing. */
-  saved?: string;
+  /*
+   * `saved?: string` CUT AT A.103 — "your real world, put down whole while a
+   * challenge runs". Nothing ever wrote it, and the design it described is the
+   * one this phase deliberately did not build: an inversion STARTS WHERE YOU
+   * STAND, because putting the world down and picking up a fresh one is a
+   * reset layer hidden inside a reward. A field describing a mechanism nobody
+   * built is the dead-NAME class in the very state this layer owns.
+   */
 }
 
 /** A rolled relic. Affixes come from CONTEXT (where and how it was found),
@@ -495,6 +514,10 @@ export interface GameState {
   face: {
     w: number;
     h: number;
+    /** ONE CELL's grant (A.103): the face is standing on its side, so W and H
+     *  are read swapped out of `fieldDims`. Absent = upright, which is every
+     *  face that has ever existed. `W·H` is identical either way. */
+    turned?: boolean;
     /** Charge per cell, row-major. Plain numbers: cell charge stays small. */
     cells: number[];
     /** Recent manual chips (cell + play-seconds), the trail FIGURES read. Tiny,
@@ -924,7 +947,9 @@ export type GameEvent =
   | { type: 'colComplete'; col: number }
   /** `first` is true only the very first time this material ever reaches your
    *  hands — the UI announces those and stays quiet for every find after. */
-  | { type: 'materialFound'; materialId: string; purity: number; rarity: MaterialRarity; first: boolean }
+  /** `shown` = THE HONEST STONE's grant is held, so the toast names the purity
+   *  on the drop instead of leaving it to be looked up in the Hold. */
+  | { type: 'materialFound'; materialId: string; purity: number; rarity: MaterialRarity; first: boolean; shown?: boolean }
   | { type: 'gemFound'; gemId: string }
   | { type: 'geodeFound' }
   | { type: 'geodeCracked'; drops: RolledDrop[] }
@@ -965,6 +990,10 @@ export type GameEvent =
   | { type: 'recursion'; count: number; axiomsGained: number }
   // --- Phase 12: the long tail -------------------------------------------
   | { type: 'spiral'; count: number; spiralGained: number }
+  // --- A.103: the ten inversions ------------------------------------------
+  | { type: 'challengeStarted'; id: string }
+  | { type: 'challengeAbandoned'; id: string }
+  | { type: 'challengeDone'; id: string }
   | { type: 'relicFound'; relicId: string; rarity: string; source: string }
   | { type: 'relicWoke'; uid: number; step: number }
   | { type: 'resonanceFound'; id: string }
@@ -1124,6 +1153,10 @@ export type GameAction =
   | { type: 'respecSkills' }
   // --- Phase 12: the long tail -------------------------------------------
   | { type: 'spiral' }
+  | { type: 'startChallenge'; id: string }
+  | { type: 'abandonChallenge' }
+  /** ONE CELL's grant: turn the face on its side. W and H trade places. */
+  | { type: 'reshapeFace' }
   | { type: 'buyGridSlot' }
   | { type: 'buyLicence' }
   | { type: 'equipRelic'; uid: number; slot: number }

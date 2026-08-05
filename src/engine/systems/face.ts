@@ -10,7 +10,7 @@ import { D, Decimal } from '../decimal';
 import type { ModifierCache } from '../modifiers';
 import { addCurrency } from '../resources';
 import { stat } from '../upgrades';
-import type { EngineCtx, GameState } from '../types';
+import type { ActionResult, EngineCtx, GameState } from '../types';
 // (EngineCtx now also threads through tickFace for seep drops/encounters.)
 import { coreNodeLevel } from '../content/shell1/coreTree';
 import { skillRank } from '../content/shell1/skillTree';
@@ -27,7 +27,7 @@ import { noteBioWork } from './toolBio';
 import { chipCurrencyId, currentShell } from '../shells';
 import { activeSignatures, registerSignature, runChipMult } from '../signatures';
 import { masteryLevel } from './mastery';
-import { lawNum, sealed, challengeNum } from '../laws';
+import { lawNum, sealed, challengeNum, keptLaw } from '../laws';
 import { oreDef, oreRichness } from '../content/ores';
 import type { ReachPattern } from '../content/forgeParts';
 import {
@@ -611,12 +611,45 @@ export function fieldDims(expandLevel: number): { w: number; h: number } {
   };
 }
 
+/**
+ * TURN THE FACE ON ITS SIDE — ONE CELL's permanent grant.
+ *
+ * Nothing about the income changes and that is the whole design: the run that
+ * pays for this is the one where the face could not widen at all, and its
+ * lesson was that width was never the income, regen was. So the reward is the
+ * shape, and only the shape. `applyFieldSize` does the actual work off
+ * `face.turned`, which keeps the remap-by-coordinate rules (pockets, digs,
+ * painted zones) in one place instead of two.
+ *
+ * A square face refuses rather than silently doing nothing — 6x6 is where
+ * every face starts, and a button that reports success and changes not one
+ * pixel is worse than one that says why.
+ */
+export function reshapeFace(state: GameState, mods: ModifierCache, ctx: EngineCtx): ActionResult {
+  if (!keptLaw(state, 'onecell')) {
+    return { ok: false, reason: 'The rock does not turn for you yet.' };
+  }
+  const dims = fieldDims(stat(state, 'expand'));
+  if (dims.w === dims.h) {
+    return { ok: false, reason: 'It is square. Turning it would change nothing — widen it first.' };
+  }
+  state.face.turned = !state.face.turned;
+  applyFieldSize(state, mods);
+  ctx.dirty();
+  return { ok: true, data: { w: state.face.w, h: state.face.h } };
+}
+
 /** Resize the face after buying expansion. New cells spawn full — a reward. */
 export function applyFieldSize(state: GameState, mods: ModifierCache): void {
   // ONE CELL (challenge): the face is a single cell and cannot be widened.
   // Width was never income — regen was — and this is where that gets proved.
   if (sealed(state, 'sealWiden')) return;
-  const { w, h } = fieldDims(stat(state, 'expand'));
+  const dims = fieldDims(stat(state, 'expand'));
+  // ONE CELL's grant, and the ONLY reader of `face.turned`: the face may be
+  // stood on its side. W and H trade places, so `W·H` — and therefore `dpsMax`
+  // — is identical by construction, which is exactly the point of a reward for
+  // a run that proved width was never the income.
+  const { w, h } = state.face.turned ? { w: dims.h, h: dims.w } : dims;
   if (w === state.face.w && h === state.face.h) return;
   const cap = cellCap(state, mods);
   const next: number[] = new Array(w * h).fill(cap);

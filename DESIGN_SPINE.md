@@ -1548,21 +1548,37 @@ behaviour or capability.
 rule whose reward is a permanent **rule change**. *Emotion:* **the restriction becomes a
 capability** — you beat a limitation and keep a piece of it.
 
-| # | Challenge | The permanent grant |
-|---|---|---|
-| 1 | **The Cold Kiln** — no Draw at all | every machine runs at 15% on zero Draw, forever |
-| 2 | **The Long Fall** — you may not Collapse | **drifts survive Breach** |
-| 3 | **The Shallow** — may not pass depth 60 | the lock threshold rises 20 → 26 |
-| 4 | **One Trait** — every material has exactly one | the Still yields two essences per unit |
-| 5 | **Fallow** — never mine more than half the face | Bloom works in *every* shell |
-| 6 | **Blind** — no purity readouts | purity shows on the drop, before pickup |
-| 7 | **The Flood** — heat never vents | Boiler Surge +25%, everywhere |
-| 8 | **The Single Hand** — one machine at a time | the Line gains a slot |
-| 9 | **Brittle** — every part is `brittle` | the slip ceiling rises and slips gain a *choice* |
-| 10 | **The Last Word** — reach a floor with a tier-I tool | one free Seat re-pour |
+**SHIPPED A.103, AND THE TABLE BELOW IS THE ONE THAT SHIPPED.** The ten are one per SEAL —
+`laws.ts` has exactly ten and every guard site had its challenge's name written in the comment
+above it for phases, waiting. Each starts WHERE YOU STAND and is won by carrying it N depths
+below where you began; abandoning costs the attempt and takes nothing.
 
-#1, #2, #3 and #5 change the shape of the game permanently. #1 is also the safety valve if Draw
-starvation reads badly in playtest — **ship it as a default rather than a reward if so.**
+| # | Inversion | The rule it bends | The permanent grant (a capability) |
+|---|---|---|---|
+| 1 | **THE UNATTENDED** | no chipping, no techniques; regen ×0.6 | drills leave the cell your hand last worked alone, without the boots |
+| 2 | **THE LONG FALL** | you may not Collapse | **drifts survive the Breach**, re-timbered onto the new shell's ladder |
+| 3 | **THE THIN SEAM** | nothing drops at all | a geode opens where it is found |
+| 4 | **THE HONEST STONE** | every material at zero purity | a drop names its purity as it lands |
+| 5 | **ONE CELL** | the face will not widen | the face may be turned on its side (W and H trade places) |
+| 6 | **THE EMPTY HAND** | bare hands, whatever you carry | salvage hands the cast parts back instead of scrap |
+| 7 | **COLD IRON** | the Kiln will not light | the Kiln never needs to recover between overstokes |
+| 8 | **THE UNLIT** | nothing accrues while away | crews keep walking while you are away |
+| 9 | **THE HELD BREATH** | Governor off, heat ×2 | the choke works in any shell, not only Cinder |
+| 10 | **SABLE'S WALK** | only the Face; depth capped at 60 | a room you have opened never closes again |
+
+**FOUR OF v6's GRANTS WERE NUMBERS AND WERE RE-CUT (A.103).** "+25% Surge", "the lock threshold
+rises 20 → 26", "two essences per unit" and "the Line gains a slot" are each a permanent
+multiplier hidden behind a restriction, which is the shape pillar 2 exists to refuse — and this
+table is the one place in the document that asked for four of them. **A grant is a capability,
+never a number**, enforced by test: `challenges.test.ts` holds all ten and asserts `dpsMax`
+identical at equal depth. The four cut challenges (One Trait, Fallow, Blind, Brittle) had no seal
+to express themselves through and would each have needed a new one; the ten that ship are the ten
+the registry could already speak.
+
+**WHERE THEY OPEN: the Spiral,** because §21's locked ladder puts them there. That reads late and
+is correct — a Spiral rebuilds the world from `initialState`, so the inversions are what make the
+SECOND climb differently shaped rather than merely faster. Every grant is worth something on a
+re-climb and nothing on the run that earned it.
 
 ## 20.3 Beat density, not a clock
 

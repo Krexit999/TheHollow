@@ -34,6 +34,7 @@ import { tickCircuit } from './systems/circuit';
 import { tickCondition } from './systems/condition';
 import { tickResidue } from './systems/witness';
 import { tickCrews } from './systems/crews';
+import { tickChallenges } from './systems/challenges';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
 import { tickDrills } from './systems/drills';
@@ -83,6 +84,7 @@ const UNDOABLE = new Set<string>([
 ]);
 const UNDO_CLEARS = new Set<string>([
   'collapse', 'breach', 'recurse', 'spiral', 'hardReset',
+  'startChallenge', 'abandonChallenge',
 ]);
 const UNDO_LABELS: Record<string, string> = {
   buyUpgrade: 'the purchase', upgradeDrill: 'the drill',
@@ -207,6 +209,12 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       // every 45s and appends strings. It mines nothing, so nothing downstream
       // of it cares when in the second it ran.
       tickCrews(state, ctx, verdAcc);
+      // THE TEN INVERSIONS (§20.2). Same 1Hz block: it reads `depth`, notes the
+      // deepest the run has been, and finishes the challenge when the ground is
+      // made. It is watched here rather than hooked onto `descend` because
+      // depth moves by half a dozen routes — a multi-descend, a drift fall, a
+      // Collapse taking it back to zero — and a beat cannot be routed around.
+      tickChallenges(state, ctx);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

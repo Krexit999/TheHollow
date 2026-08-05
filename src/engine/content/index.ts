@@ -1,5 +1,6 @@
 import { ensurePyreBath } from './reductions';
 import { registerAxioms } from './axioms';
+import { registerChallenges } from './challenges';
 /**
  * Content bootstrap. Registration is explicit (not import side effects) so
  * tests and the sim can rebuild registries deterministically. Adding a shell
@@ -75,6 +76,7 @@ export function ensureContentLoaded(): void {
   if (loaded) return;
   loaded = true;
   registerShellContent();
+  registerChallenges(); // the ten inversions — the caller registerChallengeLaws never had
   // The Retort's Pyre-bath (§17). Registered at LOAD rather than on build:
   //  names it as a medium, and a def-lookup that throws inside a
   // render path is the class that black-screened the Refinery at A.36.

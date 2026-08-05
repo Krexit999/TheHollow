@@ -36,7 +36,7 @@ import { addCurrency } from '../resources';
 import { currentShell } from '../shells';
 import { runChipMult } from '../signatures';
 import { affinityMult, logImplementUse } from './affinity';
-import { lawNum } from '../laws';
+import { lawNum, keptLaw } from '../laws';
 import { relicRule } from './relicPowers';
 import { advanceCharges, rotBite, wireBurnHarvest, wireFireDeps, TOOL_CARRIER } from './drillAlloys';
 import { isHandCarrier, toolHit } from './toolAbilities';
@@ -205,7 +205,12 @@ function pickTarget(
     // A pocket is never an ordinary target: it will not come away in one bite.
     if (ore?.[i]) return false;
     // FELT OVERBOOTS: the machines leave alone the cell your hand last struck.
-    if (wearing(state, 'feltboots') && state.face.lastHandCell === i) return false;
+    // THE UNATTENDED's grant does the same thing without the boots, forever —
+    // the reward for a run where the hands were sealed out entirely is that the
+    // machines stop crowding them. Routing only: the same strokes land, on a
+    // different cell, so nothing here reaches `W·H·regen·Y`.
+    if ((wearing(state, 'feltboots') || keptLaw(state, 'unattended'))
+      && state.face.lastHandCell === i) return false;
     // t2: under its own bar this machine waits rather than nibbles.
     return (cells[i] ?? 0) >= bar;
   };

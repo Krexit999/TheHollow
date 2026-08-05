@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useGame, type TabId } from './store';
-import { CLUSTERS, clusterOf, clusterVisible, defaultSystem, type ClusterDef } from './nav';
+import { CLUSTERS, clusterOf, clusterVisible, defaultSystem, systemVisible, type ClusterDef } from './nav';
 import { Header } from './components/Header';
 import { FaceCanvas } from './components/FaceCanvas';
 import { ShaftCanvas } from './shaft/ShaftCanvas';
@@ -27,6 +27,7 @@ import { SystemHeader } from './components/SystemHeader';
 import { PanelErrorBoundary } from './components/ErrorBoundary';
 import { SYSTEM_COPY } from './systemCopy';
 import { SpiralPanel, RelicsPanel } from './components/longtail';
+import { InversionsPanel } from './components/inversions';
 import { Compendium } from './components/Compendium';
 import { UndoToast, RunSummaryModal, SpendConfirmModal, PinnedStrip } from './components/qol';
 import { RollPanel } from './components/roll';
@@ -81,6 +82,7 @@ function PanelHost({ tab }: { tab: TabId; state: ReturnType<typeof useGame.getSt
       {only('grid') && <GridPanel />}
       {only('vault') && <VaultPanel />}
       {only('spiral') && <SpiralPanel />}
+      {only('inversions') && <InversionsPanel />}
       {only('relics') && <RelicsPanel />}
     </>
   );
@@ -193,7 +195,7 @@ export function App() {
 
   const visibleClusters = CLUSTERS.filter((c) => clusterVisible(c, state));
   const clusterFresh = (c: ClusterDef) => c.systems.some((s) => freshTabs.includes(s.id) && s.id !== tab);
-  const visibleSystems = active.systems.filter((s) => s.visible(state));
+  const visibleSystems = active.systems.filter((s) => systemVisible(s, state));
 
   // The Shaft takes over the hero. Its canvas mounts once the shaft exists and
   // stays mounted thereafter (maxDepthRecord never falls), so the Pixi app is

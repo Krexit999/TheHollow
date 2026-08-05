@@ -28,6 +28,9 @@ import { grantXP } from './xp';
 import { clearOres } from './ores';
 import { resetCompaction } from './compaction';
 import { START_H, START_W } from '../state';
+import { keptLaw } from '../laws';
+import { bands, driftDepth } from './shoring';
+import { ensureRoll } from './roll';
 
 /** Upgrades that are cross-shell infrastructure and survive the fall. */
 const SURVIVES_BREACH = new Set(['forgeBuild']);
@@ -125,6 +128,34 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   state.assay.boostChips = 0;
   state.assay.reportDepth = null;
 
+  /*
+   * THE LONG FALL (§20.2 #2) — the reward leg, blocked since A.86 and measured
+   * before it was built.
+   *
+   * THE PREMISE THREE PASSES QUOTED WAS HALF WRONG. "A drift dies at the
+   * Breach" is not what the code does: `roll.shored` is never cleared, so the
+   * old station ids survive verbatim. What dies is the BENEFIT — `bands()`
+   * reads the CURRENT shell's Roll, so a Loam station id in the list is a name
+   * the Ferrite ladder has never heard of, and `driftDepth` breaks on the first
+   * band and returns zero. The data lived; the drift did not.
+   *
+   * So the reward cannot be "stop wiping it" — nothing was wiping it. It has to
+   * TRANSLATE, which is what §20.2's promise ("drifts survive Breach") means
+   * once you know that the two shells do not share a ladder. The fall you had
+   * is carried as a FRACTION OF THE FLOOR and re-timbered onto the new shell's
+   * own bands. Ninety of Loam's hundred and fifty is three-fifths of the way
+   * down; three-fifths of Ferrite is where you come in.
+   *
+   * WHAT MAKES IT BOUNDED. It carries `driftDepth` — the leading UNBROKEN
+   * chain — and never the stranded bands above it, so it can only ever hand
+   * back ground that was actually walkable. It is measured against the floor
+   * you just broke, so it cannot compound: a fifth of a shell is a fifth of
+   * every shell after it, never more. And `shaftPeak` already refuses to pay
+   * Cores on drift ground, so the fall it hands you is reach, never income.
+   */
+  const carried = keptLaw(state, 'longfall') ? driftDepth(state) : 0;
+  const carriedShare = carried > 0 ? Math.min(1, carried / from.floorDepth) : 0;
+
   if (echoes.gt(0)) addCurrency(state, 'echo', echoes);
   state.shell.coresEarnedThisBreach = D(0);
   state.shell.current = to.id;
@@ -132,6 +163,23 @@ export function doBreach(state: GameState, mods: ModifierCache, ctx: EngineCtx):
   state.depth = 0;
   resetShaftRun(state); // the new shell's column starts unbroken (its rail is its own)
   state.maxDepthRecord = state.depthRecords[to.id] ?? 0;
+
+  // ...and the drift is re-timbered on the new ladder. AFTER the shell switch,
+  // because `bands()` is only the new shell's once `shell.current` has moved.
+  if (carriedShare > 0) {
+    const reach = carriedShare * to.floorDepth;
+    ensureRoll(state);
+    const shored = (state.roll!.shored ??= []);
+    let carriedBands = 0;
+    for (const band of bands(state)) {
+      if (band.to > reach) break;              // the chain stops where the fall did
+      if (!shored.includes(band.def.id)) shored.push(band.def.id);
+      carriedBands += 1;
+    }
+    if (carriedBands > 0) {
+      ctx.emit({ type: 'shored', stationId: 'thelongfall', depth: driftDepth(state) });
+    }
+  }
 
   // A fresh face under different physics.
   state.face.w = START_W;

@@ -15,7 +15,7 @@ import { addCurrency, getCurrency } from '../resources';
 import type { EngineCtx, GameState } from '../types';
 import { grantXP } from './xp';
 import { chipCurrencyId, convCurrencyId } from '../shells';
-import { lawFlag, sealed } from '../laws';
+import { lawFlag, sealed, keptLaw } from '../laws';
 import { flowSatisfaction } from './plant';
 import { machineSpeed } from './condition';
 import { materialCount, consumeMaterial } from './forge';
@@ -29,8 +29,21 @@ export function overstokeCost(state: GameState, mods: ModifierCache): Decimal {
   return kilnRate(state, mods).mul(OVERSTOKE_COST_SECONDS);
 }
 
+/**
+ * COLD IRON's grant lives here, and this is its only reader: the kiln never
+ * needs to recover again. Overstoke is available whenever you can pay the Dust
+ * for it, with no cooldown between windows.
+ *
+ * PILLAR 2, on this file's own argument (see `kilnRate` below): overstoke
+ * "converts Dust you already had; the Dust itself is still field-bound, so this
+ * changes WHEN bricks land, not the ceiling." Lifting the cooldown lifts a
+ * wait, not a cap, and every window is still bought with Dust the field made.
+ * It is the reward for a run where the kiln stood and would not light at all.
+ */
 export function overstokeReady(state: GameState): boolean {
-  return state.kiln.built && (state.kiln.overstokeReadyAt ?? 0) <= state.stats.playTimeSec;
+  if (!state.kiln.built) return false;
+  if (keptLaw(state, 'coldiron')) return true;
+  return (state.kiln.overstokeReadyAt ?? 0) <= state.stats.playTimeSec;
 }
 
 /** Light the deliberate burst: pay Dust up front, open the window, start the

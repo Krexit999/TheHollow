@@ -7,7 +7,7 @@ import {
   D,
 } from '../../engine';
 import { ModifierCache } from '../../engine/modifiers';
-import { lawFlag } from '../../engine/laws';
+import { lawFlag, keptLaw } from '../../engine/laws';
 import { cellCap, cellRegen, chipYield, dpsMax } from '../../engine/systems/face';
 import { kilnRate, kilnEfficiency, KILN_DUST_PER_BRICK, overstokeActive, overstokeReady, overstokeCost } from '../../engine/systems/kiln';
 import { KILN_FUELS, kilnFuel, OVERSTOKE_EFF_MULT, OVERSTOKE_WINDOW_SEC } from '../../engine/content/kilnFuel';
@@ -285,6 +285,25 @@ export function DigPanel() {
       {/* What the band favours today — the reason to go now rather than later. */}
       <AssayCallStrip />
       <FieldStats state={state as GameState} m={m} />
+      {/* ONE CELL's grant, and the only place it is spent. In the ROOM under
+          the face, beside the width and height it changes — never on the face
+          itself, which mounts nothing new. Absent entirely until the run that
+          pays for it is done, so it is not a locked row (LAW 3). */}
+      {keptLaw(state as GameState, 'onecell') && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-cave-800 px-2 py-1">
+          <span className="text-[10px] leading-snug text-cave-400">
+            The rock turns. {(state as GameState).face.w}×{(state as GameState).face.h} —
+            the same cells, stood on their side.
+          </span>
+          <button
+            className="btn shrink-0 py-0.5 text-[10px]"
+            onClick={() => dispatch({ type: 'reshapeFace' })}
+            data-testid="face-reshape"
+          >
+            Turn it
+          </button>
+        </div>
+      )}
       {/* THE ROLL MOVED TO THE SHAFT SCREEN. Down here it was one card among
           ten, capped at a 280px scroller, and the floor — the thing §1 says is
           always pinned — was below the fold. Dig is where you are; Shaft is

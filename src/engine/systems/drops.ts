@@ -12,7 +12,7 @@
  */
 import { D } from '../decimal';
 import { maybeDropRelic, relicChanceForDepth } from './relics';
-import { lawFlag , sealed } from '../laws';
+import { lawFlag, sealed, keptLaw } from '../laws';
 import type { ModifierCache } from '../modifiers';
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import {
@@ -78,6 +78,11 @@ export function applyDrop(state: GameState, ctx: EngineCtx, drop: RolledDrop): v
       purity,
       rarity: materialDef(drop.materialId).rarity,
       first,
+      // THE HONEST STONE's grant, and its only reader: the stone names its
+      // purity as it lands, rather than the player having to go and look it up
+      // in the Hold afterwards. Information, which is what a run at flat zero
+      // purity teaches you to want — and §20.2's own #6 asks for exactly this.
+      shown: keptLaw(state, 'honeststone'),
     });
   }
 }
@@ -122,12 +127,20 @@ export function rollForDrop(
   // THE CALL rolls the table DEEPER for a cell that has gathered — richer
   // rarities, same drop chance. Drops sit outside the income path, so this
   // shifts what you find without touching the regen ceiling (pillar 2).
-  applyDrop(state, ctx, rollDrop(
+  const drop = rollDrop(
     currentShell(state).id,
     state.depth + oreDepthBonus,
     Math.random,
     assayCall(state),
-  ));
+  );
+  applyDrop(state, ctx, drop);
+  // THE THIN SEAM's grant, and its only reader: a geode opens where it is
+  // found. The run that pays for this is the one where NOTHING dropped, so the
+  // reward is that nothing you find waits to be dealt with later. It reuses
+  // `crackGeode` whole rather than re-rolling here — same table, same XP, same
+  // tool deed — and the rolls inside it go through `applyDrop` directly, so a
+  // geode cannot open into another one.
+  if (drop.kind === 'geode' && keptLaw(state, 'thinseam')) crackGeode(state, mods, ctx);
 }
 
 /**

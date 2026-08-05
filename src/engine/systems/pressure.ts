@@ -50,7 +50,7 @@ import { applyFieldSize, cellCap } from './face';
 import { runFaceReset } from '../signatures';
 import { resetCompaction } from './compaction';
 import { chipCurrencyId, currentShell } from '../shells';
-import { lawFlag, sealed, challengeNum } from '../laws';
+import { lawFlag, sealed, challengeNum, keptLaw } from '../laws';
 import { masteryLevel } from './mastery';
 import { logScar, resetShaftRun } from './shaftSys';
 /**
@@ -376,7 +376,13 @@ export function floodRun(state: GameState, mods: ModifierCache, ctx: EngineCtx):
 // ---------------------------------------------------------------------------
 
 export function setChoke(state: GameState, on: boolean): ActionResult {
-  if (currentShell(state).id !== 'cinder') return { ok: false, reason: 'Only Cinder runs hot enough to choke' };
+  // THE HELD BREATH's grant, and its only reader: the choke works anywhere.
+  // You ran a world with the Governor off and the gauge climbing at twice the
+  // rate; what you keep is the verb, not a number attached to it. Any world you
+  // stand in can be run shut, not only the one that taught you how.
+  if (currentShell(state).id !== 'cinder' && !keptLaw(state, 'heldbreath')) {
+    return { ok: false, reason: 'Only Cinder runs hot enough to choke' };
+  }
   state.pressure.choke = on;
   if (on) state.pressure.lastStokeSec = state.stats.playTimeSec;
   return { ok: true };

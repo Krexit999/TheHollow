@@ -244,7 +244,7 @@ export const SYSTEM_COPY: Partial<Record<TabId, SystemCopy>> = {
     title: 'The Spiral',
     purpose:
       'Below this you play a world. Here you wind one up and set it going. A Spiral spends every law you wrote and pays back capacity — slots for machines that dig without you, licences for worlds to run beside this one. It is the last thing the ladder has to offer, and it is a change of job, not a bigger number.',
-    status: (s) => `${s.spiral.count} wound · ${s.spiral.challengeDone.length}/8 by hand`,
+    status: (s) => `${s.spiral.count} wound · ${s.spiral.challengeDone.length}/10 inversions kept`,
     next: (s) => {
       if (s.spiral.activeChallenge) return 'A challenge is running. Finish it or put it down — your own world is waiting, untouched.';
       const pending = spiralPending(s);

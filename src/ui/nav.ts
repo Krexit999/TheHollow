@@ -9,7 +9,7 @@
  * first visible one.
  */
 import type { GameState } from '../engine';
-import { sealed } from '../engine/laws';
+import { sealed, keptLaw } from '../engine/laws';
 import { refineryUnlocked } from '../engine/systems/refinery';
 import type { TabId } from './store';
 
@@ -89,6 +89,10 @@ export const CLUSTERS: ClusterDef[] = [
       { id: 'collapse', label: 'Collapse', visible: (s) => s.maxDepthRecord >= 15 || s.collapse.count > 0 },
       { id: 'parallel', label: 'All Worlds', visible: (s) => s.recursion.count >= 1 || s.shell.current === 'aleph', codex: true },
       { id: 'spiral', label: 'The Spiral', visible: (s) => s.recursion.count >= 1 },
+      // THE INVERSIONS open with the Spiral itself, which is where §21's locked
+      // ladder puts them ("Spiral: challenges, parallel shells, Automation
+      // Grid"). Never before it: the room would be ten runs you cannot start.
+      { id: 'inversions', label: 'Inversions', visible: (s) => s.spiral.count >= 1 },
       { id: 'grid', label: 'Achievements', visible: always },
       { id: 'vault', label: 'Vault', visible: always },
     ],
@@ -114,10 +118,28 @@ export function systemDef(tab: TabId): SystemDef | undefined {
  * rooms exist" is a navigation question, not an engine one. */
 export function clusterVisible(c: ClusterDef, s: GameState): boolean {
   if (sealed(s, 'sealRooms') && c.id !== 'face') return false;
-  return c.systems.some((sys) => sys.visible(s));
+  return c.systems.some((sys) => systemVisible(sys, s));
+}
+
+/**
+ * SABLE'S WALK's grant, and its only reader: a room you have opened never
+ * closes again.
+ *
+ * Every `visible` predicate above is a LIVE condition, so a room can go away —
+ * a Breach drops machine tiers and the Kiln's door shuts, a salvaged relic
+ * empties the Relics room, a Spiral takes the lot. That is correct default
+ * behaviour (LAW 3: never show a locked list) and it is also the thing that
+ * makes a re-climb feel like walking back through doors you have already
+ * opened. The grant reads `seenSystems`, which is the disclosure gate's own
+ * record of rooms you were actually shown, so it can only ever re-open a door
+ * you personally walked through — never reveal one early.
+ */
+export function systemVisible(sys: SystemDef, s: GameState): boolean {
+  if (sys.visible(s)) return true;
+  return keptLaw(s, 'sableswalk') && (s.seenSystems?.includes(sys.id) ?? false);
 }
 
 /** The first visible system in a cluster — its default destination. */
 export function defaultSystem(c: ClusterDef, s: GameState): TabId | null {
-  return c.systems.find((sys) => sys.visible(s))?.id ?? null;
+  return c.systems.find((sys) => systemVisible(sys, s))?.id ?? null;
 }

@@ -32,7 +32,7 @@ export type TabId =
   | 'wells' | 'expeditions' | 'desk'
   // Progress
   | 'delver' | 'collapse' | 'rewrite' | 'parallel' | 'spiral'
-  | 'grid' | 'vault';
+  | 'grid' | 'vault' | 'inversions';
 
 export type BulkMode = 1 | 10 | 'max';
 

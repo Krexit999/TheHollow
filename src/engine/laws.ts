@@ -199,6 +199,58 @@ export function registerChallengeLaws(id: string, laws: ChallengeLaws): void {
   challengeLaws.set(id, laws);
 }
 
+// ---------------------------------------------------------------------------
+// WHAT A CHALLENGE LEAVES BEHIND (A.103)
+// ---------------------------------------------------------------------------
+/**
+ * A SEAL IS FOR THE RUN; A GRANT IS FOREVER — and it is a CAPABILITY, never a
+ * number. §20.2's own table breaks that rule four times ("+25% Surge", "the
+ * lock threshold rises 20 → 26", "two essences per unit", "the Line gains a
+ * slot"), and every one of those would have put a permanent multiplier behind a
+ * restriction, which is the shape pillar 2 exists to refuse. What the ten
+ * grants below do instead is change what the world is WILLING to do: a drift
+ * survives a fall, a geode opens where it lies, the face turns on its side,
+ * crews walk while nobody watches. None of them touch `W·H·regen·Y`.
+ *
+ * THE SYMMETRY WITH SEALS IS DELIBERATE. `sealed()` asks "is this rule in force
+ * for the run"; `keptLaw()` asks "did you beat the run that pays for it". Both
+ * are read at exactly one place per name, both are walked by a test rather than
+ * trusted to a comment, and both fail the build if a name loses its reader —
+ * because the seals spent phases as a registry with a writer and nothing that
+ * reached it, and a second registry of the same shape would be that failure
+ * knowingly repeated.
+ *
+ * The grant id IS the challenge id. There is no second table to drift.
+ */
+export type ChallengeGrant =
+  | 'unattended'    // drills tend themselves — a worn drill never wants a hand
+  | 'longfall'      // drifts survive a Breach, translated onto the new ladder
+  | 'thinseam'      // a geode opens where it is found
+  | 'honeststone'   // a drop names its purity as it lands
+  | 'onecell'       // the face may be turned on its side
+  | 'emptyhand'     // salvage hands the cast parts back, not scrap
+  | 'coldiron'      // the Kiln comes back lit after a Collapse
+  | 'unlit'         // crews keep walking while you are away
+  | 'heldbreath'    // the choke works in any shell, not only Cinder
+  | 'sableswalk';   // a room you have opened never closes again
+
+/** Every grant, as data, for the same reason `ALL_SEALS` is data. */
+export const ALL_GRANTS: ChallengeGrant[] = [
+  'unattended', 'longfall', 'thinseam', 'honeststone', 'onecell',
+  'emptyhand', 'coldiron', 'unlit', 'heldbreath', 'sableswalk',
+];
+
+/**
+ * Do you hold this permanently? Read off `spiral.challengeDone`, which is the
+ * completion record itself — so there is no separate grant store to fall out of
+ * step with it, and a grant is kept exactly as long as the memory of beating
+ * the run is. `doSpiral` spreads `spiral` forward and a Recursion never touches
+ * it, so "forever" is literal.
+ */
+export function keptLaw(state: GameState, grant: ChallengeGrant): boolean {
+  return state.spiral?.challengeDone?.includes(grant) === true;
+}
+
 function activeLaws(state: GameState): ChallengeLaws | undefined {
   const active = state.spiral?.activeChallenge;
   return active ? challengeLaws.get(active.id) : undefined;

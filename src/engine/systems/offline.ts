@@ -25,8 +25,9 @@ import { drillThroughput } from './drills';
 import { KILN_DUST_PER_BRICK, kilnRate } from './kiln';
 import { grantXP } from './xp';
 import { chipCurrencyId, convCurrencyId } from '../shells';
-import { lawNum, sealed } from '../laws';
+import { lawNum, sealed, keptLaw } from '../laws';
 import { settleOffline } from './settle';
+import { tickCrews } from './crews';
 
 export function currentOfflineEfficiency(state: GameState, mods: ModifierCache): number {
   // THE INSOMNIAC CAMP (law): the cap itself rises to 1.0. The formula's
@@ -42,6 +43,19 @@ export function applyOfflineProgress(
 ): OfflineSummary {
   // THE UNLIT (challenge): the world only runs while it is watched.
   const eff = sealed(state, 'sealOffline') ? 0 : currentOfflineEfficiency(state, mods);
+  /*
+   * ...AND THE UNLIT's grant, its only reader, one line under the seal it
+   * inverts: your CREWS keep walking. They were never the part of the world
+   * that needed watching, and the run that pays for this is the one where
+   * nothing at all moved while you were away.
+   *
+   * PILLAR 2 IS FREE HERE, not argued: crews.ts calls `addCurrency` nowhere.
+   * A crew produces FINDINGS — places that want your hands — so an offline
+   * span of them adds work to do, never a grain of anything to the purse. The
+   * `eff` term above is untouched by this and stays the only thing that scales
+   * what an absence pays.
+   */
+  if (keptLaw(state, 'unlit')) tickCrews(state, ctx, seconds);
   const levelBefore = state.delver.level;
   // Nobody was on the face: the shaft settled the whole time (A.42). Depth
   // still does not advance offline — this only cheapens the step you take.

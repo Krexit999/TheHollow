@@ -28,6 +28,8 @@ import { join } from 'node:path';
 import { allShells } from '../src/engine/shells';
 import { allAuthoredStations, authoredRoll } from '../src/engine/content/rolls';
 import { MACHINE_DEMAND } from '../src/engine/systems/plant';
+import { CHALLENGES } from '../src/engine/content/challenges';
+import { ALL_SEALS, sealed } from '../src/engine/laws';
 
 /** Shell order — the only way anyone ever arrives anywhere. */
 const ORDER = allShells().map((s) => s.id);
@@ -110,6 +112,23 @@ for (const need of NEEDS_TYPE) {
 
 const shellIndex = (id: string): number => ORDER.indexOf(id);
 
+/**
+ * A challenge is reachable only if something REGISTERED one. This asks the
+ * registry, not a list here — the exact failure the row below carried for two
+ * phases was a name in a union with no writer, and a hardcoded `ok: true`
+ * would be that failure written into the instrument that is meant to catch it.
+ */
+function challengesReachable(): boolean {
+  const probe = { spiral: { activeChallenge: { id: CHALLENGES[0]?.id } } } as never;
+  return CHALLENGES.length === 10
+    && ALL_SEALS.some((seal) => sealed(probe, seal));
+}
+
+/** ...and a grant is reachable only if a challenge actually pays it out. */
+function grantExists(id: string): boolean {
+  return CHALLENGES.some((c) => c.id === id);
+}
+
 const OTHER: Array<{ system: string; gate: string; shell: string | null; ok: boolean; why: string }> = [
   {
     system: 'seats (the frame)', gate: 'breachCount >= 1',
@@ -129,13 +148,24 @@ const OTHER: Array<{ system: string; gate: string; shell: string | null; ok: boo
     shell: 'aleph', ok: true, why: 'granted by doRecursion; spendable at the Axiom Engine',
   },
   {
-    system: 'challenges', gate: 'registerChallengeLaws',
-    shell: null, ok: false,
-    why: 'NO CALLERS — ten seals sit permanently false at fourteen live sites',
+    /*
+     * CLOSED A.103. This row read "NO CALLERS — ten seals sit permanently false
+     * at fourteen live sites" for the whole life of this file.
+     * `content/challenges.ts` is the caller, and the room opens at the Spiral,
+     * which is where §21's locked ladder puts it. Late by the clock and correct
+     * by the design: a Spiral rebuilds the world from `initialState`, so the
+     * inversions are what make the SECOND climb differently shaped.
+     */
+    system: 'challenges', gate: 'spiral.count >= 1',
+    shell: 'aleph', ok: challengesReachable(),
+    why: 'THE INVERSIONS open with the first Spiral (post-Recursion) — ten runs, '
+      + 'each starting where you stand',
   },
   {
-    system: 'drift survival (THE LONG FALL)', gate: 'a challenge reward',
-    shell: null, ok: false, why: 'blocked on challenges since A.86',
+    system: 'drift survival (THE LONG FALL)', gate: "the 'longfall' grant",
+    shell: 'aleph', ok: grantExists('longfall'),
+    why: 'kept by carrying THE LONG FALL 60 depths; re-timbers the drift onto the '
+      + "next shell's ladder at breach.ts",
   },
 ];
 for (const o of OTHER) {
