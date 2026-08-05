@@ -331,9 +331,29 @@ export function logCarve(state: GameState, ctx: EngineCtx, rune: string): void {
   trail.push({ rune, at: state.stats.playTimeSec });
   while (trail.length > CARVE_TRAIL_MAX) trail.shift();
   const found = (state.runes.temporalFound ??= []);
+  /**
+   * THE PALINDROME LAW (A.99) — "Progressions also read right-to-left".
+   *
+   * `laws.ts`'s `progressionPalindrome` slot has had a name and no reader since
+   * Phase 10, and THIS is what it was named for: a TEMPORAL_COMBO is a
+   * progression carved over sessions, and `trailCompletes` scans it strictly
+   * left-to-right. The law says the world will also read your trail backwards.
+   *
+   * REACH, NOT RATE, and the distinction is exact: a combo pays what it always
+   * paid, through the same modifier, once. The law changes only whether the
+   * order you happened to carve in COUNTS — which is the difference between
+   * "you did the wrong thing" and "you did it the other way round".
+   *
+   * ITS OWN RED TEST IS AUTHORED: 'The Tempered Year' is `kel · thur · kel`,
+   * already a palindrome, so the law must change nothing whatsoever about it.
+   * A reader that "works" by finding that one is a reader that does nothing.
+   */
+  const bothWays = lawFlag(state, 'progressionPalindrome');
   for (const combo of TEMPORAL_COMBOS) {
     if (found.includes(combo.id)) continue;
-    if (trailCompletes(trail, combo.runes)) {
+    const hit = trailCompletes(trail, combo.runes)
+      || (bothWays && trailCompletes(trail, [...combo.runes].reverse()));
+    if (hit) {
       found.push(combo.id);
       ctx.emit({ type: 'temporalFound', id: combo.id, name: combo.name });
     }

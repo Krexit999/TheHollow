@@ -42,10 +42,6 @@ export const NUM_LAWS = {
   regenCeilingMult: { base: 1, mode: 'mult' },
   /** Face-upgrade levels a Collapse retains ('The Gentle Fall'; max with Momentum). */
   collapseRetain: { base: 0, mode: 'max' },
-  /** A lost Magma Well pays back this share ('The Honest Well'). */
-  wellFloorShare: { base: 0, mode: 'max' },
-  /** Echo Chamber tape length ('The Long Echo'). */
-  tapeSteps: { base: 12, mode: 'add' },
   /** Hardness walls: 0 = hard stop; 1 = passable one tier under at 3× cost ('The Unwritten Wall'). */
   wallSoftness: { base: 0, mode: 'max' },
 } as const satisfies Record<string, NumLawDef>;
@@ -55,7 +51,6 @@ export type NumLaw = keyof typeof NUM_LAWS;
 export type FlagLaw =
   | 'kilnReverse' // the Kiln gains a reverse gear: Brick back to Dust at a premium
   | 'twinDescent' // the shell you left keeps producing at the pace you left it
-  | 'wardenOptional' // the floor opens without the warden felled (they keep their drops)
   | 'assayPersist' // a survey's mark never expires
   | 'autoReplant' // greenhouse plots re-seed themselves
   | 'chainPersistDescend' // polarity chains ride the stair down
@@ -63,10 +58,45 @@ export type FlagLaw =
   | 'sealedSeam' // the choke keeps a safety seam: heat caps at 97, flooding impossible
   | 'crewAlwaysWorks' // recalled crew keep working from the stair
   | 'structuresRemember' // Recursions begin with Kiln, Bay, Forge standing
-  | 'guildRemembers' // the Lamphouse is open from minute one of a Recursion
   | 'convDescend' // the stair accepts the converter currency when it is cheaper
   | 'runeMirror' // every etched pair also speaks backwards
   | 'progressionPalindrome'; // Progressions also read right-to-left
+
+/*
+ * FOUR SLOTS CUT AT A.99 — `wellFloorShare`, `tapeSteps`, `wardenOptional`,
+ * `guildRemembers`.
+ *
+ * Not deprecated. DELETED, exactly as A.82 deleted four dead SEALS from the
+ * union below, and for a stronger reason than that one had. Those four seals had
+ * no READER; these four have no SUBJECT:
+ *
+ *   wellFloorShare    "a lost Magma Well pays back this share" — there is no
+ *                     Well system. `relics.ts` has 'a Magma Well' as the NAME of
+ *                     a relic drop-source and `shaftSys` has 'well' as a scar
+ *                     kind. Nothing is ever lost, so nothing can pay back.
+ *   tapeSteps         "Echo Chamber tape length" — the Echo Chamber appears in
+ *                     exactly one place in `src/`: a COMMENT in
+ *                     `recursionSys`'s survive-ledger listing what it would keep
+ *                     if it existed.
+ *   wardenOptional    "the floor opens without the warden felled" — `breach.ts`
+ *                     says it plainly: "Combat is gone (A.7x) — the Floor Warden
+ *                     gate went with it". The law would remove a gate that was
+ *                     already removed.
+ *   guildRemembers    "the Lamphouse is open from minute one of a Recursion" —
+ *                     the Guild slice survives only as a stub in
+ *                     `migrations.ts` and as achievement LABELS. It is not in
+ *                     `GameState`.
+ *
+ * The brief's own test applies: a slot with a reader nobody would write a law
+ * for is worse than no slot, and a slot whose reader CANNOT BE WRITTEN without
+ * first building an absent system is worse again — it is a construction event
+ * disguised as a name, which is the Rune Bench ruling.
+ *
+ * Three of the seven earned their reader instead: `autoReplant` (growth.ts,
+ * A.99), `progressionPalindrome` (shell4/runes.ts, A.99) and `crewAlwaysWorks`
+ * (crews.ts, A.99). `regenCeilingMult` keeps its reader and stays deliberately
+ * WRITER-less — it is the heresy, and pillar 2 owns it.
+ */
 
 /** Registered by axioms.ts at content load; keyed by axiom id. */
 export interface LawContribution {

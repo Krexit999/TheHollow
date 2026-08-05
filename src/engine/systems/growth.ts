@@ -28,6 +28,7 @@ import type { ModifierCache } from '../modifiers';
 import { addCurrency } from '../resources';
 import type { EngineCtx, GameState } from '../types';
 import { registerSignature } from '../signatures';
+import { lawFlag } from '../laws';
 import { cellCap, cellRegen, chipYield } from './face';
 import { masteryLevel } from './mastery';
 
@@ -75,6 +76,30 @@ function clearVine(state: GameState, cell: number): { fruit: number; stage: numb
   g.fruit[cell] = 0;
   g.age[cell] = 0;
   g.fullSince[cell] = 0;
+  /**
+   * THE AUTOREPLANT LAW (A.99) — "greenhouse plots re-seed themselves".
+   *
+   * This is `laws.ts`'s `autoReplant` slot, which had a name and no reader for
+   * the whole life of the file. Verdance's growth IS the greenhouse this build
+   * has, so the reader belongs here.
+   *
+   * VERDANCE'S SIGNATURE IS LOCKED and this DRIVES it rather than replacing it,
+   * in the same shape `pressure.ts` gained `answerKlaxon` (A.95) and
+   * `absence.ts` gained `applyGrain` (A.96): ONE line, at the end of a clear
+   * that has already happened, bounded in one direction. It cannot stop a
+   * harvest, cannot change what fruit pays, cannot touch a stage above 1, and
+   * fires only when the player has bought the law.
+   *
+   * WHAT IT COSTS THE WORLD, because a law that only gives is a multiplier in a
+   * hat: a replanted cell is a VINED cell, and a vined cell holds at cap and is
+   * not minable. The Bloom reads `vinedCells` for Verdance's Flow, so the same
+   * law that keeps your beds also keeps the face standing — you have written
+   * "this world grows over" and it does, including where you wanted rock.
+   */
+  if (lawFlag(state, 'autoReplant')) {
+    g.stage[cell] = 1;
+    g.age[cell] = 0;
+  }
   return out;
 }
 

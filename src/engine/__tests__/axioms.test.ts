@@ -64,10 +64,46 @@ describe('every Axiom writes a slot something actually reads', () => {
     for (const a of AXIOMS) {
       expect(reads(a.slot), `${a.id} → ${a.slot}`).toBe(true);
     }
-    // RED TEST: `tapeSteps` is a real slot in `laws.ts` with no reader, and the
-    // sweep must be able to say so — otherwise the check above is vacuous.
-    expect(reads('tapeSteps')).toBe(false);
-    expect(AXIOMS.some((a) => a.slot === 'tapeSteps')).toBe(false);
+    /**
+     * RED TEST. This used to name `tapeSteps` — a real slot with no reader —
+     * and A.99 CUT that slot along with three more, so the red arm needs a name
+     * that will never be real. Which is the better arm anyway: it proves the
+     * sweep can say "no" without depending on a defect staying in the code.
+     */
+    expect(reads('noSuchLawSlotExistsAnywhere')).toBe(false);
+  });
+
+  /**
+   * THE INVARIANT THE SEVEN VIOLATED (A.99). A slot is a NAME until something
+   * reads it, and `laws.ts` carried eight names that nothing read — for the
+   * whole life of the file, through every green run. Three earned a reader this
+   * pass, four were cut for having no subject at all, and the survivor is the
+   * heresy, which is read and deliberately not written.
+   *
+   * This is the same shape as `seals.test.ts` one layer up, and the same rule
+   * PILLARS states as "a test that a function works is not a test that anything
+   * calls it" — pointed at data instead of functions.
+   */
+  it('EVERY slot in laws.ts has a live reader outside laws.ts and the tests', () => {
+    const src = engineSources();
+    const reads = (slot: string) =>
+      src.some((f) => f.includes(`'${slot}'`) && (f.includes('lawNum(') || f.includes('lawFlag(')));
+    const laws = readFileSync(join('src', 'engine', 'laws.ts'), 'utf8');
+    const numSlots = Object.keys(NUM_LAWS);
+    const flagSlots = (laws.match(/export type FlagLaw =([\s\S]*?);/)![1]!.match(/'(\w+)'/g) ?? [])
+      .map((s) => s.replace(/'/g, ''));
+    const all = [...numSlots, ...flagSlots];
+    expect(all.length).toBeGreaterThan(15);          // it really found the slots
+    const unread = all.filter((slot) => !reads(slot));
+    /**
+     * ONE LEFT, AND IT IS NAMED RATHER THAN TOLERATED. `crewAlwaysWorks` is
+     * "recalled crew keep working from the stair", and crews are the next thing
+     * this brief builds — so its subject is arriving, unlike the four cut
+     * beside it. This assertion is exact, not a floor: when `crews.ts` lands
+     * the expected value becomes `[]` and this line has to change, which is the
+     * point. A `toHaveLength(<= 1)` here would let a second one in silently.
+     */
+    expect(unread, 'slots with a name and no reader').toEqual(['crewAlwaysWorks']);
   });
 
   it('no two Axioms share an id, and every declared slot matches its payload', () => {
@@ -269,5 +305,116 @@ describe('PILLAR 2 — every rule live, and the ceiling has not moved', () => {
     s.recursion.axioms = [...s.recursion.axioms, '__heresy__'];
     mods.invalidate();
     expect(dpsMax(s, mods).toNumber()).toBeGreaterThan(withAll);
+  });
+});
+
+/**
+ * THE TWO SLOTS THAT EARNED A READER (A.99) — driven, because a slot with a
+ * reader that nothing reaches is the same dead name in a longer coat.
+ */
+describe('the readers built for two slots that had none', () => {
+  it('THE GREEN MANTLE: a harvested cell comes back vined, and only with the law', () => {
+    // DRIVEN THROUGH THE ENGINE. `harvestVine` is private and reached only from
+    // the growth SIGNATURE's chipMult hook, so a test of the helper would prove
+    // nothing about the live path. Chipping a vined cell in Verdance is it.
+    const run = (axioms: string[]): number => {
+      const engine = createEngine({ nowMs: 0 });
+      const s = engine.getState() as GameState;
+      s.shell.current = 'verdance';
+      s.recursion.axioms = axioms;
+      s.growth.stage = new Array(s.face.cells.length).fill(0);
+      s.growth.fruit = new Array(s.face.cells.length).fill(0);
+      s.growth.age = new Array(s.face.cells.length).fill(0);
+      s.growth.fullSince = new Array(s.face.cells.length).fill(0);
+      s.growth.stage[0] = 3;
+      s.growth.fruit[0] = 50;
+      s.face.cells[0] = 8;
+      engine.dispatch({ type: 'chip', cell: 0 });
+      return (engine.getState() as GameState).growth.stage[0]!;
+    };
+    expect(run([])).toBe(0);                 // bare rock, as it always was
+    expect(run(['greenmantle'])).toBe(1);    // ...and back it comes
+  });
+
+  it('...and the fruit is still taken — the law keeps the plant, not the crop', () => {
+    const engine = createEngine({ nowMs: 0 });
+    const s = engine.getState() as GameState;
+    s.shell.current = 'verdance';
+    s.recursion.axioms = ['greenmantle'];
+    s.growth.stage = new Array(s.face.cells.length).fill(0);
+    s.growth.fruit = new Array(s.face.cells.length).fill(0);
+    s.growth.stage[0] = 3;
+    s.growth.fruit[0] = 50;
+    s.face.cells[0] = 8;
+    engine.dispatch({ type: 'chip', cell: 0 });
+    const after = engine.getState() as GameState;
+    expect(after.growth.fruit[0]).toBe(0);
+    expect(after.growth.stage[0]).toBe(1);
+  });
+
+  it('THE PALINDROME: a progression carved backwards counts, and only with the law', async () => {
+    const runes = await import('../content/shell4/runes');
+    const combo = runes.TEMPORAL_COMBOS.find((c) => c.id === 'longfall')!;
+    const backwards = [...combo.runes].reverse();
+
+    const bare = fresh();
+    bare.stats.playTimeSec = 0;
+    for (const r of backwards) {
+      bare.stats.playTimeSec += runes.TEMPORAL_MIN_GAP + 1;
+      runes.logCarve(bare, ctx(), r);
+    }
+    expect(bare.runes.temporalFound ?? []).not.toContain('longfall');
+
+    const written = fresh();
+    written.recursion.axioms = ['palindrome'];
+    written.stats.playTimeSec = 0;
+    for (const r of backwards) {
+      written.stats.playTimeSec += runes.TEMPORAL_MIN_GAP + 1;
+      runes.logCarve(written, ctx(), r);
+    }
+    expect(written.runes.temporalFound ?? []).toContain('longfall');
+  });
+
+  it('...and it changes NOTHING about the progression that is already a palindrome', async () => {
+    const runes = await import('../content/shell4/runes');
+    // 'The Tempered Year' is kel · thur · kel. Authored before this law existed.
+    const combo = runes.TEMPORAL_COMBOS.find((c) => c.id === 'temper')!;
+    expect([...combo.runes].reverse()).toEqual(combo.runes);
+    const seen: string[][] = [];
+    for (const axioms of [[], ['palindrome']]) {
+      const s = fresh();
+      s.recursion.axioms = axioms;
+      s.stats.playTimeSec = 0;
+      for (const r of combo.runes) {
+        s.stats.playTimeSec += runes.TEMPORAL_MIN_GAP + 1;
+        runes.logCarve(s, ctx(), r);
+      }
+      seen.push(s.runes.temporalFound ?? []);
+    }
+    expect(seen[0]).toEqual(seen[1]);
+    expect(seen[0]).toContain('temper');
+  });
+
+  it('neither law pays anything — the same harvest, the same purse', () => {
+    const purse = (axioms: string[]): string => {
+      const engine = createEngine({ nowMs: 0 });
+      const st = engine.getState() as GameState;
+      st.shell.current = 'verdance';
+      st.recursion.axioms = axioms;
+      st.growth.stage = new Array(st.face.cells.length).fill(0);
+      st.growth.fruit = new Array(st.face.cells.length).fill(0);
+      st.growth.stage[0] = 3;
+      st.growth.fruit[0] = 50;
+      st.face.cells[0] = 8;
+      engine.dispatch({ type: 'chip', cell: 0 });
+      const out = engine.getState() as GameState;
+      return JSON.stringify(
+        Object.entries(out.currencies).map(([k, v]) => [k, v.toString()]).sort());
+    };
+    const plain = purse([]);
+    expect(purse(['greenmantle', 'palindrome'])).toBe(plain);
+    // ...and the arm is not vacuous: a harvest really does move a purse.
+    expect(plain).not.toBe(JSON.stringify(
+      Object.entries(fresh().currencies).map(([k, v]) => [k, v.toString()]).sort()));
   });
 });

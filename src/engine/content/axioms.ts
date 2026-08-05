@@ -170,6 +170,28 @@ export const AXIOMS: AxiomDef[] = [
     cost: 2, slot: 'runeMirror', flags: ['runeMirror'],
     shown: (s) => (s.runes?.found?.length ?? 0) > 0,
   },
+  /**
+   * TWO SLOTS THAT EARNED A READER AT A.99, and so earned a rule to write into
+   * them. Both had a name in `laws.ts` and nothing that read it since Phase 10.
+   */
+  {
+    id: 'palindrome', name: 'The Palindrome',
+    rule: 'A progression carved over sessions also reads right-to-left.',
+    flavor: 'You were not doing it wrong. You were doing it from the other end.',
+    cost: 2, slot: 'progressionPalindrome', flags: ['progressionPalindrome'],
+    // The trail is the subject, so the trail is what shows it to you.
+    shown: (s) => (s.runes?.carveTrail?.length ?? 0) > 0,
+  },
+  {
+    id: 'greenmantle', name: 'The Green Mantle',
+    rule: 'A harvested cell comes back already vined.',
+    flavor: 'You take the fruit and put the cell down and it has not let go.',
+    cost: 2, slot: 'autoReplant', flags: ['autoReplant'],
+    // Verdance's growth IS the greenhouse. Shown where a vine has ever stood,
+    // native or carried.
+    shown: (s) => (s.growth?.stage ?? []).some((x) => (x ?? 0) > 0)
+      || s.shell?.signatures?.includes('growth') === true,
+  },
 ];
 
 export const AXIOM_BY_ID = new Map(AXIOMS.map((a) => [a.id, a]));
