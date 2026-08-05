@@ -405,6 +405,12 @@ export const MACHINE_DEMAND: Record<string, Demand> = {
    * machine in the game whose demand is for something it did in a past world.
    */
   axiomEngine: { flow: 1.2, surge: 0 },
+  /**
+   * THE SEATING (§13, Aleph) — Flow, and modest. It is a desk: it holds the
+   * frame, it reads it, and it keeps four promises warm. Nothing it does is a
+   * burst, so nothing it asks for is Surge.
+   */
+  seating: { flow: 0.8, surge: 0 },
 };
 
 export function demandOf(machineId: string): Demand {

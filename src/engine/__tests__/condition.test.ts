@@ -70,7 +70,7 @@ describe('the fixture is real', () => {
       .toEqual(['assayBench', 'axiomEngine', 'balance', 'boiler', 'breaker', 'centrifuge', 'coil', 'condenser',
         'crucible', 'crusher', 'cultivar', 'frame', 'governor', 'infuser', 'kiln', 'lapidary',
         'line',
-        'pattern', 'press', 'prism', 'quench', 'refinery', 'retort', 'sieve', 'still', 'vents',
+        'pattern', 'press', 'prism', 'quench', 'refinery', 'retort', 'seating', 'sieve', 'still', 'vents',
         'washer', 'witness']);
   });
 

@@ -52,7 +52,7 @@ const MACHINE_NAME: Record<string, string> = {
   governor: 'The Governor', lapidary: 'The Lapidary', quench: 'The Quench Tank',
   boiler: 'The Boiler', vents: 'The Vent Array', retort: 'The Retort',
   cultivar: 'The Cultivar Bench', coil: 'The Coil', frame: 'The Frame',
-  axiomEngine: 'The Axiom Engine',
+  axiomEngine: 'The Axiom Engine', seating: 'The Seating',
 };
 
 const machineName = (id: string): string =>

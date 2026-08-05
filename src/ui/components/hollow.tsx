@@ -5,6 +5,7 @@
  */
 import { FramePanel } from './frame';
 import { AxiomEnginePanel } from './axiomEngine';
+import { SeatingPanel } from './seating';
 import { fmt, getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
 import { ModifierCache } from '../../engine/modifiers';
@@ -183,6 +184,9 @@ export function RewritePanel() {
 
       {/* §13's AXIOM ENGINE — the writer `laws.ts` has been missing since P10. */}
       <AxiomEnginePanel />
+
+      {/* §13 THE SEATING — the terminal craft, and the frame it reads. */}
+      <SeatingPanel />
     </div>
   );
 }

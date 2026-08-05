@@ -698,6 +698,8 @@ export interface GameState {
   cultivar?: import('./systems/cultivar').CultivarState;
   /** THE RECONSTRUCTION FRAME (A.96) — what the next rebuilt cell comes back as. */
   frame?: import('./systems/frame').FrameState;
+  /** THE SEATING (§13, A.97) — the bequest desk. Rides Recursion. Self-heals. */
+  seating?: import('./systems/seating').SeatingState;
   /** THE AXIOM ENGINE (§13, A.97) — the sitting's counters. Self-heals. */
   axiomEngine?: import('./systems/axiomEngine').AxiomEngineState;
   /** THE SEVEN SEATS (§4, A.97) — the terminal craft's frame. Rides Recursion. */
@@ -949,6 +951,7 @@ export type GameEvent =
   | { type: 'cellRebuilt'; cell: number; total: number; grains?: string[] }
   | { type: 'recordMade' }
   | { type: 'ruleWritten'; axiomId: string; owned: number }
+  | { type: 'worldPoured'; poured: number; carried: string[] }
   | { type: 'seatFilled'; seat: string; filled: number }
   | { type: 'faceWhole' }
   | { type: 'coreTouched' }
@@ -1196,6 +1199,10 @@ export type GameAction =
   | { type: 'buildCultivarBench' }
   | { type: 'buildCoil' }
   | { type: 'buildFrame' }
+  | { type: 'buildSeating' }
+  | { type: 'setBequest'; bequest: import('./systems/seating').BequestId }
+  | { type: 'setBequestMachine'; machineId: string | null }
+  | { type: 'pourWorld' }
   | { type: 'buildAxiomEngine' }
   | { type: 'writeRule'; axiomId: string }
   | { type: 'redraftRule'; axiomId: string }

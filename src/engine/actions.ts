@@ -36,6 +36,7 @@ import { buildCoil } from './systems/coil';
 import { buildFrame, setGrain, setHold } from './systems/frame';
 import { makeRecord, seatPart } from './systems/seats';
 import { buildAxiomEngine, redraft, writeRule } from './systems/axiomEngine';
+import { buildSeating, setBequest, setBequestMachine } from './systems/seating';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -285,6 +286,15 @@ export function handleAction(
 
     case 'buildFrame':
       return buildFrame(state, ctx);
+
+    case 'buildSeating':
+      return buildSeating(state, ctx);
+
+    case 'setBequest':
+      return setBequest(state, ctx, action.bequest);
+
+    case 'setBequestMachine':
+      return setBequestMachine(state, ctx, action.machineId);
 
     case 'buildAxiomEngine':
       return buildAxiomEngine(state, ctx);
@@ -864,6 +874,10 @@ export function handleAction(
 
     case 'recurse':
       return doRecursion(state, ctx, deps.replaceState);
+
+    // THE TERMINAL CRAFT (§13). The same reset, gated on a finished frame.
+    case 'pourWorld':
+      return doRecursion(state, ctx, deps.replaceState, true);
 
     // --- Phase 12: the long tail ------------------------------------------
     case 'spiral':

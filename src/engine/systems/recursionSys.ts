@@ -26,6 +26,7 @@
 import { D } from '../decimal';
 import { axiomsForEchoes } from '../prestigeMath';
 import { keptSignatures } from './seats';
+import { carryBequests, markPoured, pourBlocker } from './seating';
 import type { ActionResult, EngineCtx, GameState, ToolInstance } from '../types';
 import { initialState } from '../state';
 import { getTotal } from '../resources';
@@ -76,7 +77,20 @@ function heirloom(t: ToolInstance): ToolInstance {
   };
 }
 
-export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (next: GameState) => void): ActionResult {
+export function doRecursion(
+  state: GameState, ctx: EngineCtx, replaceState: (next: GameState) => void,
+  /**
+   * THE POUR (§13, THE SEATING). The terminal craft is NOT a new rung on the
+   * locked ladder — it is this reset, gated on a finished frame and recorded.
+   * `pourBlocker` owns the gate; everything below is the Recursion it already
+   * was, unchanged.
+   */
+  pour = false,
+): ActionResult {
+  if (pour) {
+    const blocked = pourBlocker(state);
+    if (blocked) return { ok: false, reason: blocked };
+  }
   if (!canRecurse(state)) return { ok: false, reason: 'The Core has not been touched' };
 
   const totalEchoes = getTotal(state, 'echo').toNumber();
@@ -133,6 +147,14 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
     next.shell.signatures = [...new Set([...(next.shell.signatures ?? []), ...kept])];
   }
 
+  /**
+   * ...AND THE SEATING'S BEQUESTS (§31.1, "the inheritance"). Every one is a
+   * fact about a world you already changed — a wreck already looted, a wall
+   * already broken, a band already timbered, a machine already built — handed
+   * forward rather than made again. `seating.ts` owns which; this owns when.
+   */
+  const carried = carryBequests(state, next);
+
   // Axioms that rewrite the beginning itself.
   if (lawFlag(next, 'structuresRemember')) {
     next.kiln.built = true;
@@ -140,10 +162,13 @@ export function doRecursion(state: GameState, ctx: EngineCtx, replaceState: (nex
     next.forge.built = true;
   }
 
+  const poured = pour ? markPoured(next) : 0;
+
   replaceState(next);
   ctx.dirty();
   ctx.emit({ type: 'recursion', count: next.recursion.count, axiomsGained: gained });
-  return { ok: true, data: { count: next.recursion.count, axiomsGained: gained } };
+  if (pour) ctx.emit({ type: 'worldPoured', poured, carried });
+  return { ok: true, data: { count: next.recursion.count, axiomsGained: gained, poured, carried } };
 }
 
 // A.7x: Axioms (the content that buyAxiom wrote) are gone. Recursion's own
