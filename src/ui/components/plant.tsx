@@ -20,8 +20,8 @@ import {
 } from '../../engine/systems/crusher';
 import { materialDef, BAND_LABELS } from '../../engine/materials';
 import {
-  RECAST_PART_COST, bandOfMachine, conditionLine, conditionedMachines, litBands,
-  leakedHeat, leakingStations,
+  DRAG_SPEED, RECAST_PART_COST, bandOfMachine, cascadeChain, cascadedFrom, conditionLine,
+  conditionedMachines, litBands, leakedHeat, leakingStations,
   observePlant, recastBlocker, ruleFor,
 } from '../../engine/systems/condition';
 import {
@@ -194,11 +194,19 @@ export function ConditionPanel() {
   if (!st.kiln.built) return null;
 
   const rule = ruleFor(currentShell(st).id);
-  if (!rule) return null;
-  const glassmere = rule.id === 'unlit';
-  const lit = litBands(st);
   const machines = conditionedMachines()
     .filter((id) => (id === 'kiln' ? st.kiln.built : tierOf(st, id) > 0));
+  /**
+   * A CASCADE OUTLIVES THE SHELL THAT STARTED IT, so the panel cannot be gated
+   * on there being a rule here. A player who carries a dragged plant into a
+   * shell with no rule would otherwise watch their Kiln run at 60% with no
+   * panel anywhere that says why — which is the exact "random debuff" §55's
+   * item 7 forbids.
+   */
+  const anyDrag = machines.some((id) => cascadedFrom(st, id) !== null);
+  if (!rule && !anyDrag) return null;
+  const glassmere = rule?.id === 'unlit';
+  const lit = litBands(st);
   if (machines.length === 0) return null;
 
   return (
@@ -207,9 +215,11 @@ export function ConditionPanel() {
         <span className="text-[10px] font-semibold uppercase tracking-widest text-cave-400">
           What the shell is doing to it
         </span>
-        <span className="text-[10px] text-cave-500">{rule.label}</span>
+        <span className="text-[10px] text-cave-500">{rule?.label ?? '—'}</span>
       </div>
-      <p className="mb-1.5 text-[9px] leading-snug text-cave-500">{rule.effect}</p>
+      <p className="mb-1.5 text-[9px] leading-snug text-cave-500">
+        {rule?.effect ?? 'Nothing, in this shell. What is left came from somewhere else.'}
+      </p>
 
       {/**
         * THE FLOOD LEAK, SAID OUT LOUD (§36.1, A.99). A drowned station makes
@@ -278,6 +288,44 @@ export function ConditionPanel() {
               )}
               {line && blocked && (
                 <div className="mt-0.5 text-[9px] leading-snug text-cave-600">{blocked}</div>
+              )}
+              {/**
+                * THE CASCADE, TRACED (§55, item 7). Not a sentence saying a
+                * cascade happened — the actual links, in the order they went,
+                * ending at this machine. The player reads left to right and the
+                * leftmost name is the one to go and fix; fixing it lifts the
+                * rest one machine per tick, in the same order, which is what
+                * makes the trace something they can check rather than trust.
+                *
+                * LAW 3: it names the destination. There is no re-cast button
+                * here on purpose — this machine is not the problem, and
+                * offering to re-cast it would sell the player a fix for the
+                * wrong machine.
+                */}
+              {cascadedFrom(st, id) && (
+                <div
+                  className="mt-1 rounded border border-[#6a5030]/60 bg-[#17140e]/60 px-1.5 py-1"
+                  data-testid={`drag-${id}`}
+                >
+                  <div className="text-[9px] leading-snug text-[#c9a86a]">
+                    Dragged — {Math.round((1 - DRAG_SPEED) * 100)}% slower because something
+                    beside it is failing.
+                  </div>
+                  <div className="mt-0.5 text-[9px] leading-snug text-cave-500">
+                    {cascadeChain(st, id).map((m, i, all) => (
+                      <span key={m}>
+                        {i > 0 && <span className="text-cave-700"> → </span>}
+                        <span className={i === 0 ? 'text-cave-200' : undefined}>
+                          {i === all.length - 1 ? 'this one' : machineName(m)}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-0.5 text-[9px] leading-snug text-cave-600">
+                    It started at the {machineName(cascadeChain(st, id)[0]!)}. Put that right and
+                    this comes back.
+                  </div>
+                </div>
               )}
             </div>
           );

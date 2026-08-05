@@ -128,6 +128,16 @@ export interface PlantState {
    */
   condition?: Record<string, import('./condition').MachineCondition>;
   /**
+   * §55 (A.106) — WHICH MACHINES ARE FAILING BECAUSE ANOTHER ONE IS, and which
+   * one. Kept apart from `condition` because a condition is what the SHELL
+   * wrote and a drag is what the PLANT did to itself; a machine can carry both
+   * at once, and only the first is a thing re-casting the part fixes. Absent =
+   * nothing has spread. See `condition.ts`'s cascade block.
+   */
+  dragged?: Record<string, import('./condition').Drag>;
+  /** Seconds until the cascade may take one more machine. The PLANT's clock. */
+  cascadeIn?: number;
+  /**
    * GLASSMERE ONLY (§7.2, §19) — which of the six wavelengths a machine sits
    * in. Unset falls back to the machine's index, so a player who never opens
    * the optics still has machines in different bands.

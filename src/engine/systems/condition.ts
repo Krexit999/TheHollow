@@ -88,6 +88,32 @@ export interface MachineCondition {
   trait?: TraitId;
   /** BAKED + a `brittle` part only: it has cracked and will not run at all. */
   seized?: boolean;
+  /** Seconds this has been standing at full. What a cascade waits on (§55). */
+  fullFor?: number;
+}
+
+/**
+ * THE DRAG (§55, A.106) — a machine failing because ANOTHER MACHINE IS.
+ *
+ * Deliberately NOT a sixth `ConditionId`, and the first draft of this pass got
+ * that wrong. A condition is what the SHELL writes, and three of the five rules
+ * (`leakedHeat`, `silence`, `polarity.chain`) read no machine id at all — they
+ * are true for every built machine at once. So "pass the condition to a
+ * neighbour" has no neighbour to pass to in Cinder, Hollow or Ferrite, and in
+ * Glassmere the neighbourhood IS the rule, so the target is unlit already. A
+ * cascade built out of conditions can only ever fire in Verdance. That is not a
+ * system; it is a Verdance feature with four shells of dead code behind it.
+ *
+ * A DRAG IS ITS OWN FAILURE with its own cause: the machine beside it has been
+ * broken long enough that this one is running on what it can get. It is
+ * shell-agnostic, it stacks with whatever the world is separately doing, and it
+ * names its parent — which is the whole of item 7.
+ */
+export interface Drag {
+  /** The machine that dragged this one. Never itself, never an ancestor. */
+  from: string;
+  /** Seconds it has been dragged. What the NEXT step of the chain waits on. */
+  sec: number;
 }
 
 /**
@@ -115,6 +141,15 @@ export const UNDECIDED_SILENCE = 20;
 /** What an OVERGROWN machine comes back carrying. Verdance's own. */
 export const OVERGROWTH_TRAIT: TraitId = 'springy';
 
+/**
+ * HOW LONG A FAILURE STANDS BEFORE IT TAKES THE NEXT MACHINE WITH IT. Half a
+ * condition: long enough that the first failure is the one you notice and act
+ * on, short enough that ignoring it for a session is a chain and not a shrug.
+ */
+export const CASCADE_SEC = 120;
+/** What a dragged machine runs at. A cost, never a stop — see rule 4. */
+export const DRAG_SPEED = 0.6;
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -137,6 +172,11 @@ export function ensureCondition(state: GameState): Record<string, MachineConditi
 export function conditionOf(state: GameState, machineId: string): MachineCondition | null {
   const c = state.plant?.condition?.[machineId];
   return c && c.level > 0 ? c : null;
+}
+
+export function ensureDrags(state: GameState): Record<string, Drag> {
+  const p = ensurePlant(state);
+  return (p.dragged ??= {});
 }
 
 /** In force, rather than merely present. */
@@ -379,15 +419,175 @@ export function tickCondition(state: GameState, mods: ModifierCache, dt: number)
       // rather than a slow: the machine will not run until it is re-cast.
       if (rule.id === 'baked' && level >= 1 && castWith(state, id, 'brittle')) next.seized = true;
       else if (held?.seized) next.seized = true;
+      // The clock only runs at full, and only while it is the SAME condition.
+      next.fullFor = level >= 1 ? (held?.id === rule.id ? (held.fullFor ?? 0) : 0) + dt : 0;
       table[id] = next;
     } else if (held) {
       // A SEIZURE DOES NOT DECAY. Leaving the shell does not un-crack a liner;
       // only re-casting the part does.
       if (held.seized) { held.level = Math.max(CONDITION_BITE, held.level); continue; }
       held.level -= dt / CONDITION_CLEAR_SEC;
+      held.fullFor = 0;
       if (held.level <= 0) delete table[id];
     }
   }
+  cascade(state, table, dt);
+}
+
+// ---------------------------------------------------------------------------
+// §55 — one failure causes the next
+// ---------------------------------------------------------------------------
+
+/**
+ * THE CASCADE, over the pieces that already shipped.
+ *
+ * §55's claim is that a failure is an EVENT THAT CASCADES rather than a number
+ * going down, and A.105's audit found the honest gap: `CONDITION_RULES` is five
+ * predicates that each read SHELL state independently, so five machines can be
+ * broken at once and none of them broke another. The world writes; nothing
+ * spreads. What is added here is the spreading, and nothing else.
+ *
+ * WHAT SPREADS: a machine that has been FAILING for `CASCADE_SEC` drags ONE
+ * neighbour in the NEXT BAND ALONG. Failing means either the world has written
+ * its condition in full, or it is itself being dragged — which is what makes a
+ * chain rather than a star. Neighbourhood is `bandOfMachine`, Glassmere's
+ * existing allocation model and the same spatial idea `LEAK_REACH` uses for a
+ * drowned station, so this adds no geometry.
+ *
+ * ONE BAND ALONG, NOT THE SAME BAND, and the first draft had that wrong too. A
+ * band is a set, so "spreads within its band" makes the neighbourhood a clique:
+ * the source reaches every member directly and the result is a STAR with one
+ * failure at the centre, never a chain, and `cascadeChain` returns two forever.
+ * Stepping one band per hop makes the failure TRAVEL — Kiln to Crusher to
+ * Refinery — which is the thing §55 actually describes and the thing item 7's
+ * trace is worth having for. Default bands are the machine's index in the
+ * plant, so this works on a plant nobody has ever opened the optics on.
+ *
+ * FIVE RULES, and each is load-bearing:
+ *
+ *  1. ONLY AT FULL, and only after standing there. A machine halfway into a
+ *     condition is being written by the world and has nothing to give.
+ *  2. ONE STEP PER PLANT PER `CASCADE_SEC`, AND ONE CHILD PER MACHINE. Both
+ *     halves are needed and the first draft had neither.
+ *
+ *     "One step per pass" was per TICK, and a Cinder plant is written by a rule
+ *     that reads no machine id — so all twenty-seven machines hit full at the
+ *     same second, all twenty-seven became eligible sources, and the plant went
+ *     one machine per SECOND. A wipe, dressed as a cascade. The step is now
+ *     gated on `plant.cascadeIn`, which is the plant's clock and not a
+ *     machine's.
+ *
+ *     One child per machine is what makes the shape a CHAIN. A source that
+ *     merely reset its own clock kept dragging fresh machines forever, so every
+ *     link pointed back at the same failure and `cascadeChain` returned two no
+ *     matter how long you left it. A machine that has already dragged one has
+ *     given what it has; the next step has to come from the machine it dragged,
+ *     which is the sentence §55 is actually making. It may take another only
+ *     when that one lets go.
+ *  3. NEVER ONTO AN ANCESTOR, so a cycle is structurally impossible rather
+ *     than merely unlikely.
+ *  4. NEVER SEIZES. `seized` is BAKED plus a brittle part, a stop rather than a
+ *     slow, and re-casting is its only exit. A drag costs you speed; it may not
+ *     cost you a machine. `DRAG_SPEED` is a multiplier and it is not zero.
+ *  5. IT UNWINDS FROM THE HEAD. A drag survives only while its parent is still
+ *     failing, so fixing the FIRST failure lifts the chain one machine per
+ *     tick, in order. That is item 7 made mechanical rather than narrated: the
+ *     player who traces it back and re-casts the root watches the rest come
+ *     back, which is the proof that the trace was true.
+ *
+ * PILLAR 2: a drag is a term in `machineSpeed`, which is how fast a machine
+ * converts what it already has — never cap, regen or yield, and never above 1.
+ * A cascade costs; it cannot pay.
+ */
+
+/** Is this machine failing on its own account — i.e. can it drag another? */
+function failing(state: GameState, machineId: string): boolean {
+  const c = state.plant?.condition?.[machineId];
+  if (c && c.level >= 1) return true;
+  return state.plant?.dragged?.[machineId] !== undefined;
+}
+
+function built(state: GameState, machineId: string): boolean {
+  return tierOf(state, machineId) > 0 || (machineId === 'kiln' && state.kiln.built);
+}
+
+function cascade(state: GameState, table: Record<string, MachineCondition>, dt: number): void {
+  if (dt <= 0) return;
+  const p = ensurePlant(state);
+  const drags = ensureDrags(state);
+
+  // RULE 5 — CLEAR FIRST. A drag whose parent has stopped failing is over.
+  //
+  // AGAINST A SNAPSHOT, and that is the whole of the rule rather than a detail.
+  // Read live, a deletion earlier in the loop makes the next link's parent look
+  // fine immediately, and the entire chain vanishes in one tick — correct
+  // arithmetic, and it throws away the one moment where the player can SEE that
+  // the trace they read was true. Frozen, the head lets go this tick and each
+  // link the tick after, in the order they were taken.
+  const wasFailing = new Set(
+    conditionedMachines().filter((id) => failing(state, id)),
+  );
+  for (const [id, d] of Object.entries(drags)) {
+    if (!built(state, id) || !wasFailing.has(d.from)) delete drags[id];
+    else d.sec += dt;
+  }
+
+  // RULE 2a — the PLANT's clock, not a machine's.
+  p.cascadeIn = Math.max(0, (p.cascadeIn ?? 0) - dt);
+  if (p.cascadeIn > 0) return;
+
+  const taken = new Set(Object.values(drags).map((d) => d.from));
+  // Sources are checked in a fixed order so the chain a save produces does not
+  // depend on which key happened to be written first.
+  for (const from of conditionedMachines()) {
+    if (!built(state, from) || taken.has(from)) continue;   // RULE 2b
+    const cond = table[from];
+    const drag = drags[from];
+    const stood = cond && cond.level >= 1 ? (cond.fullFor ?? 0) : drag ? drag.sec : -1;
+    if (stood < CASCADE_SEC) continue;
+    const band = bandOfMachine(state, from);
+    const ancestors = new Set(cascadeChain(state, from));   // RULE 3
+    for (const to of conditionedMachines()) {
+      if (to === from || drags[to] || ancestors.has(to)) continue;
+      if (!built(state, to)) continue;
+      if (Math.abs(bandOfMachine(state, to) - band) !== 1) continue;
+      drags[to] = { from, sec: 0 };
+      p.cascadeIn = CASCADE_SEC;
+      return;
+    }
+  }
+}
+
+/**
+ * WALK IT BACK TO THE MACHINE THE WORLD BROKE (item 7).
+ *
+ * Returns the chain oldest-first, so the panel can say "the Sieve is running
+ * slow because the Crusher is, and the Crusher is where the shell did it".
+ * Loop-guarded as well as loop-proofed: `cascade` refuses to drag an ancestor,
+ * so a cycle should be impossible — which is exactly the kind of should that
+ * ships an infinite loop.
+ */
+export function cascadeChain(state: GameState, machineId: string): string[] {
+  const drags = state.plant?.dragged ?? {};
+  const chain: string[] = [];
+  const seen = new Set<string>();
+  let at: string | undefined = machineId;
+  while (at && !seen.has(at)) {
+    seen.add(at);
+    chain.unshift(at);
+    at = drags[at]?.from;
+  }
+  return chain;
+}
+
+/** True when this machine is failing because ITS NEIGHBOUR is. */
+export function cascadedFrom(state: GameState, machineId: string): string | null {
+  return state.plant?.dragged?.[machineId]?.from ?? null;
+}
+
+/** How much a drag costs this machine. 1 when it is not being dragged. */
+export function dragSpeed(state: GameState, machineId: string): number {
+  return state.plant?.dragged?.[machineId] ? DRAG_SPEED : 1;
 }
 
 /**
@@ -409,7 +609,7 @@ function castWith(state: GameState, machineId: string, trait: TraitId): boolean 
  * the distinction pillar 2 lives on, and the same one `plant.ts` draws for Flow.
  */
 export function machineSpeed(state: GameState, machineId: string): number {
-  return conditionSpeed(state, machineId) * overclockSpeed(state, machineId);
+  return conditionSpeed(state, machineId) * overclockSpeed(state, machineId) * dragSpeed(state, machineId);
 }
 
 /**
@@ -531,4 +731,31 @@ export function conditionLine(state: GameState, machineId: string): string | nul
   return c.level < CONDITION_BITE
     ? `${rule.label}, ${pct}% — not yet enough to matter.`
     : `${rule.label}, ${pct}% — ${rule.effect}`;
+}
+
+/**
+ * ...AND ONE LINE FOR A DRAG (item 7). Names the machine beside it, and then
+ * the machine at the head of the chain when they are not the same one — which
+ * is the difference between "something is wrong" and "go and look at the
+ * Crusher". LAW 3: it names the destination, not the arithmetic.
+ */
+export function cascadeLine(state: GameState, machineId: string): string | null {
+  const from = cascadedFrom(state, machineId);
+  if (!from) return null;
+  const chain = cascadeChain(state, machineId);
+  const root = chain[0]!;
+  const pct = Math.round((1 - DRAG_SPEED) * 100);
+  const near = `The ${machineLabel(from)} is failing beside it — ${pct}% slower.`;
+  return root === from
+    ? near
+    : `${near} That started at the ${machineLabel(root)}, ${chain.length - 1} along.`;
+}
+
+/**
+ * A machine id as a person would say it. The UI keeps its own prettier maps;
+ * this exists so the ENGINE's one sentence about a cascade reads as English
+ * without the engine depending on the renderer.
+ */
+export function machineLabel(machineId: string): string {
+  return machineId.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
 }
