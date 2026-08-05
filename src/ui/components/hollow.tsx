@@ -5,6 +5,7 @@
  */
 import { FramePanel } from './frame';
 import { AxiomEnginePanel } from './axiomEngine';
+import { axiomEngineBuilt, axiomStation } from '../../engine/systems/axiomEngine';
 import { SeatingPanel } from './seating';
 import { fmt, getCurrency } from '../../engine';
 import type { GameState } from '../../engine';
@@ -198,8 +199,23 @@ export function RewritePanel() {
             recursions {state.recursion.count} · axioms earned {state.recursion.axiomsEarned}
           </span>
         </div>
-        <div className="mt-1 text-[10px] italic leading-snug text-cave-400">
-          Banked, and now spendable: the Engine below writes them into the world.
+        {/**
+          * AND IT SAYS WHERE, when there is no Engine to say it (A.98).
+          *
+          * `AxiomEnginePanel` renders null until the wreck is found, so a
+          * returning player holding nine banked Axioms read "now spendable" with
+          * nothing underneath it. A Recursion KEEPS the bank and WASHES the
+          * Roll, so that is the normal state of a returning player, not an edge
+          * case. LAW 3 — show the destination.
+          */}
+        <div className="mt-1 text-[10px] italic leading-snug text-cave-400" data-testid="axiom-bank-line">
+          {getCurrency(state, 'axiom').lte(0)
+            ? 'Nothing banked yet. A Recursion pays them.'
+            : axiomEngineBuilt(state as GameState)
+              ? 'Banked, and spendable: the Engine below writes them into the world.'
+              : `Banked, and nothing here can spend them${axiomStation()
+                ? ` — the Engine is a wreck at ${axiomStation()!.name}, ${axiomStation()!.shellId} ${axiomStation()!.depth}`
+                : ''}.`}
         </div>
       </div>
 
