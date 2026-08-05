@@ -14,7 +14,10 @@ import {
 } from '../../engine/systems/plant';
 import { shellPlantRead } from '../../engine/systems/shellPlants';
 import { boilerRead, boilerShell } from '../../engine/systems/boiler';
-import { CRUSH_BATCH, crushPreview, crushable, nextCrusherTierCost } from '../../engine/systems/crusher';
+import {
+  CRUSH_BATCH, FINENESS, LEACH_BATCH, LEACH_PAYS, crushPreview, crushable, finenessOf,
+  leachBlocker, nextCrusherTierCost,
+} from '../../engine/systems/crusher';
 import { materialDef, BAND_LABELS } from '../../engine/materials';
 import {
   RECAST_PART_COST, bandOfMachine, conditionLine, conditionedMachines, litBands,
@@ -26,7 +29,7 @@ import {
 } from '../../engine/systems/washer';
 import { currencyDef } from '../../engine';
 import { WAVELENGTH_NAMES } from '../../engine/systems/refraction';
-import { currentShell } from '../../engine/shells';
+import { convCurrencyId, currentShell } from '../../engine/shells';
 import type { GameState } from '../../engine';
 
 const MACHINE_NAME: Record<string, string> = {
@@ -276,6 +279,49 @@ export function CrusherPanel() {
           ? <>Tier {'I'.repeat(tier)} — {TIER_CAPABILITY[tier]}</>
           : 'Not built. It does nothing at all, and then it does everything at once.'}
       </div>
+
+      {/*
+        THE MILL and THE LEACH VAT — §13's two folded processing steps (A.96).
+        Rows inside this panel, not construction events (§37): no wreck, no
+        tier ladder, no cast parts.
+      */}
+      {tier > 0 && (
+        <div className="mt-1.5 border-t border-cave-800 pt-1.5" data-testid="mill-row">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[9px] uppercase tracking-widest text-cave-500">Fineness</span>
+            <div className="flex gap-1">
+              {FINENESS.map((f) => (
+                <button
+                  key={f.id}
+                  className={`btn px-1.5 py-0.5 text-[10px] ${finenessOf(st) === f.id ? 'btn-warm' : ''}`}
+                  title={f.does}
+                  onClick={() => dispatch({ type: 'setFineness', how: f.id })}
+                  data-testid={`fineness-${f.id}`}
+                >
+                  {f.name}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-0.5 text-[9px] leading-snug text-cave-500">
+            {FINENESS.find((f) => f.id === finenessOf(st))!.does}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2" data-testid="leach-row">
+            <span className="min-w-0 flex-1 truncate text-[9px] text-cave-500">
+              Reject row · {LEACH_BATCH} tailings → {LEACH_PAYS} {currencyDef(convCurrencyId(st)).name}
+            </span>
+            <button
+              className="btn shrink-0 px-1.5 py-0.5 text-[10px]"
+              disabled={leachBlocker(st) !== null}
+              title={leachBlocker(st) ?? 'Leach the tailings down'}
+              onClick={() => dispatch({ type: 'leach' })}
+              data-testid="leach-do"
+            >
+              Leach
+            </button>
+          </div>
+        </div>
+      )}
 
       {cost !== null && (
         <button

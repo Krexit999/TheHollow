@@ -994,6 +994,7 @@ export type GameEvent =
   | { type: 'gemCut'; gemId: string; shape: string }
   | { type: 'partQuenched'; partId: number; mediumId: string }
   | { type: 'valveSet'; cell: number }
+  | { type: 'leached'; currencyId: string; amount: number }
   | { type: 'reduced'; fromId: string; toId: string; byShaft: boolean }
   | { type: 'arrayAnswered' }
   | { type: 'bedSeeded'; quad: string; strainId: string }
@@ -1190,6 +1191,8 @@ export type GameAction =
   | { type: 'buildFrame' }
   | { type: 'setGrain'; grain: import('./systems/frame').GrainId }
   | { type: 'setGrainHold'; hold: boolean }
+  | { type: 'setFineness'; how: import('./systems/crusher').Fineness }
+  | { type: 'leach' }
   | { type: 'seedBed'; quad: import('./systems/cultivar').QuadrantId; strainId: string | null }
   | { type: 'cropBed'; quad: import('./systems/cultivar').QuadrantId }
   | { type: 'reduce'; fromId: string; band: PurityBand }

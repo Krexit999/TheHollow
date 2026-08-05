@@ -21,7 +21,10 @@
  */
 import type { ActionResult, EngineCtx, GameState } from '../types';
 import { BANDS, bandOf, materialDef, type PurityBand } from '../materials';
-import { addMaterial, materialCount } from './forge';
+import { addMaterial, consumeMaterial, materialCount } from './forge';
+import { D } from '../decimal';
+import { addCurrency } from '../resources';
+import { convCurrencyId } from '../shells';
 import {
   canFire, emitsByproduct, fire, retainsBand, tierOf, TIER_PART_COST, MAX_MACHINE_TIER,
 } from './plant';
@@ -40,6 +43,12 @@ export const CRUSH_PRODUCT = 'refineslag';
 export const CRUSH_BYPRODUCT = 'salvagedust';
 
 /** One band down, floored — what a tier-I machine does to what it eats. */
+/** One band up, or the top. The Mill's whole arithmetic. */
+function bandAbove(band: PurityBand): PurityBand {
+  const i = BANDS.indexOf(band);
+  return BANDS[Math.min(BANDS.length - 1, i + 1)] ?? band;
+}
+
 function bandBelow(band: PurityBand): PurityBand {
   const i = BANDS.indexOf(band);
   return BANDS[Math.max(0, i - 1)]!;
@@ -136,14 +145,16 @@ export function crushPreview(
     ? Object.values(perMat).reduce((n, s) => n + (s?.count ?? 0), 0)
     : (perMat[band]?.count ?? 0);
   if (have < CRUSH_BATCH) return null;
-  const outBand = retainsBand(state, 'crusher') ? band : bandBelow(band);
+  // THE MILL (§13): FINE grinds a band cleaner and sweeps up nothing.
+  const fine = finenessOf(state) === 'fine';
+  const base = retainsBand(state, 'crusher') ? band : bandBelow(band);
   return {
     materialId,
     band,
-    outBand,
+    outBand: fine ? bandAbove(base) : base,
     input: CRUSH_BATCH,
     output: CRUSH_OUTPUT,
-    byproduct: emitsByproduct(state, 'crusher') ? 1 : 0,
+    byproduct: !fine && emitsByproduct(state, 'crusher') ? 1 : 0,
   };
 }
 
@@ -211,7 +222,9 @@ export function crush(
 
   // TIER II RETAINS THE BAND. Tier I hands back stone one band poorer, which is
   // the capability made a consequence rather than a stat line.
-  const outPurity = retainsBand(state, 'crusher') ? avg : midOf(bandBelow(bandOf(avg)));
+  const base = retainsBand(state, 'crusher') ? bandOf(avg) : bandBelow(bandOf(avg));
+  const landing = finenessOf(state) === 'fine' ? bandAbove(base) : base;
+  const outPurity = landing === bandOf(avg) ? avg : midOf(landing);
   addMaterial(state, CRUSH_PRODUCT, outPurity, preview.output);
   if (preview.byproduct > 0) {
     // A TRUE-SEATED FRAME does not let the byproduct fall with the product: it
@@ -263,3 +276,80 @@ export function crushable(state: GameState): { materialId: string; band: PurityB
 }
 
 export { materialCount };
+
+// ---------------------------------------------------------------------------
+// THE MILL AND THE LEACH VAT — §13's folded processing steps (A.96)
+// ---------------------------------------------------------------------------
+
+/**
+ * §13 folds SIX processing steps into panels that already exist rather than
+ * making each one a construction event: "Mill → Crusher FINENESS · Leach Vat →
+ * Crusher REJECT ROW · Draw Bench → Press die · Setting Bench → Tool Station ·
+ * Accumulator → a Core-tree node · Sump → cut (§43)."
+ *
+ * THREE OF THE FIVE ALREADY EXIST UNDER ANOTHER NAME, measured before building:
+ *   Draw Bench     the Press's ROD and WIRE forms, "pulled to length through a
+ *                  die", tier-gated (A.92, `press.ts`)
+ *   Setting Bench  `setSocket` — relics, runes and gems seated at the tool
+ *   Accumulator    the `flowCapacity` and `surgeCapacity` Core-tree nodes
+ *
+ * These two are the ones that did not. Both are rows in this panel, not
+ * machines: no wreck, no tier ladder, no cast parts (§37 — "a processing step
+ * gets a row inside an existing panel").
+ */
+
+/** THE MILL: how fine the Crusher grinds. Two profiles, and they trade. */
+export type Fineness = 'coarse' | 'fine';
+
+export const FINENESS: Array<{ id: Fineness; name: string; does: string }> = [
+  {
+    id: 'coarse', name: 'Coarse',
+    does: 'Fast and dirty. The tailings come off with it.',
+  },
+  {
+    id: 'fine', name: 'Fine',
+    does: 'Ground a band cleaner — and there is nothing left over to sweep up.',
+  },
+];
+
+export function finenessOf(state: GameState): Fineness {
+  return state.plant?.fineness === 'fine' ? 'fine' : 'coarse';
+}
+
+export function setFineness(state: GameState, ctx: EngineCtx, how: Fineness): ActionResult {
+  if (!crusherBuilt(state)) return { ok: false, reason: 'No Crusher' };
+  const p = ensurePlant(state);
+  p.fineness = how;
+  ctx.dirty();
+  return { ok: true, data: { fineness: how } };
+}
+
+/**
+ * THE LEACH VAT: what a reject is worth.
+ *
+ * §14.3 says a Sieve's "rejects route onward" and §13 calls this the Crusher's
+ * REJECT ROW. The tailings — the byproduct this machine has always emitted and
+ * nothing much has ever wanted — leach down into the shell's own converted
+ * currency. It is the Washer's lesson used twice: the answer to "what currency"
+ * is always the shell you are standing in (A.93).
+ */
+export const LEACH_BATCH = 3;
+export const LEACH_PAYS = 26;
+
+export function leachBlocker(state: GameState): string | null {
+  if (!crusherBuilt(state)) return 'No Crusher';
+  const held = materialCount(state, CRUSH_BYPRODUCT);
+  if (held < LEACH_BATCH) return `${LEACH_BATCH} tailings to the vat (you have ${held})`;
+  return null;
+}
+
+export function leach(state: GameState, ctx: EngineCtx): ActionResult {
+  const blocked = leachBlocker(state);
+  if (blocked) return { ok: false, reason: blocked };
+  consumeMaterial(state, CRUSH_BYPRODUCT, LEACH_BATCH);
+  const id = convCurrencyId(state);
+  addCurrency(state, id, D(LEACH_PAYS));
+  ctx.emit({ type: 'leached', currencyId: id, amount: LEACH_PAYS });
+  ctx.dirty();
+  return { ok: true, data: { currencyId: id, amount: LEACH_PAYS } };
+}

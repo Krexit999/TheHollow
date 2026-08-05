@@ -12,7 +12,7 @@ import { allUpgrades, costForLevels, maxAffordable, upgradeDef, upgradeLevel } f
 import type { ActionResult, EngineCtx, GameAction, GameState } from './types';
 import { applyFieldSize, manualChip } from './systems/face';
 import { resetCompaction } from './systems/compaction';
-import { buildCrusher, crush } from './systems/crusher';
+import { buildCrusher, crush, leach, setFineness } from './systems/crusher';
 import { setRow as setCircuitRow, moveRow as moveCircuitRow } from './systems/circuit';
 import { shoreBand, unshoreBand } from './systems/shoring';
 import { floodStation } from './systems/flood';
@@ -289,6 +289,12 @@ export function handleAction(
 
     case 'setGrainHold':
       return setHold(state, ctx, action.hold);
+
+    case 'setFineness':
+      return setFineness(state, ctx, action.how);
+
+    case 'leach':
+      return leach(state, ctx);
 
     case 'buildPatternBench':
       return buildPatternBench(state, ctx);

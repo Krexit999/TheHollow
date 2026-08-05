@@ -137,6 +137,9 @@ export interface PlantState {
    * that throws cannot leave the plant permanently free.
    */
   inLine?: boolean;
+  /** THE MILL (§13, A.96) — how fine the Crusher grinds. Absent = coarse,
+   *  which is what every Crusher ever built has done. */
+  fineness?: import('./crusher').Fineness;
 }
 
 export function defaultPlantState(): PlantState {
