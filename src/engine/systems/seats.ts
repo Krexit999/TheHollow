@@ -69,6 +69,7 @@ import { retortBuilt } from './retort';
 import { valvesSet } from './vents';
 import { carriedStrain } from './cultivar';
 import { unitsFixed } from './witness';
+import { specLive } from './specify';
 
 export type SeatId = 'I' | 'II' | 'III' | 'IV' | 'V' | 'VI' | 'VII';
 
@@ -249,6 +250,18 @@ function widestAlloy(state: GameState): number {
  * system that already exists, and none of them writes to one.
  */
 export function seatCondition(state: GameState, id: SeatId): string | null {
+  /**
+   * SEATS V, VI AND VII WANT A WORLD YOU SPECIFIED — §31: "the last three Seats
+   * require conditions no natural shell provides… Slagglass needs the Retort at
+   * 96% pressure AND a Loam-depth descent cost, and those never co-occur
+   * naturally." §13's Casting Floor row says the same in four words.
+   *
+   * This gate is checked FIRST and it is the only reason the Casting Floor's
+   * SPECIFYING half is load-bearing rather than a diorama.
+   */
+  if ((id === 'V' || id === 'VI' || id === 'VII') && !specLive(state)) {
+    return 'No shell arranges itself like this. You would have to author one.';
+  }
   switch (id) {
     case 'I': {
       if (deepestCompaction(state) < MAX_COMPACTION) {

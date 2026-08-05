@@ -10,6 +10,8 @@
  * wall, not a trap.
  */
 import { D } from '../decimal';
+/** §31.2's HARD WALLS defect. Zero outside a live poured world. Runtime-only. */
+import { wallSurcharge } from './specify';
 import { registerModifier, type Bucket } from '../modifiers';
 import { spendCurrency } from '../resources';
 import type { ActionResult, EngineCtx, GameState, Stack, ToolInstance } from '../types';
@@ -41,7 +43,9 @@ export function requiredTier(state: GameState, depth: number): number {
   const shell = currentShell(state);
   let tier = Math.min(MAX_TOOL_TIER, Math.max(1, 3 * (shell.ordinal - 1))); // entering a shell needs the prior shell's top tier, capped at XV
   for (const wall of shell.walls) if (depth >= wall.depth) tier = wall.tier;
-  return tier;
+  // THE SPECIFIED WORLD'S DEFECT (§31.2): every wall one hardness higher. Zero
+  // outside a live poured world, which is every save that never poured one.
+  return Math.min(MAX_TOOL_TIER, tier + wallSurcharge(state));
 }
 
 /** The next wall at or below a depth, for the depth bar's warning. */

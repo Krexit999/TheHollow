@@ -49,6 +49,8 @@ import { overclockDraw } from './governor';
 import { boilerFlow, boilerShell, boilerSurge } from './boiler';
 import { coilSurge } from './coil';
 import { shellFlow, shellSurge } from './shellPlants';
+/** §31.2's HALVED DRAW defect. Runtime-only, and 1 outside a poured world. */
+import { drawShare } from './specify';
 
 /**
  * THE HEARTH — Loam's plant (§3.2): PURE FLOW, SMALL, off the Kiln's waste heat.
@@ -183,21 +185,22 @@ export function ensurePlant(state: GameState): PlantState {
  * from inside function bodies below, never at module scope.
  */
 export function flowCap(state: GameState): number {
+  const share = drawShare(state);   // §31.2: a specified world may be built broken
   const cores = FLOW_PER_RANK * coreNodeLevel(state, 'flowCapacity');
   // CINDER RUNS ON THE BOILER, and on nothing else (§13: "blocks ALL Cinder
   // power"). A hearth is a fire you feed; there is nothing to feed here.
-  if (boilerShell(state)) return boilerFlow(state) + cores;
+  if (boilerShell(state)) return (boilerFlow(state) + cores) * share;
   // ...and Verdance, Glassmere and the Hollow each run their own (§3.2).
   const own = shellFlow(state);
-  if (own !== null) return own + cores;
+  if (own !== null) return (own + cores) * share;
   const hearth = state.kiln.built ? HEARTH_FLOOR + HEARTH_PER_HEAT * state.kiln.heat : 0;
-  return hearth + cores;
+  return (hearth + cores) * share;
 }
 
 /** How big the burst can be. */
 export function surgeCap(state: GameState): number {
-  return SURGE_FLOOR + SURGE_PER_RANK * coreNodeLevel(state, 'surgeCapacity')
-    + boilerSurge(state) + coilSurge(state) + shellSurge(state);
+  return (SURGE_FLOOR + SURGE_PER_RANK * coreNodeLevel(state, 'surgeCapacity')
+    + boilerSurge(state) + coilSurge(state) + shellSurge(state)) * drawShare(state);
 }
 
 export function surgeRegen(state: GameState): number {

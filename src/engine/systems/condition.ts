@@ -69,6 +69,13 @@ import { overclockSpeed } from './governor';
 /** ...and the same arrangement with `prism.ts`: it reads `conditionOf` from
  *  here, and `litBands` reads its allocation. Runtime-only, both ways. */
 import { carriedBands } from './prism';
+/**
+ * §31.2 — A SPECIFIED WORLD PUTS PHYSICS IN THE WRONG PLACES, and E2 is where
+ * that lands.  is the shell you are standing in until a
+ * poured world says otherwise, so this is a no-op for every save that has never
+ * poured one. Runtime-only, like every other cycle this file documents.
+ */
+import { conditionRate, conditionShellId } from './specify';
 
 export type ConditionId = 'baked' | 'overgrown' | 'unlit' | 'undecided' | 'magnetised';
 
@@ -294,13 +301,16 @@ function litBand(state: GameState, machineId: string): boolean {
 export function tickCondition(state: GameState, mods: ModifierCache, dt: number): void {
   if (dt <= 0) return;
   const table = ensureCondition(state);
-  const rule = ruleFor(currentShell(state).id);
+  // THE BAND'S PHYSICS, NOT THE SHELL'S — §31.2's whole claim, landing on the
+  // one system that already models "the world does something to your machines".
+  const rule = ruleFor(conditionShellId(state));
+  const rate = conditionRate(state);
   for (const id of conditionedMachines()) {
     const built = tierOf(state, id) > 0 || (id === 'kiln' && state.kiln.built);
     const writing = built && rule ? rule.writing(state, id, mods) : false;
     const held = table[id];
     if (writing && rule) {
-      const level = Math.min(1, (held?.id === rule.id ? held.level : 0) + dt / CONDITION_FULL_SEC);
+      const level = Math.min(1, (held?.id === rule.id ? held.level : 0) + (dt * rate) / CONDITION_FULL_SEC);
       const next: MachineCondition = { id: rule.id, level };
       if (rule.id === 'overgrown') next.trait = OVERGROWTH_TRAIT;
       // A BRITTLE MACHINE RUN HOT CRACKS. §7.2's own sentence, and it is a stop

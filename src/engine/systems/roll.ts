@@ -24,6 +24,8 @@
  *                 their cost.
  */
 import type { GameState } from '../types';
+/** §31.2's COLD ROLL defect. False outside a live poured world. Runtime-only. */
+import { rollFrozen } from './specify';
 import {
   FEATURE_LABEL, ROLL_FEATURES, authoredRoll, type RollFeature, type StationDef, type StationType,
 } from '../content/rolls';
@@ -130,6 +132,9 @@ export function ensureRoll(state: GameState, rng: () => number = Math.random): v
  */
 export function rerollRoll(state: GameState, rng: () => number = Math.random): void {
   ensureRoll(state, rng);
+  // §31.2 DEFECT — "nothing ever moves". A specified world can be poured with
+  // its Roll frozen; what a station holds, it holds forever.
+  if (rollFrozen(state)) return;
   const r = state.roll!;
   for (const def of shellRoll(state)) {
     /**

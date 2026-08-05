@@ -37,6 +37,7 @@ import { buildFrame, setGrain, setHold } from './systems/frame';
 import { makeRecord, seatPart } from './systems/seats';
 import { buildAxiomEngine, redraft, writeRule } from './systems/axiomEngine';
 import { buildSeating, setBequest, setBequestMachine } from './systems/seating';
+import { endSpecified, pourSpecified, setBand, setDefect } from './systems/specify';
 import { buildWasher, wash } from './systems/washer';
 import { breakPart, breakRack, buildBreaker, unbuildMachine } from './systems/breaker';
 import { buildCrucible, pour } from './systems/crucible';
@@ -286,6 +287,18 @@ export function handleAction(
 
     case 'buildFrame':
       return buildFrame(state, ctx);
+
+    case 'setSpecBand':
+      return setBand(state, ctx, action.band, action.shellId);
+
+    case 'setSpecDefect':
+      return setDefect(state, ctx, action.defect);
+
+    case 'pourSpecified':
+      return pourSpecified(state, ctx);
+
+    case 'endSpecified':
+      return endSpecified(state, ctx);
 
     case 'buildSeating':
       return buildSeating(state, ctx);

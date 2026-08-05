@@ -26,6 +26,7 @@
  */
 import { useMemo, useState } from 'react';
 import { SeatsPanel } from './seats';
+import { SpecifyPanel } from './specify';
 import type { GameState } from '../../engine';
 import { fmt } from '../../engine';
 import {
@@ -1575,6 +1576,9 @@ function TheStation({ state }: { state: GameState }) {
 
       {/* THE SEVEN SEATS (§4). The frame opens at Breach 1 and renders null
           before it, so a first-run station is untouched. */}
+      {/* §31.2 — the Casting Floor authors WORLDS too, after the first Recursion. */}
+      <SpecifyPanel />
+
       <SeatsPanel />
 
       <RackShelf state={state} want={want} onWant={setWant} />

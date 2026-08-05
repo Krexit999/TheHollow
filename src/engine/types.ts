@@ -698,6 +698,8 @@ export interface GameState {
   cultivar?: import('./systems/cultivar').CultivarState;
   /** THE RECONSTRUCTION FRAME (A.96) — what the next rebuilt cell comes back as. */
   frame?: import('./systems/frame').FrameState;
+  /** THE CASTING FLOOR's SPECIFYING half (§31.2, A.97) — the world you authored. */
+  spec?: import('./systems/specify').SpecState;
   /** THE SEATING (§13, A.97) — the bequest desk. Rides Recursion. Self-heals. */
   seating?: import('./systems/seating').SeatingState;
   /** THE AXIOM ENGINE (§13, A.97) — the sitting's counters. Self-heals. */
@@ -952,6 +954,7 @@ export type GameEvent =
   | { type: 'recordMade' }
   | { type: 'ruleWritten'; axiomId: string; owned: number }
   | { type: 'worldPoured'; poured: number; carried: string[] }
+  | { type: 'worldSpecified'; bands: string[]; defect: string }
   | { type: 'seatFilled'; seat: string; filled: number }
   | { type: 'faceWhole' }
   | { type: 'coreTouched' }
@@ -1199,6 +1202,10 @@ export type GameAction =
   | { type: 'buildCultivarBench' }
   | { type: 'buildCoil' }
   | { type: 'buildFrame' }
+  | { type: 'setSpecBand'; band: number; shellId: string | null }
+  | { type: 'setSpecDefect'; defect: import('./systems/specify').DefectId | null }
+  | { type: 'pourSpecified' }
+  | { type: 'endSpecified' }
   | { type: 'buildSeating' }
   | { type: 'setBequest'; bequest: import('./systems/seating').BequestId }
   | { type: 'setBequestMachine'; machineId: string | null }

@@ -176,6 +176,8 @@ describe('the RECORD is made out of a life, not a rock', () => {
     s.recursion.count = 1;
     s.reading!.proven = ['a', 'b', 'c', 'd'];
     s.delver.level = 60;
+    // Seats V-VII want a world you authored (§31). Live one, so VII is reachable.
+    s.spec = { bands: ['loam', 'ferrite', 'hollow'], defect: 'hardwalls', live: true, poured: 1, learned: [] };
     const seats = ensureSeats(s);
     for (const d of SEATS.filter((x) => x.id !== 'VII')) {
       seats.seated[d.id] = { seat: d.id, materialId: d.materialId, purity: 105, atRecursion: 0 };
