@@ -178,6 +178,21 @@ export function nullFlow(state: GameState): number {
  * should keep the Hearth. `plant.ts` owns the decision; this owns the answers.
  */
 export function shellFlow(state: GameState): number | null {
+  /**
+   * THE SHELL YOU ARE STANDING IN DECIDES. A carried shape only applies where
+   * the shell has none of its own — which is what keeps §3.2's "your power
+   * profile is a build" true in Aleph (no row in the table) without letting a
+   * carried Bloom mask the Null in the Hollow.
+   *
+   * FOUND BY THE DRIVER: with `growth` carried, the Hollow's plant card read
+   * THE BLOOM, because this function asked in declaration order rather than
+   * asking the shell first. Same family as the two missing shell conditions
+   * this pass already fixed, one level up.
+   */
+  const here = currentShell(state).id;
+  if (here === 'verdance') return bloomFlow(state);
+  if (here === 'glassmere') return prismFlow(state);
+  if (here === 'hollow') return nullFlow(state);
   if (bloomShell(state)) return bloomFlow(state);
   if (prismShell(state)) return prismFlow(state);
   if (nullShell(state)) return nullFlow(state);
@@ -193,6 +208,25 @@ export function shellSurge(state: GameState): number {
 export function shellPlantRead(state: GameState): {
   id: string; name: string; line: string; flow: number; surge: number; live: boolean;
 } | null {
+  // Same ordering as `shellFlow`, and for the same reason.
+  const here = currentShell(state).id;
+  const native = here === 'verdance' || here === 'glassmere' || here === 'hollow';
+  if (native ? here === 'hollow' : nullShell(state) && !bloomShell(state) && !prismShell(state)) {
+    return {
+      id: 'null', name: 'The Null',
+      line: `the Silence at ${Math.round(state.hollow?.silence ?? 0)}`,
+      flow: nullFlow(state), surge: 0, live: true,
+    };
+  }
+  if (native ? here === 'glassmere' : prismShell(state) && !bloomShell(state)) {
+    return {
+      id: 'prism', name: 'The Prism',
+      line: prismBuilt(state)
+        ? `${freeIntensity(state)} intensity unspent · ${darkBands(state)} bands dark`
+        : 'No Prism. Nothing here makes power.',
+      flow: prismFlow(state), surge: prismSurge(state), live: prismBuilt(state),
+    };
+  }
   if (bloomShell(state)) {
     return {
       id: 'bloom', name: 'The Bloom',

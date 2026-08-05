@@ -32,12 +32,30 @@ import { WAVELENGTH_NAMES } from '../../engine/systems/refraction';
 import { convCurrencyId, currentShell } from '../../engine/shells';
 import type { GameState } from '../../engine';
 
+/**
+ * EVERY MACHINE THE PLANT KNOWS, NAMED.
+ *
+ * This held FOUR names while `MACHINE_DEMAND` grew to twenty-seven, so the
+ * demand profile rendered twenty-three rows with a BLANK label and two numbers
+ * beside them — a list of anonymous draws. Caught in a driven SCREENSHOT, not
+ * by the height check, because the panel was never too tall; it was too empty.
+ * The fallback turns an id into words, so the next machine added to the demand
+ * table is a readable row rather than a blank one.
+ */
 const MACHINE_NAME: Record<string, string> = {
-  kiln: 'The Kiln',
-  crusher: 'The Crusher',
-  refinery: 'The Refinery',
-  assayBench: 'The Assay Bench',
+  kiln: 'The Kiln', crusher: 'The Crusher', refinery: 'The Refinery',
+  assayBench: 'The Assay Bench', sieve: 'The Sieve', breaker: 'The Breaker',
+  crucible: 'The Crucible', line: 'The Line', balance: 'The Balance',
+  still: 'The Still', infuser: 'The Infuser', press: 'The Press',
+  condenser: 'The Condenser', witness: 'The Witness', prism: 'The Prism',
+  pattern: 'The Pattern Bench', centrifuge: 'The Centrifuge', washer: 'The Washer',
+  governor: 'The Governor', lapidary: 'The Lapidary', quench: 'The Quench Tank',
+  boiler: 'The Boiler', vents: 'The Vent Array', retort: 'The Retort',
+  cultivar: 'The Cultivar Bench', coil: 'The Coil', frame: 'The Frame',
 };
+
+const machineName = (id: string): string =>
+  MACHINE_NAME[id] ?? id.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
 
 function Bar({ pct, tone }: { pct: number; tone: string }) {
   return (
@@ -128,7 +146,7 @@ export function PlantPanel() {
           return (
             <div key={id} className="flex items-baseline gap-2 py-[2px] text-[10px]" data-testid={`plant-${id}`}>
               <span className={`w-[68px] shrink-0 truncate ${built ? 'text-cave-200' : 'text-cave-600'}`}>
-                {MACHINE_NAME[id]}
+                {machineName(id)}
               </span>
               <span className="w-[74px] shrink-0 text-cave-500">
                 {d.flow > 0 && <span className="text-[#9ad4e8]">{d.flow}/s</span>}

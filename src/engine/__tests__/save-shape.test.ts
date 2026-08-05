@@ -59,10 +59,27 @@ describe('hydrate fills every missing slice from the default shape', () => {
     // correct answer, not a crash.
     expect(engine.dispatch({ type: 'clearDrillAlloy', index: 0 }).ok).toBe(false);
     expect(() => engine.tick(5)).not.toThrow();
-    // And chipping still pays afterward.
-    const before = s.currencies['dust']!.toNumber();
-    engine.dispatch({ type: 'chip', cell: 0 });
-    expect(engine.getState().currencies['dust']!.toNumber()).toBeGreaterThan(before);
+    /**
+     * SEEDED (A.96). Five seconds of a level-5 drill picks its cells off the
+     * global `Math.random`, so whether cell 0 still holds charge when the chip
+     * lands is a coin toss — this failed one full-suite run and passed every
+     * time it ran alone, which is the same shape as the drop-rate test seeded
+     * at A.95 and teaches the same bad habit (re-run instead of read).
+     */
+    const real = Math.random;
+    let seed = 20260805;
+    Math.random = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    try {
+      // And chipping still pays afterward.
+      const before = s.currencies['dust']!.toNumber();
+      engine.dispatch({ type: 'chip', cell: 0 });
+      expect(engine.getState().currencies['dust']!.toNumber()).toBeGreaterThan(before);
+    } finally {
+      Math.random = real;
+    }
   });
 
   it('never overwrites real data — additive only', () => {
