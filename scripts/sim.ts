@@ -254,6 +254,16 @@ interface Args {
    * different code is not a baseline (PILLARS, A.42).
    */
   fuel: 'none' | 'bare' | 'ash' | 'marl' | 'loam';
+  /**
+   * DOES THE FACE SURVIVE A COLLAPSE? (A.110 item 5, `--expand-keep`.)
+   *
+   * `expand` is tagged `resetsOnCollapse`, and a run collapses several times an
+   * hour, so every width the player buys is handed back. Whether it SHOULD is a
+   * ruling, and a ruling wants both numbers — so the flag flips exactly that one
+   * field on exactly that one upgrade, in the registry, before the run starts.
+   * Off (the default) is the shipped game, bit-identical.
+   */
+  expandKeep: boolean;
 }
 
 function parseArgs(): Args {
@@ -310,6 +320,7 @@ function parseArgs(): Args {
     beats23: argv.includes('--beats23'),
     stay: argv.includes('--stay'),
     fuel: (get('fuel') ?? 'none') as Args['fuel'],
+    expandKeep: argv.includes('--expand-keep'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -755,7 +766,15 @@ const BEATS_23_UNMEASURABLE = [
   '40:00 a pure Head is hardness 3', '43:00 tailings still do nothing',
 ];
 const beat23At: Record<string, number> = {};
-const beat23Peak = { face: 0, expand: 0, ash: 0 };
+/**
+ * `conv` and `conv12` are A.110's addition: the peak CONV bank over the run, and
+ * the peak inside §23's first twelve minutes. A NEVER on the 8x8 beat has two
+ * completely different causes — the player could not afford it, or the policy
+ * would not spend it — and peak expand alone cannot tell them apart.
+ */
+const beat23Peak = { face: 0, expand: 0, ash: 0, conv: 0, conv12: 0 };
+/** Shop ticks spent hoarding for a wall, against shop ticks in total (A.110). */
+const hoardTally = { blocked: 0, ticks: 0 };
 
 /** --conditions: per shell, seconds stood there and what its rule managed. */
 interface CondTally {
@@ -1326,7 +1345,39 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     const cost = shoreCost(s, next.def.id)?.brick ?? D(0);
     return cost.lte(SHORE_REACH) ? cost : D(0);
   };
+  /**
+   * ...AND THE FIELD SAVES FOR ITSELF (A.110 item 4), same shape, same file.
+   *
+   * MEASURED, not assumed. The 8x8 face §23 puts at minute 12 was reached by no
+   * run in the project, and the two obvious culprits both turned out innocent:
+   * the Forge's hoard is only 4-12% of shop ticks, and turning OFF the Collapse
+   * reset changed nothing at all (peak expand L2 either way, three seeds). The
+   * real cause is that `buyIfUnder` is a greedy cheapest-first shopper with no
+   * goal: bellows, firebrick, drillCount and the drill chassis are all cheaper
+   * than `expand`'s 64-Brick fourth step, so the bank is drained before it can
+   * ever hold it. Peak CONV over three hours is 47-80 — the money exists, it
+   * just never sits still.
+   *
+   * A player aiming at a beat saves for it, which is what the shoring reserve
+   * above already models. So the next `expand` step is held back the same way,
+   * and ONLY up to L4 — the width §23 names. Past that the reserve lifts and
+   * the Brick goes to the plant, exactly as `SHORE_REACH` stops the shoring
+   * policy saving for a band it will never reach.
+   */
+  const EXPAND_TARGET = 4;
+  const expandDef = allUpgrades().find((u) => u.id === 'expand')!;
+  const expandReserve = (): Decimal => {
+    const level = upgradeLevel(s, 'expand');
+    if (level >= Math.min(EXPAND_TARGET, expandDef.maxLevel)) return D(0);
+    if (expandDef.visible && !expandDef.visible(s)) return D(0);
+    return nextCost(expandDef, level);
+  };
   const brick = () => {
+    const free = s.currencies[convCurrencyId(s)]!.sub(convReserve()).sub(expandReserve());
+    return free.gt(0) ? free : D(0);
+  };
+  /** The field buys against the whole purse — it must not reserve against itself. */
+  const brickUnreserved = () => {
     const free = s.currencies[convCurrencyId(s)]!.sub(convReserve());
     return free.gt(0) ? free : D(0);
   };
@@ -1403,14 +1454,35 @@ function shop(engine: Engine, log: (msg: string) => void): void {
 
   // The Forge outranks everything when a wall is in the way — hoard for it.
   const wallBlocked = forgePlay(engine, s, log);
+  hoardTally.ticks++;
+  if (wallBlocked) hoardTally.blocked++;
   provisionSpine(engine, s, log);
   ferritePlay(engine, s, log);
   verdancePlay(engine, s, wallBlocked);
   glassmerePlay(engine, s, log);
   cinderPlay(engine, s, log);
   hollowPlay(engine, s, log);
+  /**
+   * THE FIELD IS NOT A LUXURY THE FORGE OUTRANKS (A.110 item 4).
+   *
+   * `expand` sat inside `if (!wallBlocked)` with the rest of the shopping, and
+   * the Forge hoards for a wall from minute 8:30 (depth 23, "too hard") until
+   * minute 23 (the re-cast that breaks it). §23 puts the 8x8 face at minute 12
+   * — INSIDE that window — and puts it there for a stated reason: "far-corner
+   * cells sit at cap while you work the near ones… the gradient that makes
+   * drills inevitable", one beat before the drill bay at 13:00. So the hoard
+   * rule was suppressing the beat that motivates the next beat, and a policy
+   * that never widens the face while a wall stands is not a player §23
+   * describes. Measured before this: peak `expand` L1, a 42-cell face, three
+   * seeds, no Collapse anywhere in the hour — so it was this gate and not the
+   * reset that kept the field small.
+   *
+   * It stays on a SMALL slice while blocked. A wall-blocked player does still
+   * save; they just do not refuse a 12-Brick field expansion to do it. Off the
+   * wall it buys at the same 0.5 it always did.
+   */
+  buyIfUnder('expand', brickUnreserved, wallBlocked ? 0.5 : 1);
   if (!wallBlocked) {
-    buyIfUnder('expand', brick, 0.5);
     buyIfUnder('bellows', brick, 0.35);
     buyIfUnder('firebrick', brick, 0.35);
     buyIfUnder('drillCount', brick, 0.5);
@@ -1734,6 +1806,14 @@ function main(): void {
   plantPolicy = args.plant;
   stayPolicy = args.stay;
   fuelPolicy = args.fuel;
+  if (args.expandKeep) {
+    // The registry entry itself, so `collapseSys` and `actions` both see it —
+    // patching a copy here would measure an arm the engine is not running.
+    const def = allUpgrades().find((u) => u.id === 'expand');
+    if (!def) throw new Error('--expand-keep: no `expand` upgrade to keep');
+    if (!def.resetsOnCollapse) throw new Error('--expand-keep: `expand` already survives — the flag is measuring nothing');
+    def.resetsOnCollapse = false;
+  }
   if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
     drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };
   }
@@ -2325,6 +2405,9 @@ function main(): void {
       beat23Peak.face = Math.max(beat23Peak.face, s.face.w * s.face.h);
       beat23Peak.expand = Math.max(beat23Peak.expand, upgradeLevel(s, 'expand'));
       beat23Peak.ash = Math.max(beat23Peak.ash, materialCount(s, 'ash'));
+      const conv = (s.currencies[convCurrencyId(s)] ?? D(0)).toNumber();
+      beat23Peak.conv = Math.max(beat23Peak.conv, conv);
+      if (sec <= 12 * 60) beat23Peak.conv12 = Math.max(beat23Peak.conv12, conv);
     }
     if (args.conditions) {
       // The BAND's rule, not the shell you think you are in — `conditionShellId`
@@ -2857,6 +2940,15 @@ function main(): void {
     }
     console.error(`  ${BEATS_23.length - late - never} hold · ${late} off · ${never} never`);
     console.error(`  peak face ${beat23Peak.face} cells · peak expand L${beat23Peak.expand} (8x8 wants L4, RESETS ON COLLAPSE) · peak ash ${beat23Peak.ash}`);
+    {
+      const def = allUpgrades().find((u) => u.id === 'expand')!;
+      const toL4 = [0, 1, 2, 3].reduce((sum, l) => sum + nextCost(def, l).toNumber(), 0);
+      console.error(`  peak CONV ${beat23Peak.conv.toFixed(0)} (${beat23Peak.conv12.toFixed(0)} inside §23's first 12min)`
+        + ` · L0->L4 costs ${toL4.toFixed(0)} cumulative, dearest single step ${nextCost(def, 3).toNumber().toFixed(0)}`);
+      console.error(`  the Forge hoarded for a wall on ${hoardTally.blocked}/${hoardTally.ticks} shop ticks`
+        + ` (${hoardTally.ticks > 0 ? (100 * hoardTally.blocked / hoardTally.ticks).toFixed(0) : '0'}%)`
+        + ' — every Brick row but `expand` is suppressed for that fraction of the run');
+    }
     for (const u of BEATS_23_UNMEASURABLE) console.error(`  (no predicate) ${u}`);
   }
   if (args.conditions) {
