@@ -10,9 +10,10 @@ import { bindEngine, useGame } from './ui/store';
 import { ModifierCache } from './engine/modifiers';
 import { allUpgrades } from './engine/upgrades';
 import { dpsMax } from './engine/systems/face';
-import { cascadeChain, conditionedMachines } from './engine/systems/condition';
-import { BREAKS, recipeHidden, ripeness } from './engine/systems/breaks';
+import { cascadeChain, conditionOf, conditionedMachines } from './engine/systems/condition';
+import { BREAKS, recipeHidden, ripeness, stopped } from './engine/systems/breaks';
 import { bandOfMachine } from './engine/systems/condition';
+import { flowSatisfaction } from './engine/systems/plant';
 import { strikeDamage } from './engine/systems/standoff';
 import { shellRoll, unstableHere } from './engine/systems/roll';
 import { THRESHOLDS, thresholdFor } from './engine/content/thresholds';
@@ -56,6 +57,12 @@ async function boot(): Promise<void> {
       band: (s: GameState, id: string) => bandOfMachine(s, id),
       ripeness: (s: GameState, id: string) => ripeness(s, id),
       hidden: (s: GameState, id: string) => recipeHidden(s, id),
+      // A.108 — the condition a machine is under, and the supply ratio Verdance's
+      // rule now reads. Both live functions: `served` is computed on the spot
+      // rather than read off the cached field, which is the whole re-pointing.
+      condition: (s: GameState, id: string) => conditionOf(s, id),
+      served: (s: GameState, id: string) => flowSatisfaction(s, id),
+      stopped: (s: GameState, id: string) => stopped(s, id),
       shellRoll: (s: GameState) => shellRoll(s).map((d) => ({ id: d.id, depth: d.depth, type: d.type })),
       upgrades: (s: GameState) => allUpgrades().filter((u) => u.visible?.(s) ?? true).map((u) => u.id),
       wrecks: () => Object.fromEntries(

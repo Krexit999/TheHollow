@@ -54,7 +54,7 @@
  */
 import type { EngineCtx, GameState } from '../types';
 import { bandCount } from './thresholds';
-import { clearBreakOnRecast } from './breaks';
+import { brokenAs, clearBreakOnRecast } from './breaks';
 import type { ModifierCache } from '../modifiers';
 import { traitsOf, type TraitId } from '../traits';
 import { currentShell } from '../shells';
@@ -719,6 +719,21 @@ export function recastBlocker(state: GameState, machineId: string): string | nul
     return 'It is not built.';
   }
   if (!conditionOf(state, machineId)) return 'There is nothing wrong with it.';
+  /**
+   * A NEW FRAME DOES NOT PULL THE VINES OFF IT (A.108). §55.4's recovery is the
+   * harvest and nothing else, and before this the panel offered a re-cast beside
+   * it that took two cast parts and left the machine BROKEN — `recastMachine`
+   * clears the condition, `clearBreakOnRecast` only ever cleared a blowout, so
+   * the machine started running again while `stopped()` still read true. That is
+   * A.107's "reads fine and still does not run" inverted, and it was found by
+   * looking at a screenshot of the panel rather than by any check here.
+   *
+   * Refused rather than made to work: one break, one named recovery. A paid
+   * path that forfeits the strain is a strictly worse fix wearing a button.
+   */
+  if (brokenAs(state, machineId) === 'overgrowth') {
+    return 'The green has it. Harvest it — a new frame will not pull the vines off.';
+  }
   const rack = state.casting?.rack ?? [];
   if (rack.length < RECAST_PART_COST) {
     return `Needs ${RECAST_PART_COST} cast parts — the rack holds ${rack.length}.`;

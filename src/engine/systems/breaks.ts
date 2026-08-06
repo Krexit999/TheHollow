@@ -84,6 +84,16 @@ export interface BreakDef {
   said: string;
   /** ...and one for how you get out of it. */
   recovery: string;
+  /**
+   * ...and one for a machine that is only CLOSE to it, which is a different
+   * sentence (A.108). `ripeLine` used to append `recovery` to the warning, and
+   * on a machine 15% of the way to going that printed "Harvest it — and keep
+   * whatever strain grew in there" over a machine with nothing in it yet, for an
+   * action `harvestMachineBlocker` would have refused. A warning says what to do
+   * NOW; a recovery says what to do after. Omit it and the recovery is used, so
+   * the two rows that already read correctly as warnings are unchanged.
+   */
+  warning?: string;
   /** Which machines can break this way. Probed, never listed. */
   candidates: (state: GameState) => string[];
   /** Is this machine at the point of it? */
@@ -221,6 +231,10 @@ export const BREAKS: BreakDef[] = [
     name: 'WHAT GREW IN THE WASHER',
     said: 'The green got into it while the Bloom was short. It has stopped.',
     recovery: 'Harvest it — and keep whatever strain grew in there.',
+    // Before it goes there is nothing to harvest, so the warning names the two
+    // things that actually move the Bloom: leave cells to vine over, or draw
+    // less. Both are the player's, and neither is waiting.
+    warning: 'The Bloom is short — leave the face to vine over, or stand a machine down.',
     candidates: (s) => conditionedMachines().filter((id) => built(s, id)),
     ripe: (s, id) => biting(s, id, 'overgrown') && (conditionOf(s, id)?.level ?? 0) >= 1,
     sec: RIPE_SEC,
@@ -483,7 +497,7 @@ export function ripeLine(state: GameState, machineId: string): string | null {
   const r = ripeness(state, machineId);
   if (r <= 0) return null;
   const def = breakFor(currentShell(state).id)!;
-  return `The ${machineLabel(machineId)} is ${Math.round(r * 100)}% of the way to going. ${def.recovery}`;
+  return `The ${machineLabel(machineId)} is ${Math.round(r * 100)}% of the way to going. ${def.warning ?? def.recovery}`;
 }
 
 /** Every machine this shell can still take, for the panel to iterate. */

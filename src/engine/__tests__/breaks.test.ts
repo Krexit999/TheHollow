@@ -22,7 +22,7 @@ import {
 import { ensureCultivar } from '../systems/cultivar';
 import { STRAINS } from '../content/strains';
 import {
-  CASCADE_SEC, bandOfMachine, cascadeChain, cascadedFrom, conditionOf, conditionedMachines, ensureCondition,
+  CASCADE_SEC, CONDITION_FULL_SEC, bandOfMachine, cascadeChain, cascadedFrom, conditionOf, conditionedMachines, ensureCondition,
   ensureDrags, machineSpeed, recastMachine, ruleFor, setMachineBand,
 } from '../systems/condition';
 import { ensurePlant, flowSatisfaction } from '../systems/plant';
@@ -323,6 +323,47 @@ describe('§3b WHAT GREW IN THE WASHER (§55.4)', () => {
     expect(ensureCultivar(r.s).cropped.length, 'the Codex grew past its registry')
       .toBe(STRAINS.length);
     expect(isBroken(r.s, id), 'the machine stayed broken').toBe(false);
+  });
+
+  /**
+   * ALL THREE OF THESE WERE FOUND BY LOOKING AT A SCREENSHOT of the plant panel
+   * (A.108), not by a check — every automated check in this file was green over
+   * them. They are checks now.
+   */
+  it('a re-cast is REFUSED on it — one break, one recovery, and no half-fixed state', () => {
+    const r = plantIn('verdance');
+    run(r, TO_BREAK);
+    const id = Object.keys(ensureBroken(r.s))[0]!;
+    r.s.casting.rack = [
+      { id: 1, materialId: 'marl' }, { id: 2, materialId: 'marl' },
+    ] as typeof r.s.casting.rack;
+
+    const out = recastMachine(r.s, ctx, id);
+    expect(out.ok, 'a new frame pulled the vines off').toBe(false);
+    expect(out.reason, 'it refused without saying why').toMatch(/[Hh]arvest/);
+    // THE SHAPE OF THE BUG IT PREVENTS: before this, the re-cast cleared the
+    // CONDITION and not the BREAK, so the machine started running again while
+    // the panel still read it stopped — and the parts were gone.
+    expect(r.s.casting.rack.length, 'it charged for a fix it refused').toBe(2);
+    expect(stopped(r.s, id), 'it reads stopped and the speed disagrees').toBe(true);
+    expect(machineSpeed(r.s, id), 'a machine the panel calls stopped was running').toBe(0);
+    // ...and the harvest still works, which is the point of refusing.
+    expect(harvestMachine(r.s, ctx, id).ok).toBe(true);
+  });
+
+  it('...and the WARNING says what to do now, not what to do after it goes', () => {
+    const r = plantIn('verdance');
+    run(r, Math.round(CONDITION_FULL_SEC + RIPE_SEC * 0.2));
+    const ripening = conditionedMachines().filter((id) => ripeness(r.s, id) > 0 && !isBroken(r.s, id));
+    expect(ripening.length, 'nothing was ripening to read a warning off').toBeGreaterThan(0);
+    const line = ripeLine(r.s, ripening[0]!)!;
+    expect(line, 'a ripening machine says nothing').toBeTruthy();
+    // The bug: the ripe line appended the RECOVERY, so a machine 15% of the way
+    // to going was told to harvest something that is not there yet.
+    expect(line, 'it offers a harvest on a machine with nothing in it')
+      .not.toMatch(/[Hh]arvest it/);
+    expect(line, 'the warning does not name what actually moves the Bloom')
+      .toMatch(/Bloom|vine/);
   });
 
   it('and it refuses a machine nothing grew in', () => {
