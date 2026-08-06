@@ -761,6 +761,31 @@ const mods = new ModifierCache();
  * has produced was measured through it. Standing rule since the decay pass —
  * any sim that touches compaction uses this hand.
  */
+/**
+ * A POCKET CANNOT BE CHIPPED, AND BOTH HANDS USED TO SWING AT ONE FOREVER
+ * (A.108). `manualChip` refuses an ore cell outright — the pocket is a decision
+ * (work it, or leave it to a drill), not a richer tap. Neither hand knew that.
+ *
+ * It bit `chipFullest` hardest, because a pocket's regen floor rides its RICHER
+ * cap: an ore cell settles above every plain cell on the board and therefore
+ * wins "fullest" permanently. Measured over an hour of bare-hands play from a
+ * fresh save: first pocket at 11s, and 17923 of 17971 strokes after it — 99.7% —
+ * were dispatched at a cell the engine had already refused. Skipping them pays
+ * 4.97x the dust. Every active-arm number measured through this hand was reading
+ * a player who stopped swinging eleven seconds in.
+ *
+ * `chipConcentrated` had the softer half: it advances by cursor so it does not
+ * stall on the stroke, but its window-advance gate asks whether every cell is
+ * compacted, and a cell that cannot be chipped never compacts — so one pocket
+ * anywhere in a window pinned the hand to those six cells for the whole run.
+ *
+ * The fix is the same fact in both places, and it is not a workaround: a stroke
+ * the engine refuses is not a policy a player could hold.
+ */
+function chippable(s: GameState, cell: number): boolean {
+  return !s.face.ore?.[cell];
+}
+
 let handWindow = 0;
 let handCursor = 0;
 const HAND_WIDTH = 6;
@@ -770,14 +795,17 @@ function chipConcentrated(engine: Engine, count: number): void {
   if (n === 0) return;
   for (let k = 0; k < count; k++) {
     const base = (handWindow * HAND_WIDTH) % n;
-    engine.dispatch({ type: 'chip', cell: (base + (handCursor % HAND_WIDTH)) % n });
+    const cell = (base + (handCursor % HAND_WIDTH)) % n;
+    if (chippable(s, cell)) engine.dispatch({ type: 'chip', cell });
     handCursor++;
     // Move on once every cell in the window is on the terminal gate. Below
-    // that the window is still paying better than a fresh one.
+    // that the window is still paying better than a fresh one. A pocket is
+    // counted done — hand compaction can never reach it.
     const comp = s.face.compaction ?? [];
     let done = true;
     for (let i = 0; i < HAND_WIDTH; i++) {
-      if ((comp[(base + i) % n] ?? 0) < 20) { done = false; break; }
+      const c = (base + i) % n;
+      if (chippable(s, c) && (comp[c] ?? 0) < 20) { done = false; break; }
     }
     if (done) handWindow++;
   }
@@ -797,6 +825,7 @@ function chipFullest(engine: Engine, count: number): void {
     if (usePolarity && s.polarity.chain > 0) {
       for (let i = 0; i < s.face.cells.length; i++) {
         if (isFarmCell(s as GameState, i)) continue; // the garden is off-limits
+        if (!chippable(s as GameState, i)) continue; // ...and so is a pocket
         if ((s.polarity.signs[i] ?? 1) !== s.polarity.lastSign) continue;
         const c = s.face.cells[i]!;
         if (c > bestCharge) {
@@ -811,6 +840,7 @@ function chipFullest(engine: Engine, count: number): void {
       bestCharge = 0;
       for (let i = 0; i < s.face.cells.length; i++) {
         if (isFarmCell(s as GameState, i)) continue;
+        if (!chippable(s as GameState, i)) continue;
         const c = s.face.cells[i]!;
         if (c > bestCharge) {
           bestCharge = c;
