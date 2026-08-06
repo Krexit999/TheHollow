@@ -39,6 +39,10 @@ import { ventArrayBuilt } from '../src/engine/systems/vents';
 import { UNTOLD } from '../src/engine/content/untold';
 import { progressOf, NEAR_AT } from '../src/engine/systems/untold';
 import { THRESHOLDS } from '../src/engine/content/thresholds';
+import {
+  CONDITION_BITE, CONDITION_RULES, conditionOf, conditionedMachines,
+} from '../src/engine/systems/condition';
+import { conditionShellId } from '../src/engine/systems/specify';
 import { crossed, takenIn } from '../src/engine/systems/thresholds';
 import { transmuteUnlocked } from '../src/engine/systems/refinery';
 import { REMAINS_TUNING } from '../src/engine/materials';
@@ -179,6 +183,38 @@ interface Args {
   census: boolean;
   untold: boolean;
   thresholds: boolean;
+  /**
+   * CAN THIS SHELL'S RULE FIRE, AND DOES IT EVER BITE? (A.108 item 6.)
+   *
+   * `CONDITION_RULES` is one predicate per shell, and A.108 found Verdance's had
+   * never fired for any player — a signature that cannot fire is not a
+   * signature. Firing is not the whole question either: effects only apply at
+   * `CONDITION_BITE`, so a rule that writes in bursts and never HOLDS is as dead
+   * to the player as one that never writes at all.
+   *
+   * Both are counted, against the seconds actually spent under that rule — a
+   * rate over the whole run reads a rule as dead when the player simply left.
+   * Off by default; the run is unchanged.
+   */
+  conditions: boolean;
+  /**
+   * SOMEBODY BUILDS THE PLANT (A.108).
+   *
+   * `--census` reads "machines UP 0/29" at the end of EVERY arm this project
+   * has ever run: 27 build actions exist and the harness dispatches none of
+   * them. So the plant, the Flow/Surge contention over it, all five
+   * `CONDITION_RULES`, the §55 cascade and every break sit behind a gate no
+   * simulated player has ever opened, and reading a condition rate of 0% off
+   * that is reading the harness, not the game.
+   *
+   * The precedent is `--shore`, which found the same hole in casting and fixed
+   * it the same way. A machine is bought with CAST PARTS, so this pours them and
+   * then simply TRIES each build every shop tick: the engine owns the gates and
+   * the prices and refuses what cannot be afforded, so the policy needs to know
+   * neither. Still one flag apart — without `--plant` nothing here runs and the
+   * baseline is the harness exactly as it was.
+   */
+  plant: boolean;
 }
 
 function parseArgs(): Args {
@@ -230,6 +266,8 @@ function parseArgs(): Args {
     census: argv.includes('--census'),
     untold: argv.includes('--untold'),
     thresholds: argv.includes('--thresholds'),
+    conditions: argv.includes('--conditions'),
+    plant: argv.includes('--plant'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -269,6 +307,7 @@ let holdEmulate = false;
 /** Set by main. SHORING (§9.4): the policy timbers bands only when this is on,
  *  which is the whole difference between the two arms. */
 let shorePolicy = false;
+let plantPolicy = false;
 /** How dear a band the shoring policy will save up for. Past this it spends the
  *  Brick on the plant instead — see `convReserve`. */
 const SHORE_REACH = 4000;
@@ -598,6 +637,25 @@ const cinderMetrics = { heatSum: 0, heatSamples: 0, purges: 0 };
  *  worked), so a reading taken at the end would report zero for a condition the
  *  run spent ten minutes three-quarters of the way into. */
 const untoldPeak: Record<string, number> = {};
+
+/** Every argument-free build action, in the order a plant grows. */
+const PLANT_BUILDS = [
+  'buildCrusher', 'buildSieve', 'buildAssayBench', 'buildBreaker', 'buildCrucible',
+  'buildLine', 'buildBalance', 'buildStill', 'buildInfuser', 'buildPress',
+  'buildCondenser', 'buildWitness', 'buildPrism', 'buildPatternBench',
+  'buildCentrifuge', 'buildWasher', 'buildGovernor', 'buildLapidary',
+  'buildQuenchTank', 'buildBoiler', 'buildVentArray', 'buildRetort',
+  'buildCultivarBench', 'buildCoil', 'buildFrame', 'buildAxiomEngine', 'buildSeating',
+] as const;
+let plantBuilt = 0;
+
+/** --conditions: per shell, seconds stood there and what its rule managed. */
+interface CondTally {
+  resident: number; writing: number; biting: number;
+  firstWrite: number; firstBite: number; peakMachines: number; longestBite: number;
+}
+const condTally: Record<string, CondTally> = {};
+let condBiteRun = 0;
 
 function cinderPlay(engine: Engine, s: GameState, log: (msg: string) => void): void {
   if (currentShell(s).id !== 'cinder') return;
@@ -1048,6 +1106,31 @@ function shop(engine: Engine, log: (msg: string) => void): void {
    * Brick sink, so shoring competes with field expansion the way a player's
    * Brick actually has to.
    */
+  if (plantPolicy) {
+    /**
+     * Pour first — a machine is priced in cast parts, and the rack starts empty.
+     * Same two dispatches the Casting Floor uses, same melt-then-pour ordering
+     * `--shore` had to learn: `frontCharge` is only ready after `tickCasting`
+     * has run it down, so this pours what is ready and otherwise charges.
+     */
+    if ((s.casting.rack?.length ?? 0) < 6) {
+      if (!engine.dispatch({ type: 'castPart', partType: 'head' }).ok) {
+        for (const id of ['marl', 'ochre', 'bonechalk', 'graveclay']) {
+          if (materialCount(s, id) < 6) continue;
+          if (engine.dispatch({ type: 'chargeCrucible', materialId: id, units: 3 }).ok) break;
+        }
+      }
+    }
+    // ...then TRY. The engine owns every gate and every price and refuses what
+    // this player cannot have, so the policy asks rather than decides.
+    for (const type of PLANT_BUILDS) {
+      if (engine.dispatch({ type } as never).ok) {
+        plantBuilt++;
+        log(`built ${type.slice(5)}`);
+        break; // one machine per shop tick — a plant is not bought in a second
+      }
+    }
+  }
   if (shorePolicy) {
     const rigDef = allUpgrades().find((u) => u.id === 'shoringRig')!;
     if (upgradeLevel(s, 'shoringRig') === 0 && rigDef.visible?.(s)) {
@@ -1516,6 +1599,7 @@ function main(): void {
   REMAINS_TUNING.share = args.remainsShare;
   holdEmulate = args.holdEmulate;
   shorePolicy = args.shore;
+  plantPolicy = args.plant;
   if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
     drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };
   }
@@ -2060,6 +2144,33 @@ function main(): void {
         if (v > (untoldPeak[def.id] ?? 0)) untoldPeak[def.id] = v;
       }
     }
+    if (args.conditions) {
+      // The BAND's rule, not the shell you think you are in — `conditionShellId`
+      // hands a live specified world its own physics and `tickCondition` obeys.
+      const shellId = conditionShellId(s);
+      const ct = (condTally[shellId] ??= {
+        resident: 0, writing: 0, biting: 0, firstWrite: 0, firstBite: 0,
+        peakMachines: 0, longestBite: 0,
+      });
+      ct.resident++;
+      let live = 0, bit = 0;
+      for (const id of conditionedMachines()) {
+        const lvl = conditionOf(s, id)?.level ?? 0;
+        if (lvl > 0) live++;
+        if (lvl >= CONDITION_BITE) bit++;
+      }
+      if (live > 0) {
+        ct.writing++;
+        if (ct.firstWrite === 0) ct.firstWrite = sec;
+        ct.peakMachines = Math.max(ct.peakMachines, live);
+      }
+      if (bit > 0) {
+        ct.biting++;
+        if (ct.firstBite === 0) ct.firstBite = sec;
+        condBiteRun++;
+        ct.longestBite = Math.max(ct.longestBite, condBiteRun);
+      } else condBiteRun = 0;
+    }
     noteRtpTick(s.shell.current, s.depthRecords[s.shell.current] ?? 0, s.depth, sec);
     if (args.opening) {
       opCeilInt += dpsMax(s, mods).toNumber();
@@ -2489,6 +2600,32 @@ function main(): void {
         `  ${def.shellId.padEnd(10)} ${def.id.padEnd(11)} ${got.toFixed(0).padStart(7)}/${String(def.at).padEnd(6)} ` +
         `${pct.toFixed(1).padStart(6)}%  ${crossed(s, def.id) ? 'CROSSED' : '       '}` +
         `${entered ? '' : '  (shell never entered — 0 by construction)'}`,
+      );
+    }
+  }
+  if (args.conditions) {
+    console.error('');
+    console.error(`CONDITIONS @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · shell ${currentShell(s).id}`);
+    console.error('  rates are over SECONDS UNDER THAT RULE, not over the run — a rule');
+    console.error(`  is dead if it never writes, and dead in play if it never HOLDS ${CONDITION_BITE * 240}s to BITE.`);
+    console.error('  first write/bite are RUN-CLOCK seconds, so they can exceed a shell residency.');
+    for (const rule of CONDITION_RULES) {
+      const ct = condTally[rule.shellId];
+      if (!ct || ct.resident === 0) {
+        console.error(`  ${rule.shellId.padEnd(10)} ${rule.id.padEnd(11)} (never stood under this rule)`);
+        continue;
+      }
+      // A single second that rounds to 0.0% reads as "never" beside a flag that
+      // says it wrote. Say which it is.
+      const pc = (n: number): string => (n > 0 && n / ct.resident < 0.001
+        ? ' <0.1%'
+        : ((n / ct.resident) * 100).toFixed(1).padStart(5) + '%');
+      console.error(
+        `  ${rule.shellId.padEnd(10)} ${rule.id.padEnd(11)} resident ${String(ct.resident).padStart(5)}s  ` +
+        `writes ${pc(ct.writing)}  bites ${pc(ct.biting)}  ` +
+        `first ${ct.firstWrite || '—'}s/${ct.firstBite || '—'}s  ` +
+        `peak ${ct.peakMachines} machines  longest bite ${ct.longestBite}s` +
+        `${ct.writing === 0 ? '   !! NEVER WRITES' : ct.biting === 0 ? '   !! WRITES BUT NEVER BITES' : ''}`,
       );
     }
   }
