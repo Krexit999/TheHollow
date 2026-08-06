@@ -26,7 +26,7 @@ ensureContentLoaded();
 import { createEngine } from '../src/engine/index';
 import type { GameState } from '../src/engine/types';
 import { conditionOf, conditionedMachines } from '../src/engine/systems/condition';
-import { MACHINE_DEMAND, ensurePlant, flowSatisfaction } from '../src/engine/systems/plant';
+import { MACHINE_DEMAND, ensurePlant, flowDrawers, flowSatisfaction } from '../src/engine/systems/plant';
 import { bloomFlow, PLANT_FLOOR, BLOOM_PER_VINE } from '../src/engine/systems/shellPlants';
 
 /** Stand up `n` machines in Verdance and run. `work` clears the face each tick. */
@@ -60,7 +60,20 @@ function run(n: number, work: boolean, sec = 400): {
   }
 
   const vines = (s.growth?.stage ?? []).filter((x) => x > 0).length;
-  const demand = ids.reduce((sum, id) => sum + (MACHINE_DEMAND[id]?.flow ?? 0), 0);
+  /**
+   * DEMAND IS WHAT THE PLANT ACTUALLY DRAWS, and the first cut of this got it
+   * wrong: it summed `MACHINE_DEMAND` over every conditioned machine, which
+   * includes three that are not drawers — the Kiln draws only while FEEDING,
+   * and the Axiom Engine and the Seating never draw Flow at all. That read
+   * 33.40 against a live 29.00, and the panel on screen says 29.0.
+   *
+   * Caught by comparing a screenshot to the table. `flowDrawers` is the engine's
+   * own list and is the only honest source for this column; the crossover rows
+   * were always right because they come from `conditionOf`, which asks the
+   * engine rather than this file.
+   */
+  const drawers = flowDrawers(s);
+  const demand = drawers.reduce((sum, id) => sum + (MACHINE_DEMAND[id]?.flow ?? 0), 0);
   const supply = bloomFlow(s);
   return {
     vines,
@@ -118,6 +131,5 @@ if (lo.under !== 0 || hi.under === 0) {
 console.log('  self-test: coverage falls with plant size, and the ends differ');
 
 /** ...and the demand table is READ, never transcribed. */
-const drawers = conditionedMachines().filter((id) => (MACHINE_DEMAND[id]?.flow ?? 0) > 0);
-console.log(`  self-test: ${drawers.length} of ${conditionedMachines().length} machines draw Flow, read from MACHINE_DEMAND`);
+console.log('  self-test: demand is flowDrawers(), the engine list — not every conditioned machine');
 void flowSatisfaction;
