@@ -324,6 +324,132 @@ for (const id of ORDER) {
 }
 
 // ---------------------------------------------------------------------------
+// 6 — A RULE THAT EXISTS AND CAN NEVER BE WRITTEN (A.108 item 5)
+// ---------------------------------------------------------------------------
+
+/**
+ * THE SAME CLASS THIS FILE WAS BUILT FOR, ONE LAYER DOWN.
+ *
+ * A.99 shipped a heat corridor no save could reach. A.108 found Verdance's
+ * `overgrown` in exactly that state and found it BY ACCIDENT: the rule asked
+ * whether `served` had fallen to zero, `served` is a supply RATIO with a floor,
+ * and so the shell's whole signature had never fired for any player since it
+ * shipped. Nothing failed. A test read green over it, because the test wrote the
+ * precondition by hand.
+ *
+ * The criterion here is the cheapest one that catches that bug and cannot be
+ * argued with: PUSH EACH RULE'S INPUT TO THE CEILING ITS OWN SYSTEM ALLOWS, and
+ * ask the predicate. A rule that is still false when its input is at the maximum
+ * the game can produce can never be written, and that is a build failure.
+ *
+ * WHAT THIS DOES NOT CLAIM. Reachable in principle is not "a player meets it" —
+ * that is a RATE, it needs a real run, and it lives in `sim.ts --conditions`,
+ * which measures writing and biting seconds against shell residency. This file
+ * is the gate; that one is the measurement. Neither substitutes for the other.
+ *
+ * Coverage is a failure too: a rule added tomorrow with no probe here fails
+ * tomorrow, rather than waiting to be stumbled on the way this one was.
+ */
+import { createEngine } from '../src/engine/index';
+import { CONDITION_RULES, conditionedMachines } from '../src/engine/systems/condition';
+import { ensurePlant, flowSatisfaction } from '../src/engine/systems/plant';
+import { ensurePrism } from '../src/engine/systems/prism';
+import { chainCap } from '../src/engine/systems/polarity';
+import { ModifierCache } from '../src/engine/modifiers';
+import type { GameState } from '../src/engine/types';
+
+/** Stand a full plant up in a shell. Nothing is written to the condition table. */
+function plantIn(shellId: string): GameState {
+  const g = createEngine({ nowMs: 0 }).getState() as GameState;
+  g.shell.current = shellId;
+  g.depthRecords[shellId] = 400;
+  g.depth = 30;
+  g.kiln.built = true;
+  const p = ensurePlant(g);
+  for (const id of conditionedMachines()) p.tiers[id] = 1;
+  return g;
+}
+
+/**
+ * Each rule's input, pushed to its own system's ceiling. The ceiling is named
+ * and read from the system that owns it — never a number written down here.
+ */
+const CEILINGS: Record<string, { shell: string; how: string; push: (g: GameState) => void }> = {
+  baked: {
+    shell: 'cinder',
+    how: 'pressure.heat at the gauge ceiling (100)',
+    push: (g) => { g.pressure.heat = 100; },
+  },
+  overgrown: {
+    shell: 'verdance',
+    how: 'every machine built, drawing against a bare Bloom',
+    push: () => { /* the full plant IS the push — max demand, floor supply */ },
+  },
+  unlit: {
+    shell: 'glassmere',
+    how: 'a standing Prism with its intensity spent off this band',
+    push: (g) => { ensurePrism(g).intensity = [0, 1, 1, 1, 0, 1]; },
+  },
+  undecided: {
+    shell: 'hollow',
+    how: 'hollow.silence at its cap (100)',
+    push: (g) => { g.hollow.silence = 100; },
+  },
+  magnetised: {
+    shell: 'ferrite',
+    how: 'polarity.chain at chainCap',
+    push: (g) => { g.polarity.chain = chainCap(g); },
+  },
+};
+
+const condBad: string[] = [];
+const condRows: string[] = [];
+
+/** Is this rule written by ANY machine, with its input at the ceiling? */
+function ruleWrites(rule: (typeof CONDITION_RULES)[number], push: (g: GameState) => void): boolean {
+  const g = plantIn(rule.shellId);
+  push(g);
+  const mods = new ModifierCache();
+  mods.invalidate();
+  return conditionedMachines().some((id) => rule.writing(g, id, mods));
+}
+
+for (const rule of CONDITION_RULES) {
+  const c = CEILINGS[rule.id];
+  if (!c) {
+    condBad.push(`   ${rule.shellId.padEnd(10)} ${rule.id.padEnd(11)} NO PROBE — a rule was added and this audit was not taught its ceiling`);
+    continue;
+  }
+  if (c.shell !== rule.shellId) {
+    condBad.push(`   ${rule.shellId.padEnd(10)} ${rule.id.padEnd(11)} PROBE NAMES THE WRONG SHELL (${c.shell})`);
+    continue;
+  }
+  const writes = ruleWrites(rule, c.push);
+  if (!writes) {
+    condBad.push(`   ${rule.shellId.padEnd(10)} ${rule.id.padEnd(11)} CANNOT BE WRITTEN — false with ${c.how}`);
+  } else {
+    condRows.push(`   ${rule.shellId.padEnd(10)} ${rule.id.padEnd(11)} writes with ${c.how}`);
+  }
+}
+
+/**
+ * THE SELF-TEST, BOTH WAYS. A probe that can only ever say "fine" is a comment.
+ * One planted rule that cannot fire must be caught, and one that can must not.
+ */
+const selfCond: string[] = [];
+{
+  const real = CONDITION_RULES.find((r) => r.id === 'overgrown')!;
+  const dead = { ...real, writing: (g: GameState, id: string) => flowSatisfaction(g, id) < 0 };
+  if (ruleWrites(dead, CEILINGS['overgrown']!.push)) {
+    selfCond.push('a rule that asks for a satisfaction below zero was read as reachable');
+  }
+  const alive = { ...real, writing: (g: GameState, id: string) => flowSatisfaction(g, id) <= 1 };
+  if (!ruleWrites(alive, CEILINGS['overgrown']!.push)) {
+    selfCond.push('a rule that is always true was read as unreachable');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------
 
@@ -365,5 +491,21 @@ if (walls.length > 0) {
   for (const w of walls) console.log(w);
 }
 
+console.log('');
+console.log('-- SHELL CONDITION RULES - can the world write them at all? --');
+for (const r of condRows) console.log(r);
+if (condBad.length > 0) {
+  console.log('');
+  console.log('!! A SHELL RULE CANNOT BE WRITTEN - BUILD FAILURE (A.108) !!');
+  for (const c of condBad) console.log(c);
+  console.log('   A signature that cannot fire is not a signature. Re-point it, or strike it.');
+  bad += condBad.length;
+}
+if (selfCond.length > 0) {
+  console.log('');
+  console.log('!! THE CONDITION PROBE IS BROKEN - its own self-test failed !!');
+  for (const sc of selfCond) console.log('   ' + sc);
+  bad += selfCond.length;
+}
 console.log(`\n${rows.length} systems audited · ${bad} UNREACHABLE OR UNAUDITED`);
 if (bad > 0) process.exitCode = 1;
