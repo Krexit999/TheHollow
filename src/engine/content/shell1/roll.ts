@@ -97,12 +97,18 @@ const NO_SEAM: string[] = [];
 export const LOAM_ROLL: StationDef[] = [
   {
     id: 'turnrow', depth: 0, name: 'The Turnrow', type: 'seam',
-    seams: ['marl', 'ochre'],
+    // PACKED LOAM starts here (A.110), and nowhere else this shallow. It is the
+    // topsoil cut into bricks — the first station is the only place the topsoil
+    // still is. It gives the kiln its slow-burn profile from the first minute,
+    // which is what §23's minute-4 trade needs to be a trade at all.
+    seams: ['marl', 'ochre'], remains: ['loam'],
     line: 'Where the cart turns around. Everything you own started here.',
   },
   {
     id: 'kilnyard', depth: 9, name: 'Kiln Yard', type: 'wreck', wreck: 'THE KILN',
-    seams: ['ochre', 'bonechalk'], remains: ['gravemote'],
+    // ASH is where the firing was (A.110). This line has said so since the Roll
+    // was written; nothing was ever under it.
+    seams: ['ochre', 'bonechalk'], remains: ['gravemote', 'ash'],
     line: 'Somebody fired brick here until they stopped.',
   },
   {
@@ -135,7 +141,9 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'marlgate', depth: 40, name: 'Marlgate', type: 'chamber',
-    seams: ['marl', 'graveclay', 'rootglass'], remains: ['chitinshard'],
+    // ...and the gate is set in packed loam. The deep half of that supply line
+    // (A.110), so a player past the topsoil is not cut off from the slow burn.
+    seams: ['marl', 'graveclay', 'rootglass'], remains: ['chitinshard', 'loam'],
     line: 'A room, and the marl worked into a gate that shuts on nothing.',
   },
   {
@@ -155,7 +163,9 @@ export const LOAM_ROLL: StationDef[] = [
   },
   {
     id: 'ashfall', depth: 72, name: 'The Ashfall', type: 'hazard',
-    seams: ['duskflint', 'bonechalk'], remains: ['gravemote'],
+    // The station named for it finally holds it (A.110) — the deep half of the
+    // Ash supply line, so the hot-fast profile survives leaving the Kiln Yard.
+    seams: ['duskflint', 'bonechalk'], remains: ['gravemote', 'ash'],
     line: 'Dust that has not settled in a hundred years and is in no hurry.',
   },
   {

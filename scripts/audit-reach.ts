@@ -559,26 +559,30 @@ if (selfCond.length > 0) {
   bad += selfCond.length;
 }
 /**
- * A REPORT, NOT A FAILURE — and on the same grounds section 1b shipped on.
+ * ── AND NOW IT IS A FAILURE (A.110) ─────────────────────────────────────────
  *
- * A.104 found six wreck payloads nothing read and PRINTED them, because wiring
- * one changes when a system unlocks and that is a ruling. A.106 got the ruling,
- * dealt with all six, and only then made the check a build failure. This is the
- * same shape at the same stage: the two fixes available are to author the stones
- * (which adds fuel a player can burn, and A.109 measures rather than moves
- * output) or to strike the rows (which deletes a trade §23 authors by name).
- * Both are rulings. Failing the build now would also fail it for work that has
- * nothing to do with this.
+ * It shipped at A.109 as a REPORT, on the grounds section 1b shipped on: the
+ * two available fixes were to author the stones (which adds fuel a player can
+ * burn, and A.109's job was to measure, not to move output) or to strike the
+ * rows (which deletes a trade §23 names). Both were rulings, and the comment
+ * here said in as many words that it becomes a failure the moment one lands.
  *
- * It becomes a failure the moment the ruling lands, exactly as 1b did.
+ * THE RULING LANDED. `ash` and `loam` are authored, bound to place at the Kiln
+ * Yard, the Turnrow, Marlgate and The Ashfall — so all three burn profiles
+ * resolve and the class is closed. Leaving the check advisory now would let the
+ * next dangling row accumulate exactly the way these two did: for the life of
+ * the project, behind a green audit, in a registry nobody re-reads.
+ *
+ * So a registry row naming a material that does not exist is a BUILD FAILURE.
+ * Author the stone in the same pass as the row, or do not write the row.
  */
 if (dangling.length > 0) {
   console.log('');
-  console.log('-- A REGISTRY NAMES A MATERIAL NOBODY AUTHORED (A.109, for a human to rule on) --');
+  console.log('!! A REGISTRY NAMES A MATERIAL NOBODY AUTHORED - BUILD FAILURE (A.110) !!');
   for (const d of dangling) console.log(d);
   console.log('   The row loads, the UI offers it, and the lookup returns 0 forever.');
-  console.log('   NOT a build failure yet: authoring the stone moves output, striking the row');
-  console.log('   deletes a trade §23 names. Both are rulings. Make it fail once one lands.');
+  console.log('   Author the stone, or strike the row. A reference to nothing is not content.');
+  bad += dangling.length;
 }
 if (selfDangle.length > 0) {
   console.log('');

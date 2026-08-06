@@ -382,6 +382,20 @@ export const MATERIAL_TRAITS: Record<string, TraitId[]> = {
   duskflint: ['keen', 'dense'], umberjade: ['brittle', 'charged'], hollowamber: ['hollow', 'light'],
   wormsteel: ['springy', 'tough'], palegold: ['charged', 'dense'], chthonite: ['dense', 'warm'],
   starmarl: ['charged', 'trueseated'], sablequartz: ['trueseated', 'keen'],
+  // THE TWO FUEL STONES (A.110). Each pair is the fuel's own note, read as
+  // properties: Ash catches at once and gutters (`light` cadence, `brittle`
+  // — one bad angle from failing); Packed Loam is slow to take and slower to
+  // let go (`dense`, and `warm`, whose reach is literally `kilnHeatRamp`).
+  // They SHARE `warm`, and that is the point: `warm` is the only trait whose
+  // outward reach is `kilnHeatRamp`, so the two stones the kiln burns are the
+  // two that carry it. They differ on the other axis, `light` against `dense`,
+  // which is exactly the fast/slow trade their burn profiles encode.
+  //
+  // First written `ash: ['light','brittle']`, which is a BIT-FOR-BIT CLONE of
+  // bonechalk — same shell, same rarity, same pair, therefore the same part on
+  // every stat. The still suite's clone check caught it; that guard exists and
+  // it earned its keep here.
+  ash: ['light', 'warm'], loam: ['dense', 'warm'],
   weepstone: ['charged', 'warm', 'hollow'],
   /**
    * THE TRAP (§16.3): ONE RUINOUS TRAIT, not one trait.

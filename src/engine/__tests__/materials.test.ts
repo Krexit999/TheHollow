@@ -74,7 +74,9 @@ describe('the taxonomy', () => {
      * assertion is inverted to keep them that way.
      */
     expect(materialsOfShell('loam').filter((m) => m.source === 'combat')).toHaveLength(0);
-    expect(materialsOfShell('loam').filter((m) => m.source === 'remains')).toHaveLength(6);
+    // Six Deepwrought remains (A.84) + the two fuel beds (A.110). Both groups
+    // are named and checked by id in `remains.test.ts`; this is the count.
+    expect(materialsOfShell('loam').filter((m) => m.source === 'remains')).toHaveLength(8);
     expect(GEMS).toHaveLength(6);
     // Every shell got its share of the declaration.
     for (const shell of ['ferrite', 'verdance', 'glassmere', 'cinder', 'hollow', 'aleph']) {

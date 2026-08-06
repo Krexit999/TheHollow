@@ -569,6 +569,42 @@ export const MATERIALS: MaterialDef[] = [
   // seams at DEEPGRAVE and nowhere shallower.
   { id: 'taproot', name: "Tapmother's Root", shellId: 'loam', rarity: 'flawless', palette: ['#33402c', '#5c744e', '#94b581'], facets: 9, shimmer: 'crystalline', source: 'remains', flavor: 'The Tapmother\'s roots run further down than she does. It is still growing, slowly.' },
 
+  /**
+   * ============ THE TWO FUEL STONES (A.110) — authored at last ============
+   *
+   * `KILN_FUELS` has named these two since the Face Cluster and NEITHER WAS
+   * EVER WRITTEN. `kilnFuel.ts` offers three burn profiles; two of them ask
+   * `materialCount(state, ...)` for a material this registry does not contain,
+   * so the count is permanently zero and the branch that applies the profile
+   * can never be entered. Only Marl burns. §23's minute-4 beat is "two fuel
+   * profiles… and the Ash counter starts moving" — the FIRST REAL TRADE in the
+   * game — and it has had one option and a counter that cannot move.
+   *
+   * THEY ARE BOUND TO PLACE, for exactly the reason stated eighteen lines up:
+   * Loam holds four commons, and two more in the rarity pool would cut marl,
+   * ochre, bonechalk and graveclay by a THIRD each. The tier-II floor recipe is
+   * made of those stones, so authoring a fuel through the pool would silently
+   * re-price the first hardness wall — pillar 1 binds the drop economy. A
+   * remains drop SUBSTITUTES inside a drop that already happened, so this adds
+   * two materials and no throughput.
+   *
+   * The fiction is not stretched to fit: neither is a piece of something that
+   * lived, and neither pretends to be. `remains` is the mechanism for a stone
+   * that is IN THE ROCK AT A NAMED PLACE, which is what a fuel bed is. The
+   * places were already written and already say so — Kiln Yard is "somebody
+   * fired brick here until they stopped", and The Ashfall is "dust that has not
+   * settled in a hundred years".
+   *
+   * AND THE PLACES ARE THE TRADE. Marl is a rarity-pool common and falls
+   * everywhere, which is why it is the fuel that never lets you down. The two
+   * specialists are somewhere: Ash at the fires, Packed Loam in the topsoil.
+   * So a burn profile is not only heat dynamics — it is a supply line, and the
+   * shape of the choice is where you are standing. Pillar 2: reach and
+   * behaviour, never yield.
+   */
+  { id: 'ash', name: 'Ash', shellId: 'loam', rarity: 'common', palette: ['#39363a', '#66626a', '#a09aa4'], facets: 3, shimmer: 'none', source: 'remains', flavor: 'The floor of an old firing yard, ankle-deep and still warm in patches. It catches from a spark and is gone before you have turned round.' },
+  { id: 'loam', name: 'Packed Loam', shellId: 'loam', rarity: 'common', palette: ['#3a3024', '#66573c', '#998660'], facets: 4, shimmer: 'none', source: 'remains', flavor: 'Cut from the topsoil in bricks and left to dry. The shell you live in, made portable — slow to take, and it gives nothing back in a hurry.' },
+
   // =============== FERRITE'S REMAINS (A.87) — re-sourced by PLACE ==========
   //
   // These six were `source: 'combat'` and combat was cut, so they were

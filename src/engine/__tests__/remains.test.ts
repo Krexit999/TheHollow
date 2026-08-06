@@ -67,10 +67,24 @@ function sweep(rolls: number): Map<string, number[]> {
 }
 
 describe('the fixture is real', () => {
-  it('six Loam materials are REMAINS and none is combat-only any more', () => {
-    expect(REMAINS.map((m) => m.id).sort()).toEqual(
-      ['burrowertooth', 'chitinshard', 'gravemote', 'marrowglass', 'taproot', 'wormsilk'],
-    );
+  it('Loam REMAINS: the Deepwrought six, and the two fuel beds', () => {
+    /**
+     * TWO GROUPS, ASSERTED AS TWO GROUPS. This read as one flat list of six and
+     * broke the moment a place got a deposit under it — which is a snapshot,
+     * not an invariant. The invariant is that the SIX re-sourced at A.87 are
+     * all still remains (that was the whole point of the pass, and losing one
+     * would put it back to unreachable), and that the two fuel stones A.110
+     * authored are remains rather than rarity-pool commons (which is what keeps
+     * them from re-pricing the first hardness wall).
+     */
+    const ids = REMAINS.map((m) => m.id).sort();
+    for (const id of ['burrowertooth', 'chitinshard', 'gravemote', 'marrowglass', 'taproot', 'wormsilk']) {
+      expect(ids, `the Deepwrought remains lost ${id}`).toContain(id);
+    }
+    for (const id of ['ash', 'loam']) {
+      expect(ids, `the fuel stone ${id} is not place-bound`).toContain(id);
+    }
+    expect(ids).toHaveLength(8);
     expect(MATERIALS.filter((m) => m.shellId === 'loam' && m.source === 'combat')).toHaveLength(0);
   });
 
