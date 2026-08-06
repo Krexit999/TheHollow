@@ -230,6 +230,14 @@ interface Args {
    * predicate and are listed as unmeasurable rather than silently dropped.
    */
   beats23: boolean;
+  /**
+   * LIVE IN THIS SHELL (A.109). §53's thresholds bank only while you STAND in
+   * the shell that owns them, and every arm falls through as soon as the shell
+   * has paid — so `subsidence` read 0/2500 everywhere, including `wardens`,
+   * which starts at the Loam floor and descends straight out. Never-MEASURED,
+   * not never-fires, and a zero cannot tell you which.
+   */
+  stay: boolean;
 }
 
 function parseArgs(): Args {
@@ -284,6 +292,7 @@ function parseArgs(): Args {
     conditions: argv.includes('--conditions'),
     plant: argv.includes('--plant'),
     beats23: argv.includes('--beats23'),
+    stay: argv.includes('--stay'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -324,6 +333,7 @@ let holdEmulate = false;
  *  which is the whole difference between the two arms. */
 let shorePolicy = false;
 let plantPolicy = false;
+let stayPolicy = false;
 /** How dear a band the shoring policy will save up for. Past this it spends the
  *  Brick on the plant instead — see `convReserve`. */
 const SHORE_REACH = 4000;
@@ -1318,7 +1328,19 @@ function shop(engine: Engine, log: (msg: string) => void): void {
   }
   // The Breach: fall through once the shell has paid out (~500+ cores this
   // breach -> 3 Echoes; DESIGN expects ~800 earned across Shell I).
-  if (canBreach(s) && s.shell.coresEarnedThisBreach.gte(500)) {
+  /**
+   * --stay: LIVE IN THIS SHELL (A.109). §53's thresholds bank only while you are
+   * STANDING in the shell that owns them, and every arm this project runs falls
+   * through as soon as the shell has paid — so `subsidence` read 0/2500 in every
+   * scenario including `wardens`, which starts at the Loam floor and descends
+   * straight out. That is never-MEASURED, not never-fires, and the two are
+   * indistinguishable from a zero.
+   *
+   * A player who refuses the Breach is a real player: §53 is "the shell remembers
+   * what you took", and the whole point of a threshold is that you cross it while
+   * doing something else. This is the arm that stays long enough to.
+   */
+  if (canBreach(s) && s.shell.coresEarnedThisBreach.gte(500) && !stayPolicy) {
     const peakBefore = Math.max(s.depth, s.shaft.reached);
     const recursionsBefore = s.recursion.count;
     const leftShellId = currentShell(s).id;
@@ -1657,6 +1679,7 @@ function main(): void {
   holdEmulate = args.holdEmulate;
   shorePolicy = args.shore;
   plantPolicy = args.plant;
+  stayPolicy = args.stay;
   if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
     drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };
   }

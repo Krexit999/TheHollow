@@ -98,11 +98,16 @@ export const THRESHOLDS: ThresholdDef[] = [
     shellId: 'loam',
     id: 'subsidence',
     name: 'SUBSIDENCE',
-    // MEASURED: a balanced 3h Loam run takes 828 (idle 565, active 903), so
-    // this lands around hour nine of living in the shell. A player who breaches
-    // Loam on schedule never sees it, which is exactly §53's "you cross it while
-    // doing something else."
-    at: 2500,
+    // RE-MEASURED AND RE-CUT (A.109). Every number this row was sized against
+    // was read through a hand that swung at a pocket the engine refuses — 99.7%
+    // of manual strokes — and through a harness that had never built a machine.
+    // Loam drops are 3.5x what the old hand banked.
+    // Own-shell arm, --stay so the residency is real, --plant so the shell runs:
+    //   3h 2879   ·   9h 10016
+    // 2500 crossed at ~2.6h; 10000 puts it back at hour nine.
+    // A player who breaches Loam on schedule still never sees it, which is
+    // §53's "you cross it while doing something else."
+    at: 10_000,
     total: (s) => s.materials?.totalDrops ?? 0,
     changed: 'The stations began to crack.',
     opportunity: 'A cracked station has already given way — the wall there is down.',
@@ -131,7 +136,22 @@ export const THRESHOLDS: ThresholdDef[] = [
     // reports 0 and says so. This one is banked in Ferrite only, so before the
     // scenario existed it reported 0 because nothing had ever chained there —
     // which reads identically to 0-by-construction and is not the same claim.
-    at: 250,
+    // RE-MEASURED AND RE-CUT (A.109), and the note above is now VOID in both
+    // halves. With a hand that lands its strokes, --scenario ferrite --stay
+    // banks 8078 · 8077 · 8077 across seeds 11/23/47 at 3h — the mean of 87 this
+    // row was cut against was a hand that had stopped chipping eleven seconds in,
+    // and 250 crosses in minutes.
+    //
+    // AND THE SPREAD IS GONE, which retires the more interesting half of the old
+    // note. Six-to-one across seeds was not "the only ROLLED measure in the
+    // table" showing its nature; it was chain-banking being RARE enough that a
+    // lucky sign layout dominated. A player who actually chips banks chains
+    // continuously and the roll averages out — three seeds inside one unit.
+    //
+    // §53's LAW 5 is the target here, not hour nine: "Ferrite flipped and I have
+    // FOUR HOURS of chain instincts that are now exactly wrong." Measured 4h:
+    // 8527. 9h reads 10886, so the curve is nearly flat by then — it saturates.
+    at: 8500,
     // Banked by `polarity.ts` at the moment a chain extends — the one measure
     // §53 names that nothing was already keeping a total of.
     changed: 'The shell inverted. Every pole reads the other way now.',
@@ -147,9 +167,14 @@ export const THRESHOLDS: ThresholdDef[] = [
     // sixty-four a second and `--scenario verdance` crossed THE FERAL at 7487%
     // of its threshold — inside three minutes. It is a FRACTION of the face now,
     // which makes the unit "fallow-face-seconds" and independent of how wide
-    // your face happens to be. Balanced Verdance leaves ~58% of it standing, so
-    // 18000 is about nine hours.
-    at: 18_000,
+    // your face happens to be.
+    //
+    // RE-MEASURED AND RE-CUT (A.109). The unit survives; the size does not. This
+    // is the ONE row of the six that was too LATE rather than too early — the
+    // old hand stalled, so cells sat fallow and banked faster than a player who
+    // clears them does. Own-shell arm, --stay: 3h 2759 · 9h 10194, so 18000 was
+    // about sixteen hours. 10000 is hour nine.
+    at: 10_000,
     rate: (s) => {
       const f = s.growth?.fullSince ?? [];
       const n = s.face?.cells?.length ?? f.length;
@@ -169,8 +194,14 @@ export const THRESHOLDS: ThresholdDef[] = [
     // beam carries something ~97% of the time somebody is in the shell — this
     // is very nearly a clock. 20000 was therefore 5.7 hours of SHELL time, not
     // the 9-ish the other rows sit at; the old note read the unit right and the
-    // pacing wrong. 30000 is 8.6h, and varies by 2% across seeds.
-    at: 30_000,
+    // pacing wrong.
+    //
+    // RE-MEASURED (A.109) and BARELY MOVED, which is itself the reading: this
+    // row is very nearly a clock, so the chip fix — which changes how hard you
+    // work, not how long the beam is lit — hardly touches it. Own-shell arm,
+    // --stay: 3h 10800 · 9h 32399. 30000 crosses at 8.3h and 32000 at 9.0h; the
+    // nudge is for consistency with the other five, not because 30000 was wrong.
+    at: 32_000,
     // Beam-seconds: how long the light has been carrying anything at all.
     rate: (s) => ((s.refraction?.path?.length ?? 0) > 0 ? 1 : 0),
     /**
@@ -191,8 +222,13 @@ export const THRESHOLDS: ThresholdDef[] = [
     name: 'THE BURN',
     // MEASURED: `--scenario cinder` vents 16090 in three hours, so 4000 crossed
     // THE BURN before the first hour was out — a threshold you meet on your way
-    // in is a tutorial, not a world change. 48000 is about nine hours of it.
-    at: 48_000,
+    // in is a tutorial, not a world change.
+    //
+    // RE-MEASURED AND RE-CUT (A.109). 16090-in-three-hours was the old hand.
+    // Own-shell arm, --stay: 3h 37793 · 9h 117114, so 48000 crossed at ~3.8h —
+    // the same "meet it on the way in" the last cut was written to stop.
+    // 117000 is hour nine.
+    at: 117_000,
     total: (s) => s.pressure?.ventedTotal ?? 0,
     changed: 'The shell will not cool back down to where it started.',
     opportunity: 'It holds more before it floods than it was built to.',
@@ -203,9 +239,10 @@ export const THRESHOLDS: ThresholdDef[] = [
     shellId: 'hollow',
     id: 'deepening',
     name: 'THE DEEPENING',
-    // MEASURED: `--scenario hollow` harvests 330 stacks in three hours, so this
-    // lands around hour nine, in line with the other two that could be read.
-    at: 1000,
+    // RE-MEASURED AND RE-CUT (A.109). 330-in-three-hours was the old hand.
+    // Own-shell arm, --stay: 3h 440 · 9h 1928, so 1000 crossed at ~4.7h.
+    // 1900 is hour nine, in line with the other five.
+    at: 1900,
     total: (s) => s.hollow?.silenceHarvested ?? 0,
     changed: 'The Silence thickened.',
     opportunity: 'It gathers faster than it did, and the Null pays for gathering.',
