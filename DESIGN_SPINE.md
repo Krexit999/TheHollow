@@ -68,8 +68,8 @@ them.** No future pass may quote a number from this document without checking it
 
 | Claim | Status |
 |---|---|
-| First upgrade ~4 s · Kiln ~3 min · Drill Bay ~20 min | ✓ **MEASURED** (post-A.43 harness) |
-| The first 45 minutes (§23) | ✓ **MEASURED** in outline; the beat *order* is designed, the timings are observed |
+| First upgrade ~4 s · Kiln ~3 min · Drill Bay ~20 min | ✓ **MEASURED**, but the Drill Bay figure is VOID — post-A.108 it reads **5:42**. |
+| The opening beats (§23) | ✓ **RE-MEASURED A.110** against the fixed hand, median of 3 seeds × 2 policies. Every clock in §23 was re-cut; the section is no longer "the first 45 minutes" because the opening runs ~3× faster than it was authored. The beat ORDER is designed — and §23.1 records the three places the compression INVERTED it, which is the part that is a defect rather than a reading. |
 | Loam floor ~5.3 h · first Breach ~11.8 h | ✓ **MEASURED**, n=1 per arm. One run has been an anecdote in this project twice. |
 | Collapse cadence 25.6 min idle / 14.3 active | ✓ **MEASURED**, real samples |
 | **Everything past ~48 hours** | ✗ **NEVER MEASURED. NOT ONCE.** |
@@ -1759,109 +1759,182 @@ have to be regardless. You can aim at it from hour 12 and you cannot look any of
 
 ---
 
-# 23. THE FIRST 45 MINUTES (retained, with the new machines threaded in)
+# 23. THE FIRST TWENTY-FIVE MINUTES — **RE-CUT TO THE MEASURED GAME (A.110)**
 
-Mechanism tags in brackets.
+> **Every minute below is measured, not authored.** The clocks this section
+> carried from v1 to A.109 were written against a harness whose hand swung at
+> a pocket the engine refuses (99.7% of strokes after the first pocket at
+> 11 seconds — PILLARS, the A.108 void) and which had never built a machine.
+> A.109 fixed the hand and found the beats **compressed, not stretched**; the
+> ruling was that the game is right and the document is wrong. So the numbers
+> are re-cut here to what `scripts/sim.ts --beats23 --plant` reads, median of
+> three seeds, at both `--policy balanced` and `--policy active` — which agree
+> to a tenth of a minute on every depth beat, exactly as A.109's 0.99× depth
+> convergence predicts.
+>
+> **The ORDER is the content; the clock is a reading.** §0.5 already says the
+> beat ladder is ordinal rather than clocked, and this section was the one
+> place that clocked everything. Where a minute moves and the order holds,
+> nothing is wrong. Where the ORDER moves, something is — and it moved in
+> three places, flagged below.
+>
+> Re-measure before quoting. A number here is evidence for exactly as long as
+> the harness that produced it stays honest.
+
+Mechanism tags in brackets. **FEELING** marks a beat with no predicate — eight
+of them, listed at the end. They are not dropped and they are not measured;
+nothing in the save can say whether "chip time is visibly worse" has happened.
 
 **0:00** — One panel: a 6×6 grid of dark cells, a Dust counter at 0. No tabs, no tutorial.
 Tap: it chips, a number pops.
 
-**0:04** — `BLADE — 50` fades in beneath the grid. One button, not a shop. [22.6]
+**0:00** — `BLADE — 50` fades in beneath the grid. One button, not a shop. [22.6]
+*(authored 0:04; it is there on the first frame.)*
 
-**0:12** — Buying it opens the shop rail: Blade, Soil, and a third row that is a **blank
-silhouette with no name.** [LAW 3]
+**0:06** — **THE HOLD** opens with one row. You have no idea what it's for. [13.1]
+*(authored 2:00, and this is the first ORDER CHANGE: the pile arrives before the
+descent that was supposed to produce it, because chipping at depth 0 already
+drops. The "seventeen useless minutes" §23 promised is now the first
+twenty-four seconds onward, which makes the payoff LONGER, not shorter.)*
 
-**0:40** — You strip a cell and it pays nothing; you watch it refill. Pillar 2, taught by
-feel, in forty seconds. [22.2]
+**0:12** — Buying the Blade opens the shop rail: Blade, Soil, and a third row that is a
+**blank silhouette with no name.** [LAW 3]
 
-**1:20** — `DESCEND — 27` appears with the depth bar.
+**0:40** — **FEELING** · You strip a cell and it pays nothing; you watch it refill.
+Pillar 2, taught by feel. [22.2]
 
-**2:00** — Depth 4, a glint. Your first material: `graveclay · dense · tough`. **THE HOLD**
-opens with one row. You have no idea what it's for. [13.1 — this pile stays useless for
-seventeen minutes]
+**2:36** — `DESCEND` appears with the depth bar. *(authored 1:20.)*
 
-**3:00** — Depth 9: a **cracked kiln**. `REPAIR — 120 Dust`. [22.5] Dust → Brick. Brick's
-only use appears at ten Brick: **FIELD 6×6 → 7×7**.
+**2:42** — Depth 4, a glint. Your first material: `graveclay · dense · tough`.
+*(authored 2:00 — the only beat in the section that landed where it was written.)*
 
-**4:00** — Two fuel profiles: fast burn (Brick now, Ash later) or long burn. First real
-trade, four minutes in — and the **Ash** counter starts moving. [13.1, second pile]
+**2:54** — Depth 9: a **cracked kiln**. `REPAIR`. [22.5] Dust → Brick. Brick's first use
+is the face: **FIELD 6×6 → 7×6**. *(authored 3:00, and it holds.)*
 
-> **Minute 5:** chip → Dust → buy → descend. A second currency grows the board. The rock
-> refills and there is a limit.
+**3:06** — Depth 17: a cell hit six times shows a hairline; slower to chip, **more Dust per
+chip**. You start doing it on purpose because it pays. [13.4] *(authored 6:30.)*
 
-**6:30** — Depth 17: a cell hit six times shows a hairline; slower to chip, **more Dust per
-chip**. You start doing it on purpose because it pays. [13.4 — reason one; reason two is two
-hours away and the habit will already exist]
+**3:30** — Depth 23: a cell you cannot chip. The tooltip says, in full, **"too hard."**
+[22.3] You go around. *(authored 8:30.)*
 
-**8:30** — Depth 23: a cell you cannot chip. The tooltip says, in full, **"too hard."** [22.3]
-You go around.
+**3:48** — Depth 28: a **seized drill**. `REPAIR`. [22.5] *(authored 13:00.)*
 
-**10:00** — Chip time is visibly worse than at depth 10. You want something better and
-nothing told you to. [22.2]
+**5:36** — Depth ~40: **COLLAPSE** appears with its Cores preview. It does not nag —
+and it will not be taken for another fifty-three minutes. *(authored 27:00.)*
 
-**12:00** — Field is 8×8; far-corner cells sit at cap while you work the near ones. You can
-*see* charge being wasted. [13.2 — the gradient that makes drills inevitable]
+**5:42** — The bay is yours, and a second drill with it → a **behaviour** dropdown:
+*fullest cell* / *sweep*. *(authored 13:00 and 16:00; they have merged into one beat,
+the second ORDER CHANGE. Two openings that were three minutes apart now land
+together, so the dropdown arrives before the player has felt the want.)*
 
-**13:00** — Depth 28: a **seized drill**. `REPAIR — 40 Brick`. [22.5]
+**7:42** — Depth 47: a **crusher drum with a shattered liner**. Repair: cast parts + Brick.
+*(authored 33:00 — and here is the third and worst ORDER CHANGE: you are asked
+for cast parts three and a half minutes BEFORE you have cast anything. §23's
+whole point was "you know how to cast parts, because you did it at minute 20 for
+an unrelated reason" [13.4]. That reason no longer precedes the demand.)*
 
-> **Minute 15:** the board is bigger than your hands, drills cover the rest, some rock won't
-> break, and you have a pile of rocks with adjectives on them.
+**10:00** — **FEELING** · Chip time is visibly worse than at depth 10. You want something
+better and nothing told you to. [22.2]
 
-**16:00** — Second drill → a **behaviour** dropdown appears: *fullest cell* / *sweep*.
+**11:18** — **CAST**: one shape, `HEAD`. You pour. The **Tool Station** appears with your
+Head and **three empty part shapes, no names.** [LAW 3] *(authored 20:00.)*
 
-**18:00** — Descent price outruns you. Nothing breaks; progress goes quiet.
+**11:18** — Depth record 60 opens the **REFINERY**. It eats grit; your grit is waiting.
+Output: the same material one **purity band** higher — and purity now renders on every row
+in the Hold, where it was always quietly present. *(authored 38:00.)*
 
-**19:00** — The Kiln's heat crosses a line and grows a second row: **MELT**. [22.6] Seventeen
-minutes of accumulated rock finally has a verb. [13.1 pays off — the emotion is "at last"]
+**13:24** — Crusher: ore → **grit ×2 + tailings**. Your stock doubles and two new useless
+piles begin. [13.1, twice] *(authored 34:00.)*
 
-**20:00** — **CAST**: one shape, `HEAD`. You pour. The **Tool Station** appears with your Head
-and **three empty part shapes, no names.** [LAW 3]
+**13:36** — Depth 66, the second wall, hardness 3. *(authored 41:00, where the line read
+"**You already have the answer**" [13.8]. YOU DO NOT. The tool that answers the
+FIRST wall is eleven minutes away. Both walls are now standing at once, unanswered,
+for a third of the opening — the single largest structural consequence of the
+compression, and it is a finding, not a tuning target.)*
 
-**21:00** — Seat it. Chipping is faster. And the wall from 8:30 now reads
+**14:54** — The **Ash** counter starts moving. [13.1, second pile] *(authored 4:00, and
+this is the one beat that is genuinely LATE. Ash is bound to the Kiln Yard at
+depth 9 and The Ashfall at 72; a run passes through the shallow band in seconds
+and does not stand in it. See the fuel finding below.)*
+
+**18:00** — **FEELING** · Descent price outruns you. Nothing breaks; progress goes quiet.
+
+**19:00** — **FEELING** · The Kiln's heat crosses a line and grows a second row: **MELT**.
+[22.6] Accumulated rock finally has a verb. [13.1 pays off — the emotion is "at last"]
+
+**24:36** — Seat the tool. Chipping is faster. And the wall from 3:30 now reads
 `hardness 2 · your edge 1` — **for the first time.** [13.3 completes: relief, not assignment]
+*(authored 21:00 — holds.)*
 
-**23:00** — Re-cast the Head from your best material. Edge 2. **The wall breaks.** The
-player's own read is that they solved it.
+**24:36** — Re-cast the Head from your best material. Edge 2. **The wall breaks.** The
+player's own read is that they solved it. *(authored 23:00 — holds. These two have
+merged into one beat: the seating and the breaking are the same moment now.)*
 
-**25:00** — Behind it: new materials, higher drop rate. The reward for the first gate is
-*content*.
+**25:00** — **FEELING** · Behind it: new materials, higher drop rate. The reward for the
+first gate is *content*.
 
-**27:00** — Depth ~40: **COLLAPSE** appears with its Cores preview. It does not nag.
+**36:00** — **FEELING** · Running the Crusher drains that `DRAW +1` and the bay slows.
+**You learn what Draw is by running out of it.**
 
-**29:00** — You collapse. Core tree tranche 1 opens; one of three visible nodes is
+**40:00** — **FEELING** · A `pure` graveclay Head is hardness 3. Nobody said so.
+
+**43:00** — **FEELING** · Tailings are at four hundred and still do nothing. [13.1]
+
+**58:48** — You collapse. Core tree tranche 1 opens; one of three visible nodes is
 **`DRAW +1`**, a word you have never seen, explaining nothing. You buy it because the other
-two are boring. [13.1 applied to a *concept* — the vocabulary lands before the system]
+two are boring. [13.1 applied to a *concept*] *(authored 29:00. This is the one beat
+the harness cannot speak for: the collapse POLICY fires on "what do I lose", not
+on "is the payout worth it" (PILLARS, A.42's fourth harness bug), so 58:48 is a
+considered player's judgement and not a gate. Read it as "much later than
+authored", not as a number to tune against.)*
 
-**31:00** — Re-descent: you kept the tool and the drills. Depth 40 in six minutes.
+**80:06** — Field is 8×8; far-corner cells sit at cap while you work the near ones. You can
+*see* charge being wasted. [13.2 — the gradient that makes drills inevitable]
+*(authored 12:00, and it had NEVER ARRIVED AT ALL until A.110. It is now reachable
+and it is nowhere near its beat: the drills it is supposed to motivate turn up at
+5:42, seventy-four minutes before the gradient that motivates them. §23's stated
+causal chain runs backwards here, and closing that gap means moving a price,
+which moves output.)*
 
-**33:00** — Depth 47: a **crusher drum with a shattered liner**. Repair: `2 cast parts + 80
-Brick` — and you know how to cast parts, because you did it at minute 20 for an unrelated
-reason. [13.4 — the first moment the player could notice they're in a tech tree, and they
-won't]
-
-**34:00** — Crusher: ore → **grit ×2 + tailings**. Your stock doubles and two new useless
-piles begin. [13.1, twice — this is the rhythm now and it never stops]
-
-**36:00** — Running the Crusher drains that `DRAW +1` and the bay slows. **You learn what
-Draw is by running out of it.**
-
-**38:00** — Depth record 60 opens the **REFINERY**. It eats grit; your grit is waiting.
-Output: the same material one **purity band** higher — and purity now renders on every row in
-the Hold, where it was always quietly present.
-
-**40:00** — A `pure` graveclay Head is hardness 3. Nobody said so.
-
-**41:00** — Depth 66, second wall, hardness 3. **You already have the answer.** [13.8 — the
-alternation; the player can't predict which mode they're in]
-
-**43:00** — Tailings are at four hundred and still do nothing. [13.1, running eighteen minutes
-ahead of the Sieve, which is two hours away]
-
-> **Minute 45:** you make the tool that makes the depth. Rock has purity and hardness.
-> Machines want power. **Waste from one machine is the input to something you haven't found
-> yet** — and that last thought carries the next fifty hours.
+> **What the first twenty-five minutes now is:** you make the tool that makes the
+> depth. Rock has purity and hardness. Machines want power. **Waste from one
+> machine is the input to something you haven't found yet** — and that last
+> thought still carries the next fifty hours.
 
 Five machines, one tool, two walls, one Collapse, sixteen openings, **nothing announced.**
+
+## 23.1 What the re-cut exposed
+
+Four things that are structure, not clock, and none of them is tuned here:
+
+1. **The opening is ~3× faster than authored, and the ORDER inverts in three
+   places.** The Hold precedes the descent; the drill bay and the second drill
+   merge; and the Crusher asks for cast parts before casting exists. §23's
+   design rests on [13.4] — "the first moment the player could notice they're in
+   a tech tree, and they won't" — which requires the capability to precede the
+   demand. Twice it no longer does.
+
+2. **Both walls stand unanswered at once.** Wall one at 3:30, wall two at 13:36,
+   the tool that breaks either at 24:36. The authored line "you already have the
+   answer" is false for eleven minutes.
+
+3. **The 8×8 face lands at 80:06 against an authored 12:00** — and until A.110
+   it never landed at all (`expand`'s fourth step costs 64 Brick against a bank
+   that peaks at 47–80 and is zeroed by every Collapse; the greedy shopper spent
+   it on cheaper rows first). Reachable now, and seventy-four minutes after the
+   drills it exists to motivate.
+
+4. **The minute-4 fuel trade is a trade nothing turns on.** All three burn
+   profiles are authored and all three now resolve to real stones (A.110), but
+   burn rates run 20–500× above what the world hands over: at three hours marl
+   covers 5.7% of the kiln's feeding, ash 0.2%, packed loam 0.0%, and heat at
+   minute 4 is 0.928–0.931 whichever you pick. The choice is legible and inert.
+
+**The eight FEELINGS**, kept and unmeasured: 0:40 the cell refilling · 10:00 chip
+time visibly worse · 18:00 the price outrunning you · 19:00 MELT · 25:00 the
+content behind the wall · 36:00 learning Draw by running out · 40:00 the pure
+Head · 43:00 the tailings. Their clocks are the authored ones and are the only
+authored clocks left in this section, because nothing can measure them.
 
 ---
 

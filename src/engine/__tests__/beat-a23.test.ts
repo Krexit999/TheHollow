@@ -28,6 +28,7 @@ import { fieldDims } from '../systems/face';
 import { upgradeLevel, nextCost, allUpgrades } from '../../engine/upgrades';
 import { D } from '../decimal';
 import { KILN_FUELS } from '../content/kilnFuel';
+import { MATERIALS } from '../materials';
 import { flowSatisfaction } from '../systems/plant';
 
 const STEP = 0.1;
@@ -155,6 +156,25 @@ describe('§23 beats, against the live path (bands, not floors)', () => {
     const r = playActive(engine, SIM_MINUTES);
     expect(r.twoFuelsAt).not.toBeNull();
     expect(r.twoFuelsAt!).toBeLessThanOrEqual(300);
+    /**
+     * ...AND SELECTABLE IS NOT BURNABLE (A.110).
+     *
+     * `twoFuelsAt` asks whether `setKilnFuel` returns ok, which is a question
+     * about the fuel REGISTRY and not about the game. It was green for the
+     * whole life of this project while two of the three profiles named a
+     * material nobody had authored — `materialCount` returned 0 forever, the
+     * branch in `tickKiln` that applies a profile could never be entered, and
+     * only Marl actually burned. The exact shape PILLARS names: a test that a
+     * function works is not a test that anything reaches it.
+     *
+     * So the beat's real claim is asserted directly. `audit-reach` section 7
+     * fails the build on the same condition; this fails the suite, because a
+     * beat this test speaks for should not need an audit run to notice.
+     */
+    const authored = new Set(MATERIALS.map((m) => m.id));
+    for (const f of KILN_FUELS) {
+      expect(authored.has(f.materialId), `fuel '${f.id}' burns '${f.materialId}', which nobody authored`).toBe(true);
+    }
   });
 
   /**
