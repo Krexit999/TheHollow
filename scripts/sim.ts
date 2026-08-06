@@ -29,6 +29,8 @@ import { allUpgrades, upgradeLevel, nextCost } from '../src/engine/upgrades';
 import { addMaterial, equippedTool, materialCount, requiredTier, TOOL_RECIPES } from '../src/engine/systems/forge';
 import { assayUnlocked } from '../src/engine/systems/drops';
 import { currentShell, chipCurrencyId, convCurrencyId } from '../src/engine/shells';
+import { kilnEfficiency } from '../src/engine/systems/kiln';
+import { KILN_FUELS } from '../src/engine/content/kilnFuel';
 import { keystoneFor, keystoneIdlePrice, keystonePlaced } from '../src/engine/systems/keystones';
 import { canBreach } from '../src/engine/systems/breach';
 import { magnetArrayUnlocked } from '../src/engine/systems/polarity';
@@ -238,6 +240,20 @@ interface Args {
    * not never-fires, and a zero cannot tell you which.
    */
   stay: boolean;
+  /**
+   * WHICH BURN PROFILE THIS PLAYER RUNS (A.110). `none` is the default and is
+   * bit-identical to every run before this flag existed — no sim had ever set a
+   * fuel, which is one reason nobody noticed that two of the three named a
+   * material that did not exist. `ash` / `marl` / `loam` each pick a profile and
+   * hold it; the engine still owns whether it can be applied, so a profile whose
+   * stone you do not hold reads as STARVED rather than as the profile.
+   *
+   * `bare` is the BASELINE ARM: it sets no fuel — play identical to the default
+   * — but turns the sampler and the table on, so the floor comes out of the
+   * same binary as the three treatments, one flag apart. A baseline measured by
+   * different code is not a baseline (PILLARS, A.42).
+   */
+  fuel: 'none' | 'bare' | 'ash' | 'marl' | 'loam';
 }
 
 function parseArgs(): Args {
@@ -293,6 +309,7 @@ function parseArgs(): Args {
     plant: argv.includes('--plant'),
     beats23: argv.includes('--beats23'),
     stay: argv.includes('--stay'),
+    fuel: (get('fuel') ?? 'none') as Args['fuel'],
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -334,6 +351,30 @@ let holdEmulate = false;
 let shorePolicy = false;
 let plantPolicy = false;
 let stayPolicy = false;
+/** Set by main. The burn profile this arm runs; 'none' is the historical run. */
+let fuelPolicy: Args['fuel'] = 'none';
+/**
+ * WHAT THE PROFILE ACTUALLY BOUGHT (A.110 item 3), sampled every tick.
+ *
+ * `fed` counts seconds the throat was open at all; `applied` counts the subset
+ * where the engine could actually read the profile, i.e. you were holding the
+ * stone. The two are different numbers and the gap is the whole cost of a
+ * specialist fuel — a profile you cannot supply is not a profile.
+ */
+const fuelTally = {
+  fed: 0, applied: 0, heatSum: 0, effSum: 0, samples: 0,
+  burned: 0, held: 0, firstBurnSec: -1,
+  /**
+   * THE SUPPLY SIDE. `applied` seconds says how long the profile was readable;
+   * it does NOT say how much stone the world handed over, and those turn out to
+   * be very different questions. `gained` sums every positive tick-to-tick move
+   * in the stack, so it counts arrivals through drops, remains and every other
+   * route without this file needing to know what they are.
+   */
+  gained: 0, peakHeld: 0, lastHeld: -1,
+};
+/** Snapshots at §23's beats, so the trade is read where the spine puts it. */
+const fuelAt: Record<number, { heat: number; eff: number; conv: number; held: number; burned: number }> = {};
 /** How dear a band the shoring policy will save up for. Past this it spends the
  *  Brick on the plant instead — see `convReserve`. */
 const SHORE_REACH = 4000;
@@ -1384,6 +1425,18 @@ function shop(engine: Engine, log: (msg: string) => void): void {
     engine.dispatch({ type: 'upgradeDrill', index: cheapest });
   }
 
+  /**
+   * THE BURN PROFILE (A.110). A player picks one and lives with it, so the
+   * policy sets it once and never second-guesses — the arm is the choice.
+   * The ENGINE owns whether it can be applied: `setKilnFuel` refuses an unknown
+   * id, and `tickKiln` falls back to burning bare while you hold none of the
+   * stone. Nothing here checks the stock, deliberately, because "you chose a
+   * fuel you cannot supply" is exactly the cost this is measuring.
+   */
+  if (s.kiln.built && fuelPolicy !== 'none' && fuelPolicy !== 'bare' && s.kiln.fuel !== fuelPolicy) {
+    engine.dispatch({ type: 'setKilnFuel', fuelId: fuelPolicy });
+  }
+
   // The kiln must not starve the descent fund: bank the fire when the chip
   // bank is thin (an idle player's seep trickle otherwise vanishes into it).
   if (s.kiln.built) {
@@ -1680,6 +1733,7 @@ function main(): void {
   shorePolicy = args.shore;
   plantPolicy = args.plant;
   stayPolicy = args.stay;
+  fuelPolicy = args.fuel;
   if (args.drillBehaviour !== 'fullest' || args.drillBar > 0) {
     drillAxes = { behaviour: args.drillBehaviour, bar: args.drillBar };
   }
@@ -2218,6 +2272,41 @@ function main(): void {
       packedLevels(s, 'blade') + packedLevels(s, 'soil') + packedLevels(s, 'roots'),
     );
     engine.tick(1);
+    /**
+     * THE FUEL SAMPLER (A.110 item 3). Read off the ENGINE every tick — heat
+     * and efficiency are the kiln's own, never recomputed here. A.109 shipped a
+     * probe that computed the number it was checking and disagreed with the
+     * panel by 15%; this asks `kilnEfficiency` rather than writing
+     * `0.25 + 0.75 * heat` down a second time.
+     */
+    if (fuelPolicy !== 'none' && s.kiln.built) {
+      const holding = fuelPolicy === 'bare' ? 0 : materialCount(s, fuelPolicy);
+      fuelTally.samples++;
+      fuelTally.heatSum += s.kiln.heat;
+      fuelTally.effSum += kilnEfficiency(s);
+      if (fuelTally.lastHeld >= 0 && holding > fuelTally.lastHeld) {
+        fuelTally.gained += holding - fuelTally.lastHeld;
+      }
+      fuelTally.lastHeld = holding;
+      fuelTally.peakHeld = Math.max(fuelTally.peakHeld, holding);
+      fuelTally.held = holding;
+      if (s.kiln.feeding) fuelTally.fed++;
+      // `bare` has no stone to hold, so its "applied" column is simply the fed
+      // seconds — the floor the three profiles are measured against.
+      if (s.kiln.feeding && (holding >= 1 || fuelPolicy === 'bare')) {
+        fuelTally.applied++;
+        if (fuelTally.firstBurnSec < 0) fuelTally.firstBurnSec = sec;
+      }
+      for (const at of [4, 15, 45]) {
+        if (fuelAt[at] === undefined && sec >= at * 60) {
+          fuelAt[at] = {
+            heat: s.kiln.heat, eff: kilnEfficiency(s),
+            conv: (s.currencies[convCurrencyId(s)] ?? D(0)).toNumber(),
+            held: holding, burned: fuelTally.applied,
+          };
+        }
+      }
+    }
     if (args.untold) {
       for (const def of UNTOLD) {
         const v = progressOf(s, def);
@@ -2694,6 +2783,41 @@ function main(): void {
         `${pct.toFixed(1).padStart(6)}%  ${crossed(s, def.id) ? 'CROSSED' : '       '}` +
         `${entered ? '' : '  (shell never entered — 0 by construction)'}`,
       );
+    }
+  }
+  /**
+   * THE FUEL TRADE (A.110 item 3) — what the profile cost and what it bought.
+   *
+   * §23 puts the choice at minute 4 and calls it "the first real trade", so the
+   * table is read there first. Efficiency is the kiln's own `kilnEfficiency`,
+   * never re-derived; pillar 2 says it must top out at 1.0 whatever burns, and
+   * this is where that is visible rather than asserted.
+   */
+  if (fuelPolicy !== 'none') {
+    const t = fuelTally;
+    const profile = KILN_FUELS.find((f) => f.id === fuelPolicy);
+    console.error('');
+    console.error(`FUEL: ${fuelPolicy.toUpperCase()} @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · policy ${args.policy}`
+      + (profile
+        ? ` · heatUp x${profile.heatUpMult} · cool x${profile.coolMult} · ${profile.burnPerSec}/s`
+        : ' · no profile — the kiln burns bare (the baseline arm)'));
+    console.error(`  first burn ${t.firstBurnSec < 0 ? 'NEVER — the stone never arrived' : `${(t.firstBurnSec / 60).toFixed(1)}min`}`
+      + ` · fed ${t.fed}s, of which the profile APPLIED ${t.applied}s (${t.fed > 0 ? (100 * t.applied / t.fed).toFixed(0) : '0'}%)`);
+    console.error(`  mean heat ${t.samples > 0 ? (t.heatSum / t.samples).toFixed(3) : '—'}`
+      + ` · mean efficiency ${t.samples > 0 ? (t.effSum / t.samples).toFixed(3) : '—'}`
+      + ` · holding ${t.held} ${fuelPolicy} at the end`);
+    console.error(`  SUPPLY: the run was handed ${t.gained} ${fuelPolicy} in total, peak stack ${t.peakHeld}`
+      + (profile
+        ? ` · at ${profile.burnPerSec}/s that is ${(t.gained / profile.burnPerSec).toFixed(0)}s of burn`
+          + ` against ${t.fed}s of feeding (${t.fed > 0 ? (100 * t.gained / profile.burnPerSec / t.fed).toFixed(1) : '0'}% covered)`
+        : ' · the bare arm burns nothing'));
+    for (const at of [4, 15, 45]) {
+      const snap = fuelAt[at];
+      console.error(`  @${String(at).padStart(2)}min  `
+        + (snap === undefined
+          ? 'the run had not reached it'
+          : `heat ${snap.heat.toFixed(3)} · eff ${snap.eff.toFixed(3)} · CONV ${snap.conv.toFixed(0)}`
+            + ` · holding ${snap.held} · burned-seconds ${snap.burned}`));
     }
   }
   if (args.beats23) {
