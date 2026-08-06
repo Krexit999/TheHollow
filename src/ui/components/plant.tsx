@@ -361,6 +361,23 @@ export function ConditionPanel() {
                       {witnessMachineBlocker(st, id)}
                     </div>
                   )}
+                  {/*
+                    §55.4's recovery, and the only one in the table that PAYS.
+                    No blocker line under it the way the Witness has one: the
+                    harvest is free and cannot be refused on a machine the green
+                    took, so a disabled-reason row would never have anything to
+                    say. LAW 3 — this names the destination (the strain goes to
+                    the Cultivar Codex) and not the working.
+                  */}
+                  {brokenAs(st, id) === 'overgrowth' && (
+                    <button
+                      className="btn mt-1 w-full px-1.5 py-1 text-[10px]"
+                      data-testid={`harvest-${id}`}
+                      onClick={() => dispatch({ type: 'harvestMachine', machineId: id })}
+                    >
+                      Harvest it
+                    </button>
+                  )}
                 </div>
               )}
               {/*

@@ -16,9 +16,11 @@ import { createEngine } from '../index';
 import { ModifierCache } from '../modifiers';
 import type { EngineCtx, GameState } from '../types';
 import {
-  BLOWOUT_HEAT, BREAKS, RIPE_SEC, breakFor, brokenAs, ensureBroken,
+  BLOWOUT_HEAT, BREAKS, RIPE_SEC, breakFor, brokenAs, ensureBroken, harvestMachine,
   isBroken, recipeHidden, ripeLine, ripeness, stopped, witnessMachine,
 } from '../systems/breaks';
+import { ensureCultivar } from '../systems/cultivar';
+import { STRAINS } from '../content/strains';
 import {
   CASCADE_SEC, bandOfMachine, cascadeChain, cascadedFrom, conditionOf, conditionedMachines, ensureCondition,
   ensureDrags, machineSpeed, recastMachine, ruleFor, setMachineBand,
@@ -74,8 +76,8 @@ const TO_BREAK = 340;
 // ---------------------------------------------------------------------------
 
 describe('§1 the registry, and what it refuses to hold', () => {
-  it('two rows, one per shell, each with a recovery that is not waiting', () => {
-    expect(BREAKS).toHaveLength(2);
+  it('three rows, one per shell, each with a recovery that is not waiting', () => {
+    expect(BREAKS).toHaveLength(3);
     const shells = BREAKS.map((b) => b.shellId);
     expect(new Set(shells).size, 'two breaks in one shell').toBe(shells.length);
     for (const b of BREAKS) {
@@ -243,6 +245,91 @@ describe('§3 WHAT GREW IN THE WASHER — the rule fires now', () => {
     const short = conditionedMachines().filter((id) => flowSatisfaction(r.s, id) < 1);
     expect(short.length, 'nothing was short and yet something went overgrown')
       .toBeGreaterThan(0);
+  });
+});
+
+describe('§3b WHAT GREW IN THE WASHER (§55.4)', () => {
+  /**
+   * NOTHING IS HELD HERE. §55.1 needs a hand on the shaft and §55.5 needs a
+   * silence held up, but a starved Bloom is the DEFAULT state of a Verdance
+   * plant with machines standing on it — a bare tier-I Refinery draws 4.0
+   * against a floor of 2.4 — so the arrangement is the plant and the run.
+   */
+  it('it goes, it STOPS, and the machine it took is the one the Bloom failed', () => {
+    const r = plantIn('verdance');
+    run(r, TO_BREAK);
+    const id = Object.keys(ensureBroken(r.s))[0]!;
+    expect(id, 'nothing broke in a plant the Bloom cannot cover').toBeTruthy();
+    expect(brokenAs(r.s, id)).toBe('overgrowth');
+    // §55.4 says "it stops" — unlike the Silence, which costs information only.
+    expect(stopped(r.s, id), 'the green took a machine and left it running').toBe(true);
+    expect(machineSpeed(r.s, id), 'a seized machine still ran').toBe(0);
+    expect(flowSatisfaction(r.s, id), 'it broke on a machine the plant was feeding')
+      .toBeLessThan(1);
+  });
+
+  /**
+   * THERE IS MORE THAN ONE HEAD HERE, and that is the rule's shape rather than a
+   * fault in the cascade. §3 shares a shortfall PROPORTIONALLY, so a Bloom that
+   * cannot cover the plant starves every drawer in the same second and each one
+   * is a first failure on its own account — cinder-shaped, not chain-shaped.
+   * (The one rule that singles a machine out is Glassmere's `unlit`, which reads
+   * a band; `cascade.test.ts` uses it for exactly this reason.) So this asks what
+   * is true of every drag: it came from the machine beside it, and walking back
+   * far enough reaches a machine the WORLD broke and nobody handed to.
+   */
+  it('the vines spread ONE BAND ALONG, and every drag walks back to a first failure', () => {
+    const r = plantIn('verdance');
+    run(r, TO_BREAK + CASCADE_SEC + 10);
+    const dragged = Object.keys(ensureDrags(r.s));
+    expect(dragged.length, 'the green took a machine and spread to nothing').toBeGreaterThan(0);
+    for (const d of dragged) {
+      expect(Math.abs(bandOfMachine(r.s, d) - bandOfMachine(r.s, cascadedFrom(r.s, d)!)),
+        `${d} was dragged from something that is not beside it`).toBe(1);
+      const chain = cascadeChain(r.s, d);
+      expect(chain[chain.length - 1]).toBe(d);
+      expect(cascadedFrom(r.s, chain[0]!), `${d}'s chain has a parent above its head`).toBeNull();
+      expect(conditionOf(r.s, chain[0]!), `${d} traces back to a machine nothing broke`).not.toBeNull();
+      expect(new Set(chain).size, 'the chain repeats a machine').toBe(chain.length);
+    }
+  });
+
+  it('HARVEST is the recovery, and the strain it leaves is the reward', () => {
+    const r = plantIn('verdance');
+    run(r, TO_BREAK);
+    const id = Object.keys(ensureBroken(r.s))[0]!;
+    const before = [...ensureCultivar(r.s).cropped];
+
+    const out = harvestMachine(r.s, ctx, id);
+    expect(out.ok, `the harvest was refused: ${out.reason}`).toBe(true);
+    expect(isBroken(r.s, id), 'a harvested machine is still overgrown').toBe(false);
+    expect(machineSpeed(r.s, id), 'a harvested machine still will not run').toBeGreaterThan(0);
+
+    // THE FIX IS THE REWARD — one strain, into the same Codex `cropBed` writes.
+    const after = ensureCultivar(r.s).cropped;
+    expect(after.length, 'the harvest paid nothing').toBe(before.length + 1);
+    expect(out.data?.strainId, 'it did not say what grew there').toBeTruthy();
+  });
+
+  it('...and it cannot be farmed — a save that knows every strain still recovers', () => {
+    const r = plantIn('verdance');
+    ensureCultivar(r.s).cropped = STRAINS.map((st) => st.id);
+    run(r, TO_BREAK);
+    const id = Object.keys(ensureBroken(r.s))[0]!;
+
+    const out = harvestMachine(r.s, ctx, id);
+    expect(out.ok, 'a save that knows every strain could not fix its own machine').toBe(true);
+    expect(out.data?.strainId, 'it minted a strain that does not exist').toBeNull();
+    expect(ensureCultivar(r.s).cropped.length, 'the Codex grew past its registry')
+      .toBe(STRAINS.length);
+    expect(isBroken(r.s, id), 'the machine stayed broken').toBe(false);
+  });
+
+  it('and it refuses a machine nothing grew in', () => {
+    const r = plantIn('verdance');
+    const out = harvestMachine(r.s, ctx, 'refinery');
+    expect(out.ok).toBe(false);
+    expect(out.reason).toBeTruthy();
   });
 });
 

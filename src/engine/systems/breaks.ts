@@ -63,6 +63,8 @@ import {
   ensureCondition, ensureDrags, machineLabel,
 } from './condition';
 import { ensurePlant, tierOf } from './plant';
+import { ensureCultivar } from './cultivar';
+import { STRAINS } from '../content/strains';
 import { PURGE_HEAT, PURGE_SLAG_COST } from './pressure';
 import { boilerBuilt, riskedHeat } from './boiler';
 import { WITNESS_HUSH, ensureWitness } from './witness';
@@ -71,7 +73,7 @@ import { logScar } from './shaftSys';
 import { chipCurrencyId } from '../shells';
 import { getCurrency } from '../resources';
 
-export type BreakId = 'blowout' | 'silence';
+export type BreakId = 'blowout' | 'overgrowth' | 'silence';
 
 export interface BreakDef {
   id: BreakId;
@@ -186,6 +188,49 @@ export const BREAKS: BreakDef[] = [
       // here as well was a second call that could be deleted with no test going
       // red — which is how the red-test found it.
       logScar(state, ctx, 'flood', state.depth);
+    },
+  },
+  {
+    /**
+     * §55.4 — OVERGROWTH. "an unattended machine is consumed → it stops → vines
+     * spread to the next machine in the priority order. Recovery: harvest it —
+     * and gain a cultivar trait. The fix is the reward."
+     *
+     * A.107 SIZED THIS BUILDABLE, FOUND IT WAS NOT, AND CUT IT. Every piece it
+     * names existed and the one that mattered could not FIRE: `overgrown` asked
+     * whether `served` had fallen to zero, `served` is a supply RATIO with a
+     * floor of 2.4, and the test read green because it wrote the precondition by
+     * hand. A.108 re-pointed the rule at "the plant cannot feed it" — the change
+     * A.107 ledgered and asked for — and it now writes 52% of Verdance residency
+     * and bites 30%, measured in a real run rather than reasoned about.
+     *
+     * "UNATTENDED" IS NOT ATTENDANCE, and that is the honest half of the row.
+     * The plant has never kept a per-machine "is anybody using this" signal and
+     * cannot fake one out of what it holds. What it does hold is whether the
+     * Bloom covers what you have built — the same sentence read the way the
+     * shell can actually answer it. It is also what makes the recovery mean
+     * something: a starved plant is fixed by clearing less or building less, and
+     * the vines are what tell you which machine is wearing the shortfall.
+     *
+     * "VINES SPREAD TO THE NEXT MACHINE" is `fireBreak`'s drag, one band along,
+     * with no line of its own here. §55's rows author three things each — when it
+     * is ripe, what breaking costs, how you get out — and never a cascade.
+     */
+    id: 'overgrowth',
+    shellId: 'verdance',
+    name: 'WHAT GREW IN THE WASHER',
+    said: 'The green got into it while the Bloom was short. It has stopped.',
+    recovery: 'Harvest it — and keep whatever strain grew in there.',
+    candidates: (s) => conditionedMachines().filter((id) => built(s, id)),
+    ripe: (s, id) => biting(s, id, 'overgrown') && (conditionOf(s, id)?.level ?? 0) >= 1,
+    sec: RIPE_SEC,
+    fire: (state, ctx, machineId) => {
+      // IT STOPS — §55.4 says so in as many words. The same seizure the Boiler
+      // takes, written the same way: the condition table is what `machineSpeed`
+      // reads, so this is a stop and not a second flag to keep in step with one.
+      const table = ensureCondition(state);
+      table[machineId] = { id: 'overgrown', level: 1, seized: true, fullFor: 0 };
+      logScar(state, ctx, 'station', state.depth);
     },
   },
   {
@@ -339,9 +384,51 @@ export function recipeHidden(state: GameState, machineId: string): boolean {
   return brokenAs(state, machineId) === 'silence';
 }
 
-/** ...and a stopped machine, which is the Boiler's shape and not the quiet's. */
+/**
+ * ...and a stopped machine. The Boiler's shape and the green's, not the quiet's:
+ * §55.4 says "it stops" in as many words, and §55.5 deliberately does not.
+ */
 export function stopped(state: GameState, machineId: string): boolean {
-  return brokenAs(state, machineId) === 'blowout';
+  const id = brokenAs(state, machineId);
+  return id === 'blowout' || id === 'overgrowth';
+}
+
+export function harvestMachineBlocker(state: GameState, machineId: string): string | null {
+  if (brokenAs(state, machineId) !== 'overgrowth') return 'Nothing has grown in it.';
+  return null;
+}
+
+/**
+ * §55.4's recovery — "harvest it, AND GAIN A CULTIVAR TRAIT. The fix is the
+ * reward." The only row in the table whose recovery pays, and what it pays is a
+ * STRAIN YOU HAVE NOT CROPPED: the same one-line Codex entry `cropBed` writes,
+ * from the same registry, read by the same trait lookup. Nothing new is minted.
+ *
+ * SO IT CANNOT BE FARMED, and that is LAW 9 rather than a balance patch. Once
+ * every strain is in the Codex there is nothing left to find, and the harvest
+ * still works and still costs nothing — the machine always comes back. The shape
+ * that WOULD break the law is the other one: a harvest that pays every time is a
+ * player standing in a starved plant on purpose, which is a toll on attention
+ * wearing a reward's clothes.
+ *
+ * It is free deliberately. The price was already paid — the machine was stopped
+ * while it stood there, and it dragged its neighbour one band along.
+ */
+export function harvestMachine(state: GameState, ctx: EngineCtx, machineId: string): {
+  ok: boolean; reason?: string; data?: { strainId: string | null };
+} {
+  const blocked = harvestMachineBlocker(state, machineId);
+  if (blocked) return { ok: false, reason: blocked };
+  delete ensureBroken(state)[machineId];
+  delete ensureCondition(state)[machineId];
+  // What grew there: the first strain this save has never cropped. A break is
+  // not a die roll, and neither is what it leaves behind.
+  const c = ensureCultivar(state);
+  const found = STRAINS.find((st) => !c.cropped.includes(st.id)) ?? null;
+  if (found) c.cropped.push(found.id);
+  ctx.emit({ type: 'machineHarvested', machineId, strainId: found?.id ?? null });
+  ctx.dirty();
+  return { ok: true, data: { strainId: found?.id ?? null } };
 }
 
 export function witnessMachineBlocker(state: GameState, machineId: string): string | null {
