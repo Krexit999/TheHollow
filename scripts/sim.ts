@@ -215,6 +215,21 @@ interface Args {
    * baseline is the harness exactly as it was.
    */
   plant: boolean;
+  /**
+   * §23'S BEATS, TIMED AGAINST THE FIXED HARNESS (A.109).
+   *
+   * §23 authors the first 45 minutes beat by beat, and its timings are marked
+   * "observed" in the spine's own status table. They were observed through a
+   * hand that swung at a pocket the engine refuses — 99.7% of manual strokes —
+   * so every one of them is a reading of a player who stopped chipping eleven
+   * seconds in. This times them again.
+   *
+   * Each beat is a PREDICATE ON STATE, never a narration: the beat has happened
+   * when the thing §23 describes is true of the save. Beats §23 describes as
+   * feelings ("chip time is visibly worse", "progress goes quiet") have no
+   * predicate and are listed as unmeasurable rather than silently dropped.
+   */
+  beats23: boolean;
 }
 
 function parseArgs(): Args {
@@ -268,6 +283,7 @@ function parseArgs(): Args {
     thresholds: argv.includes('--thresholds'),
     conditions: argv.includes('--conditions'),
     plant: argv.includes('--plant'),
+    beats23: argv.includes('--beats23'),
     holdEmulate: argv.includes('--hold-emulate'),
     drillBehaviour: (get('drill-behaviour') ?? 'fullest') as Args['drillBehaviour'],
     drillBar: Number(get('drill-bar') ?? 0),
@@ -648,6 +664,47 @@ const PLANT_BUILDS = [
   'buildCultivarBench', 'buildCoil', 'buildFrame', 'buildAxiomEngine', 'buildSeating',
 ] as const;
 let plantBuilt = 0;
+
+/**
+ * §23's beats, as predicates. `at` is the minute the spine names; `hit` is the
+ * question "has this happened yet". Order is the spine's order.
+ */
+const BEATS_23: { at: number; name: string; hit: (s: GameState) => boolean }[] = [
+  { at: 0.2, name: 'BLADE offered', hit: (s) => allUpgrades().some((u) => u.id === 'blade' && (u.visible?.(s) ?? true)) },
+  { at: 0.2, name: 'blade bought', hit: (s) => upgradeLevel(s, 'blade') > 0 },
+  { at: 1.3, name: 'DESCEND appears', hit: (s) => s.maxDepthRecord > 0 },
+  { at: 2, name: 'depth 4 — first material', hit: (s) => s.maxDepthRecord >= 4 },
+  { at: 2, name: 'THE HOLD has a row', hit: (s) => (s.materials?.totalDrops ?? 0) > 0 },
+  { at: 3, name: 'depth 9 — the cracked kiln', hit: (s) => s.maxDepthRecord >= 9 },
+  { at: 3, name: 'kiln repaired', hit: (s) => s.kiln.built },
+  // Ash is a kiln FUEL MATERIAL, not a currency. The first cut read s.totals['ash']
+  // and reported NEVER for three hours — a predicate looking in the wrong drawer.
+  { at: 4, name: 'Ash moving', hit: (s) => materialCount(s, 'ash') > 0 },
+  { at: 6.5, name: 'depth 17 — compaction pays', hit: (s) => s.maxDepthRecord >= 17 },
+  { at: 8.5, name: 'depth 23 — "too hard"', hit: (s) => s.maxDepthRecord >= 23 },
+  { at: 12, name: 'field 8x8', hit: (s) => s.face.w >= 8 && s.face.h >= 8 },
+  { at: 13, name: 'depth 28 — the seized drill', hit: (s) => s.maxDepthRecord >= 28 },
+  { at: 13, name: 'drill bay built', hit: (s) => s.drills.bayBuilt },
+  { at: 16, name: 'second drill', hit: (s) => s.drills.units.length >= 2 },
+  { at: 20, name: 'CAST — a part on the rack', hit: (s) => (s.casting.rack?.length ?? 0) > 0 || s.stats.toolsForged > 0 },
+  { at: 21, name: 'a tool seated', hit: (s) => s.stats.toolsForged > 0 },
+  { at: 23, name: 'the first wall breaks', hit: (s) => equippedTool(s).tier >= 2 },
+  { at: 27, name: 'depth ~40 — COLLAPSE offered', hit: (s) => s.maxDepthRecord >= 40 },
+  { at: 29, name: 'the first Collapse', hit: (s) => s.collapse.count >= 1 },
+  { at: 33, name: 'depth 47 — the crusher drum', hit: (s) => s.maxDepthRecord >= 47 },
+  { at: 34, name: 'the Crusher runs', hit: (s) => (ensurePlant(s).tiers['crusher'] ?? 0) > 0 },
+  { at: 38, name: 'depth 60 — the REFINERY', hit: (s) => s.maxDepthRecord >= 60 },
+  { at: 41, name: 'depth 66 — the second wall', hit: (s) => s.maxDepthRecord >= 66 },
+];
+/** Beats §23 describes as a FEELING. No predicate exists; say so, never drop them. */
+const BEATS_23_UNMEASURABLE = [
+  '0:40 you strip a cell and watch it refill', '10:00 chip time is visibly worse',
+  '18:00 the descent price outruns you', '19:00 MELT — seventeen minutes of rock gets a verb',
+  '25:00 behind the wall: new materials', '36:00 you learn what Draw is by running out',
+  '40:00 a pure Head is hardness 3', '43:00 tailings still do nothing',
+];
+const beat23At: Record<string, number> = {};
+const beat23Peak = { face: 0, expand: 0, ash: 0 };
 
 /** --conditions: per shell, seconds stood there and what its rule managed. */
 interface CondTally {
@@ -2144,6 +2201,19 @@ function main(): void {
         if (v > (untoldPeak[def.id] ?? 0)) untoldPeak[def.id] = v;
       }
     }
+    if (args.beats23) {
+      for (const b of BEATS_23) {
+        const key = `${b.at}|${b.name}`;
+        if (beat23At[key] === undefined && b.hit(s)) beat23At[key] = sec;
+      }
+      // A NEVER needs a reason beside it, or it reads as "the beat is broken"
+      // when the honest answer may be "it got close and reset". The face is the
+      // one that matters: `expand` RESETS ON COLLAPSE, so a run that collapses
+      // thirty times can buy width all day and never hold 8x8.
+      beat23Peak.face = Math.max(beat23Peak.face, s.face.w * s.face.h);
+      beat23Peak.expand = Math.max(beat23Peak.expand, upgradeLevel(s, 'expand'));
+      beat23Peak.ash = Math.max(beat23Peak.ash, materialCount(s, 'ash'));
+    }
     if (args.conditions) {
       // The BAND's rule, not the shell you think you are in — `conditionShellId`
       // hands a live specified world its own physics and `tickCondition` obeys.
@@ -2602,6 +2672,45 @@ function main(): void {
         `${entered ? '' : '  (shell never entered — 0 by construction)'}`,
       );
     }
+  }
+  if (args.beats23) {
+    console.error('');
+    console.error(`SECTION 23 BEATS @ ${(s.stats.playTimeSec / 60).toFixed(0)}min · policy ${args.policy}`);
+    console.error('  spec is the minute the spine names; got is when the state said so.');
+    let late = 0, never = 0;
+    for (const b of BEATS_23) {
+      const at = beat23At[`${b.at}|${b.name}`];
+      const got = at === undefined ? null : at / 60;
+      /**
+       * BOTH DIRECTIONS. The first cut of this only flagged LATE, and read
+       * "spec 41m, got 14.5m" as holding — a beat arriving at a third of its
+       * authored minute is the loudest thing on the table, not a pass. §23 is a
+       * designed ORDER with observed timings; arriving early compresses the
+       * sequence exactly as arriving late stretches it.
+       */
+      /**
+       * ...AND A RATIO ALONE IS NOT ENOUGH ON A SUB-MINUTE BEAT. `BLADE offered`
+       * is authored at 0:04 and arrives at 0:00, which is a ratio of zero and a
+       * gap of four seconds. Judged on the ratio it reads FAR EARLY; judged
+       * honestly it is the beat landing. So a verdict needs BOTH a ratio that is
+       * off and a gap worth a player noticing.
+       */
+      const gap = got === null ? 0 : b.at - got;
+      const verdict = got === null ? 'NEVER'
+        : got > b.at * 3 + 2 ? 'FAR LATE'
+          : got > b.at * 1.5 + 1 ? 'LATE'
+            : gap > 2 && got < b.at / 3 ? 'FAR EARLY'
+              : gap > 1 && got < b.at / 1.5 - 0.5 ? 'EARLY' : 'holds';
+      if (verdict === 'NEVER') never++;
+      else if (verdict !== 'holds') late++;
+      console.error(
+        `  ${String(b.at).padStart(5)}m  ${b.name.padEnd(34)} `
+        + `got ${(got === null ? '—' : got.toFixed(1)).padStart(7)}m  ${verdict}`,
+      );
+    }
+    console.error(`  ${BEATS_23.length - late - never} hold · ${late} off · ${never} never`);
+    console.error(`  peak face ${beat23Peak.face} cells · peak expand L${beat23Peak.expand} (8x8 wants L4, RESETS ON COLLAPSE) · peak ash ${beat23Peak.ash}`);
+    for (const u of BEATS_23_UNMEASURABLE) console.error(`  (no predicate) ${u}`);
   }
   if (args.conditions) {
     console.error('');
