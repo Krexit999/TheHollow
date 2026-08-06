@@ -38,9 +38,11 @@
  *                           machine you cast `warm` gets quicker the longer it
  *                           sits in the heat, and the one you cast `brittle`
  *                           eventually stops dead.
- *   Verdance    OVERGROWN   written by NOT using it, and it hands the machine a
- *                           TRAIT it was not cast with, so every trait-reading
- *                           behaviour in the plant changes underneath you.
+ *   Verdance    OVERGROWN   written when the Bloom cannot cover what is built —
+ *                           clear the face bare and your own machines go
+ *                           hungry. Hands the machine a TRAIT it was not cast
+ *                           with, so every trait-reading behaviour changes.
+ *                           RE-POINTED A.108 (see the note at the rule itself).
  *   Glassmere   UNLIT       a straight trade you can aim: half speed, and the
  *                           purity band survives whatever tier the machine is.
  *   Hollow      UNDECIDED   attention IS the mechanic. An unwatched machine
@@ -57,7 +59,7 @@ import type { ModifierCache } from '../modifiers';
 import { traitsOf, type TraitId } from '../traits';
 import { currentShell } from '../shells';
 import { shellRoll } from './roll';
-import { MACHINE_DEMAND, ensurePlant, tierOf } from './plant';
+import { MACHINE_DEMAND, ensurePlant, flowSatisfaction, tierOf } from './plant';
 /**
  * THE THIRD DELIBERATE CYCLE, and it follows the same discipline as the two
  * this file and `plant.ts` already document: `governor.ts` reads `conditionOf`
@@ -280,10 +282,32 @@ export const CONDITION_RULES: ConditionRule[] = [
     shellId: 'verdance',
     id: 'overgrown',
     label: 'Overgrown',
-    effect: 'It comes back carrying a trait it was never cast with. Using it clears it.',
-    // Written by NOT using it. A machine that is drawing is a machine somebody
-    // is standing at; one that is built and idle is one the green gets into.
-    writing: (s, id) => tierOf(s, id) > 0 && (s.plant?.served?.[id] ?? 0) <= 0,
+    effect: 'It comes back carrying a trait it was never cast with. Feed the plant and it clears.',
+    /**
+     * RE-POINTED A.108. The old predicate was `served <= 0` — "not drawing",
+     * meant to read as IDLE — and it could never be true: `served` is
+     * `flowSatisfaction`, a supply RATIO with a floor (`PLANT_FLOOR` 2.4 through
+     * `bloomFlow`) that a machine drawing zero simply reads as 1 (satisfied by
+     * definition). Verdance's condition had never fired for anybody.
+     *
+     * THE RULING: "the plant cannot feed it" — `flowSatisfaction(s, id) < 1`,
+     * read LIVE rather than off the cached `served` field so this cannot
+     * desync from tick order the way the cache can. This is §19's own claim
+     * ("the plant runs on your gardening") turned into the write condition
+     * instead of contradicted by it: the Bloom's floor is 2.4 and a single
+     * tier-I Refinery alone wants 4.0, so a Verdance player who clears fast and
+     * builds before cultivating starves their own plant from the FIRST machine
+     * that asks for real Flow — no hand-set precondition required, driven and
+     * measured in `condition.test.ts` and `scripts/sim.ts --conditions`.
+     *
+     * ONLY EVER FIRES ON A FLOW DRAWER. `flowSatisfaction` returns 1 for a
+     * machine outside `flowDrawers()` — a Surge-only machine (the Crusher, the
+     * Breaker, the Line, ...) is never short of Flow because it never asks for
+     * any, so it cannot go overgrown under this rule. That is narrower than
+     * "any built machine", and it is the honest boundary of "the plant cannot
+     * feed it": a machine that draws nothing was never owed anything.
+     */
+    writing: (s, id) => flowSatisfaction(s, id) < 1,
   },
   {
     shellId: 'glassmere',

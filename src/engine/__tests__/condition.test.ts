@@ -106,16 +106,29 @@ describe('1 — each rule is written by its own shell state', () => {
     expect(conditionOf(cool, 'kiln'), 'a cold plant baked').toBeNull();
   });
 
-  it('VERDANCE: a machine NOT drawing goes OVERGROWN; one that is drawing does not', () => {
-    const idle = withPlant('verdance');
-    idle.plant!.served = { refinery: 0 };
-    bake(idle);
-    expect(conditionOf(idle, 'refinery')?.id).toBe('overgrown');
+  /**
+   * RE-POINTED A.108. The old rule wrote on `served <= 0` ("not drawing"), and
+   * that state is UNREACHABLE — `served` is `flowSatisfaction`, a ratio with a
+   * floor, so a machine drawing zero simply reads 1 (satisfied by definition).
+   * This test used to prove that by writing `plant.served` BY HAND, which is
+   * exactly the shape PILLARS warns about: a precondition the test wrote itself
+   * proves the arithmetic, not the game. Nothing here is written by hand now —
+   * `withPlant` builds a real tier-I Refinery (flow demand 4.0) against
+   * Verdance's real Bloom floor (`PLANT_FLOOR` 2.4, `bloomFlow` in
+   * `shellPlants.ts`), and `flowSatisfaction` is left to compute what it always
+   * computes. The starved arm needs NOTHING else — a bare Refinery already
+   * outdraws the bare Bloom, which is the plant failing to feed its own first
+   * real machine, exactly as `RULING` describes it.
+   */
+  it('VERDANCE: a machine the plant cannot feed goes OVERGROWN; a well-fed one does not', () => {
+    const starved = withPlant('verdance'); // tier-I Refinery (4.0) > bare Bloom (2.4)
+    bake(starved);
+    expect(conditionOf(starved, 'refinery')?.id).toBe('overgrown');
 
-    const busy = withPlant('verdance');
-    busy.plant!.served = { refinery: 1 };
-    bake(busy);
-    expect(conditionOf(busy, 'refinery'), 'a machine in use was overgrown').toBeNull();
+    const fed = withPlant('verdance');
+    fed.growth.stage = Array(20).fill(1); // cultivated: 20 vines lift the Bloom to 5.2
+    bake(fed);
+    expect(conditionOf(fed, 'refinery'), 'a well-fed machine was overgrown').toBeNull();
   });
 
   it('HOLLOW: silence writes UNDECIDED, and a quiet shaft nobody left does not', () => {
@@ -217,9 +230,10 @@ describe('2 — every rule changes what the machine does', () => {
 
   it('OVERGROWN: the machine counts as built from a trait it was never cast with', () => {
     // `ochre` is hollow+tough, so the overgrowth trait is genuinely new to it.
+    // The tier-I Refinery (4.0 flow) is left to outdraw the bare Bloom (2.4) on
+    // its own — nothing is written to `served` by hand (A.108).
     const st = withPlant('verdance', ['ochre']);
     const before = [...machineTraits(st, 'refinery')];
-    st.plant!.served = { refinery: 0 };
     bake(st);
     const after = [...machineTraits(st, 'refinery')];
     expect(after.length, 'the green got in and changed nothing').toBeGreaterThan(before.length);
@@ -237,8 +251,7 @@ describe('2 — every rule changes what the machine does', () => {
   it('...but a machine already cast from that trait gains nothing from it', () => {
     const st = withPlant('verdance', ['marl']); // light + SPRINGY
     const before = [...machineTraits(st, 'refinery')].sort();
-    st.plant!.served = { refinery: 0 };
-    bake(st);
+    bake(st); // the bare Refinery outdraws the bare Bloom on its own (A.108)
     expect(conditionOf(st, 'refinery')?.id, 'it should still be overgrown').toBe('overgrown');
     expect([...machineTraits(st, 'refinery')].sort()).toEqual(before);
   });

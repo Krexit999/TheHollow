@@ -21,6 +21,7 @@ import {
   setMachineBand, tickCondition,
 } from '../systems/condition';
 import { ensurePlant } from '../systems/plant';
+import { ensurePrism } from '../systems/prism';
 import { dpsMax } from '../systems/face';
 
 function fresh(): GameState {
@@ -46,32 +47,50 @@ function hotPlant(): { s: GameState; mods: ModifierCache } {
 }
 
 /**
- * ...and a VERDANCE plant with ONE machine left idle, four machines laid out
- * one band apart, and everything else parked out of reach.
+ * ...and a GLASSMERE plant with ONE machine standing in a dark band, four laid
+ * out one band apart, and everything else parked out of reach but lit.
  *
  * Cinder cannot show a chain and it is not a fault in the cascade that it
  * cannot: its rule breaks every machine in the plant at the same second, so
  * every drag's parent is a machine the WORLD broke and the depth is two by
- * construction. Verdance's rule reads a machine id — `served` — so exactly one
- * machine fails on its own account and every link after the first has to come
- * from the machine before it. That is where a chain is a real thing.
+ * construction. A chain needs a rule that singles ONE machine out, and of the
+ * five exactly one does: `unlit` reads the machine's own BAND against the bands
+ * the beam is carrying. Every other rule reads shell state and no machine id at
+ * all, and the new `overgrown` reads flow — which §3 shares PROPORTIONALLY, so
+ * a short plant starves every drawer in the same second, cinder-shaped.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * THIS ARRANGEMENT USED TO BE VERDANCE, AND IT WAS NEVER DRIVEN (A.108). It
+ * wrote `p.served[id] = 0` on the head and 1 on everything else — a precondition
+ * written by hand into a field `tickPlant` derives and overwrites. The chain it
+ * proved was the cascade's arithmetic over a state the game cannot reach; the
+ * rule underneath it had never fired for any player. The re-pointing found it.
+ *
+ * Nothing is written into the condition table here. The Prism's ALLOCATION is
+ * the arrangement — authoritative state a player sets by spending intensity —
+ * and `tickCondition` is left to read the dark band and do the rest.
+ * ─────────────────────────────────────────────────────────────────────────────
  *
  * Bands: the four are at 0,1,2,3 and everything else at 5, which is adjacent to
- * nothing built. A drag steps one band, so the only route is the row.
+ * nothing built. A drag steps one band, so the only route is the row. Intensity
+ * goes to 1,2,3 and 5 — never 0, because white lights every band — so the head
+ * at band 0 is the one machine the world breaks, and the parked ones are lit and
+ * therefore not heads of their own.
  */
 const ROW = 4;
 function idlePlant(): { s: GameState; mods: ModifierCache; row: string[] } {
   const s = fresh();
-  s.shell.current = 'verdance';
-  s.depthRecords['verdance'] = 400;
+  s.shell.current = 'glassmere';
+  s.depthRecords['glassmere'] = 400;
   const p = ensurePlant(s);
   for (const id of conditionedMachines()) p.tiers[id] = 1;
+  p.tiers['prism'] = 1;
   s.kiln.built = true;
   const row = conditionedMachines().slice(0, ROW);
   for (const id of conditionedMachines()) setMachineBand(s, id, 5);
   row.forEach((id, i) => setMachineBand(s, id, i));
-  // Everybody is drawing except the head of the row. Only it goes overgrown.
-  for (const id of conditionedMachines()) p.served[id] = id === row[0] ? 0 : 1;
+  const prism = ensurePrism(s);
+  prism.intensity = [0, 1, 1, 1, 0, 1];
   return { s, mods: new ModifierCache(), row };
 }
 
@@ -228,9 +247,12 @@ describe('§4 it unwinds from the head — the trace is true, not narrated', () 
     beat(s, mods, CONDITION_FULL_SEC + CASCADE_SEC * ROW);
     expect(cascadeChain(s, row[ROW - 1]!)).toEqual(row);
 
-    // SOMEBODY USES THE IDLE MACHINE. That is the whole fix, and it is a fix to
-    // the HEAD — nothing is done to any of the machines that are suffering.
-    s.plant!.served[row[0]!] = 1;
+    // SOMEBODY LIGHTS THE DARK BAND. That is the whole fix, and it is a fix to
+    // the HEAD — nothing is done to any of the machines that are suffering, and
+    // nothing is written into the condition table. A point of intensity into
+    // band 0 is white, and white lights every band; the other three were lit
+    // already, so the head is the only machine this reaches.
+    ensurePrism(s).intensity[0] = 1;
     beat(s, mods, 1);
     expect(conditionOf(s, row[0]!)!.level, 'the head is still at full').toBeLessThan(1);
     expect(ensureDrags(s)[row[1]!], 'the machine beside the head held on').toBeUndefined();

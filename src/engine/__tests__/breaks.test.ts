@@ -214,29 +214,35 @@ describe('§2 THE BOILER LET GO (§55.1)', () => {
   });
 });
 
-describe('§3 WHAT GREW IN THE WASHER IS NOT BUILT, and this is the reason', () => {
+describe('§3 WHAT GREW IN THE WASHER — the rule fires now', () => {
   /**
-   * §55.4 was sized BUILDABLE by A.107's scoping pass and it was wrong. Every
-   * piece exists; the one that matters cannot FIRE. This is the driven proof,
-   * kept as a test rather than as a paragraph so that the day somebody makes
-   * Verdance's condition reachable, this goes red and says so.
+   * THE TRIPWIRE WENT OFF (A.108). A.107 sized §55.4 buildable, found the rule
+   * underneath it could not fire, cut the break and left this describe block
+   * behind — "kept as a test rather than as a paragraph so that the day somebody
+   * makes Verdance's condition reachable, this goes red and says so."
+   *
+   * It went red. `overgrown` no longer asks whether `served` fell to zero — a
+   * supply RATIO with a floor of 2.4 that no plant can drive to nothing — but
+   * whether the Bloom covers what is built. A bare tier-I Refinery draws 4.0
+   * against a bare Bloom's 2.4, so contention is the DEFAULT for anyone actually
+   * clearing the face, and an idle player heals out of it in ~40s as untouched
+   * cells vine over and lift the cap. Driven below, not written.
    */
-  it("VERDANCE'S OVERGROWN CONDITION NEVER WRITES — `served` is supply, not attendance", () => {
+  it("VERDANCE'S OVERGROWN CONDITION WRITES — the Bloom cannot cover what is built", () => {
     expect(ruleFor('verdance')?.id, 'the rule was renamed under us').toBe('overgrown');
     const r = plantIn('verdance');
     run(r, TO_BREAK * 2);
 
     const wrote = conditionedMachines().filter((id) => conditionOf(r.s, id) !== null);
-    expect(wrote, 'the green got into something after all — re-open §55.4').toEqual([]);
+    expect(wrote.length, 'the green got into nothing — §55.4 is unfoundable again')
+      .toBeGreaterThan(0);
+    for (const id of wrote) expect(conditionOf(r.s, id)?.id).toBe('overgrown');
 
-    // ...and the reason, read off the same state rather than asserted about it.
-    const served = conditionedMachines().map((id) => flowSatisfaction(r.s, id));
-    expect(Math.min(...served), 'a machine read as wholly unserved').toBeGreaterThan(0);
-  });
-
-  it('...so no break claims Verdance, and nothing offers to harvest one', () => {
-    expect(breakFor('verdance'), 'OVERGROWTH shipped onto a rule that cannot fire').toBeUndefined();
-    for (const b of BREAKS) expect(b.id).not.toBe('overgrowth');
+    // ...and the reason, read off the same state rather than asserted about it:
+    // the drawers are short, and §3 shares the shortfall proportionally.
+    const short = conditionedMachines().filter((id) => flowSatisfaction(r.s, id) < 1);
+    expect(short.length, 'nothing was short and yet something went overgrown')
+      .toBeGreaterThan(0);
   });
 });
 
