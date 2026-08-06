@@ -25,6 +25,10 @@ import {
   observePlant, recastBlocker, ruleFor,
 } from '../../engine/systems/condition';
 import {
+  breakDef, breakLine, brokenAs, isBroken, recipeHidden, ripeLine, ripeness,
+  witnessMachineBlocker,
+} from '../../engine/systems/breaks';
+import {
   SOLVENT_COST, TIER_CAPABILITY_WASHER, WASH_BATCH, nextWasherTierCost, solventOf, washBlocker,
   washRows,
 } from '../../engine/systems/washer';
@@ -145,21 +149,34 @@ export function PlantPanel() {
           const built = id === 'kiln' ? st.kiln.built : tier > 0;
           const sat = flowSatisfaction(st, id);
           const waiting = d.surge > 0 && surge < d.surge;
+          /**
+           * §55.5 — THE SILENCE TOOK IT (A.107). The machine is still there,
+           * still named, still running at exactly the rate it was running at.
+           * What is gone is the WORKING: what it draws and how well it is being
+           * served. LAW 3 in its purest form, pointed at the player's own plant
+           * — the destination is visible and the recipe is not — and it costs
+           * nothing in yield, which is the only reason a §55 row is allowed to
+           * take something away at all.
+           */
+          const hidden = recipeHidden(st, id);
           return (
             <div key={id} className="flex items-baseline gap-2 py-[2px] text-[10px]" data-testid={`plant-${id}`}>
               <span className={`w-[68px] shrink-0 truncate ${built ? 'text-cave-200' : 'text-cave-600'}`}>
                 {machineName(id)}
               </span>
               <span className="w-[74px] shrink-0 text-cave-500">
-                {d.flow > 0 && <span className="text-[#9ad4e8]">{d.flow}/s</span>}
-                {d.flow > 0 && d.surge > 0 && <span className="text-cave-700"> + </span>}
-                {d.surge > 0 && <span className="text-[#e0b25a]">{d.surge}</span>}
+                {hidden ? <span className="text-[#8a7fb0]" data-testid={`forgot-${id}`}>it will not say</span> : (<>
+                  {d.flow > 0 && <span className="text-[#9ad4e8]">{d.flow}/s</span>}
+                  {d.flow > 0 && d.surge > 0 && <span className="text-cave-700"> + </span>}
+                  {d.surge > 0 && <span className="text-[#e0b25a]">{d.surge}</span>}
+                </>)}
               </span>
               <span className="min-w-0 flex-1 truncate text-right text-cave-500">
-                {!built ? 'not built'
-                  : waiting ? <span className="text-[#e0b25a]">waiting on Surge</span>
-                    : d.flow > 0 && sat < 0.999 ? <span className="text-[#e0885a]">{Math.round(sat * 100)}% speed</span>
-                      : 'running'}
+                {hidden ? <span className="text-[#8a7fb0]">—</span>
+                  : !built ? 'not built'
+                    : waiting ? <span className="text-[#e0b25a]">waiting on Surge</span>
+                      : d.flow > 0 && sat < 0.999 ? <span className="text-[#e0885a]">{Math.round(sat * 100)}% speed</span>
+                        : 'running'}
               </span>
             </div>
           );
@@ -302,6 +319,55 @@ export function ConditionPanel() {
                 * offering to re-cast it would sell the player a fix for the
                 * wrong machine.
                 */}
+              {/*
+                §55 (A.107) — WHAT ACTUALLY BROKE, and what to do about it.
+                Above the drag block on purpose: this machine is the FIRST
+                failure, and the drag rows below it are its consequences. A
+                player reading top to bottom reads the cause before the effects.
+              */}
+              {isBroken(st, id) && (
+                <div
+                  className="mt-1 rounded border border-[#7a4426]/70 bg-[#1c1210]/70 px-1.5 py-1"
+                  data-testid={`broke-${id}`}
+                >
+                  <div className="text-[9px] font-semibold uppercase tracking-widest text-[#c98a5e]">
+                    {breakDef(brokenAs(st, id)!)?.name}
+                  </div>
+                  <div className="mt-0.5 text-[9px] leading-snug text-cave-300">{breakLine(st, id)}</div>
+                  {brokenAs(st, id) === 'silence' && (
+                    <button
+                      className="btn mt-1 w-full px-1.5 py-1 text-[10px] disabled:opacity-50"
+                      disabled={witnessMachineBlocker(st, id) !== null}
+                      title={witnessMachineBlocker(st, id) ?? undefined}
+                      data-testid={`witness-${id}`}
+                      onClick={() => dispatch({ type: 'witnessMachine', machineId: id })}
+                    >
+                      Witness it
+                    </button>
+                  )}
+                  {brokenAs(st, id) === 'silence' && witnessMachineBlocker(st, id) && (
+                    <div className="mt-0.5 text-[9px] leading-snug text-cave-500">
+                      {witnessMachineBlocker(st, id)}
+                    </div>
+                  )}
+                </div>
+              )}
+              {/*
+                ...AND THE WARNING. §55's recoveries are "interesting, not
+                waiting", and the interesting version of a boiler explosion is
+                the one you watched coming and chose to ride. Deliberately the
+                opposite call from §53's thresholds, which are never announced:
+                a world changing underneath you is not the same thing as a
+                machine you are over-driving on purpose.
+              */}
+              {!isBroken(st, id) && ripeness(st, id) > 0 && (
+                <div
+                  className="mt-1 rounded border border-[#7a6a26]/60 bg-[#1a1710]/60 px-1.5 py-1 text-[9px] leading-snug text-[#c9b86a]"
+                  data-testid={`ripe-${id}`}
+                >
+                  {ripeLine(st, id)}
+                </div>
+              )}
               {cascadedFrom(st, id) && (
                 <div
                   className="mt-1 rounded border border-[#6a5030]/60 bg-[#17140e]/60 px-1.5 py-1"

@@ -36,6 +36,7 @@ import { tickResidue } from './systems/witness';
 import { tickCrews } from './systems/crews';
 import { tickUntold } from './systems/untold';
 import { tickThresholds } from './systems/thresholds';
+import { fireBreak, tickBreaks } from './systems/breaks';
 import { tickChallenges } from './systems/challenges';
 import { ensureRoll } from './systems/roll';
 import { ensureCall, tickAssayBench } from './systems/assayBench';
@@ -233,6 +234,15 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
        */
       const wrought = tickThresholds(state, verdAcc);
       if (wrought) ctx.emit({ type: 'worldChanged', id: wrought.id, name: wrought.name });
+      /**
+       * §55's THREE NAMED FAILURES (A.107). Same 1Hz block. Deliberately NOT in
+       * `tickCondition`: a condition is what the shell writes continuously, and
+       * a break is a single event with a recovery — folding them together is
+       * how the recovery ends up being "wait for it to decay", which is the one
+       * thing §55's own column forbids.
+       */
+      const broke = tickBreaks(state, verdAcc);
+      if (broke) fireBreak(state, ctx, broke);
       // Auto-refine standing rules (the Hold) — a gentle 5s cadence, converts
       // strictly at a loss (pillar 2), never touches the field.
       refineAcc += verdAcc;

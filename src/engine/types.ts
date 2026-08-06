@@ -1036,6 +1036,9 @@ export type GameEvent =
   | { type: 'worldChanged'; id: string; name: string }
   /** A station gave way under you. The only permanent loss in the game. */
   | { type: 'stationCollapse'; id: string; to: number }
+  // --- A.107: §55 THE NAMED FAILURES ---------------------------------------
+  | { type: 'machineBroke'; machineId: string; id: string; name: string }
+  | { type: 'machineWitnessed'; machineId: string }
   // --- A.105: THE DEAD (§48.1) ---------------------------------------------
   | { type: 'delverObjectFound'; objectId: string; delverId: string }
   /** The absence resolved: everything of theirs found, and the ground under the
@@ -1269,6 +1272,8 @@ export type GameAction =
   | { type: 'floodStation'; stationId: string }
   // E2 (§7.2) — the two verbs a condition needs: undo it, and aim Glassmere's.
   | { type: 'recastMachine'; machineId: string }
+  /** §55.5 — spend a Witness on your own machine, so it says what it is doing. */
+  | { type: 'witnessMachine'; machineId: string }
   | { type: 'setMachineBand'; machineId: string; band: number }
   // SORTING (§14.3) — the Sieve, and the three verbs a saved predicate needs.
   | { type: 'buildSieve' }

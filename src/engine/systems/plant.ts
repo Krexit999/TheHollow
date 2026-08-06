@@ -138,6 +138,16 @@ export interface PlantState {
   /** Seconds until the cascade may take one more machine. The PLANT's clock. */
   cascadeIn?: number;
   /**
+   * §55 (A.107) — WHICH MACHINES HAVE ACTUALLY BROKEN, and which of the three
+   * named failures took them. Apart from `condition` (what the shell is doing)
+   * and `dragged` (what the plant did to itself) because a break is neither: it
+   * is an EVENT with a recovery, and the recovery differs per row — re-cast the
+   * valve, harvest the green, spend a Witness. `systems/breaks.ts` owns it.
+   */
+  broken?: Record<string, import('./breaks').BrokenMachine>;
+  /** ...and how long each has stood at the edge. The warning, not the event. */
+  ripe?: Record<string, number>;
+  /**
    * GLASSMERE ONLY (§7.2, §19) — which of the six wavelengths a machine sits
    * in. Unset falls back to the machine's index, so a player who never opens
    * the optics still has machines in different bands.

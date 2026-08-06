@@ -52,6 +52,7 @@
  */
 import type { EngineCtx, GameState } from '../types';
 import { bandCount } from './thresholds';
+import { clearBreakOnRecast } from './breaks';
 import type { ModifierCache } from '../modifiers';
 import { traitsOf, type TraitId } from '../traits';
 import { currentShell } from '../shells';
@@ -721,6 +722,13 @@ export function recastMachine(
   p.builtOf ??= {};
   p.builtOf[machineId] = [...(p.builtOf[machineId] ?? []), ...spent];
   delete ensureCondition(state)[machineId];
+  // A RE-CAST VALVE IS A WORKING BOILER. Without this the condition clears and
+  // the BREAK does not, so the machine reads fine and still will not run —
+  // which is the shape of every "fixed it and nothing happened" bug report.
+  // A DELIBERATE RUNTIME-ONLY CYCLE, the pattern this file already documents:
+  // `breaks` imports this module at load, so the call has to happen inside a
+  // function body and never at module scope.
+  clearBreakOnRecast(state, machineId);
   ctx.emit({ type: 'machineRecast', machineId });
   ctx.dirty();
   return { ok: true };

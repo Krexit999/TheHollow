@@ -22,7 +22,7 @@ import { MATERIALS } from '../src/engine/materials';
 // --- The pieces, each imported so a missing one is a BUILD failure ----------
 import {
   CONDITION_RULES, OVERGROWTH_TRAIT, RECAST_PART_COST, bandOfMachine, cascadeChain,
-  cascadedFrom, conditionedMachines, machineSpeed, recastMachine, ruleOf,
+  cascadedFrom, conditionOf, conditionedMachines, machineSpeed, recastMachine, ruleOf,
 } from '../src/engine/systems/condition';
 import { PURGE_HEAT, PURGE_SLAG_COST } from '../src/engine/systems/pressure';
 import { BOILER_FLOW_PER_RISK, boilerBuilt, buildBoiler, riskedHeat } from '../src/engine/systems/boiler';
@@ -152,6 +152,33 @@ const row3: Row = {
 // "an unattended machine is consumed → it stops → vines spread to the next
 //  machine in the priority order. Recovery: harvest it — and gain a cultivar
 //  trait. The fix is the reward."
+/**
+ * ...AND THE ONE THE FIRST PASS GOT WRONG, which is why this file grew a
+ * REACHABILITY probe.
+ *
+ * Row 4 was first sized BUILDABLE off four present pieces and one missing verb.
+ * Every one of those readings was true and the verdict was still wrong, because
+ * nothing asked whether the condition the whole row stands on can ever be
+ * WRITTEN. It cannot. So the probe below RUNS THE ENGINE and reads what came
+ * out, instead of reading a registry and inferring what would.
+ */
+const overgrownReachable = ((): { reachable: boolean; minServed: number } => {
+  const e = createEngine({ nowMs: 0 });
+  const v = e.getState() as GameState;
+  v.shell.current = 'verdance';
+  v.depthRecords['verdance'] = 400;
+  v.depth = 100;
+  v.kiln.built = true;
+  const p = ensurePlant(v);
+  for (const id of conditionedMachines()) p.tiers[id] = 1;
+  // Well past CONDITION_FULL_SEC, so a rule that can write has written.
+  for (let i = 0; i < 700; i++) e.tick(1);
+  return {
+    reachable: conditionedMachines().some((id) => conditionOf(v, id)?.id === 'overgrown'),
+    minServed: Math.min(...conditionedMachines().map((id) => flowSatisfaction(v, id))),
+  };
+})();
+
 const row4: Row = {
   n: 4, name: 'OVERGROWTH',
   pieces: [
@@ -161,10 +188,12 @@ const row4: Row = {
     P('spread to the NEXT machine', typeof cascadedFrom === 'function' && typeof cascadeChain === 'function',
       'THE DRAG (A.106) — one band along, parent recorded'),
     P('a Cultivar bench for the trait to mean something', typeof cultivarBuilt === 'function', 'systems/cultivar.ts'),
-    P('A HARVEST VERB on a machine', false, 'does not exist — this is the build'),
+    P('...AND THAT CONDITION EVER FIRING', overgrownReachable.reachable,
+      `DRIVEN: 700s in Verdance wrote nothing · lowest served = ${overgrownReachable.minServed.toFixed(3)}, and the rule needs 0`),
+    P('A HARVEST VERB on a machine', false, 'does not exist'),
   ],
-  verdict: 'BUILDABLE',
-  why: 'One verb. Everything else ships. Note the spec says "spreads to the next machine in the PRIORITY ORDER" and there is no priority order — THE DRAG already spreads one band along and records its parent, which is the same sentence with a neighbourhood that exists. "The fix is the reward" is the shape worth having: the only cascade in the table whose recovery pays.',
+  verdict: 'WANTS A SYSTEM',
+  why: "Four pieces present, and the row is still unbuildable, which is the finding. `overgrown` writes on `served <= 0`; `served` is `flowSatisfaction`, a SUPPLY ratio written for every machine every tick, and Verdance’s supply floor is PLANT_FLOOR 2.4 scaled by a drawShare that is 0.5 or 1. No save can reach 0, so E2’s Verdance condition has never fired for anybody — condition.test.ts reads green because it writes `served` by hand and never calls tickPlant. The row wants a per-machine ATTENDANCE signal the plant does not keep. Re-pointing `overgrown` at \"the plant cannot feed it\" is live and reachable, and is a shell signature — out of scope, asked.",
 };
 
 // ═══ ROW 5 — THE SILENCE TAKES A MACHINE ════════════════════════════════════
@@ -234,3 +263,14 @@ if (row2.pieces.every((p) => p.have) || !row1.pieces.some((p) => p.have)) {
   process.exit(1);
 }
 console.log('self-test: rows differ — row 1 has pieces, row 2 is short of one');
+/**
+ * ...AND THE ONE THIS PASS HAD TO ADD. The first version of this table read
+ * every piece as "does the code contain it" and passed row 4 on that basis. A
+ * probe that cannot tell PRESENT from REACHABLE will pass any row whose parts
+ * have all been named, which is exactly the test satisfiable by writing words.
+ */
+if (!ruleOf('overgrown') || overgrownReachable.reachable) {
+  console.log('!! SELF-TEST FAILED — overgrown is present AND now fires; row 4 must be re-sized');
+  process.exit(1);
+}
+console.log('self-test: present is not reachable — overgrown is in the registry and never writes');

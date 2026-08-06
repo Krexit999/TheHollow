@@ -17,6 +17,7 @@ import { setRow as setCircuitRow, moveRow as moveCircuitRow } from './systems/ci
 import { shoreBand, unshoreBand } from './systems/shoring';
 import { floodStation } from './systems/flood';
 import { recastMachine, setMachineBand } from './systems/condition';
+import { witnessMachine } from './systems/breaks';
 import { addFilter, assignFilter, buildSieve, removeFilter } from './systems/sieve';
 import { buildStill, distil } from './systems/still';
 import { buildInfuser, infuse } from './systems/infuser';
@@ -189,6 +190,8 @@ export function handleAction(
 
     case 'recastMachine':
       return recastMachine(state, ctx, action.machineId);
+    case 'witnessMachine':
+      return witnessMachine(state, ctx, action.machineId);
 
     case 'buildSieve':
       return buildSieve(state, ctx);
