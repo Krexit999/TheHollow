@@ -355,6 +355,9 @@ import { CONDITION_RULES, conditionedMachines } from '../src/engine/systems/cond
 import { ensurePlant, flowSatisfaction } from '../src/engine/systems/plant';
 import { ensurePrism } from '../src/engine/systems/prism';
 import { chainCap } from '../src/engine/systems/polarity';
+import { MATERIALS } from '../src/engine/materials';
+import { KILN_FUELS } from '../src/engine/content/kilnFuel';
+import { STRAINS, strainStone } from '../src/engine/content/strains';
 import { ModifierCache } from '../src/engine/modifiers';
 import type { GameState } from '../src/engine/types';
 
@@ -491,6 +494,54 @@ if (walls.length > 0) {
   for (const w of walls) console.log(w);
 }
 
+/**
+ * 7 — A REGISTRY THAT NAMES A MATERIAL NOBODY AUTHORED (A.109)
+ *
+ * `material-audit.ts` walks the CONSUMER side: which authored stones nothing
+ * eats. This is the other direction and nothing was checking it — a registry
+ * row that names a material id which does not exist at all. The row loads, the
+ * UI offers it, and the lookup that would make it work returns 0 forever.
+ *
+ * FOUND BY TIMING §23. Its minute-4 beat is "two fuel profiles: fast burn (Brick
+ * now, Ash later) or long burn" — the first real trade in the game — and BOTH of
+ * the fuels it names want a material that was never authored. Only Marl burns,
+ * so the trade has one option and the Ash counter §23 says starts moving at 4:00
+ * cannot move at all. Three hours of every policy: 0 ash.
+ *
+ * NOT FIXED HERE. Authoring a source for those stones adds fuel a player can
+ * burn, which moves output, and A.109 measures. Gated instead, so it cannot
+ * spread and cannot be forgotten.
+ */
+const dangling: string[] = [];
+const authored = new Set(MATERIALS.map((m) => m.id));
+for (const f of KILN_FUELS) {
+  if (!authored.has(f.materialId)) {
+    dangling.push(`   kiln fuel  ${f.id.padEnd(10)} wants material '${f.materialId}' — never authored`);
+  }
+}
+for (const s of STRAINS) {
+  // `strainStone` resolves a TRAIT to a Verdance stone and falls back to
+  // 'sapstone', so this asks whether whatever it lands on actually exists.
+  const stone = strainStone(s.trait);
+  if (stone && !authored.has(stone)) {
+    dangling.push(`   strain     ${s.id.padEnd(10)} resolves to material '${stone}' — never authored`);
+  }
+}
+
+/** ...and the two-way self-test, because a scan that can only say "fine" is a comment. */
+const selfDangle: string[] = [];
+if (!authored.has('__nope__')) {
+  const pretend = [...KILN_FUELS, { materialId: '__nope__' } as (typeof KILN_FUELS)[number]];
+  if (pretend.filter((f) => !authored.has(f.materialId)).length <= dangling.length - 1) {
+    selfDangle.push('a planted dangling reference was not seen');
+  }
+}
+if (!authored.has('marl')) selfDangle.push('a material that IS authored read as missing');
+
+console.log('');
+console.log('-- MATERIAL IDS NAMED BY A REGISTRY - do they exist? --');
+console.log(`   ${MATERIALS.length} authored · ${KILN_FUELS.length} fuels · ${STRAINS.length} strains checked`);
+
 console.log('');
 console.log('-- SHELL CONDITION RULES - can the world write them at all? --');
 for (const r of condRows) console.log(r);
@@ -506,6 +557,34 @@ if (selfCond.length > 0) {
   console.log('!! THE CONDITION PROBE IS BROKEN - its own self-test failed !!');
   for (const sc of selfCond) console.log('   ' + sc);
   bad += selfCond.length;
+}
+/**
+ * A REPORT, NOT A FAILURE — and on the same grounds section 1b shipped on.
+ *
+ * A.104 found six wreck payloads nothing read and PRINTED them, because wiring
+ * one changes when a system unlocks and that is a ruling. A.106 got the ruling,
+ * dealt with all six, and only then made the check a build failure. This is the
+ * same shape at the same stage: the two fixes available are to author the stones
+ * (which adds fuel a player can burn, and A.109 measures rather than moves
+ * output) or to strike the rows (which deletes a trade §23 authors by name).
+ * Both are rulings. Failing the build now would also fail it for work that has
+ * nothing to do with this.
+ *
+ * It becomes a failure the moment the ruling lands, exactly as 1b did.
+ */
+if (dangling.length > 0) {
+  console.log('');
+  console.log('-- A REGISTRY NAMES A MATERIAL NOBODY AUTHORED (A.109, for a human to rule on) --');
+  for (const d of dangling) console.log(d);
+  console.log('   The row loads, the UI offers it, and the lookup returns 0 forever.');
+  console.log('   NOT a build failure yet: authoring the stone moves output, striking the row');
+  console.log('   deletes a trade §23 names. Both are rulings. Make it fail once one lands.');
+}
+if (selfDangle.length > 0) {
+  console.log('');
+  console.log('!! THE DANGLING-REFERENCE SCAN IS BROKEN - its own self-test failed !!');
+  for (const sd of selfDangle) console.log('   ' + sd);
+  bad += selfDangle.length;
 }
 console.log(`\n${rows.length} systems audited · ${bad} UNREACHABLE OR UNAUDITED`);
 if (bad > 0) process.exitCode = 1;
