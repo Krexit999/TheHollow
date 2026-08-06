@@ -199,6 +199,43 @@ The general lesson is the one below, in its most expensive form: the harness had
 been wrong the whole time, and every green number it produced agreed with every
 other green number it produced.
 
+## ...AND EVERY ACTIVE-ARM NUMBER MEASURED BEFORE A.108 IS VOID TOO
+It happened again, the same shape, six years of commits later — which is why
+this heading sits directly under the last one rather than replacing it.
+
+**Both sim hands swung at a pocket the engine refuses.** `manualChip` returns
+nothing for an ore cell, and a pocket's regen floor rides its RICHER cap, so an
+ore cell settles above every plain cell and wins "fullest" permanently. From a
+fresh save: first pocket at **11 seconds**, then **17923 of 17971 strokes —
+99.7%** — dispatched at a cell the engine had already refused. `chipConcentrated`
+had the softer half: its window-advance gate asks whether every cell is
+compacted, and a cell that cannot be chipped never compacts.
+
+**And no simulated player had ever built a machine.** 27 build actions exist and
+the harness dispatched none, so the plant, Flow contention, all five condition
+rules, the §55 cascade and every break sat behind a gate no arm had opened.
+
+So every number describing an ACTIVE player is void — the idle arm barely
+chipped and is much less affected, which is exactly why the two looked
+convergent. Measured after the fix:
+
+- The active/idle gap was quoted as **1.007x**. That was DEPTH alone, and depth
+  really has converged (0.99x). The other two gates pillar 1 binds had never
+  been read next to it: **income 1.39x, drops 4.94x** — the drop economy sits at
+  the ~5x bound while depth sits at parity. One ratio was standing in for three.
+- All six §53 thresholds were mis-sized; five crossed on the way in.
+  `greatFlip`'s recorded six-to-one seed spread was not "the nature of the only
+  rolled measure" — it was chain-banking being rare enough that a lucky layout
+  dominated. It now reads inside one unit across seeds.
+- §23's beats are COMPRESSED, not stretched: depth 66 is authored at minute 41
+  and arrives at 14.3.
+- `patientcell` was recorded as peaking at 8/50/73% and "never reaching its
+  tell". It now reads 31% idle and **100% FOUND** on balanced and active.
+
+A number from before A.108 that describes chipping, depth-over-time, drops, or a
+threshold is not evidence. Re-measure it before quoting it, and do not treat a
+disagreement with it as a regression.
+
 ## Working rule: a sim result is a claim until the harness is verified
 Added A.42, after this failure bit three times in one session. The sim is the
 only instrument that can see pacing, which makes it the only instrument nobody
