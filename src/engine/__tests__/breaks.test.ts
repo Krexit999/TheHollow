@@ -20,7 +20,7 @@ import {
   isBroken, recipeHidden, ripeLine, ripeness, stopped, witnessMachine,
 } from '../systems/breaks';
 import {
-  cascadeChain, cascadedFrom, conditionOf, conditionedMachines, ensureCondition,
+  CASCADE_SEC, bandOfMachine, cascadeChain, cascadedFrom, conditionOf, conditionedMachines, ensureCondition,
   ensureDrags, machineSpeed, recastMachine, ruleFor, setMachineBand,
 } from '../systems/condition';
 import { ensurePlant, flowSatisfaction } from '../systems/plant';
@@ -122,16 +122,66 @@ describe('§2 THE BOILER LET GO (§55.1)', () => {
       .toBeLessThan(held);
   });
 
-  it('the machine STOPS, and it takes its neighbours down with it', () => {
+  it('the machine STOPS, and it takes ONE neighbour down with it', () => {
     const r = plantIn('cinder');
     run(r, RIPE_SEC + 10, hot(r.s));
     expect(stopped(r.s, 'boiler')).toBe(true);
     expect(machineSpeed(r.s, 'boiler'), 'a blown Boiler still runs').toBe(0);
     const dragged = Object.keys(ensureDrags(r.s));
-    expect(dragged.length, 'nothing was dragged with it').toBeGreaterThan(0);
-    for (const id of dragged) {
-      expect(machineSpeed(r.s, id), `${id} was dragged and is not slowed`).toBeLessThan(1);
+    // ONE, not every machine within a band. A failure that arrives all at once
+    // is an event; A.106 rejected the clique by name and this is the same call.
+    expect(dragged.length, 'the blowout handed the plant to the drag in one tick').toBe(1);
+    expect(machineSpeed(r.s, dragged[0]!), 'the dragged machine is not slowed').toBeLessThan(1);
+    // ...and ONE BAND ALONG, which counting the links cannot tell you: the
+    // same-band neighbourhood is a clique, and `nextAlong` returns exactly one
+    // machine either way. Only the geometry says which rule is in force.
+    expect(Math.abs(bandOfMachine(r.s, dragged[0]!) - bandOfMachine(r.s, 'boiler')),
+      'the drag went sideways within the band — that is the clique A.106 cut').toBe(1);
+  });
+
+  it('...and it will NOT go sideways — the same band is a clique, not a chain', () => {
+    /**
+     * The decisive layout, and the reason it has to be built by hand: with the
+     * default banding both rules happen to pick a machine one band along, so
+     * loosening `=== 1` to `<= 1` changes nothing observable and a test that
+     * counts links reads green either way.
+     *
+     * Here the Boiler has a same-band neighbour and NOTHING one band along. The
+     * clique rule takes the neighbour; the chain rule takes nobody. A failure
+     * that spreads sideways within its own band reaches every member of the band
+     * directly, which is the STAR A.106 cut by name.
+     */
+    const r = plantIn('cinder');
+    for (const id of conditionedMachines()) setMachineBand(r.s, id, 5);
+    setMachineBand(r.s, 'boiler', 2);
+    setMachineBand(r.s, 'crusher', 2);
+    run(r, RIPE_SEC + 10, hot(r.s));
+
+    expect(isBroken(r.s, 'boiler'), 'it never blew, so nothing is proven').toBe(true);
+    expect(ensureDrags(r.s)['crusher'], 'the failure went sideways within the band').toBeUndefined();
+    expect(Object.keys(ensureDrags(r.s)),
+      'something was dragged with no machine one band along to drag').toEqual([]);
+  });
+
+  it('...and it TRAVELS — a link at a time, on the plant clock', () => {
+    const r = plantIn('cinder');
+    run(r, RIPE_SEC + 10, hot(r.s));
+    const first = Object.keys(ensureDrags(r.s));
+    expect(first.length).toBe(1);
+
+    run(r, CASCADE_SEC + 5, hot(r.s));
+    const second = Object.keys(ensureDrags(r.s));
+    expect(second.length, 'the chain never grew').toBeGreaterThan(first.length);
+
+    // ...and it is a CHAIN, not a star: something is dragged by a machine that
+    // is not the Boiler, and every chain still starts at the Boiler.
+    const parents = new Set(second.map((id) => cascadedFrom(r.s, id)));
+    expect(parents.size, 'every link hangs straight off the Boiler — that is a star').toBeGreaterThan(1);
+    for (const id of second) {
+      expect(cascadeChain(r.s, id)[0], `${id} does not trace back to the Boiler`).toBe('boiler');
     }
+    expect(Math.max(...second.map((id) => cascadeChain(r.s, id).length)),
+      'no chain is longer than one hop').toBeGreaterThan(2);
   });
 
   it('TRACEABLE — every dragged machine names the Boiler as the head', () => {

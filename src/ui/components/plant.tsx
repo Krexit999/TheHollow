@@ -63,6 +63,17 @@ const MACHINE_NAME: Record<string, string> = {
 const machineName = (id: string): string =>
   MACHINE_NAME[id] ?? id.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase());
 
+/**
+ * The same name with its article in the middle of a sentence.
+ *
+ * A.106 found "at the The Kiln" and fixed it by dropping the "the", which left
+ * "It started at The Boiler" — a capital in the middle of a sentence, found the
+ * same way, in a screenshot, after every automated check on this panel had
+ * passed again. The name owns its article; only its CASE depends on where it
+ * sits, so that is the only thing this changes.
+ */
+const midSentence = (id: string): string => machineName(id).replace(/^The /, 'the ');
+
 function Bar({ pct, tone }: { pct: number; tone: string }) {
   return (
     <div className="h-1.5 w-full overflow-hidden rounded-full bg-cave-800">
@@ -389,12 +400,13 @@ export function ConditionPanel() {
                   </div>
                   {/*
                     `machineName` already carries the article — "The Kiln", not
-                    "Kiln" — so "at the {name}" printed "at the The Kiln". Caught
-                    in a screenshot, by reading it, after every automated check
-                    on this panel had passed.
+                    "Kiln" — so "at the {name}" printed "at the The Kiln" (A.106),
+                    and dropping the "the" left "at The Kiln" (A.107). It is
+                    `midSentence` for the same reason both times: the name owns
+                    its article and the sentence owns its case.
                   */}
                   <div className="mt-0.5 text-[9px] leading-snug text-cave-400">
-                    It started at {machineName(cascadeChain(st, id)[0]!)}. Put that right and this
+                    It started at {midSentence(cascadeChain(st, id)[0]!)}. Put that right and this
                     comes back.
                   </div>
                 </div>

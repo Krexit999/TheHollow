@@ -12,6 +12,7 @@ import { allUpgrades } from './engine/upgrades';
 import { dpsMax } from './engine/systems/face';
 import { cascadeChain, conditionedMachines } from './engine/systems/condition';
 import { BREAKS, recipeHidden, ripeness } from './engine/systems/breaks';
+import { bandOfMachine } from './engine/systems/condition';
 import { strikeDamage } from './engine/systems/standoff';
 import { shellRoll, unstableHere } from './engine/systems/roll';
 import { THRESHOLDS, thresholdFor } from './engine/content/thresholds';
@@ -52,6 +53,7 @@ async function boot(): Promise<void> {
       // §55 (A.107) — what has BROKEN, how close the rest are, and the reasons.
       breaks: () => BREAKS.map((x) => ({ id: x.id, shellId: x.shellId, name: x.name })),
       broken: (s: GameState) => ({ ...(s.plant?.broken ?? {}) }),
+      band: (s: GameState, id: string) => bandOfMachine(s, id),
       ripeness: (s: GameState, id: string) => ripeness(s, id),
       hidden: (s: GameState, id: string) => recipeHidden(s, id),
       shellRoll: (s: GameState) => shellRoll(s).map((d) => ({ id: d.id, depth: d.depth, type: d.type })),

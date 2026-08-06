@@ -59,8 +59,8 @@
  */
 import type { EngineCtx, GameState } from '../types';
 import {
-  biting, bandOfMachine, conditionOf, conditionedMachines, ensureCondition,
-  ensureDrags, machineLabel,
+  CASCADE_SEC, biting, bandOfMachine, conditionOf, conditionedMachines,
+  ensureCondition, ensureDrags, machineLabel,
 } from './condition';
 import { ensurePlant, tierOf } from './plant';
 import { PURGE_HEAT, PURGE_SLAG_COST } from './pressure';
@@ -103,30 +103,43 @@ export const RIPE_SEC = 90;
 /** Risked heat above which the Boiler is at the edge. */
 export const BLOWOUT_HEAT = 70;
 
-/** Which built machines sit within a band of this one. THE DRAG's neighbourhood. */
-function neighbours(state: GameState, machineId: string): string[] {
+/**
+ * ONE built machine, ONE BAND ALONG. Not "every machine within a band" — the
+ * first draft was `<= 1`, which includes the SAME band, which is the CLIQUE
+ * A.106 rejected by name: "the source reaches every member directly and the
+ * result is a STAR with one failure at the centre, never a chain."
+ *
+ * FOUND BY LOOKING AT A SCREENSHOT. The star handed fourteen machines to the
+ * drag on the same tick and the plant panel grew to 3245px at 380px wide —
+ * eight and a half screens of one panel, and a §55 cascade that arrives all at
+ * once is an event with a long readout, not a failure that travels. Taking one
+ * neighbour and letting `cascade()` carry it the rest of the way is the shape
+ * that already shipped, and it is why this file re-implements no propagation.
+ */
+function nextAlong(state: GameState, machineId: string): string | null {
   const band = bandOfMachine(state, machineId);
-  return conditionedMachines().filter(
+  const drags = state.plant?.dragged ?? {};
+  return conditionedMachines().find(
     (id) => id !== machineId
       && built(state, id)
-      && Math.abs(bandOfMachine(state, id) - band) <= 1,
-  );
+      && !drags[id]
+      && Math.abs(bandOfMachine(state, id) - band) === 1,
+  ) ?? null;
 }
 
 function built(state: GameState, machineId: string): boolean {
   return tierOf(state, machineId) > 0 || (machineId === 'kiln' && state.kiln.built);
 }
 
-/** Hand every neighbour to the drag, with this machine named as the parent. */
+/** Hand the next one along to the drag, with this machine named as the parent. */
 function dragNeighbours(state: GameState, machineId: string): string[] {
-  const drags = ensureDrags(state);
-  const took: string[] = [];
-  for (const id of neighbours(state, machineId)) {
-    if (drags[id]) continue;
-    drags[id] = { from: machineId, sec: 0 };
-    took.push(id);
-  }
-  return took;
+  const to = nextAlong(state, machineId);
+  if (!to) return [];
+  ensureDrags(state)[to] = { from: machineId, sec: 0 };
+  // ...and the PLANT's cascade clock is reset, so the next link is a full
+  // CASCADE_SEC away rather than arriving on the following tick.
+  ensurePlant(state).cascadeIn = CASCADE_SEC;
+  return [to];
 }
 
 // ---------------------------------------------------------------------------
