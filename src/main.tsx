@@ -11,6 +11,7 @@ import { ModifierCache } from './engine/modifiers';
 import { allUpgrades } from './engine/upgrades';
 import { dpsMax } from './engine/systems/face';
 import { cascadeChain, conditionedMachines } from './engine/systems/condition';
+import { BREAKS, recipeHidden, ripeness } from './engine/systems/breaks';
 import { strikeDamage } from './engine/systems/standoff';
 import { shellRoll, unstableHere } from './engine/systems/roll';
 import { THRESHOLDS, thresholdFor } from './engine/content/thresholds';
@@ -48,6 +49,11 @@ async function boot(): Promise<void> {
       thresholdIds: () => THRESHOLDS.map((t) => t.id),
       thresholdAt: (shellId: string) => thresholdFor(shellId)?.at ?? 0,
       unstable: (s: GameState) => unstableHere(s),
+      // §55 (A.107) — what has BROKEN, how close the rest are, and the reasons.
+      breaks: () => BREAKS.map((x) => ({ id: x.id, shellId: x.shellId, name: x.name })),
+      broken: (s: GameState) => ({ ...(s.plant?.broken ?? {}) }),
+      ripeness: (s: GameState, id: string) => ripeness(s, id),
+      hidden: (s: GameState, id: string) => recipeHidden(s, id),
       shellRoll: (s: GameState) => shellRoll(s).map((d) => ({ id: d.id, depth: d.depth, type: d.type })),
       upgrades: (s: GameState) => allUpgrades().filter((u) => u.visible?.(s) ?? true).map((u) => u.id),
       wrecks: () => Object.fromEntries(

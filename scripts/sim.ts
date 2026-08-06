@@ -1615,6 +1615,98 @@ function main(): void {
     for (const [id, purity, count] of bank3) addMaterial(s, id, purity, count);
   }
 
+  /**
+   * --scenario ferrite: begin in the grey shell with a period kit.
+   *
+   * ADDED A.107 FOR ONE READING, and it is the reading §53 could not take: THE
+   * GREAT FLIP is banked by `bankChain`, which counts chain length at the moment
+   * a chain extends and ONLY while you are standing in Ferrite. Every other
+   * threshold reads a global the shell already keeps, so a run that never enters
+   * the shell still reports 0 honestly. This one reports 0 because nothing ever
+   * chained here, which is not the same thing and reads identically. Hence a
+   * stage: signature live, magnets affordable, and the greedy policy's polarity
+   * arm (`usePolarity`) doing the chaining.
+   */
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'ferrite') {
+    const s = engine.getState() as GameState;
+    s.shell.current = 'ferrite';
+    s.shell.breachCount = 1;
+    s.shell.signatures = ['seepage'];
+    s.depthRecords['loam'] = 150;
+    s.depthRecords['ferrite'] = 60;
+    s.depth = 60;
+    s.maxDepthRecord = 150;
+    s.collapse.count = 20;
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.forge.tools.push({
+      id: 96, recipeId: 'rimefang', name: 'Rimefang', tier: 5, purity: 62,
+      chipPower: 3.2, strikePower: 26, sockets: ['bloodgarnet', null], alloys: [null, null],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    s.delver.skills['twoHandedSwing'] = 5;
+    s.delver.skills['deepGrip'] = 3;
+    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'ingot', amount: 20000 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'flux', amount: 300 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 200 });
+    const bank2: Array<[string, number, number]> = [
+      ['ironbloom', 55, 40], ['scalechip', 52, 30], ['rustmarrow', 52, 25], ['greyflux', 55, 25],
+      ['lodestone', 58, 16], ['bluesteel', 58, 12], ['rimeiron', 55, 12],
+      ['polarite', 60, 10], ['voltglass', 60, 12], ['magnetile', 60, 10],
+      ['nullsilver', 62, 8], ['stormcore', 62, 6], ['polestar', 62, 2],
+      ['scalebackplate', 55, 10], ['ironsinew', 55, 10], ['voltgland', 55, 8], ['magnetheart', 58, 6],
+    ];
+    for (const [id, purity, count] of bank2) addMaterial(s, id, purity, count);
+  }
+
+  /**
+   * --scenario glassmere: begin in the lit shell with a period kit.
+   *
+   * ADDED A.107, for THE BEND. Its measure is beam-seconds — `refraction.path`
+   * being non-empty — so what this stage has to guarantee is not currency but
+   * MIRROR STOCK: the greedy policy re-solves a lens when `refraction.mirrors`
+   * is empty and buys stock out of silica, and a run that can afford neither
+   * reports zero beam-seconds while looking like a run that simply did not get
+   * far. Same trap as Ferrite's, one system over.
+   */
+  if (process.argv.includes('--scenario') && process.argv[process.argv.indexOf('--scenario') + 1] === 'glassmere') {
+    const s = engine.getState() as GameState;
+    s.shell.current = 'glassmere';
+    s.shell.breachCount = 3;
+    s.shell.signatures = ['seepage', 'polarity', 'growth'];
+    s.depthRecords['loam'] = 150;
+    s.depthRecords['ferrite'] = 250;
+    s.depthRecords['verdance'] = 290;
+    s.depthRecords['glassmere'] = 60;
+    s.depth = 60;
+    s.maxDepthRecord = 290;
+    s.collapse.count = 45;
+    s.forge.built = true;
+    s.kiln.built = true;
+    s.refraction.mirrorStock = 6;
+    s.forge.tools.push({
+      id: 95, recipeId: 'prismpick', name: 'Prismpick', tier: 10, purity: 65,
+      chipPower: 18, strikePower: 190, sockets: ['bloodgarnet', null, null], alloys: [null, null],
+    });
+    s.forge.equipped = s.forge.tools.length - 1;
+    s.delver.skills['twoHandedSwing'] = 5;
+    s.delver.skills['deepGrip'] = 3;
+    for (const id of ['firstKill', 'wardenLoam', 'kills25']) s.achievements.unlocked[id] = true;
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'prism', amount: 60000 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'lumen', amount: 800 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'core', amount: 350 });
+    engine.dispatch({ type: 'debug', op: 'grant', currency: 'silica', amount: 4000 });
+    const bank4: Array<[string, number, number]> = [
+      ['silicash', 55, 40], ['frostsand', 52, 30], ['dimglass', 52, 25], ['mirrorgrit', 55, 25],
+      ['lumenshard', 58, 16], ['prismite', 58, 12], ['coldspar', 55, 12],
+      ['spectralite', 60, 10], ['sunglass', 60, 12], ['beamiron', 60, 10],
+      ['starlens', 62, 8], ['wavelength', 62, 6], ['spectrum', 62, 2],
+      ['glasschitin', 55, 10], ['coldsinew', 55, 10], ['lenswing', 55, 8], ['prismheart', 58, 6],
+    ];
+    for (const [id, purity, count] of bank4) addMaterial(s, id, purity, count);
+  }
+
   // --scenario cinder: begin in the burnt shell with a period kit — the stage
   // for the three heat stances (--heat safe|balanced|greedy) and the 16h
   // idle-never-floods proof (--policy idle --heat safe).

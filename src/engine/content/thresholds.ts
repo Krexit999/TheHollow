@@ -74,8 +74,24 @@ export interface ThresholdDef {
 /**
  * WHY THESE NUMBERS. Each is sized so a shell you push through does not cross
  * it and a shell you live in does — §53's "you cross it while doing something
- * else". They are measured, not asserted: `scripts/a106-thresholds.ts` reports
- * how far a three-hour run gets against each, and the answer is in the commit.
+ * else" — which in practice means all six land near hour nine of living there.
+ *
+ * ALL SIX ARE NOW MEASURED, and none of them by a harness of its own: every
+ * reading is `npm run sim -- --scenario <shell> --hours 3 --thresholds`, one
+ * flag apart, printing what a three-hour run banked against each `at`. A.106
+ * read four that way and ledgered Ferrite and Glassmere UNMEASURED because no
+ * scenario entered those shells; A.107 added the two scenarios and read them.
+ * Both were mis-sized in opposite directions — 31 hours and 6 — which is the
+ * argument for the reading rather than for either number.
+ *
+ * AND ONE FINDING THAT LANDS ON ALL SIX, found by running the same arms to nine
+ * hours instead of three: A BALANCED RUN IS NOT IN THE SHELL AT HOUR NINE. The
+ * Ferrite arm is standing in Verdance by then and the Glassmere arm in Cinder,
+ * so both bank LESS at 9h than at 3h — the counter stops the moment you breach.
+ * That is not a bug in the sizing, it is what "a shell you live in" costs: every
+ * threshold here is for a player who chooses to stay in a shell roughly twice as
+ * long as the descent wants them to. Worth knowing before anyone reads a 0% in a
+ * long run as a threshold that does not work.
  */
 export const THRESHOLDS: ThresholdDef[] = [
   {
@@ -97,10 +113,25 @@ export const THRESHOLDS: ThresholdDef[] = [
     shellId: 'ferrite',
     id: 'greatFlip',
     name: 'THE GREAT FLIP',
-    // UNMEASURED — no sim arm reaches Ferrite natively, and the one reading
-    // that existed was the cross-shell leak `bankChain` now refuses. Ledgered
-    // as a claim, not a measurement.
-    at: 900,
+    // MEASURED (A.107), once `--scenario ferrite` existed to measure it in.
+    // Six seeded 3h runs bank 92 · 157 · 25 · 57 · 106 · 83, mean 87 — so 900
+    // was a 31-hour threshold in a set whose other five sit near hour nine.
+    // 250 is 8.7h at the mean.
+    //
+    // AND THE SPREAD IS THE REAL READING. Six-to-one across seeds, where the
+    // other five rows vary by a few percent, because this is the only measure
+    // in the table that is ROLLED rather than accumulated: `bankChain` banks the
+    // LENGTH of a chain at the moment it extends, and chain length falls out of
+    // a sign layout nobody chose. At 250 that is 5 hours on a lucky world and
+    // 30 on an unlucky one. Sized to the mean and left honest rather than
+    // re-based onto a smoother measure, which would be a §53 change.
+    //
+    // WHY IT WAS THE ONE THAT COULD NOT BE READ AT ALL. Every other row reads a
+    // global the shell keeps anyway, so a run that never enters the shell
+    // reports 0 and says so. This one is banked in Ferrite only, so before the
+    // scenario existed it reported 0 because nothing had ever chained there —
+    // which reads identically to 0-by-construction and is not the same claim.
+    at: 250,
     // Banked by `polarity.ts` at the moment a chain extends — the one measure
     // §53 names that nothing was already keeping a total of.
     changed: 'The shell inverted. Every pole reads the other way now.',
@@ -133,9 +164,13 @@ export const THRESHOLDS: ThresholdDef[] = [
     shellId: 'glassmere',
     id: 'bend',
     name: 'THE BEND',
-    // UNMEASURED — no sim arm enters Glassmere. Beam-seconds, so 20000 is about
-    // five and a half hours of light actually running. Ledgered as a claim.
-    at: 20_000,
+    // MEASURED (A.107) via `--scenario glassmere`: three seeded 3h runs bank
+    // 10469 · 10761 · 10119 beam-seconds against a 10800-second ceiling, so the
+    // beam carries something ~97% of the time somebody is in the shell — this
+    // is very nearly a clock. 20000 was therefore 5.7 hours of SHELL time, not
+    // the 9-ish the other rows sit at; the old note read the unit right and the
+    // pacing wrong. 30000 is 8.6h, and varies by 2% across seeds.
+    at: 30_000,
     // Beam-seconds: how long the light has been carrying anything at all.
     rate: (s) => ((s.refraction?.path?.length ?? 0) > 0 ? 1 : 0),
     /**
